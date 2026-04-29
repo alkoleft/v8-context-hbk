@@ -168,7 +168,7 @@ Status:
 
 - Completed with `syntax_helper` root discovery, catalog traversal, unknown-page diagnostics and fixture/real-platform assertions for Syntax Assistant root sections.
 
-### [ ] T6. Specialized Syntax Assistant parsers
+### [x] T6. Specialized Syntax Assistant parsers
 
 Depends on: T5.
 
@@ -194,6 +194,10 @@ Verification:
 - Known representative assertions pass for object/type, method, property, constructor, enum, enum-value and global-context parsers.
 - Full in-memory extraction against `shcntx_ru.hbk` returns non-empty global methods, global properties, platform types and enums when the file exists.
 - `git diff --check`
+
+Status:
+
+- Completed with specialized Syntax Assistant parser domain structs, fixture assertions for every parser kind, and real `shcntx_ru.hbk` extraction smoke for the required non-empty families.
 
 ### [ ] T7. Domain model and canonical JSON export
 

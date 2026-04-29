@@ -965,6 +965,7 @@ pub mod hbk {
     }
 
     pub mod book {
+        use std::collections::{BTreeMap, BTreeSet};
         use std::fmt;
         use std::io::{self, Cursor, Read};
         use std::path::{Path, PathBuf};
@@ -1218,6 +1219,72 @@ pub mod hbk {
                     entity_name: FILE_STORAGE_NAME,
                     source,
                 })
+            }
+
+            pub fn read_pages<'p>(
+                &self,
+                paths: impl IntoIterator<Item = &'p str>,
+            ) -> Result<BTreeMap<String, String>, BookError> {
+                let mut requested = BTreeSet::new();
+                for path in paths {
+                    let entry_name = normalize_storage_path(path).to_string();
+                    if entry_name.is_empty() {
+                        return Err(BookError::MissingZipEntry {
+                            path: self.path().to_path_buf(),
+                            entry_name,
+                        });
+                    }
+                    requested.insert(entry_name);
+                }
+                let mut archive = ZipArchive::new(Cursor::new(self.file_storage.as_slice()))
+                    .map_err(|source| BookError::InvalidZip {
+                        path: self.path().to_path_buf(),
+                        entity_name: FILE_STORAGE_NAME,
+                        source,
+                    })?;
+                let mut pages = BTreeMap::new();
+                for index in 0..archive.len() {
+                    let mut entry =
+                        archive
+                            .by_index(index)
+                            .map_err(|source| BookError::InvalidZip {
+                                path: self.path().to_path_buf(),
+                                entity_name: FILE_STORAGE_NAME,
+                                source,
+                            })?;
+                    let entry_name = entry.name().to_string();
+                    if !requested.contains(&entry_name) {
+                        continue;
+                    }
+                    let mut bytes = Vec::new();
+                    entry
+                        .read_to_end(&mut bytes)
+                        .map_err(|source| BookError::Io {
+                            path: self.path().to_path_buf(),
+                            entry_name: entry_name.clone(),
+                            source,
+                        })?;
+                    let page =
+                        String::from_utf8(bytes).map_err(|source| BookError::InvalidUtf8 {
+                            path: self.path().to_path_buf(),
+                            entity_name: FILE_STORAGE_NAME,
+                            source,
+                        })?;
+                    pages.insert(entry_name, page);
+                    if pages.len() == requested.len() {
+                        break;
+                    }
+                }
+                if let Some(entry_name) = requested
+                    .iter()
+                    .find(|entry_name| !pages.contains_key(*entry_name))
+                {
+                    return Err(BookError::MissingZipEntry {
+                        path: self.path().to_path_buf(),
+                        entry_name: entry_name.clone(),
+                    });
+                }
+                Ok(pages)
             }
 
             fn from_container(container: HbkContainer) -> Result<Self, BookError> {
@@ -2715,11 +2782,14 @@ pub mod hbk {
 }
 
 pub mod syntax_helper {
+    use std::collections::BTreeSet;
     use std::fmt;
     use std::path::{Path, PathBuf};
 
+    use scraper::{Html, Selector};
+
     use crate::hbk::book::{BookError, HbkBook};
-    use crate::hbk::docs::{DocumentationError, DocumentationReader, PageContent};
+    use crate::hbk::docs::{DocumentationError, DocumentationReader, PageContent, PageSource};
     use crate::hbk::toc::{FlatTocPage, Toc, TocPage};
 
     #[derive(Debug)]
@@ -2741,6 +2811,68 @@ pub mod syntax_helper {
                     DocumentationReader::new(self.book)
                         .load_page(html_path)
                         .map_err(SyntaxHelperError::Documentation)
+                },
+            )
+        }
+
+        pub fn extract(&self) -> Result<PlatformContext, SyntaxHelperError> {
+            let root_paths = self
+                .book
+                .toc()
+                .flat_pages()
+                .filter(|flat_page| {
+                    flat_page.index_path.indexes().len() == 1
+                        && is_syntax_helper_path(&flat_page.page.html_path)
+                })
+                .map(|flat_page| flat_page.page.html_path.clone())
+                .collect::<Vec<_>>();
+            let root_pages = self
+                .book
+                .read_pages(root_paths.iter().map(String::as_str))?;
+            let discovery = discover_roots_with_loader(
+                self.book.path(),
+                self.book.locale().source_code(),
+                self.book.toc(),
+                |html_path| {
+                    let raw_html = root_pages.get(html_path).ok_or_else(|| {
+                        SyntaxHelperError::Book(BookError::MissingZipEntry {
+                            path: self.book.path().to_path_buf(),
+                            entry_name: html_path.to_string(),
+                        })
+                    })?;
+                    Ok(parse_syntax_page_content(
+                        self.book.path(),
+                        self.book.locale().source_code(),
+                        self.book.toc(),
+                        html_path,
+                        raw_html,
+                    ))
+                },
+            )?;
+            let page_paths = primary_extraction_page_paths(&discovery);
+            let pages = self
+                .book
+                .read_pages(page_paths.iter().map(String::as_str))?;
+            let discovery = primary_extraction_discovery(discovery);
+            parse_extraction_pages(
+                self.book.path(),
+                self.book.locale().source_code(),
+                self.book.toc(),
+                discovery,
+                |html_path| {
+                    let raw_html = pages.get(html_path).ok_or_else(|| {
+                        SyntaxHelperError::Book(BookError::MissingZipEntry {
+                            path: self.book.path().to_path_buf(),
+                            entry_name: html_path.to_string(),
+                        })
+                    })?;
+                    Ok(parse_syntax_page_content(
+                        self.book.path(),
+                        self.book.locale().source_code(),
+                        self.book.toc(),
+                        html_path,
+                        raw_html,
+                    ))
                 },
             )
         }
@@ -2845,6 +2977,132 @@ pub mod syntax_helper {
         Warning,
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq, Default)]
+    pub struct PlatformContext {
+        pub global_contexts: Vec<GlobalContext>,
+        pub global_methods: Vec<GlobalMethod>,
+        pub global_properties: Vec<GlobalProperty>,
+        pub platform_types: Vec<PlatformType>,
+        pub type_methods: Vec<PlatformMethod>,
+        pub type_properties: Vec<PlatformProperty>,
+        pub constructors: Vec<Constructor>,
+        pub enums: Vec<EnumDefinition>,
+        pub enum_values: Vec<EnumValue>,
+        pub diagnostics: Vec<SyntaxHelperDiagnostic>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct GlobalContext {
+        pub name: LocalizedName,
+        pub property_links: Vec<MemberLink>,
+        pub method_links: Vec<MemberLink>,
+        pub description: Option<String>,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct GlobalMethod {
+        pub name: LocalizedName,
+        pub signatures: Vec<Signature>,
+        pub return_types: Vec<TypeRef>,
+        pub description: Option<String>,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct GlobalProperty {
+        pub name: LocalizedName,
+        pub usage: Option<String>,
+        pub type_refs: Vec<TypeRef>,
+        pub description: Option<String>,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct PlatformType {
+        pub name: LocalizedName,
+        pub method_links: Vec<MemberLink>,
+        pub constructor_links: Vec<MemberLink>,
+        pub description: Option<String>,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct PlatformMethod {
+        pub owner: LocalizedName,
+        pub name: LocalizedName,
+        pub signatures: Vec<Signature>,
+        pub return_types: Vec<TypeRef>,
+        pub description: Option<String>,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct PlatformProperty {
+        pub owner: LocalizedName,
+        pub name: LocalizedName,
+        pub usage: Option<String>,
+        pub type_refs: Vec<TypeRef>,
+        pub description: Option<String>,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Constructor {
+        pub owner: LocalizedName,
+        pub name: LocalizedName,
+        pub signatures: Vec<Signature>,
+        pub description: Option<String>,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct EnumDefinition {
+        pub name: LocalizedName,
+        pub value_links: Vec<MemberLink>,
+        pub description: Option<String>,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct EnumValue {
+        pub owner: LocalizedName,
+        pub name: LocalizedName,
+        pub description: Option<String>,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Signature {
+        pub text: String,
+        pub parameters: Vec<Parameter>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Parameter {
+        pub name: String,
+        pub required: bool,
+        pub type_refs: Vec<TypeRef>,
+        pub description: Option<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct TypeRef {
+        pub name: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct LocalizedName {
+        pub primary: String,
+        pub alias: Option<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct MemberLink {
+        pub name: LocalizedName,
+        pub html_path: String,
+    }
+
     pub fn discover_roots_with_loader(
         hbk_path: &Path,
         locale: &str,
@@ -2880,6 +3138,226 @@ pub mod syntax_helper {
         }
 
         Ok(RootDiscovery { roots, diagnostics })
+    }
+
+    pub fn extract_with_loader(
+        hbk_path: &Path,
+        locale: &str,
+        toc: &Toc,
+        mut load_page: impl FnMut(&str) -> Result<PageContent, SyntaxHelperError>,
+    ) -> Result<PlatformContext, SyntaxHelperError> {
+        let discovery = discover_roots_with_loader(hbk_path, locale, toc, &mut load_page)?;
+        parse_extraction_pages(hbk_path, locale, toc, discovery, load_page)
+    }
+
+    fn primary_extraction_page_paths(discovery: &RootDiscovery) -> Vec<String> {
+        let mut paths = BTreeSet::new();
+        for root in &discovery.roots {
+            if root.kind == RootSectionKind::GlobalContext {
+                paths.insert(root.source.html_path.clone());
+            }
+            for page in &root.pages {
+                if matches!(
+                    page.class,
+                    PageClass::GlobalMethod
+                        | PageClass::GlobalProperty
+                        | PageClass::ObjectType
+                        | PageClass::Enum
+                ) {
+                    paths.insert(page.source.html_path.clone());
+                }
+            }
+        }
+        paths.into_iter().collect()
+    }
+
+    fn primary_extraction_discovery(mut discovery: RootDiscovery) -> RootDiscovery {
+        for root in &mut discovery.roots {
+            root.pages.retain(|page| {
+                matches!(
+                    page.class,
+                    PageClass::Catalog
+                        | PageClass::Unknown
+                        | PageClass::GlobalMethod
+                        | PageClass::GlobalProperty
+                        | PageClass::ObjectType
+                        | PageClass::Enum
+                )
+            });
+        }
+        discovery
+    }
+
+    fn parse_extraction_pages(
+        _hbk_path: &Path,
+        _locale: &str,
+        _toc: &Toc,
+        discovery: RootDiscovery,
+        mut load_page: impl FnMut(&str) -> Result<PageContent, SyntaxHelperError>,
+    ) -> Result<PlatformContext, SyntaxHelperError> {
+        let mut context = PlatformContext {
+            diagnostics: discovery.diagnostics,
+            ..PlatformContext::default()
+        };
+        let mut visited = BTreeSet::new();
+
+        for root in &discovery.roots {
+            for catalog_page in &root.pages {
+                if matches!(catalog_page.class, PageClass::Catalog | PageClass::Unknown) {
+                    continue;
+                }
+                if !visited.insert(catalog_page.source.html_path.clone()) {
+                    continue;
+                }
+                let content = load_page(&catalog_page.source.html_path)?;
+                let source = source_from_content(&catalog_page.source, &content);
+                match catalog_page.class {
+                    PageClass::Catalog | PageClass::Unknown => unreachable!(),
+                    PageClass::GlobalMethod => context
+                        .global_methods
+                        .push(parse_global_method(&content, source)),
+                    PageClass::GlobalProperty => context
+                        .global_properties
+                        .push(parse_global_property(&content, source)),
+                    PageClass::ObjectType => context
+                        .platform_types
+                        .push(parse_platform_type(&content, source)),
+                    PageClass::ObjectMethod => context
+                        .type_methods
+                        .push(parse_platform_method(&content, source)),
+                    PageClass::ObjectProperty => context
+                        .type_properties
+                        .push(parse_platform_property(&content, source)),
+                    PageClass::Constructor => context
+                        .constructors
+                        .push(parse_constructor(&content, source)),
+                    PageClass::Enum => context.enums.push(parse_enum(&content, source)),
+                    PageClass::EnumValue => {
+                        context.enum_values.push(parse_enum_value(&content, source))
+                    }
+                }
+            }
+
+            if root.kind == RootSectionKind::GlobalContext
+                && visited.insert(root.source.html_path.clone())
+            {
+                let content = load_page(&root.source.html_path)?;
+                let source = source_from_content(&root.source, &content);
+                context
+                    .global_contexts
+                    .push(parse_global_context(&content, source));
+            }
+        }
+
+        Ok(context)
+    }
+
+    pub fn parse_global_context(
+        content: &PageContent,
+        source: SyntaxHelperSource,
+    ) -> GlobalContext {
+        GlobalContext {
+            name: page_title_name(content),
+            property_links: links_in_section(content, &["Свойства:", "Properties:"]),
+            method_links: links_in_section(content, &["Методы:", "Methods:"]),
+            description: section_text(content, &["Описание:", "Description:"]),
+            source,
+        }
+    }
+
+    pub fn parse_global_method(content: &PageContent, source: SyntaxHelperSource) -> GlobalMethod {
+        GlobalMethod {
+            name: heading_name(content),
+            signatures: parse_signatures(content),
+            return_types: type_refs_from_section(
+                content,
+                &["Возвращаемое значение:", "Return value:"],
+            ),
+            description: section_text(content, &["Описание:", "Description:"]),
+            source,
+        }
+    }
+
+    pub fn parse_global_property(
+        content: &PageContent,
+        source: SyntaxHelperSource,
+    ) -> GlobalProperty {
+        GlobalProperty {
+            name: heading_name(content),
+            usage: section_text(content, &["Использование:", "Use:"]),
+            type_refs: type_refs_from_section(content, &["Описание:", "Description:"]),
+            description: section_text(content, &["Описание:", "Description:"]),
+            source,
+        }
+    }
+
+    pub fn parse_platform_type(content: &PageContent, source: SyntaxHelperSource) -> PlatformType {
+        PlatformType {
+            name: page_title_name(content),
+            method_links: links_in_section(content, &["Методы:", "Methods:"]),
+            constructor_links: links_in_section(content, &["Конструкторы:", "Constructors:"]),
+            description: section_text(content, &["Описание:", "Description:"]),
+            source,
+        }
+    }
+
+    pub fn parse_platform_method(
+        content: &PageContent,
+        source: SyntaxHelperSource,
+    ) -> PlatformMethod {
+        PlatformMethod {
+            owner: title_name(content),
+            name: heading_name(content),
+            signatures: parse_signatures(content),
+            return_types: type_refs_from_section(
+                content,
+                &["Возвращаемое значение:", "Return value:"],
+            ),
+            description: section_text(content, &["Описание:", "Description:"]),
+            source,
+        }
+    }
+
+    pub fn parse_platform_property(
+        content: &PageContent,
+        source: SyntaxHelperSource,
+    ) -> PlatformProperty {
+        PlatformProperty {
+            owner: title_name(content),
+            name: heading_name(content),
+            usage: section_text(content, &["Использование:", "Use:"]),
+            type_refs: type_refs_from_section(content, &["Описание:", "Description:"]),
+            description: section_text(content, &["Описание:", "Description:"]),
+            source,
+        }
+    }
+
+    pub fn parse_constructor(content: &PageContent, source: SyntaxHelperSource) -> Constructor {
+        Constructor {
+            owner: title_name(content),
+            name: heading_name(content),
+            signatures: parse_signatures(content),
+            description: section_text(content, &["Описание:", "Description:"]),
+            source,
+        }
+    }
+
+    pub fn parse_enum(content: &PageContent, source: SyntaxHelperSource) -> EnumDefinition {
+        EnumDefinition {
+            name: page_title_name(content),
+            value_links: links_in_section(content, &["Значения", "Values"]),
+            description: section_text(content, &["Описание:", "Description:"]),
+            source,
+        }
+    }
+
+    pub fn parse_enum_value(content: &PageContent, source: SyntaxHelperSource) -> EnumValue {
+        EnumValue {
+            owner: title_name(content),
+            name: heading_name(content),
+            description: section_text(content, &["Описание:", "Description:"]),
+            source,
+        }
     }
 
     fn is_syntax_helper_path(html_path: &str) -> bool {
@@ -3062,10 +3540,483 @@ pub mod syntax_helper {
         value.trim().to_lowercase()
     }
 
+    fn source_from_content(
+        fallback: &SyntaxHelperSource,
+        content: &PageContent,
+    ) -> SyntaxHelperSource {
+        SyntaxHelperSource {
+            hbk_path: content.source.hbk_path.clone(),
+            locale: content.source.locale.clone(),
+            toc_path: content
+                .source
+                .toc_path
+                .clone()
+                .or_else(|| fallback.toc_path.clone()),
+            html_path: content.source.html_path.clone(),
+            page_title: if content.title.is_empty() {
+                fallback.page_title.clone()
+            } else {
+                content.title.clone()
+            },
+        }
+    }
+
+    fn parse_syntax_page_content(
+        hbk_path: &Path,
+        locale: &str,
+        toc: &Toc,
+        html_path: &str,
+        raw_html: &str,
+    ) -> PageContent {
+        let normalized_page_path = html_path.trim_start_matches('/').to_string();
+        let toc_page = toc
+            .flat_pages()
+            .find(|flat_page| flat_page.page.html_path == normalized_page_path);
+        let toc_path = toc_page
+            .as_ref()
+            .map(|flat_page| flat_page.index_path.to_string());
+        let toc_title = toc_page
+            .as_ref()
+            .map(|flat_page| flat_page.page.title.display().to_string());
+        let title = select_first_html_text(raw_html, ".V8SH_pagetitle")
+            .or_else(|| select_first_html_text(raw_html, "title"))
+            .or_else(|| toc_title.clone())
+            .unwrap_or_default();
+        let body_text = body_text(raw_html);
+        let text_preview = body_text.chars().take(240).collect();
+
+        PageContent {
+            source: PageSource {
+                hbk_path: hbk_path.to_path_buf(),
+                locale: locale.to_string(),
+                toc_path,
+                html_path: normalized_page_path,
+                toc_title,
+            },
+            title,
+            raw_html: raw_html.to_string(),
+            body_text,
+            text_preview,
+            links: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn page_title_name(content: &PageContent) -> LocalizedName {
+        name_from_text(
+            &select_first_html_text(&content.raw_html, ".V8SH_pagetitle")
+                .unwrap_or_else(|| content.title.clone()),
+        )
+    }
+
+    fn title_name(content: &PageContent) -> LocalizedName {
+        name_from_text(
+            &select_first_html_text(&content.raw_html, ".V8SH_title")
+                .unwrap_or_else(|| content.title.clone()),
+        )
+    }
+
+    fn heading_name(content: &PageContent) -> LocalizedName {
+        name_from_text(
+            &select_first_html_text(&content.raw_html, ".V8SH_heading")
+                .unwrap_or_else(|| content.title.clone()),
+        )
+    }
+
+    fn name_from_text(value: &str) -> LocalizedName {
+        let value = value.trim();
+        if let Some((primary, alias)) = split_parenthesized_alias(value) {
+            LocalizedName {
+                primary,
+                alias: Some(alias),
+            }
+        } else {
+            LocalizedName {
+                primary: value.to_string(),
+                alias: None,
+            }
+        }
+    }
+
+    fn split_parenthesized_alias(value: &str) -> Option<(String, String)> {
+        let value = value.trim();
+        let alias_end = value.strip_suffix(')')?;
+        let alias_start = alias_end.rfind(" (")?;
+        let primary = alias_end[..alias_start].trim();
+        let alias = alias_end[alias_start + 2..].trim();
+        (!primary.is_empty() && !alias.is_empty()).then(|| (primary.to_string(), alias.to_string()))
+    }
+
+    fn select_first_html_text(raw_html: &str, selector: &str) -> Option<String> {
+        if let Some(class_name) = selector.strip_prefix('.') {
+            return select_first_class_text(raw_html, class_name);
+        }
+        if selector == "title" {
+            return select_first_tag_text(raw_html, "title");
+        }
+        let document = Html::parse_document(raw_html);
+        let selector = Selector::parse(selector).expect("static selector must be valid");
+        document
+            .select(&selector)
+            .find_map(|element| non_empty_text(element.text()))
+    }
+
+    fn body_text(raw_html: &str) -> String {
+        let body = raw_html
+            .find("<body")
+            .and_then(|start| raw_html[start..].find('>').map(|offset| start + offset + 1))
+            .and_then(|start| {
+                raw_html[start..]
+                    .find("</body>")
+                    .map(|end| &raw_html[start..start + end])
+            })
+            .unwrap_or(raw_html);
+        text_from_html_fragment(body)
+    }
+
+    fn select_first_class_text(raw_html: &str, class_name: &str) -> Option<String> {
+        let class_marker = format!("class=\"{class_name}\"");
+        let start = raw_html.find(&class_marker)?;
+        let tag_start = raw_html[..start].rfind('<')?;
+        let content_start = raw_html[start..]
+            .find('>')
+            .map(|offset| start + offset + 1)?;
+        let tag_name = raw_html[tag_start + 1..]
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .trim_start_matches('/');
+        let end_tag = format!("</{tag_name}>");
+        let content_end = raw_html[content_start..]
+            .find(&end_tag)
+            .map(|offset| content_start + offset)?;
+        let text = text_from_html_fragment(&raw_html[content_start..content_end]);
+        (!text.is_empty()).then_some(text)
+    }
+
+    fn select_first_tag_text(raw_html: &str, tag_name: &str) -> Option<String> {
+        let start_tag = format!("<{tag_name}");
+        let start = raw_html.find(&start_tag)?;
+        let content_start = raw_html[start..]
+            .find('>')
+            .map(|offset| start + offset + 1)?;
+        let end_tag = format!("</{tag_name}>");
+        let content_end = raw_html[content_start..]
+            .find(&end_tag)
+            .map(|offset| content_start + offset)?;
+        let text = text_from_html_fragment(&raw_html[content_start..content_end]);
+        (!text.is_empty()).then_some(text)
+    }
+
+    fn text_from_html_fragment(fragment: &str) -> String {
+        let mut output = String::new();
+        let mut in_tag = false;
+        let mut entity = String::new();
+        let mut in_entity = false;
+        let mut chars = fragment.chars().peekable();
+        while let Some(ch) = chars.next() {
+            if in_tag {
+                if ch == '>' {
+                    in_tag = false;
+                    output.push(' ');
+                }
+                continue;
+            }
+            if in_entity {
+                if ch == ';' {
+                    output.push_str(decode_entity(&entity));
+                    entity.clear();
+                    in_entity = false;
+                } else {
+                    entity.push(ch);
+                }
+                continue;
+            }
+            match ch {
+                '<' if chars
+                    .peek()
+                    .is_some_and(|next| next.is_ascii_alphabetic() || *next == '/') =>
+                {
+                    in_tag = true
+                }
+                '<' => output.push('<'),
+                '&' => in_entity = true,
+                ch if ch.is_whitespace() => output.push(' '),
+                ch => output.push(ch),
+            }
+        }
+        output.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn text_lines_from_html_fragment(fragment: &str) -> String {
+        let with_breaks = fragment
+            .replace("<br>", "\n")
+            .replace("<br/>", "\n")
+            .replace("<br />", "\n")
+            .replace("</p>", "\n")
+            .replace("</div>", "\n");
+        with_breaks
+            .lines()
+            .map(text_from_html_fragment)
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn anchor_links(section_html: &str, current_html_path: &str) -> Vec<MemberLink> {
+        let mut links = Vec::new();
+        let mut rest = section_html;
+        while let Some(anchor_start) = rest.find("<a ") {
+            rest = &rest[anchor_start..];
+            let Some(tag_end) = rest.find('>') else {
+                break;
+            };
+            let tag = &rest[..tag_end + 1];
+            let Some(raw_href) = attr_value(tag, "href") else {
+                rest = &rest[tag_end + 1..];
+                continue;
+            };
+            let Some(anchor_end) = rest[tag_end + 1..].find("</a>") else {
+                break;
+            };
+            let inner = &rest[tag_end + 1..tag_end + 1 + anchor_end];
+            let text = text_from_html_fragment(inner);
+            if !text.is_empty() {
+                links.push(MemberLink {
+                    name: name_from_text(&text),
+                    html_path: normalize_member_href(current_html_path, &raw_href),
+                });
+            }
+            rest = &rest[tag_end + 1 + anchor_end + 4..];
+        }
+        links
+    }
+
+    fn attr_value(tag: &str, attr_name: &str) -> Option<String> {
+        let attr = format!("{attr_name}=\"");
+        let start = tag.find(&attr)? + attr.len();
+        let end = tag[start..].find('"')?;
+        Some(tag[start..start + end].to_string())
+    }
+
+    fn bracketed_name_ranges(section: &str) -> Vec<(usize, usize, String)> {
+        let mut ranges = Vec::new();
+        let mut offset = 0;
+        while let Some(start) = section[offset..].find('<').map(|start| offset + start) {
+            let Some(end) = section[start + 1..].find('>').map(|end| start + 1 + end) else {
+                break;
+            };
+            ranges.push((start, end + 1, section[start + 1..end].to_string()));
+            offset = end + 1;
+        }
+        ranges
+    }
+
+    fn decode_entity(entity: &str) -> &str {
+        match entity {
+            "lt" => "<",
+            "gt" => ">",
+            "amp" => "&",
+            "quot" => "\"",
+            "nbsp" => " ",
+            _ => "",
+        }
+    }
+
+    fn links_in_section(content: &PageContent, labels: &[&str]) -> Vec<MemberLink> {
+        let Some(section_html) = section_html(&content.raw_html, labels) else {
+            return Vec::new();
+        };
+        anchor_links(&section_html, &content.source.html_path)
+    }
+
+    fn parse_signatures(content: &PageContent) -> Vec<Signature> {
+        let Some(section_html) = section_html(&content.raw_html, &["Синтаксис:", "Syntax:"])
+        else {
+            return Vec::new();
+        };
+        let parameters = parse_parameters(content);
+        text_lines_from_html_fragment(&section_html)
+            .split('\n')
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| Signature {
+                text: line.to_string(),
+                parameters: parameters_for_signature(line, &parameters),
+            })
+            .collect()
+    }
+
+    fn parse_parameters(content: &PageContent) -> Vec<Parameter> {
+        let Some(section) = section_text(content, &["Параметры:", "Parameters:"]) else {
+            return Vec::new();
+        };
+        let ranges = bracketed_name_ranges(&section);
+        ranges
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (_start, end, name))| {
+                if name.trim().is_empty() {
+                    return None;
+                }
+                let next_start = ranges
+                    .get(index + 1)
+                    .map(|(next_start, _, _)| *next_start)
+                    .unwrap_or(section.len());
+                let parameter_text = &section[*end..next_start];
+                let lower = parameter_text.to_lowercase();
+                let required = !(lower.contains("необязательный") || lower.contains("optional"));
+                let type_refs = parse_type_refs(parameter_text);
+                let description = parameter_text
+                    .split_once('.')
+                    .map(|(_, tail)| tail.trim())
+                    .filter(|tail| !tail.is_empty())
+                    .map(ToOwned::to_owned);
+                Some(Parameter {
+                    name: name.trim().to_string(),
+                    required,
+                    type_refs: type_refs.clone(),
+                    description,
+                })
+            })
+            .collect()
+    }
+
+    fn parameters_for_signature(signature: &str, parameters: &[Parameter]) -> Vec<Parameter> {
+        parameters
+            .iter()
+            .filter(|parameter| signature.contains(&format!("<{}>", parameter.name)))
+            .cloned()
+            .collect()
+    }
+
+    fn type_refs_from_section(content: &PageContent, labels: &[&str]) -> Vec<TypeRef> {
+        section_text(content, labels)
+            .map(|section| parse_type_refs(&section))
+            .unwrap_or_default()
+    }
+
+    fn parse_type_refs(section: &str) -> Vec<TypeRef> {
+        let Some((_, after_type)) = section.split_once("Тип:") else {
+            return Vec::new();
+        };
+        let type_part = after_type
+            .split_once('.')
+            .map(|(head, _)| head)
+            .unwrap_or(after_type);
+        type_part
+            .split([',', ';'])
+            .map(|value| value.trim().trim_matches('.'))
+            .filter(|value| !value.is_empty())
+            .map(|value| TypeRef {
+                name: value.to_string(),
+            })
+            .collect()
+    }
+
+    fn section_text(content: &PageContent, labels: &[&str]) -> Option<String> {
+        let body = &content.body_text;
+        let (label, start) = find_label(body, labels)?;
+        let section_start = start + label.len();
+        let section_end = ALL_SECTION_LABELS
+            .iter()
+            .filter(|candidate| **candidate != label)
+            .filter_map(|candidate| {
+                body[section_start..]
+                    .find(candidate)
+                    .map(|index| section_start + index)
+            })
+            .min()
+            .unwrap_or(body.len());
+        let value = body[section_start..section_end].trim();
+        (!value.is_empty()).then(|| value.to_string())
+    }
+
+    fn section_html(raw_html: &str, labels: &[&str]) -> Option<String> {
+        let (label, start) = find_label(raw_html, labels)?;
+        let chapter_end = raw_html[start..]
+            .find("</p>")
+            .map(|index| start + index + 4)?;
+        let section_end = ALL_SECTION_LABELS
+            .iter()
+            .filter(|candidate| **candidate != label)
+            .filter_map(|candidate| {
+                raw_html[chapter_end..]
+                    .find(candidate)
+                    .map(|index| chapter_end + index)
+            })
+            .min()
+            .unwrap_or(raw_html.len());
+        Some(raw_html[chapter_end..section_end].to_string())
+    }
+
+    fn find_label<'a>(value: &str, labels: &'a [&str]) -> Option<(&'a str, usize)> {
+        labels
+            .iter()
+            .filter_map(|label| value.find(label).map(|index| (*label, index)))
+            .min_by_key(|(_, index)| *index)
+    }
+
+    fn normalize_member_href(current_html_path: &str, href: &str) -> String {
+        let without_scheme = href
+            .strip_prefix("v8help://SyntaxHelperContext/")
+            .or_else(|| href.strip_prefix("v8help://"))
+            .unwrap_or(href);
+        let path = without_scheme.split(['#', '?']).next().unwrap_or_default();
+        if path.starts_with('/') || path.starts_with("objects/") {
+            return path.trim_start_matches('/').to_string();
+        }
+        let base = current_html_path
+            .rsplit_once('/')
+            .map(|(base, _)| base)
+            .unwrap_or("");
+        if base.is_empty() {
+            path.to_string()
+        } else {
+            format!("{base}/{path}")
+        }
+    }
+
+    fn non_empty_text<'a>(parts: impl Iterator<Item = &'a str>) -> Option<String> {
+        let text = parts.collect::<Vec<_>>().join(" ");
+        let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        (!text.is_empty()).then_some(text)
+    }
+
+    const ALL_SECTION_LABELS: &[&str] = &[
+        "Свойства:",
+        "Properties:",
+        "Методы:",
+        "Methods:",
+        "События:",
+        "Events:",
+        "Синтаксис:",
+        "Syntax:",
+        "Параметры:",
+        "Parameters:",
+        "Возвращаемое значение:",
+        "Return value:",
+        "Использование:",
+        "Use:",
+        "Значения",
+        "Values",
+        "Элементы коллекции:",
+        "Collection items:",
+        "Конструкторы:",
+        "Constructors:",
+        "Описание:",
+        "Description:",
+        "Примечание:",
+        "Note:",
+        "Использование в версии:",
+        "Available since:",
+    ];
+
     #[cfg(test)]
     mod tests {
         use std::collections::BTreeSet;
-        use std::path::Path;
+        use std::path::{Path, PathBuf};
 
         use super::*;
         use crate::hbk::book::HbkBook;
@@ -3077,29 +4028,7 @@ pub mod syntax_helper {
             let toc = fixture_toc();
             let discovery =
                 discover_roots_with_loader(Path::new("shcntx_ru.hbk"), "ru", &toc, |html_path| {
-                    let html = match html_path {
-                        "objects/Global context.html" => {
-                            include_str!("../tests/fixtures/syntax-helper/global_context_ru.html")
-                        }
-                        "objects/catalog2.html" => {
-                            include_str!("../tests/fixtures/syntax-helper/root_catalog_enums_ru.html")
-                        }
-                        "objects/catalog234.html" => {
-                            include_str!("../tests/fixtures/syntax-helper/root_catalog_types_ru.html")
-                        }
-                        "objects/unknown.html" => {
-                            r#"<html><body><h1 class="V8SH_pagetitle">Неизвестный раздел</h1></body></html>"#
-                        }
-                        other => panic!("unexpected fixture page load: {other}"),
-                    };
-                    Ok(parse_page_html(
-                        Path::new("shcntx_ru.hbk"),
-                        "ru",
-                        &toc,
-                        html_path,
-                        html,
-                        |_| false,
-                    ))
+                    Ok(fixture_content(&toc, html_path))
                 })
                 .expect("root discovery must succeed");
 
@@ -3146,6 +4075,243 @@ pub mod syntax_helper {
                 "Неизвестный раздел"
             );
             assert_eq!(discovery.diagnostics[0].parser_stage, "root_discovery");
+        }
+
+        #[test]
+        fn parses_representative_specialized_fixture_pages() {
+            let toc = fixture_toc();
+
+            let global_context = parse_global_context(
+                &fixture_content(&toc, "objects/Global context.html"),
+                source("objects/Global context.html"),
+            );
+            assert_eq!(global_context.name.primary, "Глобальный контекст");
+            assert!(
+                global_context
+                    .method_links
+                    .iter()
+                    .any(|link| link.name.primary == "XMLСтрока"
+                        && link.name.alias.as_deref() == Some("XMLString"))
+            );
+            assert!(
+                global_context
+                    .property_links
+                    .iter()
+                    .any(|link| link.name.primary == "WebSocketКлиентСоединения")
+            );
+
+            let global_method = parse_global_method(
+                &fixture_content(
+                    &toc,
+                    "objects/Global context/methods/catalog1566/XMLString1567.html",
+                ),
+                source("objects/Global context/methods/catalog1566/XMLString1567.html"),
+            );
+            assert_eq!(global_method.name.primary, "XMLСтрока");
+            assert_eq!(global_method.name.alias.as_deref(), Some("XMLString"));
+            assert_eq!(global_method.signatures[0].text, "XMLСтрока(<Значение>)");
+            assert!(global_method.signatures[0].parameters[0].required);
+            assert!(
+                global_method
+                    .return_types
+                    .iter()
+                    .any(|type_ref| type_ref.name == "Строка")
+            );
+
+            let global_property = parse_global_property(
+                &fixture_content(&toc, "objects/Global context/properties/Catalogs336.html"),
+                source("objects/Global context/properties/Catalogs336.html"),
+            );
+            assert_eq!(global_property.name.primary, "Справочники");
+            assert_eq!(global_property.name.alias.as_deref(), Some("Catalogs"));
+            assert_eq!(global_property.usage.as_deref(), Some("Только чтение."));
+            assert!(
+                global_property
+                    .type_refs
+                    .iter()
+                    .any(|type_ref| type_ref.name == "СправочникиМенеджер")
+            );
+
+            let platform_type = parse_platform_type(
+                &fixture_content(&toc, "objects/catalog234/Array.html"),
+                source("objects/catalog234/Array.html"),
+            );
+            assert_eq!(platform_type.name.primary, "Массив");
+            assert!(
+                platform_type
+                    .method_links
+                    .iter()
+                    .any(|link| link.name.alias.as_deref() == Some("Add"))
+            );
+            assert!(
+                platform_type
+                    .constructor_links
+                    .iter()
+                    .any(|link| link.name.primary == "По количеству элементов")
+            );
+
+            let method = parse_platform_method(
+                &fixture_content(&toc, "objects/catalog234/Array/methods/Add772.html"),
+                source("objects/catalog234/Array/methods/Add772.html"),
+            );
+            assert_eq!(method.owner.primary, "Массив");
+            assert_eq!(method.name.primary, "Добавить");
+            assert!(!method.signatures[0].parameters[0].required);
+
+            let property = parse_platform_property(
+                &fixture_content(
+                    &toc,
+                    "objects/catalog1649/catalog1677/FormGroup/properties/Visible7192.html",
+                ),
+                source("objects/catalog1649/catalog1677/FormGroup/properties/Visible7192.html"),
+            );
+            assert_eq!(property.owner.primary, "ГруппаФормы");
+            assert_eq!(property.name.alias.as_deref(), Some("Visible"));
+            assert!(
+                property
+                    .type_refs
+                    .iter()
+                    .any(|type_ref| type_ref.name == "Булево")
+            );
+
+            let constructor = parse_constructor(
+                &fixture_content(&toc, "objects/catalog234/Array/ctors/ctor13.html"),
+                source("objects/catalog234/Array/ctors/ctor13.html"),
+            );
+            assert_eq!(constructor.owner.primary, "Массив");
+            assert_eq!(constructor.name.primary, "По количеству элементов");
+            assert_eq!(
+                constructor.signatures[0].text,
+                "Новый Массив(<КоличествоЭлементов1>,...,<КоличествоЭлементовN>)"
+            );
+
+            let enum_definition = parse_enum(
+                &fixture_content(&toc, "objects/catalog2/catalog2300/JSONValueType.html"),
+                source("objects/catalog2/catalog2300/JSONValueType.html"),
+            );
+            assert_eq!(enum_definition.name.primary, "ТипЗначенияJSON");
+            assert!(
+                enum_definition
+                    .value_links
+                    .iter()
+                    .any(|link| link.name.alias.as_deref() == Some("ArrayEnd"))
+            );
+
+            let enum_value = parse_enum_value(
+                &fixture_content(
+                    &toc,
+                    "objects/catalog2/catalog2300/JSONValueType/properties/ArrayEnd10574.html",
+                ),
+                source("objects/catalog2/catalog2300/JSONValueType/properties/ArrayEnd10574.html"),
+            );
+            assert_eq!(enum_value.owner.primary, "ТипЗначенияJSON");
+            assert_eq!(enum_value.name.primary, "КонецМассива");
+            assert!(
+                enum_value
+                    .description
+                    .as_deref()
+                    .is_some_and(|text| text.contains("JSON"))
+            );
+        }
+
+        #[test]
+        fn extracts_platform_context_from_fixture_toc() {
+            let toc = fixture_toc();
+            let context =
+                extract_with_loader(Path::new("shcntx_ru.hbk"), "ru", &toc, |html_path| {
+                    Ok(fixture_content(&toc, html_path))
+                })
+                .expect("fixture extraction must succeed");
+
+            assert_eq!(context.global_contexts.len(), 1);
+            assert!(
+                context
+                    .global_methods
+                    .iter()
+                    .any(|method| method.name.alias.as_deref() == Some("XMLString"))
+            );
+            assert!(
+                context
+                    .global_properties
+                    .iter()
+                    .any(|property| property.name.alias.as_deref() == Some("Catalogs"))
+            );
+            assert!(
+                context
+                    .platform_types
+                    .iter()
+                    .any(|platform_type| platform_type.name.alias.as_deref() == Some("Array"))
+            );
+            assert!(
+                context
+                    .type_methods
+                    .iter()
+                    .any(|method| method.name.alias.as_deref() == Some("Add"))
+            );
+            assert!(
+                context
+                    .type_properties
+                    .iter()
+                    .any(|property| property.name.alias.as_deref() == Some("Visible"))
+            );
+            assert!(
+                context
+                    .constructors
+                    .iter()
+                    .any(|constructor| constructor.name.primary == "По количеству элементов")
+            );
+            assert!(
+                context
+                    .enums
+                    .iter()
+                    .any(|enum_definition| enum_definition.name.alias.as_deref()
+                        == Some("JSONValueType"))
+            );
+            assert!(
+                context
+                    .enum_values
+                    .iter()
+                    .any(|enum_value| enum_value.name.alias.as_deref() == Some("ArrayEnd"))
+            );
+            assert_eq!(context.diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn binds_parameters_to_the_signature_that_mentions_them() {
+            let toc = fixture_toc();
+            let html = r#"
+                <html><body>
+                <h1 class="V8SH_pagetitle">Тест.Метод</h1>
+                <p class="V8SH_title">Тест</p>
+                <p class="V8SH_heading">Метод</p>
+                <p class="V8SH_chapter">Синтаксис:</p>
+                Метод()<br>
+                Метод(&lt;СтрокаЗначение&gt;, &lt;ЧислоЗначение&gt;)
+                <p class="V8SH_chapter">Параметры:</p>
+                <div class="V8SH_rubric"><p>&lt;СтрокаЗначение&gt; (обязательный)</p></div>
+                Тип: Строка. Первый параметр.
+                <div class="V8SH_rubric"><p>&lt;ЧислоЗначение&gt; (необязательный)</p></div>
+                Тип: Число. Второй параметр.
+                </body></html>
+            "#;
+            let content = parse_syntax_page_content(
+                Path::new("shcntx_ru.hbk"),
+                "ru",
+                &toc,
+                "objects/catalog234/Test/methods/Method.html",
+                html,
+            );
+            let signatures = parse_signatures(&content);
+
+            assert_eq!(signatures.len(), 2);
+            assert!(signatures[0].parameters.is_empty());
+            assert_eq!(signatures[1].parameters.len(), 2);
+            assert_eq!(signatures[1].parameters[0].name, "СтрокаЗначение");
+            assert_eq!(signatures[1].parameters[1].name, "ЧислоЗначение");
+            assert!(signatures[1].parameters[0].required);
+            assert!(!signatures[1].parameters[1].required);
+            assert_eq!(signatures[1].parameters[0].type_refs[0].name, "Строка");
+            assert_eq!(signatures[1].parameters[1].type_refs[0].name, "Число");
         }
 
         #[test]
@@ -3225,6 +4391,28 @@ pub mod syntax_helper {
         }
 
         #[test]
+        fn real_shcntx_ru_extraction_returns_required_families_when_fixture_exists() {
+            let path = Path::new("/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk");
+            if !path.exists() {
+                eprintln!(
+                    "real-platform Syntax Assistant extraction smoke skipped because {} is unavailable",
+                    path.display()
+                );
+                return;
+            }
+
+            let book = HbkBook::open(path).expect("real Syntax Assistant book must open");
+            let context = SyntaxHelperReader::new(&book)
+                .extract()
+                .expect("real Syntax Assistant extraction must succeed");
+
+            assert!(!context.global_methods.is_empty());
+            assert!(!context.global_properties.is_empty());
+            assert!(!context.platform_types.is_empty());
+            assert!(!context.enums.is_empty());
+        }
+
+        #[test]
         fn real_shcntx_root_root_discovery_includes_required_root_candidates_when_fixture_exists() {
             let path = Path::new("/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk");
             if !path.exists() {
@@ -3261,7 +4449,7 @@ pub mod syntax_helper {
         fn fixture_toc() -> Toc {
             Toc::parse(
                 r#"{
-                    15
+                    14
                     {1,0,2,2,3,{0,0,{0,0,{"ru","Глобальный контекст"}},"/objects/Global context.html"}}
                     {2,1,1,4,{0,0,{0,0,{"ru","Свойства"}},"/objects/Global context/properties/catalog.html"}}
                     {3,1,1,5,{0,0,{0,0,{"ru","Методы"}},"/objects/Global context/methods/catalog.html"}}
@@ -3274,12 +4462,77 @@ pub mod syntax_helper {
                     {10,9,3,11,12,13,{0,0,{0,0,{"ru","Массив"}},"/objects/catalog234/Array.html"}}
                     {11,10,0,{0,0,{0,0,{"ru","Массив.Добавить"}},"/objects/catalog234/Array/methods/Add772.html"}}
                     {12,10,0,{0,0,{0,0,{"ru","Массив.По количеству элементов"}},"/objects/catalog234/Array/ctors/ctor13.html"}}
-                    {13,10,1,14,{0,0,{0,0,{"ru","ГруппаФормы"}},"/objects/catalog1649/catalog1677/FormGroup.html"}}
-                    {14,13,0,{0,0,{0,0,{"ru","ГруппаФормы.Видимость"}},"/objects/catalog1649/catalog1677/FormGroup/properties/Visible7192.html"}}
-                    {15,0,0,{0,0,{0,0,{"ru","Неизвестный раздел"}},"/objects/unknown.html"}}
+                    {13,10,0,{0,0,{0,0,{"ru","ГруппаФормы.Видимость"}},"/objects/catalog1649/catalog1677/FormGroup/properties/Visible7192.html"}}
+                    {14,0,0,{0,0,{0,0,{"ru","Неизвестный раздел"}},"/objects/unknown.html"}}
                 }"#,
             )
             .expect("fixture TOC must parse")
+        }
+
+        fn fixture_content(toc: &Toc, html_path: &str) -> PageContent {
+            let html = match html_path {
+                "objects/Global context.html" => {
+                    include_str!("../tests/fixtures/syntax-helper/global_context_ru.html")
+                }
+                "objects/Global context/properties/Catalogs336.html" => {
+                    include_str!("../tests/fixtures/syntax-helper/global_property_catalogs_ru.html")
+                }
+                "objects/Global context/methods/catalog1566/XMLString1567.html" => {
+                    include_str!("../tests/fixtures/syntax-helper/global_method_xmlstring_ru.html")
+                }
+                "objects/catalog2.html" => {
+                    include_str!("../tests/fixtures/syntax-helper/root_catalog_enums_ru.html")
+                }
+                "objects/catalog2/catalog2300/JSONValueType.html" => {
+                    include_str!("../tests/fixtures/syntax-helper/enum_json_value_type_ru.html")
+                }
+                "objects/catalog2/catalog2300/JSONValueType/properties/ArrayEnd10574.html" => {
+                    include_str!(
+                        "../tests/fixtures/syntax-helper/enum_value_json_array_end_ru.html"
+                    )
+                }
+                "objects/catalog234.html" => {
+                    include_str!("../tests/fixtures/syntax-helper/root_catalog_types_ru.html")
+                }
+                "objects/catalog234/Array.html" => {
+                    include_str!("../tests/fixtures/syntax-helper/object_array_ru.html")
+                }
+                "objects/catalog234/Array/methods/Add772.html" => {
+                    include_str!("../tests/fixtures/syntax-helper/object_method_array_add_ru.html")
+                }
+                "objects/catalog234/Array/ctors/ctor13.html" => {
+                    include_str!(
+                        "../tests/fixtures/syntax-helper/constructor_array_by_count_ru.html"
+                    )
+                }
+                "objects/catalog1649/catalog1677/FormGroup/properties/Visible7192.html" => {
+                    include_str!(
+                        "../tests/fixtures/syntax-helper/object_property_formgroup_visible_ru.html"
+                    )
+                }
+                "objects/unknown.html" => {
+                    r#"<html><body><h1 class="V8SH_pagetitle">Неизвестный раздел</h1></body></html>"#
+                }
+                other => panic!("unexpected fixture page load: {other}"),
+            };
+            parse_page_html(
+                Path::new("shcntx_ru.hbk"),
+                "ru",
+                toc,
+                html_path,
+                html,
+                |_| false,
+            )
+        }
+
+        fn source(html_path: &str) -> SyntaxHelperSource {
+            SyntaxHelperSource {
+                hbk_path: PathBuf::from("shcntx_ru.hbk"),
+                locale: "ru".to_string(),
+                toc_path: None,
+                html_path: html_path.to_string(),
+                page_title: String::new(),
+            }
         }
     }
 }
