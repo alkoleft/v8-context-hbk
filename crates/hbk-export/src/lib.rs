@@ -1,12 +1,12 @@
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
 use hbk_book::HbkBook;
-use syntax_helper_model::{self as model, PlatformContext};
+use syntax_helper_model::{self as model, PlatformContext, SyntaxHelperSink};
 
 const SCHEMA_VERSION: u32 = 1;
 
@@ -35,6 +35,21 @@ impl JsonExporter {
             &book.path().display().to_string(),
             context,
         )
+    }
+
+    pub fn start_syntax_helper_stream(
+        &self,
+        book: &HbkBook,
+    ) -> Result<StreamingSyntaxHelperExport, ExportError> {
+        self.start_platform_context_stream(book.locale().export_code(), book.locale().source_code())
+    }
+
+    pub fn start_platform_context_stream(
+        &self,
+        locale: &str,
+        source_locale: &str,
+    ) -> Result<StreamingSyntaxHelperExport, ExportError> {
+        StreamingSyntaxHelperExport::start(self.output_dir.clone(), locale, source_locale)
     }
 
     pub fn export_platform_context(
@@ -161,6 +176,7 @@ impl JsonExporter {
             locale: locale.to_string(),
             source_locale: source_locale.to_string(),
             files,
+            counts: JsonExportCounts::from(context),
         })
     }
 
@@ -187,22 +203,30 @@ impl JsonExporter {
         file_name: &'static str,
         value: &T,
     ) -> Result<PathBuf, ExportError> {
-        let path = self.output_dir.join(file_name);
-        let file = File::create(&path).map_err(|source| ExportError::Io {
-            path: path.clone(),
-            source,
-        })?;
-        let mut writer = BufWriter::new(file);
-        serde_json::to_writer(&mut writer, value).map_err(|source| ExportError::Json {
-            path: path.clone(),
-            source,
-        })?;
-        writer.flush().map_err(|source| ExportError::Io {
-            path: path.clone(),
-            source,
-        })?;
-        Ok(path)
+        write_json_file(&self.output_dir, file_name, value)
     }
+}
+
+fn write_json_file<T: Serialize>(
+    output_dir: &Path,
+    file_name: &'static str,
+    value: &T,
+) -> Result<PathBuf, ExportError> {
+    let path = output_dir.join(file_name);
+    let file = File::create(&path).map_err(|source| ExportError::Io {
+        path: path.clone(),
+        source,
+    })?;
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer(&mut writer, value).map_err(|source| ExportError::Json {
+        path: path.clone(),
+        source,
+    })?;
+    writer.flush().map_err(|source| ExportError::Io {
+        path: path.clone(),
+        source,
+    })?;
+    Ok(path)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,6 +235,394 @@ pub struct JsonExportSummary {
     pub locale: String,
     pub source_locale: String,
     pub files: Vec<PathBuf>,
+    pub counts: JsonExportCounts,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct JsonExportCounts {
+    pub global_contexts: usize,
+    pub global_methods: usize,
+    pub global_properties: usize,
+    pub platform_types: usize,
+    pub type_methods: usize,
+    pub type_properties: usize,
+    pub constructors: usize,
+    pub enums: usize,
+    pub enum_values: usize,
+    pub diagnostics: usize,
+}
+
+impl From<&PlatformContext> for JsonExportCounts {
+    fn from(context: &PlatformContext) -> Self {
+        Self {
+            global_contexts: context.global_contexts.len(),
+            global_methods: context.global_methods.len(),
+            global_properties: context.global_properties.len(),
+            platform_types: context.platform_types.len(),
+            type_methods: context.type_methods.len(),
+            type_properties: context.type_properties.len(),
+            constructors: context.constructors.len(),
+            enums: context.enums.len(),
+            enum_values: context.enum_values.len(),
+            diagnostics: context.diagnostics.len(),
+        }
+    }
+}
+
+pub struct StreamingSyntaxHelperExport {
+    output_dir: PathBuf,
+    locale: String,
+    source_locale: String,
+    files: Vec<PathBuf>,
+    counts: JsonExportCounts,
+    global_methods: RecordFileWriter,
+    global_properties: RecordFileWriter,
+    platform_types: RecordFileWriter,
+    type_methods: RecordFileWriter,
+    type_properties: RecordFileWriter,
+    constructors: RecordFileWriter,
+    enums: RecordFileWriter,
+    enum_values: RecordFileWriter,
+    diagnostics: RecordFileWriter,
+}
+
+impl StreamingSyntaxHelperExport {
+    fn start(output_dir: PathBuf, locale: &str, source_locale: &str) -> Result<Self, ExportError> {
+        fs::create_dir_all(&output_dir).map_err(|source| ExportError::Io {
+            path: output_dir.clone(),
+            source,
+        })?;
+
+        let metadata = ExportMetadata {
+            schema_version: SCHEMA_VERSION,
+            locale,
+            source_locale,
+            files: EXPORT_FILES.to_vec(),
+        };
+        let metadata_path = write_json_file(&output_dir, "metadata.json", &metadata)?;
+
+        let mut files = vec![metadata_path];
+        let global_methods = open_record_file(
+            &output_dir,
+            &mut files,
+            "global-methods.json",
+            locale,
+            source_locale,
+            "global_method",
+        )?;
+        let global_properties = open_record_file(
+            &output_dir,
+            &mut files,
+            "global-properties.json",
+            locale,
+            source_locale,
+            "global_property",
+        )?;
+        let platform_types = open_record_file(
+            &output_dir,
+            &mut files,
+            "platform-types.json",
+            locale,
+            source_locale,
+            "platform_type",
+        )?;
+        let type_methods = open_record_file(
+            &output_dir,
+            &mut files,
+            "type-methods.json",
+            locale,
+            source_locale,
+            "type_method",
+        )?;
+        let type_properties = open_record_file(
+            &output_dir,
+            &mut files,
+            "type-properties.json",
+            locale,
+            source_locale,
+            "type_property",
+        )?;
+        let constructors = open_record_file(
+            &output_dir,
+            &mut files,
+            "constructors.json",
+            locale,
+            source_locale,
+            "constructor",
+        )?;
+        let enums = open_record_file(
+            &output_dir,
+            &mut files,
+            "enums.json",
+            locale,
+            source_locale,
+            "enum",
+        )?;
+        let enum_values = open_record_file(
+            &output_dir,
+            &mut files,
+            "enum-values.json",
+            locale,
+            source_locale,
+            "enum_value",
+        )?;
+        let diagnostics = open_record_file(
+            &output_dir,
+            &mut files,
+            "diagnostics.json",
+            locale,
+            source_locale,
+            "diagnostic",
+        )?;
+
+        Ok(Self {
+            output_dir,
+            locale: locale.to_string(),
+            source_locale: source_locale.to_string(),
+            files,
+            counts: JsonExportCounts::default(),
+            global_methods,
+            global_properties,
+            platform_types,
+            type_methods,
+            type_properties,
+            constructors,
+            enums,
+            enum_values,
+            diagnostics,
+        })
+    }
+
+    pub fn finish(mut self) -> Result<JsonExportSummary, ExportError> {
+        self.global_methods.finish()?;
+        self.global_properties.finish()?;
+        self.platform_types.finish()?;
+        self.type_methods.finish()?;
+        self.type_properties.finish()?;
+        self.constructors.finish()?;
+        self.enums.finish()?;
+        self.enum_values.finish()?;
+        self.diagnostics.finish()?;
+
+        Ok(JsonExportSummary {
+            output_dir: self.output_dir,
+            locale: self.locale,
+            source_locale: self.source_locale,
+            files: self.files,
+            counts: self.counts,
+        })
+    }
+
+    pub fn abort(self) -> Result<(), ExportError> {
+        let Self {
+            files,
+            global_methods,
+            global_properties,
+            platform_types,
+            type_methods,
+            type_properties,
+            constructors,
+            enums,
+            enum_values,
+            diagnostics,
+            ..
+        } = self;
+
+        global_methods.close_unfinished();
+        global_properties.close_unfinished();
+        platform_types.close_unfinished();
+        type_methods.close_unfinished();
+        type_properties.close_unfinished();
+        constructors.close_unfinished();
+        enums.close_unfinished();
+        enum_values.close_unfinished();
+        diagnostics.close_unfinished();
+
+        remove_export_files(files)
+    }
+}
+
+impl SyntaxHelperSink for StreamingSyntaxHelperExport {
+    type Error = ExportError;
+
+    fn global_context(&mut self, _record: model::GlobalContext) -> Result<(), Self::Error> {
+        self.counts.global_contexts += 1;
+        Ok(())
+    }
+
+    fn global_method(&mut self, record: model::GlobalMethod) -> Result<(), Self::Error> {
+        self.global_methods
+            .write_record(&ConsumerGlobalMethod::from(&record))?;
+        self.counts.global_methods += 1;
+        Ok(())
+    }
+
+    fn global_property(&mut self, record: model::GlobalProperty) -> Result<(), Self::Error> {
+        self.global_properties
+            .write_record(&ConsumerGlobalProperty::from(&record))?;
+        self.counts.global_properties += 1;
+        Ok(())
+    }
+
+    fn platform_type(&mut self, record: model::PlatformType) -> Result<(), Self::Error> {
+        self.platform_types
+            .write_record(&ConsumerPlatformType::from(&record))?;
+        self.counts.platform_types += 1;
+        Ok(())
+    }
+
+    fn type_method(&mut self, record: model::PlatformMethod) -> Result<(), Self::Error> {
+        self.type_methods
+            .write_record(&ConsumerPlatformMethod::from(&record))?;
+        self.counts.type_methods += 1;
+        Ok(())
+    }
+
+    fn type_property(&mut self, record: model::PlatformProperty) -> Result<(), Self::Error> {
+        self.type_properties
+            .write_record(&ConsumerPlatformProperty::from(&record))?;
+        self.counts.type_properties += 1;
+        Ok(())
+    }
+
+    fn constructor(&mut self, record: model::Constructor) -> Result<(), Self::Error> {
+        self.constructors
+            .write_record(&ConsumerConstructor::from(&record))?;
+        self.counts.constructors += 1;
+        Ok(())
+    }
+
+    fn enum_definition(&mut self, record: model::EnumDefinition) -> Result<(), Self::Error> {
+        self.enums
+            .write_record(&ConsumerEnumDefinition::from(&record))?;
+        self.counts.enums += 1;
+        Ok(())
+    }
+
+    fn enum_value(&mut self, record: model::EnumValue) -> Result<(), Self::Error> {
+        self.enum_values
+            .write_record(&ConsumerEnumValue::from(&record))?;
+        self.counts.enum_values += 1;
+        Ok(())
+    }
+
+    fn diagnostic(&mut self, record: model::SyntaxHelperDiagnostic) -> Result<(), Self::Error> {
+        self.diagnostics.write_record(&record)?;
+        self.counts.diagnostics += 1;
+        Ok(())
+    }
+}
+
+struct RecordFileWriter {
+    path: PathBuf,
+    writer: BufWriter<File>,
+    first_record: bool,
+    finished: bool,
+}
+
+fn open_record_file(
+    output_dir: &Path,
+    files: &mut Vec<PathBuf>,
+    file_name: &'static str,
+    locale: &str,
+    source_locale: &str,
+    record_kind: &'static str,
+) -> Result<RecordFileWriter, ExportError> {
+    let writer =
+        RecordFileWriter::create(output_dir, file_name, locale, source_locale, record_kind)?;
+    files.push(writer.path().to_path_buf());
+    Ok(writer)
+}
+
+fn remove_export_files(files: Vec<PathBuf>) -> Result<(), ExportError> {
+    for path in files {
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(source) if source.kind() == io::ErrorKind::NotFound => {}
+            Err(source) => {
+                return Err(ExportError::Io { path, source });
+            }
+        }
+    }
+    Ok(())
+}
+
+impl RecordFileWriter {
+    fn create(
+        output_dir: &Path,
+        file_name: &'static str,
+        locale: &str,
+        source_locale: &str,
+        record_kind: &'static str,
+    ) -> Result<Self, ExportError> {
+        let path = output_dir.join(file_name);
+        let file = File::create(&path).map_err(|source| ExportError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        let mut writer = Self {
+            path,
+            writer: BufWriter::new(file),
+            first_record: true,
+            finished: false,
+        };
+        writer
+            .write_raw(format!("{{\"schema_version\":{SCHEMA_VERSION},\"locale\":").as_bytes())?;
+        writer.write_json(locale)?;
+        writer.write_raw(b",\"source_locale\":")?;
+        writer.write_json(source_locale)?;
+        writer.write_raw(b",\"record_kind\":")?;
+        writer.write_json(record_kind)?;
+        writer.write_raw(b",\"records\":[")?;
+        Ok(writer)
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn write_record<T: Serialize + ?Sized>(&mut self, record: &T) -> Result<(), ExportError> {
+        if !self.first_record {
+            self.write_raw(b",")?;
+        }
+        self.write_json(record)?;
+        self.first_record = false;
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(), ExportError> {
+        if self.finished {
+            return Ok(());
+        }
+        self.write_raw(b"]}")?;
+        self.writer.flush().map_err(|source| ExportError::Io {
+            path: self.path.clone(),
+            source,
+        })?;
+        self.finished = true;
+        Ok(())
+    }
+
+    fn close_unfinished(self) {
+        let Self { writer, .. } = self;
+        drop(writer);
+    }
+
+    fn write_raw(&mut self, bytes: &[u8]) -> Result<(), ExportError> {
+        self.writer
+            .write_all(bytes)
+            .map_err(|source| ExportError::Io {
+                path: self.path.clone(),
+                source,
+            })
+    }
+
+    fn write_json<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), ExportError> {
+        serde_json::to_writer(&mut self.writer, value).map_err(|source| ExportError::Json {
+            path: self.path.clone(),
+            source,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -737,6 +1149,112 @@ mod tests {
             diagnostic["source"]["html_path"],
             "objects/Global context/methods/catalog1566/XMLString1567.html"
         );
+
+        fs::remove_dir_all(&dir).expect("export test dir must be removable");
+    }
+
+    #[test]
+    fn streaming_export_writes_lean_records_without_full_context() {
+        use syntax_helper_model::SyntaxHelperSink as _;
+
+        let dir = std::env::temp_dir().join(format!(
+            "v8-context-hbk-stream-export-test-{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            fs::remove_dir_all(&dir).expect("stale export test dir must be removable");
+        }
+
+        let source = source();
+        let mut export = JsonExporter::new(&dir)
+            .start_platform_context_stream("ru", "ru")
+            .expect("streaming export must start");
+        export
+            .global_context(model::GlobalContext {
+                name: name("Глобальный контекст"),
+                property_links: vec![link("Справочники")],
+                method_links: vec![link("XMLСтрока")],
+                description: None,
+                source: source.clone(),
+            })
+            .expect("global context count must be accepted");
+        export
+            .global_method(model::GlobalMethod {
+                name: name("XMLСтрока"),
+                signatures: Vec::new(),
+                return_types: Vec::new(),
+                description: Some("Creates an XML string.".to_string()),
+                source: source.clone(),
+            })
+            .expect("global method must be writable");
+        export
+            .diagnostic(model::SyntaxHelperDiagnostic {
+                severity: model::DiagnosticSeverity::Warning,
+                code: "UNKNOWN_PAGE_CLASS",
+                source,
+                parser_stage: "root_discovery",
+                message: "unknown page class".to_string(),
+            })
+            .expect("diagnostic must be writable");
+
+        let summary = export.finish().expect("streaming export must finish");
+        assert_eq!(summary.files.len(), EXPORT_FILES.len() + 1);
+        assert_eq!(summary.counts.global_contexts, 1);
+        assert_eq!(summary.counts.global_methods, 1);
+        assert_eq!(summary.counts.diagnostics, 1);
+        assert!(!dir.join("global-contexts.json").exists());
+
+        let global_methods = read_json(dir.join("global-methods.json"));
+        assert_eq!(global_methods["records"].as_array().unwrap().len(), 1);
+        assert_no_keys(&global_methods["records"][0], &["source", "method_links"]);
+
+        let platform_types = read_json(dir.join("platform-types.json"));
+        assert!(platform_types["records"].as_array().unwrap().is_empty());
+
+        let diagnostics = read_json(dir.join("diagnostics.json"));
+        assert_eq!(diagnostics["records"].as_array().unwrap().len(), 1);
+        assert!(diagnostics["records"][0].get("source").is_some());
+
+        fs::remove_dir_all(&dir).expect("export test dir must be removable");
+    }
+
+    #[test]
+    fn streaming_export_abort_removes_incomplete_json_files() {
+        use syntax_helper_model::SyntaxHelperSink as _;
+
+        let dir = std::env::temp_dir().join(format!(
+            "v8-context-hbk-stream-export-abort-test-{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            fs::remove_dir_all(&dir).expect("stale export test dir must be removable");
+        }
+
+        let source = source();
+        let mut export = JsonExporter::new(&dir)
+            .start_platform_context_stream("ru", "ru")
+            .expect("streaming export must start");
+        export
+            .global_method(model::GlobalMethod {
+                name: name("XMLСтрока"),
+                signatures: Vec::new(),
+                return_types: Vec::new(),
+                description: None,
+                source,
+            })
+            .expect("global method must be writable before abort");
+
+        export.abort().expect("incomplete export must be removable");
+
+        assert!(dir.exists());
+        assert!(!dir.join("metadata.json").exists());
+        for file in EXPORT_FILES {
+            assert!(
+                !dir.join(file.file_name).exists(),
+                "{} must be removed",
+                file.file_name
+            );
+        }
 
         fs::remove_dir_all(&dir).expect("export test dir must be removable");
     }

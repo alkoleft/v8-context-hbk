@@ -277,6 +277,46 @@ T16 selects Variant C for T17. Variant E remains a later candidate if the lower-
 spike or retained `FileStorage` ownership remains limiting after streaming extraction, but Variant E
 alone would not reduce the current `shcntx_ru.hbk` extraction peak below the post-T15 value.
 
+## Post-T17 Update
+
+T17 implemented Variant C: the Syntax Assistant extractor now emits typed records through a shared
+sink boundary. The in-memory `PlatformContext` remains the sink used by lookup helpers, while the
+CLI export command streams record-family events directly into canonical JSON writers.
+
+The T17 pass used the built debug binary under GNU `time`:
+
+```bash
+cargo build -p v8-context-hbk-cli --bin v8-context-hbk
+/usr/bin/time -o target/t17-measurements/logs/shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t17-measurements/exports/shcntx-ru
+/usr/bin/time -o target/t17-measurements/logs/shcntx-root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/t17-measurements/exports/shcntx-root
+```
+
+No fixture-backed T17 command was skipped on this host.
+
+| T17 command label | Exit | Elapsed, s | Peak RSS, KiB | Export bytes |
+| --- | ---: | ---: | ---: | ---: |
+| CLI `syntax-helper shcntx_ru --output` | 0 | 20.46 | 386304 | 21946830 |
+| CLI `syntax-helper shcntx_root --output` | 0 | 18.15 | 324096 | 12265898 |
+
+Each source book produced 1 global context, 24836 exported consumer records and 703 diagnostics.
+The CLI output reported the same per-family counts as T15/T16.
+
+T17 deterministic-order verification exported `shcntx_ru.hbk` twice and compared all generated JSON
+files byte-for-byte. The comparison passed.
+
+Compared with T15:
+
+- `shcntx_ru.hbk` peak RSS decreased from `590988 KiB` to `386304 KiB`; wall-clock was not the
+  optimized metric for this memory slice and varies across debug runs.
+- `shcntx_root.hbk` peak RSS stayed near the T15/T16 value, consistent with the T16 finding that the
+  root-source path is dominated by the lower-level `HbkBook::open` high-water mark rather than full
+  `PlatformContext` accumulation.
+- Export bytes returned to the compact T14 values because T17 preserves the FR-EXPORT-001 consumer
+  shape.
+
+Variant E remains the next candidate only if the lower-level open-time `FileStorage`/container copy
+spike is worth addressing after query-CLI priorities are considered.
+
 ## Variant Evaluation
 
 Variant A, lean consumer export and streaming JSON writer, remains the first slice.
@@ -308,12 +348,14 @@ Variant D is not first.
 - Parallel parsing would add ordering and memory-risk surfaces before a narrower streaming/export
   slice is tried.
 
-Variant C is the selected T17 slice after T16.
+Variant C was implemented in T17.
 
 - Streaming extraction into record-family sinks crosses model and export boundaries, so it was
   deferred until Variant A and B completed.
 - T16 showed full `PlatformContext` accumulation and the export-oriented command shape are the
   dominant remaining `shcntx_ru.hbk` peak after page loading was bounded.
+- T17 confirmed this selection for `shcntx_ru.hbk`: peak RSS dropped to `386304 KiB` while the
+  canonical export shape and counts stayed stable.
 
 Variant E is not first.
 
@@ -326,9 +368,9 @@ Variant E is not first.
 The original T13 direction selected T14 / Variant A first. T14 completed but left peak RSS high, so
 T15 / Variant B was implemented next.
 
-T16 attributed the remaining post-T15 memory and selected T17 / Variant C next: streaming extraction
-into record-family sinks for the export command path while preserving the in-memory
-`syntax-helper-model` lookup use case.
+T16 attributed the remaining post-T15 memory and selected T17 / Variant C next. T17 implemented
+streaming extraction into record-family sinks for the export command path while preserving the
+in-memory `syntax-helper-model` lookup use case.
 
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
 by the current evidence.

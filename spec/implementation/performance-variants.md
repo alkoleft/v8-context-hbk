@@ -8,8 +8,10 @@ Current status:
 - Variant A was implemented in T14.
 - Variant B was implemented in T15.
 - T16 attributed the remaining post-T15 memory and selected Variant C for T17 because the
-  extraction/export command path accumulates the full `PlatformContext` before writing record-family
+  extraction/export command path accumulated the full `PlatformContext` before writing record-family
   JSON.
+- Variant C was implemented in T17. It reduced the `shcntx_ru.hbk` debug export peak to
+  `386304 KiB` while preserving deterministic canonical JSON output and the in-memory lookup model.
 
 ## Selection Rules
 

@@ -12,9 +12,10 @@ directories are service data unless promoted here.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.
-- T16 memory attribution selected Variant C for T17. The current debug CLI measured
-  `18.64s / 588892 KiB` for `shcntx_ru.hbk` and `14.07s / 324352 KiB` for `shcntx_root.hbk`;
-  extraction, not JSON export, is the remaining dominant `shcntx_ru.hbk` peak.
+- T17 streaming extraction reduced the debug-binary `shcntx_ru.hbk` export peak to
+  `20.46s / 386304 KiB` while preserving export shape, record counts and deterministic JSON output.
+  `shcntx_root.hbk` measured `18.15s / 324096 KiB`, still effectively bounded by the lower-level
+  open-time peak.
 
 ## Standard Verification Gates
 
@@ -152,6 +153,44 @@ Attribution probe conclusions:
 
 T16 selects Variant C for T17: streaming extraction into record-family sinks for the export command
 path while keeping the in-memory model as a library lookup use case.
+
+## T17 Durable Conclusions
+
+Variant C streaming extraction was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+Both source books were available and no fixture-backed T17 command was skipped.
+
+Actual debug CLI results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | 0 | 20.46 | 386304 | 21946830 |
+| `shcntx_root.hbk` | 0 | 18.15 | 324096 | 12265898 |
+
+Each source book produced:
+
+- 1 global context
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 `UNKNOWN_PAGE_CLASS` diagnostics
+
+The CLI export path now streams typed record-family events directly into canonical JSON writers, so
+it no longer accumulates the full `PlatformContext` before export. The in-memory
+`PlatformContext` path remains available for lookup helpers and uses the same extraction core.
+
+The canonical export shape from FR-EXPORT-001 is preserved: consumer record-family files do not
+expose HBK navigation or per-record provenance, `global-contexts.json` is not produced, and
+`diagnostics.json` keeps parser source context. Two independent `shcntx_ru.hbk` exports were
+compared byte-for-byte across all JSON files to verify deterministic record and diagnostic order.
 
 ## First Delivery Success Metrics
 

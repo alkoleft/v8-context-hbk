@@ -93,6 +93,7 @@ Owns FR-DOC-001.
 Expected public concepts:
 
 - `PlatformContext`
+- `SyntaxHelperSink`
 - `GlobalMethod`
 - `GlobalProperty`
 - `PlatformType`
@@ -111,6 +112,10 @@ Owns the domain model used by FR-SH-002, FR-EXPORT-001 and FR-LOOKUP-001.
 The model remains provenance-rich for diagnostics and parser maintenance. Consumer export shape is
 owned by `hbk-export` and may intentionally omit internal provenance and navigation scaffolding.
 
+`SyntaxHelperSink` is the shared record-family boundary used both by the in-memory
+`PlatformContext` lookup path and by streaming export adapters. It must stay typed by domain record
+families rather than becoming a generic pipeline abstraction.
+
 ### syntax-helper-extract
 
 Expected public concept:
@@ -125,10 +130,15 @@ Expected public concepts:
 
 - `JsonExporter`
 - `PlatformContextExporter`
+- `StreamingSyntaxHelperExport`
 - lean consumer export DTOs derived from the provenance-rich domain model
 - optional separate diagnostic/debug adapters when a concrete maintenance workflow requires them
 
 Owns FR-EXPORT-001.
+
+The streaming export adapter consumes the `SyntaxHelperSink` boundary and writes canonical
+record-family JSON without retaining the full `PlatformContext`. The existing `PlatformContext`
+exporter remains available for in-memory model consumers and tests.
 
 ### v8-context-hbk-cli
 

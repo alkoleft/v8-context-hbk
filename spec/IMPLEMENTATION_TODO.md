@@ -6,10 +6,11 @@ Specification index: [Specification Index](README.md).
 
 Completed task history: [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md).
 
-Current status: T17 is the first active unchecked task. T16 attributed post-T15 memory and selected
-Variant C, streaming extraction into record-family sinks, as the next optimization slice. T18 records
-the new Syntax Assistant query CLI requirement and follows T17 unless the ledger is explicitly
-reprioritized.
+Current status: T18 is the first active unchecked task. T17 implemented Variant C, streaming
+extraction into record-family sinks for the export command path, while preserving the in-memory
+lookup model. T18 records the new Syntax Assistant query CLI requirement and follows T17 unless the
+ledger is explicitly reprioritized. T19 records the post-T17 lower-level HBK open-time memory task
+and follows T18 unless memory footprint is explicitly reprioritized.
 
 ## Loop Rule
 
@@ -240,7 +241,7 @@ Completion notes:
   alone would not reduce the current `shcntx_ru.hbk` extraction peak.
 - T16 selects Variant C for T17.
 
-### [ ] T17. Implement selected post-T16 memory optimization
+### [x] T17. Implement selected post-T16 memory optimization
 
 Depends on: T16.
 
@@ -287,6 +288,25 @@ Verification:
 - UAT-SH-003
 - T13-style `syntax-helper` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`
 - `git diff --check`
+
+Completion notes:
+
+- Implemented Variant C through a shared `SyntaxHelperSink` extraction core. The existing
+  `SyntaxHelperReader::extract()` path still builds `PlatformContext` for in-memory lookup helpers,
+  while the CLI export path streams typed record-family events directly into JSON writers.
+- FR-EXPORT-001 shape was preserved: the CLI still writes 10 files, does not restore
+  `global-contexts.json`, and keeps parser provenance only in `diagnostics.json`.
+- Determinism was checked by exporting `shcntx_ru.hbk` twice under
+  `target/t17-determinism/` and comparing all JSON files byte-for-byte.
+- Post-T17 T13-style measurements used the built debug binary under GNU `time`.
+- `shcntx_ru.hbk`: exit `0`, elapsed `20.46s`, peak RSS `386304 KiB`, export bytes `21946830`.
+- `shcntx_root.hbk`: exit `0`, elapsed `18.15s`, peak RSS `324096 KiB`, export bytes `12265898`.
+- Each source book produced the same counts as the prior accepted export: 1 global context, 500
+  global methods, 101 global properties, 2533 platform types, 6702 type methods, 10732 type
+  properties, 445 constructors, 713 enums, 3110 enum values and 703 diagnostics.
+- Compared with T15, `shcntx_ru.hbk` peak RSS decreased from `590988 KiB` to `386304 KiB`.
+  Wall-clock remains a noisy debug-build measurement and was not the optimized metric for this
+  memory slice. `shcntx_root.hbk` remained effectively bounded by the lower-level open-time peak.
 
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
@@ -342,4 +362,55 @@ Verification:
 - UAT-SH-005
 - UAT-SH-006
 - NFR-QUERY-001 measurement notes for exact lookup, keyword search and relationship search
+- `git diff --check`
+
+### [ ] T19. Reduce HBK open-time FileStorage memory spike
+
+Depends on: T17. Scheduled after T18 unless memory footprint is explicitly reprioritized.
+
+Spec refs:
+
+- NFR-PERF-001
+- NFR-TEST-001
+- `spec/acceptance/baseline.md`
+- `spec/implementation/components.md`
+- `spec/implementation/performance-variants.md`
+- `spec/implementation/performance-baseline-t13.md`
+
+Scope:
+
+- Implement the first measured Variant E slice for the lower-level `HbkBook::open` high-water mark
+  that remains after T17.
+- Attribute `HbkBook::open` current RSS and VmHWM before and after the change for
+  `shcntx_ru.hbk` and `shcntx_root.hbk`.
+- Add a byte-only HBK block/entity read path for callers that need only entity bytes, avoiding
+  per-byte `source_offsets` allocation on large entities.
+- Keep offset-aware block reads available only for diagnostics or validation paths that genuinely
+  need source offsets.
+- Prefer the smallest internal `hbk-container` / `hbk-book` change first. Do not switch ZIP crates,
+  introduce a broad seekable block-backed `FileStorage` reader, add caches or expose tuning knobs
+  unless the byte-only path measurements show that the retained/open-time peak is still dominated by
+  unavoidable `FileStorage` copying.
+- Preserve existing public CLI behavior, Syntax Helper export shape and deterministic output order.
+- If a seekable direct `FileStorage` view over mmap/chained blocks becomes necessary, record it as a
+  follow-up task or ADR-backed design before implementation.
+
+Expected artifacts:
+
+- Code changes limited to the container/book access model and directly affected tests.
+- Completion notes with before/after `HbkBook::open` current RSS, VmHWM, full `syntax-helper`
+  elapsed time, peak RSS and export counts for both Syntax Assistant books.
+- Updated performance baseline and acceptance notes when the measured open-time peak changes.
+- Follow-up task if byte-only entity reads do not materially reduce the remaining peak.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- `cargo clippy` for changed crates, or a documented workspace-clippy blocker if unrelated lints
+  remain outside the task scope
+- `HbkBook::open` RSS/VmHWM probe for `shcntx_ru.hbk` and `shcntx_root.hbk`
+- T13-style `syntax-helper` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`
+- Small-book smoke for `inspect` and `toc --format json` on `fmtdui_root.hbk` / `fmtdui_ru.hbk`
+  when those fixtures exist
 - `git diff --check`

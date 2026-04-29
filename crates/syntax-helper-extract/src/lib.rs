@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::convert::Infallible;
 use std::fmt;
 use std::path::Path;
 
@@ -25,14 +26,27 @@ impl<'a> SyntaxHelperReader<'a> {
             |html_path| {
                 DocumentationReader::new(self.book)
                     .load_page(html_path)
-                    .map_err(SyntaxHelperError::Documentation)
+                    .map_err(SyntaxHelperError::from)
             },
         )
     }
 
     pub fn extract(&self) -> Result<PlatformContext, SyntaxHelperError> {
+        let mut context = PlatformContext::default();
+        self.extract_into(&mut context)
+            .map_err(infallible_stream_error)?;
+        Ok(context)
+    }
+
+    pub fn extract_into<S>(&self, sink: &mut S) -> Result<(), SyntaxHelperStreamError<S::Error>>
+    where
+        S: SyntaxHelperSink,
+    {
         let toc_index = syntax_toc_index(self.book.toc());
-        let mut file_storage = self.book.file_storage_reader()?;
+        let mut file_storage = self
+            .book
+            .file_storage_reader()
+            .map_err(SyntaxHelperError::from)?;
         let mut load_page = |html_path: &str| {
             let raw_html = file_storage.read_page(html_path)?;
             Ok(parse_syntax_page_content_with_index_owned(
@@ -50,12 +64,13 @@ impl<'a> SyntaxHelperReader<'a> {
             &mut load_page,
         )?;
         let discovery = extraction_discovery(discovery);
-        parse_extraction_pages(
+        parse_extraction_pages_into(
             self.book.path(),
             self.book.locale().source_code(),
             self.book.toc(),
             discovery,
             load_page,
+            sink,
         )
     }
 }
@@ -63,7 +78,7 @@ impl<'a> SyntaxHelperReader<'a> {
 #[derive(Debug)]
 pub enum SyntaxHelperError {
     Book(BookError),
-    Documentation(DocumentationError),
+    Documentation(Box<DocumentationError>),
 }
 
 impl fmt::Display for SyntaxHelperError {
@@ -90,6 +105,55 @@ impl From<BookError> for SyntaxHelperError {
     }
 }
 
+impl From<DocumentationError> for SyntaxHelperError {
+    fn from(value: DocumentationError) -> Self {
+        Self::Documentation(Box::new(value))
+    }
+}
+
+#[derive(Debug)]
+pub enum SyntaxHelperStreamError<SinkError> {
+    Source(SyntaxHelperError),
+    Sink(SinkError),
+}
+
+impl<SinkError> fmt::Display for SyntaxHelperStreamError<SinkError>
+where
+    SinkError: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Source(source) => write!(f, "{source}"),
+            Self::Sink(source) => write!(f, "{source}"),
+        }
+    }
+}
+
+impl<SinkError> std::error::Error for SyntaxHelperStreamError<SinkError>
+where
+    SinkError: std::error::Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Source(source) => Some(source),
+            Self::Sink(source) => Some(source),
+        }
+    }
+}
+
+impl<SinkError> From<SyntaxHelperError> for SyntaxHelperStreamError<SinkError> {
+    fn from(value: SyntaxHelperError) -> Self {
+        Self::Source(value)
+    }
+}
+
+fn infallible_stream_error(error: SyntaxHelperStreamError<Infallible>) -> SyntaxHelperError {
+    match error {
+        SyntaxHelperStreamError::Source(source) => source,
+        SyntaxHelperStreamError::Sink(never) => match never {},
+    }
+}
+
 pub fn discover_roots_with_loader(
     hbk_path: &Path,
     locale: &str,
@@ -105,11 +169,11 @@ pub fn discover_roots_with_loader(
     }) {
         let page = load_page(&flat_page.page.html_path)?;
         let source = source_from_page(hbk_path, locale, &flat_page, &page);
-        let Some(kind) = classify_root(&flat_page.page, &page) else {
+        let Some(kind) = classify_root(flat_page.page, &page) else {
             diagnostics.push(unknown_page_diagnostic(source));
             continue;
         };
-        let pages = collect_catalog_pages(hbk_path, locale, &flat_page.page, &flat_page);
+        let pages = collect_catalog_pages(hbk_path, locale, flat_page.page, &flat_page);
         diagnostics.extend(
             pages
                 .iter()
@@ -133,8 +197,24 @@ pub fn extract_with_loader(
     toc: &Toc,
     mut load_page: impl FnMut(&str) -> Result<PageContent, SyntaxHelperError>,
 ) -> Result<PlatformContext, SyntaxHelperError> {
+    let mut context = PlatformContext::default();
+    extract_with_loader_into(hbk_path, locale, toc, &mut load_page, &mut context)
+        .map_err(infallible_stream_error)?;
+    Ok(context)
+}
+
+pub fn extract_with_loader_into<S>(
+    hbk_path: &Path,
+    locale: &str,
+    toc: &Toc,
+    mut load_page: impl FnMut(&str) -> Result<PageContent, SyntaxHelperError>,
+    sink: &mut S,
+) -> Result<(), SyntaxHelperStreamError<S::Error>>
+where
+    S: SyntaxHelperSink,
+{
     let discovery = discover_roots_with_loader(hbk_path, locale, toc, &mut load_page)?;
-    parse_extraction_pages(hbk_path, locale, toc, discovery, load_page)
+    parse_extraction_pages_into(hbk_path, locale, toc, discovery, load_page, sink)
 }
 
 fn extraction_discovery(mut discovery: RootDiscovery) -> RootDiscovery {
@@ -145,20 +225,26 @@ fn extraction_discovery(mut discovery: RootDiscovery) -> RootDiscovery {
     discovery
 }
 
-fn parse_extraction_pages(
+fn parse_extraction_pages_into<S>(
     _hbk_path: &Path,
     _locale: &str,
     _toc: &Toc,
     discovery: RootDiscovery,
     mut load_page: impl FnMut(&str) -> Result<PageContent, SyntaxHelperError>,
-) -> Result<PlatformContext, SyntaxHelperError> {
-    let mut context = PlatformContext {
-        diagnostics: discovery.diagnostics,
-        ..PlatformContext::default()
-    };
+    sink: &mut S,
+) -> Result<(), SyntaxHelperStreamError<S::Error>>
+where
+    S: SyntaxHelperSink,
+{
     let mut visited = BTreeSet::new();
+    let RootDiscovery { roots, diagnostics } = discovery;
 
-    for root in discovery.roots {
+    for diagnostic in diagnostics {
+        sink.diagnostic(diagnostic)
+            .map_err(SyntaxHelperStreamError::Sink)?;
+    }
+
+    for root in roots {
         let RootSection {
             kind,
             source: root_source,
@@ -176,41 +262,42 @@ fn parse_extraction_pages(
             let source = source_from_content(&catalog_page.source, &content);
             match catalog_page.class {
                 PageClass::Catalog | PageClass::Unknown => unreachable!(),
-                PageClass::GlobalMethod => context
-                    .global_methods
-                    .push(parse_global_method(&content, source)),
-                PageClass::GlobalProperty => context
-                    .global_properties
-                    .push(parse_global_property(&content, source)),
-                PageClass::ObjectType => context
-                    .platform_types
-                    .push(parse_platform_type(&content, source)),
-                PageClass::ObjectMethod => context
-                    .type_methods
-                    .push(parse_platform_method(&content, source)),
-                PageClass::ObjectProperty => context
-                    .type_properties
-                    .push(parse_platform_property(&content, source)),
-                PageClass::Constructor => context
-                    .constructors
-                    .push(parse_constructor(&content, source)),
-                PageClass::Enum => context.enums.push(parse_enum(&content, source)),
-                PageClass::EnumValue => {
-                    context.enum_values.push(parse_enum_value(&content, source))
-                }
+                PageClass::GlobalMethod => sink
+                    .global_method(parse_global_method(&content, source))
+                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::GlobalProperty => sink
+                    .global_property(parse_global_property(&content, source))
+                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::ObjectType => sink
+                    .platform_type(parse_platform_type(&content, source))
+                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::ObjectMethod => sink
+                    .type_method(parse_platform_method(&content, source))
+                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::ObjectProperty => sink
+                    .type_property(parse_platform_property(&content, source))
+                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::Constructor => sink
+                    .constructor(parse_constructor(&content, source))
+                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::Enum => sink
+                    .enum_definition(parse_enum(&content, source))
+                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::EnumValue => sink
+                    .enum_value(parse_enum_value(&content, source))
+                    .map_err(SyntaxHelperStreamError::Sink)?,
             }
         }
 
         if kind == RootSectionKind::GlobalContext && visited.insert(root_source.html_path.clone()) {
             let content = load_page(&root_source.html_path)?;
             let source = source_from_content(&root_source, &content);
-            context
-                .global_contexts
-                .push(parse_global_context(&content, source));
+            sink.global_context(parse_global_context(&content, source))
+                .map_err(SyntaxHelperStreamError::Sink)?;
         }
     }
 
-    Ok(context)
+    Ok(())
 }
 
 pub fn parse_global_context(content: &PageContent, source: SyntaxHelperSource) -> GlobalContext {
@@ -816,7 +903,7 @@ fn links_in_section(content: &PageContent, labels: &[&str]) -> Vec<MemberLink> {
     let Some(section_html) = section_html(&content.raw_html, labels) else {
         return Vec::new();
     };
-    anchor_links(&section_html, &content.source.html_path)
+    anchor_links(section_html, &content.source.html_path)
 }
 
 fn parse_signatures(content: &PageContent) -> Vec<Signature> {
@@ -825,7 +912,7 @@ fn parse_signatures(content: &PageContent) -> Vec<Signature> {
         return Vec::new();
     };
     let parameters = parse_parameters(content);
-    text_lines_from_html_fragment(&section_html)
+    text_lines_from_html_fragment(section_html)
         .split('\n')
         .map(str::trim)
         .filter(|line| !line.is_empty())
@@ -1021,12 +1108,78 @@ const ALL_SECTION_LABELS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+    use std::convert::Infallible;
     use std::path::{Path, PathBuf};
 
     use super::*;
     use hbk_book::HbkBook;
     use hbk_book::Toc;
     use hbk_docs::parse_page_html;
+
+    #[derive(Default)]
+    struct RecordingSink {
+        seen: Vec<String>,
+    }
+
+    impl RecordingSink {
+        fn push_name(&mut self, kind: &str, name: &LocalizedName) {
+            self.seen.push(format!("{kind}:{}", name.primary));
+        }
+    }
+
+    impl SyntaxHelperSink for RecordingSink {
+        type Error = Infallible;
+
+        fn global_context(&mut self, record: GlobalContext) -> Result<(), Self::Error> {
+            self.push_name("global_context", &record.name);
+            Ok(())
+        }
+
+        fn global_method(&mut self, record: GlobalMethod) -> Result<(), Self::Error> {
+            self.push_name("global_method", &record.name);
+            Ok(())
+        }
+
+        fn global_property(&mut self, record: GlobalProperty) -> Result<(), Self::Error> {
+            self.push_name("global_property", &record.name);
+            Ok(())
+        }
+
+        fn platform_type(&mut self, record: PlatformType) -> Result<(), Self::Error> {
+            self.push_name("platform_type", &record.name);
+            Ok(())
+        }
+
+        fn type_method(&mut self, record: PlatformMethod) -> Result<(), Self::Error> {
+            self.push_name("type_method", &record.name);
+            Ok(())
+        }
+
+        fn type_property(&mut self, record: PlatformProperty) -> Result<(), Self::Error> {
+            self.push_name("type_property", &record.name);
+            Ok(())
+        }
+
+        fn constructor(&mut self, record: Constructor) -> Result<(), Self::Error> {
+            self.push_name("constructor", &record.name);
+            Ok(())
+        }
+
+        fn enum_definition(&mut self, record: EnumDefinition) -> Result<(), Self::Error> {
+            self.push_name("enum", &record.name);
+            Ok(())
+        }
+
+        fn enum_value(&mut self, record: EnumValue) -> Result<(), Self::Error> {
+            self.push_name("enum_value", &record.name);
+            Ok(())
+        }
+
+        fn diagnostic(&mut self, record: SyntaxHelperDiagnostic) -> Result<(), Self::Error> {
+            self.seen.push(format!("diagnostic:{}", record.code));
+            Ok(())
+        }
+    }
 
     #[test]
     fn discovers_roots_and_traverses_catalogs_from_fixture_toc() {
@@ -1278,6 +1431,37 @@ mod tests {
                 .any(|enum_value| enum_value.name.alias.as_deref() == Some("ArrayEnd"))
         );
         assert_eq!(context.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn extraction_can_stream_fixture_records_in_deterministic_order() {
+        let toc = fixture_toc();
+        let mut sink = RecordingSink::default();
+
+        extract_with_loader_into(
+            Path::new("shcntx_ru.hbk"),
+            "ru",
+            &toc,
+            |html_path| Ok(fixture_content(&toc, html_path)),
+            &mut sink,
+        )
+        .expect("fixture extraction must stream");
+
+        let expected = [
+            "diagnostic:UNKNOWN_PAGE_CLASS",
+            "global_property:Справочники",
+            "global_method:XMLСтрока",
+            "global_context:Глобальный контекст",
+            "enum:ТипЗначенияJSON",
+            "enum_value:КонецМассива",
+            "platform_type:Массив",
+            "type_method:Добавить",
+            "constructor:По количеству элементов",
+            "type_property:Видимость",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(sink.seen, expected);
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -153,6 +154,75 @@ impl PlatformContext {
                 .filter(|constructor| constructor.owner == platform_type.name)
                 .collect(),
         ))
+    }
+}
+
+pub trait SyntaxHelperSink {
+    type Error;
+
+    fn global_context(&mut self, record: GlobalContext) -> Result<(), Self::Error>;
+    fn global_method(&mut self, record: GlobalMethod) -> Result<(), Self::Error>;
+    fn global_property(&mut self, record: GlobalProperty) -> Result<(), Self::Error>;
+    fn platform_type(&mut self, record: PlatformType) -> Result<(), Self::Error>;
+    fn type_method(&mut self, record: PlatformMethod) -> Result<(), Self::Error>;
+    fn type_property(&mut self, record: PlatformProperty) -> Result<(), Self::Error>;
+    fn constructor(&mut self, record: Constructor) -> Result<(), Self::Error>;
+    fn enum_definition(&mut self, record: EnumDefinition) -> Result<(), Self::Error>;
+    fn enum_value(&mut self, record: EnumValue) -> Result<(), Self::Error>;
+    fn diagnostic(&mut self, record: SyntaxHelperDiagnostic) -> Result<(), Self::Error>;
+}
+
+impl SyntaxHelperSink for PlatformContext {
+    type Error = Infallible;
+
+    fn global_context(&mut self, record: GlobalContext) -> Result<(), Self::Error> {
+        self.global_contexts.push(record);
+        Ok(())
+    }
+
+    fn global_method(&mut self, record: GlobalMethod) -> Result<(), Self::Error> {
+        self.global_methods.push(record);
+        Ok(())
+    }
+
+    fn global_property(&mut self, record: GlobalProperty) -> Result<(), Self::Error> {
+        self.global_properties.push(record);
+        Ok(())
+    }
+
+    fn platform_type(&mut self, record: PlatformType) -> Result<(), Self::Error> {
+        self.platform_types.push(record);
+        Ok(())
+    }
+
+    fn type_method(&mut self, record: PlatformMethod) -> Result<(), Self::Error> {
+        self.type_methods.push(record);
+        Ok(())
+    }
+
+    fn type_property(&mut self, record: PlatformProperty) -> Result<(), Self::Error> {
+        self.type_properties.push(record);
+        Ok(())
+    }
+
+    fn constructor(&mut self, record: Constructor) -> Result<(), Self::Error> {
+        self.constructors.push(record);
+        Ok(())
+    }
+
+    fn enum_definition(&mut self, record: EnumDefinition) -> Result<(), Self::Error> {
+        self.enums.push(record);
+        Ok(())
+    }
+
+    fn enum_value(&mut self, record: EnumValue) -> Result<(), Self::Error> {
+        self.enum_values.push(record);
+        Ok(())
+    }
+
+    fn diagnostic(&mut self, record: SyntaxHelperDiagnostic) -> Result<(), Self::Error> {
+        self.diagnostics.push(record);
+        Ok(())
     }
 }
 

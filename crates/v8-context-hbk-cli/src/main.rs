@@ -100,8 +100,12 @@ fn page(book_path: PathBuf, path: &str) -> Result<(), Box<dyn std::error::Error>
 
 fn syntax_helper(book_path: PathBuf, output: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let book = HbkBook::open(book_path)?;
-    let context = SyntaxHelperReader::new(&book).extract()?;
-    let summary = JsonExporter::new(output).export_syntax_helper(&book, &context)?;
+    let mut export = JsonExporter::new(output).start_syntax_helper_stream(&book)?;
+    if let Err(error) = SyntaxHelperReader::new(&book).extract_into(&mut export) {
+        let _ = export.abort();
+        return Err(Box::new(error));
+    }
+    let summary = export.finish()?;
 
     println!("output: {}", summary.output_dir.display());
     println!(
@@ -109,16 +113,16 @@ fn syntax_helper(book_path: PathBuf, output: PathBuf) -> Result<(), Box<dyn std:
         summary.locale, summary.source_locale
     );
     println!("files: {}", summary.files.len());
-    println!("global_contexts: {}", context.global_contexts.len());
-    println!("global_methods: {}", context.global_methods.len());
-    println!("global_properties: {}", context.global_properties.len());
-    println!("platform_types: {}", context.platform_types.len());
-    println!("type_methods: {}", context.type_methods.len());
-    println!("type_properties: {}", context.type_properties.len());
-    println!("constructors: {}", context.constructors.len());
-    println!("enums: {}", context.enums.len());
-    println!("enum_values: {}", context.enum_values.len());
-    println!("diagnostics: {}", context.diagnostics.len());
+    println!("global_contexts: {}", summary.counts.global_contexts);
+    println!("global_methods: {}", summary.counts.global_methods);
+    println!("global_properties: {}", summary.counts.global_properties);
+    println!("platform_types: {}", summary.counts.platform_types);
+    println!("type_methods: {}", summary.counts.type_methods);
+    println!("type_properties: {}", summary.counts.type_properties);
+    println!("constructors: {}", summary.counts.constructors);
+    println!("enums: {}", summary.counts.enums);
+    println!("enum_values: {}", summary.counts.enum_values);
+    println!("diagnostics: {}", summary.counts.diagnostics);
 
     Ok(())
 }
