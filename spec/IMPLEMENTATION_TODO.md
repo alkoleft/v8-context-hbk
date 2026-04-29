@@ -331,3 +331,39 @@ Verification:
 Status:
 
 - Completed with `docs/v8-context-integration-decision.md`, deciding that `v8-context-hbk` remains standalone for now and exposes the first `v8-context` integration through the file-level `syntax-helper --output` export before any workspace merge or direct HBK query-path coupling.
+
+### [ ] T12. Split implementation into reusable workspace crates
+
+Depends on: T11.
+
+Scope:
+
+- Convert the repository to a Cargo workspace without changing accepted CLI behavior.
+- Split the current monolithic `src/lib.rs` implementation along the existing context boundaries:
+  - `hbk-container`: binary HBK container reading, entity descriptors and entity byte reads.
+  - `hbk-book`: book metadata, locale inference, ZIP storage access, TOC and page reads.
+  - `hbk-docs`: documentation HTML page parsing, normalized text/link extraction and page diagnostics.
+  - `syntax-helper-model`: provenance-rich platform context domain model and lookup helpers.
+  - `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized page parsers.
+  - `hbk-export`: canonical JSON export adapters for the Rust domain model.
+  - `v8-context-hbk-cli`: `inspect`, `toc`, `page` and `syntax-helper` command wiring.
+- Keep lower-level crates independent from higher-level concerns: container must not depend on book/docs/extractor/export, book must not depend on Syntax Assistant extraction, and the domain model must not depend on HBK/HTML parsing.
+- Preserve provisional contracts; do not add compatibility layers, broad facades, caches, plugin systems or legacy-shaped DTOs unless a concrete consumer requires them.
+- Move behavior tests with the crate that owns the public behavior being tested; keep tests focused on observable contracts.
+
+Expected artifacts:
+
+- Root workspace `Cargo.toml`.
+- Reusable crates under `crates/`.
+- CLI package that preserves the existing command names and accepted smoke paths.
+- Updated docs only where package names, command paths or crate boundaries become repository truth.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- `cargo run -p v8-context-hbk-cli -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` when the fixture exists.
+- `cargo run -p v8-context-hbk-cli -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json` when the fixture exists.
+- `cargo run -p v8-context-hbk-cli -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru` when the fixture exists.
+- If platform fixtures are absent, document skipped real-platform smoke commands.
+- `git diff --check`
