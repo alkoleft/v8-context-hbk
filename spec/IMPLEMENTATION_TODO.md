@@ -141,7 +141,7 @@ Status:
 
 - Completed with a curated `tests/fixtures/syntax-helper/manifest.tsv` and minimal real HTML fragments from `shcntx_ru.hbk` and `shcntx_root.hbk`.
 
-### [ ] T5. Syntax Assistant root discovery
+### [x] T5. Syntax Assistant root discovery
 
 Depends on: T4.
 
@@ -163,6 +163,10 @@ Verification:
 - Stable automated assertion that discovered root sections for `shcntx_ru.hbk` include candidates for global context, enum catalog and type/object catalog.
 - If the file is absent: document that real-platform root discovery smoke was skipped because the platform fixture is unavailable.
 - `git diff --check`
+
+Status:
+
+- Completed with `syntax_helper` root discovery, catalog traversal, unknown-page diagnostics and fixture/real-platform assertions for Syntax Assistant root sections.
 
 ### [ ] T6. Specialized Syntax Assistant parsers
 

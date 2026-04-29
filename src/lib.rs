@@ -2714,6 +2714,576 @@ pub mod hbk {
     }
 }
 
+pub mod syntax_helper {
+    use std::fmt;
+    use std::path::{Path, PathBuf};
+
+    use crate::hbk::book::{BookError, HbkBook};
+    use crate::hbk::docs::{DocumentationError, DocumentationReader, PageContent};
+    use crate::hbk::toc::{FlatTocPage, Toc, TocPage};
+
+    #[derive(Debug)]
+    pub struct SyntaxHelperReader<'a> {
+        book: &'a HbkBook,
+    }
+
+    impl<'a> SyntaxHelperReader<'a> {
+        pub fn new(book: &'a HbkBook) -> Self {
+            Self { book }
+        }
+
+        pub fn discover_roots(&self) -> Result<RootDiscovery, SyntaxHelperError> {
+            discover_roots_with_loader(
+                self.book.path(),
+                self.book.locale().source_code(),
+                self.book.toc(),
+                |html_path| {
+                    DocumentationReader::new(self.book)
+                        .load_page(html_path)
+                        .map_err(SyntaxHelperError::Documentation)
+                },
+            )
+        }
+    }
+
+    #[derive(Debug)]
+    pub enum SyntaxHelperError {
+        Book(BookError),
+        Documentation(DocumentationError),
+    }
+
+    impl fmt::Display for SyntaxHelperError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Book(source) => write!(f, "{source}"),
+                Self::Documentation(source) => write!(f, "{source}"),
+            }
+        }
+    }
+
+    impl std::error::Error for SyntaxHelperError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            match self {
+                Self::Book(source) => Some(source),
+                Self::Documentation(source) => Some(source),
+            }
+        }
+    }
+
+    impl From<BookError> for SyntaxHelperError {
+        fn from(value: BookError) -> Self {
+            Self::Book(value)
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct RootDiscovery {
+        pub roots: Vec<RootSection>,
+        pub diagnostics: Vec<SyntaxHelperDiagnostic>,
+    }
+
+    impl RootDiscovery {
+        pub fn has_kind(&self, kind: RootSectionKind) -> bool {
+            self.roots.iter().any(|root| root.kind == kind)
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct RootSection {
+        pub kind: RootSectionKind,
+        pub source: SyntaxHelperSource,
+        pub pages: Vec<CatalogPage>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum RootSectionKind {
+        GlobalContext,
+        EnumCatalog,
+        TypeObjectCatalog,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct CatalogPage {
+        pub class: PageClass,
+        pub source: SyntaxHelperSource,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum PageClass {
+        Catalog,
+        GlobalMethod,
+        GlobalProperty,
+        ObjectType,
+        ObjectMethod,
+        ObjectProperty,
+        Constructor,
+        Enum,
+        EnumValue,
+        Unknown,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct SyntaxHelperSource {
+        pub hbk_path: PathBuf,
+        pub locale: String,
+        pub toc_path: Option<String>,
+        pub html_path: String,
+        pub page_title: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct SyntaxHelperDiagnostic {
+        pub severity: DiagnosticSeverity,
+        pub code: &'static str,
+        pub source: SyntaxHelperSource,
+        pub parser_stage: &'static str,
+        pub message: String,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum DiagnosticSeverity {
+        Warning,
+    }
+
+    pub fn discover_roots_with_loader(
+        hbk_path: &Path,
+        locale: &str,
+        toc: &Toc,
+        mut load_page: impl FnMut(&str) -> Result<PageContent, SyntaxHelperError>,
+    ) -> Result<RootDiscovery, SyntaxHelperError> {
+        let mut roots = Vec::new();
+        let mut diagnostics = Vec::new();
+
+        for flat_page in toc.flat_pages().filter(|flat_page| {
+            flat_page.index_path.indexes().len() == 1
+                && is_syntax_helper_path(&flat_page.page.html_path)
+        }) {
+            let page = load_page(&flat_page.page.html_path)?;
+            let source = source_from_page(hbk_path, locale, &flat_page, &page);
+            let Some(kind) = classify_root(&flat_page.page, &page) else {
+                diagnostics.push(unknown_page_diagnostic(source));
+                continue;
+            };
+            let pages = collect_catalog_pages(hbk_path, locale, &flat_page.page, &flat_page);
+            diagnostics.extend(
+                pages
+                    .iter()
+                    .filter(|page| page.class == PageClass::Unknown)
+                    .cloned()
+                    .map(|page| unknown_page_diagnostic(page.source)),
+            );
+            roots.push(RootSection {
+                kind,
+                source,
+                pages,
+            });
+        }
+
+        Ok(RootDiscovery { roots, diagnostics })
+    }
+
+    fn is_syntax_helper_path(html_path: &str) -> bool {
+        html_path.starts_with("objects/")
+    }
+
+    fn classify_root(page: &TocPage, content: &PageContent) -> Option<RootSectionKind> {
+        if is_global_context_page(page) {
+            return Some(RootSectionKind::GlobalContext);
+        }
+        if is_enum_catalog_page(content) {
+            return Some(RootSectionKind::EnumCatalog);
+        }
+        if is_type_object_catalog_page(page) {
+            return Some(RootSectionKind::TypeObjectCatalog);
+        }
+        None
+    }
+
+    fn is_global_context_page(page: &TocPage) -> bool {
+        let title = normalized_title(page);
+        page.children.iter().any(|child| {
+            child
+                .html_path
+                .starts_with("objects/Global context/methods/")
+                || child
+                    .html_path
+                    .starts_with("objects/Global context/properties/")
+        }) || title == "глобальный контекст"
+            || title == "global context"
+    }
+
+    fn is_enum_catalog_page(content: &PageContent) -> bool {
+        let title = normalized_text(&content.title);
+        let body = normalized_text(&content.body_text);
+        title == "системные перечисления"
+            || title == "system enums"
+            || title == "system enumerations"
+            || body.contains("системные перечисления")
+            || body.contains("system enums")
+            || body.contains("system enumerations")
+    }
+
+    fn is_type_object_catalog_page(page: &TocPage) -> bool {
+        page.html_path.starts_with("objects/catalog")
+            && !page.children.is_empty()
+            && page.children.iter().any(|child| {
+                child
+                    .html_path
+                    .starts_with(page.html_path.trim_end_matches(".html"))
+            })
+    }
+
+    fn collect_catalog_pages(
+        hbk_path: &Path,
+        locale: &str,
+        root_page: &TocPage,
+        root_flat_page: &FlatTocPage<'_>,
+    ) -> Vec<CatalogPage> {
+        let mut pages = Vec::new();
+        pages.push(CatalogPage {
+            class: PageClass::Catalog,
+            source: source_from_toc(hbk_path, locale, root_flat_page),
+        });
+        for (index, child) in root_page.children.iter().enumerate() {
+            collect_child_catalog_pages(
+                hbk_path,
+                locale,
+                child,
+                root_flat_page.index_path.child(index),
+                &mut pages,
+            );
+        }
+        pages
+    }
+
+    fn collect_child_catalog_pages(
+        hbk_path: &Path,
+        locale: &str,
+        page: &TocPage,
+        toc_path: crate::hbk::toc::TocPath,
+        pages: &mut Vec<CatalogPage>,
+    ) {
+        pages.push(CatalogPage {
+            class: classify_catalog_page(page),
+            source: SyntaxHelperSource {
+                hbk_path: hbk_path.to_path_buf(),
+                locale: locale.to_string(),
+                toc_path: Some(toc_path.to_string()),
+                html_path: page.html_path.clone(),
+                page_title: page.title.display().to_string(),
+            },
+        });
+        for (index, child) in page.children.iter().enumerate() {
+            collect_child_catalog_pages(hbk_path, locale, child, toc_path.child(index), pages);
+        }
+    }
+
+    fn classify_catalog_page(page: &TocPage) -> PageClass {
+        let path = page.html_path.as_str();
+        if is_catalog_path(path) {
+            PageClass::Catalog
+        } else if path.starts_with("objects/Global context/methods/") {
+            PageClass::GlobalMethod
+        } else if path.starts_with("objects/Global context/properties/") {
+            PageClass::GlobalProperty
+        } else if path.contains("/methods/") {
+            PageClass::ObjectMethod
+        } else if path.contains("/properties/") && path.contains("/catalog2/") {
+            PageClass::EnumValue
+        } else if path.contains("/properties/") {
+            PageClass::ObjectProperty
+        } else if path.contains("/ctors/") {
+            PageClass::Constructor
+        } else if path.starts_with("objects/catalog2/") {
+            PageClass::Enum
+        } else if path.starts_with("objects/catalog") {
+            PageClass::ObjectType
+        } else if !page.children.is_empty() {
+            PageClass::Catalog
+        } else {
+            PageClass::Unknown
+        }
+    }
+
+    fn is_catalog_path(path: &str) -> bool {
+        path.rsplit('/')
+            .next()
+            .is_some_and(|name| name.starts_with("catalog") && name.ends_with(".html"))
+    }
+
+    fn source_from_page(
+        hbk_path: &Path,
+        locale: &str,
+        flat_page: &FlatTocPage<'_>,
+        content: &PageContent,
+    ) -> SyntaxHelperSource {
+        SyntaxHelperSource {
+            hbk_path: hbk_path.to_path_buf(),
+            locale: locale.to_string(),
+            toc_path: Some(flat_page.index_path.to_string()),
+            html_path: flat_page.page.html_path.clone(),
+            page_title: if content.title.is_empty() {
+                flat_page.page.title.display().to_string()
+            } else {
+                content.title.clone()
+            },
+        }
+    }
+
+    fn source_from_toc(
+        hbk_path: &Path,
+        locale: &str,
+        flat_page: &FlatTocPage<'_>,
+    ) -> SyntaxHelperSource {
+        SyntaxHelperSource {
+            hbk_path: hbk_path.to_path_buf(),
+            locale: locale.to_string(),
+            toc_path: Some(flat_page.index_path.to_string()),
+            html_path: flat_page.page.html_path.clone(),
+            page_title: flat_page.page.title.display().to_string(),
+        }
+    }
+
+    fn unknown_page_diagnostic(source: SyntaxHelperSource) -> SyntaxHelperDiagnostic {
+        SyntaxHelperDiagnostic {
+            severity: DiagnosticSeverity::Warning,
+            code: "UNKNOWN_PAGE_CLASS",
+            source,
+            parser_stage: "root_discovery",
+            message: "Syntax Assistant page could not be classified for traversal".to_string(),
+        }
+    }
+
+    fn normalized_title(page: &TocPage) -> String {
+        normalized_text(page.title.display())
+    }
+
+    fn normalized_text(value: &str) -> String {
+        value.trim().to_lowercase()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::collections::BTreeSet;
+        use std::path::Path;
+
+        use super::*;
+        use crate::hbk::book::HbkBook;
+        use crate::hbk::docs::parse_page_html;
+        use crate::hbk::toc::Toc;
+
+        #[test]
+        fn discovers_roots_and_traverses_catalogs_from_fixture_toc() {
+            let toc = fixture_toc();
+            let discovery =
+                discover_roots_with_loader(Path::new("shcntx_ru.hbk"), "ru", &toc, |html_path| {
+                    let html = match html_path {
+                        "objects/Global context.html" => {
+                            include_str!("../tests/fixtures/syntax-helper/global_context_ru.html")
+                        }
+                        "objects/catalog2.html" => {
+                            include_str!("../tests/fixtures/syntax-helper/root_catalog_enums_ru.html")
+                        }
+                        "objects/catalog234.html" => {
+                            include_str!("../tests/fixtures/syntax-helper/root_catalog_types_ru.html")
+                        }
+                        "objects/unknown.html" => {
+                            r#"<html><body><h1 class="V8SH_pagetitle">Неизвестный раздел</h1></body></html>"#
+                        }
+                        other => panic!("unexpected fixture page load: {other}"),
+                    };
+                    Ok(parse_page_html(
+                        Path::new("shcntx_ru.hbk"),
+                        "ru",
+                        &toc,
+                        html_path,
+                        html,
+                        |_| false,
+                    ))
+                })
+                .expect("root discovery must succeed");
+
+            assert!(discovery.has_kind(RootSectionKind::GlobalContext));
+            assert!(discovery.has_kind(RootSectionKind::EnumCatalog));
+            assert!(discovery.has_kind(RootSectionKind::TypeObjectCatalog));
+            assert_eq!(discovery.roots.len(), 3);
+
+            let classes = discovery
+                .roots
+                .iter()
+                .flat_map(|root| root.pages.iter().map(|page| page.class))
+                .collect::<BTreeSet<_>>();
+            assert!(classes.contains(&PageClass::GlobalMethod));
+            assert!(classes.contains(&PageClass::GlobalProperty));
+            assert!(classes.contains(&PageClass::Enum));
+            assert!(classes.contains(&PageClass::EnumValue));
+            assert!(classes.contains(&PageClass::ObjectType));
+            assert!(classes.contains(&PageClass::ObjectMethod));
+            assert!(classes.contains(&PageClass::ObjectProperty));
+            assert!(classes.contains(&PageClass::Constructor));
+
+            assert_eq!(discovery.diagnostics.len(), 1);
+            assert_eq!(discovery.diagnostics[0].code, "UNKNOWN_PAGE_CLASS");
+            assert_eq!(
+                discovery.diagnostics[0].severity,
+                DiagnosticSeverity::Warning
+            );
+            assert_eq!(
+                discovery.diagnostics[0].source.hbk_path,
+                Path::new("shcntx_ru.hbk")
+            );
+            assert_eq!(discovery.diagnostics[0].source.locale, "ru");
+            assert_eq!(
+                discovery.diagnostics[0].source.toc_path.as_deref(),
+                Some("3")
+            );
+            assert_eq!(
+                discovery.diagnostics[0].source.html_path,
+                "objects/unknown.html"
+            );
+            assert_eq!(
+                discovery.diagnostics[0].source.page_title,
+                "Неизвестный раздел"
+            );
+            assert_eq!(discovery.diagnostics[0].parser_stage, "root_discovery");
+        }
+
+        #[test]
+        fn real_shcntx_ru_root_discovery_includes_required_root_candidates_when_fixture_exists() {
+            let path = Path::new("/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk");
+            if !path.exists() {
+                eprintln!(
+                    "real-platform root discovery smoke skipped because {} is unavailable",
+                    path.display()
+                );
+                return;
+            }
+
+            let book = HbkBook::open(path).expect("real Syntax Assistant book must open");
+            let discovery = SyntaxHelperReader::new(&book)
+                .discover_roots()
+                .expect("real Syntax Assistant roots must be discoverable");
+
+            assert!(discovery.has_kind(RootSectionKind::GlobalContext));
+            assert!(discovery.has_kind(RootSectionKind::EnumCatalog));
+            assert!(discovery.has_kind(RootSectionKind::TypeObjectCatalog));
+
+            let global_context = discovery
+                .roots
+                .iter()
+                .find(|root| root.kind == RootSectionKind::GlobalContext)
+                .expect("global context root must be present");
+            assert_eq!(
+                global_context.source.html_path,
+                "objects/Global context.html"
+            );
+            assert!(
+                global_context
+                    .pages
+                    .iter()
+                    .any(|page| page.class == PageClass::GlobalMethod)
+            );
+            assert!(
+                global_context
+                    .pages
+                    .iter()
+                    .any(|page| page.class == PageClass::GlobalProperty)
+            );
+
+            let enum_catalog = discovery
+                .roots
+                .iter()
+                .find(|root| root.kind == RootSectionKind::EnumCatalog)
+                .expect("enum catalog root must be present");
+            assert!(
+                enum_catalog
+                    .pages
+                    .iter()
+                    .any(|page| page.class == PageClass::Enum)
+            );
+            assert!(
+                enum_catalog
+                    .pages
+                    .iter()
+                    .any(|page| page.class == PageClass::EnumValue)
+            );
+
+            let type_catalog = discovery
+                .roots
+                .iter()
+                .find(|root| {
+                    root.kind == RootSectionKind::TypeObjectCatalog
+                        && root.source.html_path == "objects/catalog234.html"
+                })
+                .expect("known type/object catalog root must be present");
+            assert!(
+                type_catalog
+                    .pages
+                    .iter()
+                    .any(|page| page.class == PageClass::ObjectType)
+            );
+        }
+
+        #[test]
+        fn real_shcntx_root_root_discovery_includes_required_root_candidates_when_fixture_exists() {
+            let path = Path::new("/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk");
+            if !path.exists() {
+                eprintln!(
+                    "real-platform root discovery smoke skipped because {} is unavailable",
+                    path.display()
+                );
+                return;
+            }
+
+            let book = HbkBook::open(path).expect("real root Syntax Assistant book must open");
+            let discovery = SyntaxHelperReader::new(&book)
+                .discover_roots()
+                .expect("real root Syntax Assistant roots must be discoverable");
+
+            assert!(discovery.has_kind(RootSectionKind::GlobalContext));
+            assert!(discovery.has_kind(RootSectionKind::EnumCatalog));
+            assert!(discovery.has_kind(RootSectionKind::TypeObjectCatalog));
+
+            let enum_catalog = discovery
+                .roots
+                .iter()
+                .find(|root| root.kind == RootSectionKind::EnumCatalog)
+                .expect("root-source enum catalog root must be present");
+            assert_eq!(enum_catalog.source.html_path, "objects/catalog2.html");
+            assert!(
+                enum_catalog
+                    .pages
+                    .iter()
+                    .any(|page| page.class == PageClass::Enum)
+            );
+        }
+
+        fn fixture_toc() -> Toc {
+            Toc::parse(
+                r#"{
+                    15
+                    {1,0,2,2,3,{0,0,{0,0,{"ru","Глобальный контекст"}},"/objects/Global context.html"}}
+                    {2,1,1,4,{0,0,{0,0,{"ru","Свойства"}},"/objects/Global context/properties/catalog.html"}}
+                    {3,1,1,5,{0,0,{0,0,{"ru","Методы"}},"/objects/Global context/methods/catalog.html"}}
+                    {4,2,0,{0,0,{0,0,{"ru","Глобальный контекст.Справочники"}},"/objects/Global context/properties/Catalogs336.html"}}
+                    {5,3,0,{0,0,{0,0,{"ru","Глобальный контекст.XMLСтрока"}},"/objects/Global context/methods/catalog1566/XMLString1567.html"}}
+                    {6,0,1,7,{0,0,{0,0,{"ru","Системные перечисления"}},"/objects/catalog2.html"}}
+                    {7,6,1,8,{0,0,{0,0,{"ru","ТипЗначенияJSON"}},"/objects/catalog2/catalog2300/JSONValueType.html"}}
+                    {8,7,0,{0,0,{0,0,{"ru","ТипЗначенияJSON.КонецМассива"}},"/objects/catalog2/catalog2300/JSONValueType/properties/ArrayEnd10574.html"}}
+                    {9,0,1,10,{0,0,{0,0,{"ru","Универсальные коллекции значений"}},"/objects/catalog234.html"}}
+                    {10,9,3,11,12,13,{0,0,{0,0,{"ru","Массив"}},"/objects/catalog234/Array.html"}}
+                    {11,10,0,{0,0,{0,0,{"ru","Массив.Добавить"}},"/objects/catalog234/Array/methods/Add772.html"}}
+                    {12,10,0,{0,0,{0,0,{"ru","Массив.По количеству элементов"}},"/objects/catalog234/Array/ctors/ctor13.html"}}
+                    {13,10,1,14,{0,0,{0,0,{"ru","ГруппаФормы"}},"/objects/catalog1649/catalog1677/FormGroup.html"}}
+                    {14,13,0,{0,0,{0,0,{"ru","ГруппаФормы.Видимость"}},"/objects/catalog1649/catalog1677/FormGroup/properties/Visible7192.html"}}
+                    {15,0,0,{0,0,{0,0,{"ru","Неизвестный раздел"}},"/objects/unknown.html"}}
+                }"#,
+            )
+            .expect("fixture TOC must parse")
+        }
+    }
+}
+
 #[cfg(test)]
 mod syntax_helper_fixture_tests {
     use std::collections::BTreeSet;
