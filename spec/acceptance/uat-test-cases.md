@@ -195,6 +195,14 @@ jq -e '
   all(.records[]; forbidden | not)
 ' target/uat/shcntx-ru/enums.json
 jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/enums.json
+jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/diagnostics.json
+jq -e '
+  (.records | length > 0) and
+  all(.records[];
+    has("source") and
+    (.source | has("hbk_path") and has("locale") and has("html_path") and has("page_title"))
+  )
+' target/uat/shcntx-ru/diagnostics.json
 ```
 
 Expected result:
@@ -205,7 +213,8 @@ Expected result:
 - `metadata.json` and consumer record-family envelopes do not expose source HBK paths.
 - Consumer records contain only platform API facts and do not contain the forbidden provenance,
   hierarchy or navigation-link fields.
-- `diagnostics.json` remains present and may contain parser source context.
+- `diagnostics.json` remains present, has no top-level `source_hbk` envelope field and keeps parser
+  source context on diagnostic records.
 
 Cleanup:
 

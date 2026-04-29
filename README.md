@@ -59,7 +59,6 @@ cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/
 The output directory contains JSON files by record family:
 
 - `metadata.json`
-- `global-contexts.json`
 - `global-methods.json`
 - `global-properties.json`
 - `platform-types.json`

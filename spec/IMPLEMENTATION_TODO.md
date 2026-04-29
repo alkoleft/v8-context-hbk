@@ -6,9 +6,9 @@ Specification index: [Specification Index](README.md).
 
 Completed task history: [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md).
 
-Current status: T14 is the first active unchecked task and covers lean Syntax Assistant consumer
-export. T13 measured the current implementation and accepted ADR-0003 as the first performance
-slice.
+Current status: T15 is the first active unchecked task and covers lazy or batched Syntax Assistant
+page loading. T14 completed ADR-0003 Variant A; post-T14 measurements reduced export size but left
+peak RSS high, so Variant B remains the next performance slice.
 
 ## Loop Rule
 
@@ -78,7 +78,7 @@ Verification:
 - `cargo test --workspace`
 - `git diff --check`
 
-### [ ] T14. Lean Syntax Assistant consumer export
+### [x] T14. Lean Syntax Assistant consumer export
 
 Depends on: T13.
 
@@ -114,4 +114,54 @@ Verification:
 - UAT-SH-001
 - UAT-SH-002
 - UAT-SH-003
+- `git diff --check`
+
+Completion notes:
+
+- Post-T14 T13-style measurements used the built debug binary under GNU `time`.
+- `shcntx_ru.hbk`: exit `0`, elapsed `20.20s`, peak RSS `752392 KiB`, exported JSON
+  `21946830` bytes.
+- `shcntx_root.hbk`: exit `0`, elapsed `15.82s`, peak RSS `518844 KiB`, exported JSON
+  `12265898` bytes.
+- Output size decreased, but peak RSS stayed high; ADR-0003 therefore promotes Variant B as the next
+  slice.
+
+### [ ] T15. Lazy or batched Syntax Assistant page loading
+
+Depends on: T14.
+
+Spec refs:
+
+- NFR-PERF-001
+- NFR-DIAG-001
+- NFR-TEST-001
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- `spec/acceptance/baseline.md`
+- `spec/implementation/components.md`
+- `spec/implementation/performance-variants.md`
+- ADR-0003
+
+Scope:
+
+- Implement Variant B from `spec/implementation/performance-variants.md`.
+- Replace extraction-wide `read_pages(...)->BTreeMap<String, String>` usage with a bounded page
+  loader that reads only the current page or a small deterministic batch.
+- Keep page traversal order driven by TOC/root discovery.
+- Keep missing-page and invalid-UTF-8 diagnostics at the book/page boundary.
+- Preserve deterministic diagnostics and deterministic JSON record order.
+- Do not add caches, broad pipeline frameworks, plugin systems, parallel parsing or tuning knobs as
+  part of this task.
+- Re-run the T13-style `syntax-helper` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk` after
+  the change and compare them with the T14 completion notes.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- T13-style `syntax-helper` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`
 - `git diff --check`

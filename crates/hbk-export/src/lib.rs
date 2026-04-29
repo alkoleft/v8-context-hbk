@@ -1,12 +1,12 @@
 use std::fmt;
-use std::fs;
-use std::io;
+use std::fs::{self, File};
+use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 
 use serde::Serialize;
 
 use hbk_book::HbkBook;
-use syntax_helper_model::PlatformContext;
+use syntax_helper_model::{self as model, PlatformContext};
 
 const SCHEMA_VERSION: u32 = 1;
 
@@ -41,7 +41,7 @@ impl JsonExporter {
         &self,
         locale: &str,
         source_locale: &str,
-        source_hbk: &str,
+        _source_hbk: &str,
         context: &PlatformContext,
     ) -> Result<JsonExportSummary, ExportError> {
         fs::create_dir_all(&self.output_dir).map_err(|source| ExportError::Io {
@@ -53,89 +53,105 @@ impl JsonExporter {
             schema_version: SCHEMA_VERSION,
             locale,
             source_locale,
-            source_hbk,
             files: EXPORT_FILES.to_vec(),
         };
 
         let mut files = Vec::new();
         files.push(self.write_file("metadata.json", &metadata)?);
-        files.push(self.write_records(
-            "global-contexts.json",
-            locale,
-            source_locale,
-            source_hbk,
-            "global_context",
-            &context.global_contexts,
-        )?);
+        let global_methods = context
+            .global_methods
+            .iter()
+            .map(ConsumerGlobalMethod::from)
+            .collect::<Vec<_>>();
         files.push(self.write_records(
             "global-methods.json",
             locale,
             source_locale,
-            source_hbk,
             "global_method",
-            &context.global_methods,
+            &global_methods,
         )?);
+        let global_properties = context
+            .global_properties
+            .iter()
+            .map(ConsumerGlobalProperty::from)
+            .collect::<Vec<_>>();
         files.push(self.write_records(
             "global-properties.json",
             locale,
             source_locale,
-            source_hbk,
             "global_property",
-            &context.global_properties,
+            &global_properties,
         )?);
+        let platform_types = context
+            .platform_types
+            .iter()
+            .map(ConsumerPlatformType::from)
+            .collect::<Vec<_>>();
         files.push(self.write_records(
             "platform-types.json",
             locale,
             source_locale,
-            source_hbk,
             "platform_type",
-            &context.platform_types,
+            &platform_types,
         )?);
+        let type_methods = context
+            .type_methods
+            .iter()
+            .map(ConsumerPlatformMethod::from)
+            .collect::<Vec<_>>();
         files.push(self.write_records(
             "type-methods.json",
             locale,
             source_locale,
-            source_hbk,
             "type_method",
-            &context.type_methods,
+            &type_methods,
         )?);
+        let type_properties = context
+            .type_properties
+            .iter()
+            .map(ConsumerPlatformProperty::from)
+            .collect::<Vec<_>>();
         files.push(self.write_records(
             "type-properties.json",
             locale,
             source_locale,
-            source_hbk,
             "type_property",
-            &context.type_properties,
+            &type_properties,
         )?);
+        let constructors = context
+            .constructors
+            .iter()
+            .map(ConsumerConstructor::from)
+            .collect::<Vec<_>>();
         files.push(self.write_records(
             "constructors.json",
             locale,
             source_locale,
-            source_hbk,
             "constructor",
-            &context.constructors,
+            &constructors,
         )?);
-        files.push(self.write_records(
-            "enums.json",
-            locale,
-            source_locale,
-            source_hbk,
-            "enum",
-            &context.enums,
-        )?);
+        let enums = context
+            .enums
+            .iter()
+            .map(ConsumerEnumDefinition::from)
+            .collect::<Vec<_>>();
+        files.push(self.write_records("enums.json", locale, source_locale, "enum", &enums)?);
+        let enum_values = context
+            .enum_values
+            .iter()
+            .map(ConsumerEnumValue::from)
+            .collect::<Vec<_>>();
         files.push(self.write_records(
             "enum-values.json",
             locale,
             source_locale,
-            source_hbk,
             "enum_value",
-            &context.enum_values,
+            &enum_values,
         )?);
         files.push(self.write_records(
             "diagnostics.json",
             locale,
             source_locale,
-            source_hbk,
             "diagnostic",
             &context.diagnostics,
         )?);
@@ -153,7 +169,6 @@ impl JsonExporter {
         file_name: &'static str,
         locale: &str,
         source_locale: &str,
-        source_hbk: &str,
         record_kind: &'static str,
         records: &[T],
     ) -> Result<PathBuf, ExportError> {
@@ -161,7 +176,6 @@ impl JsonExporter {
             schema_version: SCHEMA_VERSION,
             locale,
             source_locale,
-            source_hbk,
             record_kind,
             records,
         };
@@ -174,11 +188,16 @@ impl JsonExporter {
         value: &T,
     ) -> Result<PathBuf, ExportError> {
         let path = self.output_dir.join(file_name);
-        let bytes = serde_json::to_vec_pretty(value).map_err(|source| ExportError::Json {
+        let file = File::create(&path).map_err(|source| ExportError::Io {
             path: path.clone(),
             source,
         })?;
-        fs::write(&path, bytes).map_err(|source| ExportError::Io {
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer(&mut writer, value).map_err(|source| ExportError::Json {
+            path: path.clone(),
+            source,
+        })?;
+        writer.flush().map_err(|source| ExportError::Io {
             path: path.clone(),
             source,
         })?;
@@ -241,7 +260,6 @@ struct ExportMetadata<'a> {
     schema_version: u32,
     locale: &'a str,
     source_locale: &'a str,
-    source_hbk: &'a str,
     files: Vec<ExportFile>,
 }
 
@@ -256,16 +274,157 @@ struct RecordsEnvelope<'a, T: Serialize> {
     schema_version: u32,
     locale: &'a str,
     source_locale: &'a str,
-    source_hbk: &'a str,
     record_kind: &'static str,
     records: &'a [T],
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerGlobalMethod<'a> {
+    name: &'a model::LocalizedName,
+    signatures: &'a [model::Signature],
+    return_types: &'a [model::TypeRef],
+    description: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::GlobalMethod> for ConsumerGlobalMethod<'a> {
+    fn from(method: &'a model::GlobalMethod) -> Self {
+        Self {
+            name: &method.name,
+            signatures: &method.signatures,
+            return_types: &method.return_types,
+            description: &method.description,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerGlobalProperty<'a> {
+    name: &'a model::LocalizedName,
+    usage: &'a Option<String>,
+    type_refs: &'a [model::TypeRef],
+    description: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::GlobalProperty> for ConsumerGlobalProperty<'a> {
+    fn from(property: &'a model::GlobalProperty) -> Self {
+        Self {
+            name: &property.name,
+            usage: &property.usage,
+            type_refs: &property.type_refs,
+            description: &property.description,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerPlatformType<'a> {
+    name: &'a model::LocalizedName,
+    description: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::PlatformType> for ConsumerPlatformType<'a> {
+    fn from(platform_type: &'a model::PlatformType) -> Self {
+        Self {
+            name: &platform_type.name,
+            description: &platform_type.description,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerPlatformMethod<'a> {
+    owner: &'a model::LocalizedName,
+    name: &'a model::LocalizedName,
+    signatures: &'a [model::Signature],
+    return_types: &'a [model::TypeRef],
+    description: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::PlatformMethod> for ConsumerPlatformMethod<'a> {
+    fn from(method: &'a model::PlatformMethod) -> Self {
+        Self {
+            owner: &method.owner,
+            name: &method.name,
+            signatures: &method.signatures,
+            return_types: &method.return_types,
+            description: &method.description,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerPlatformProperty<'a> {
+    owner: &'a model::LocalizedName,
+    name: &'a model::LocalizedName,
+    usage: &'a Option<String>,
+    type_refs: &'a [model::TypeRef],
+    description: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
+    fn from(property: &'a model::PlatformProperty) -> Self {
+        Self {
+            owner: &property.owner,
+            name: &property.name,
+            usage: &property.usage,
+            type_refs: &property.type_refs,
+            description: &property.description,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerConstructor<'a> {
+    owner: &'a model::LocalizedName,
+    name: &'a model::LocalizedName,
+    signatures: &'a [model::Signature],
+    description: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::Constructor> for ConsumerConstructor<'a> {
+    fn from(constructor: &'a model::Constructor) -> Self {
+        Self {
+            owner: &constructor.owner,
+            name: &constructor.name,
+            signatures: &constructor.signatures,
+            description: &constructor.description,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerEnumDefinition<'a> {
+    name: &'a model::LocalizedName,
+    description: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::EnumDefinition> for ConsumerEnumDefinition<'a> {
+    fn from(enum_definition: &'a model::EnumDefinition) -> Self {
+        Self {
+            name: &enum_definition.name,
+            description: &enum_definition.description,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerEnumValue<'a> {
+    owner: &'a model::LocalizedName,
+    name: &'a model::LocalizedName,
+    description: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::EnumValue> for ConsumerEnumValue<'a> {
+    fn from(enum_value: &'a model::EnumValue) -> Self {
+        Self {
+            owner: &enum_value.owner,
+            name: &enum_value.name,
+            description: &enum_value.description,
+        }
+    }
+}
+
 pub const EXPORT_FILES: &[ExportFile] = &[
-    ExportFile {
-        file_name: "global-contexts.json",
-        record_kind: "global_context",
-    },
     ExportFile {
         file_name: "global-methods.json",
         record_kind: "global_method",
@@ -310,7 +469,8 @@ mod tests {
     use std::path::Path;
 
     use hbk_book::BookLocale;
-    use syntax_helper_model::GlobalMethod;
+    use serde_json::Value;
+    use syntax_helper_model as model;
 
     use super::*;
 
@@ -322,18 +482,53 @@ mod tests {
         );
     }
 
-    #[test]
-    fn platform_context_serializes_with_source_provenance() {
-        let source = syntax_helper_model::SyntaxHelperSource {
+    fn source() -> model::SyntaxHelperSource {
+        model::SyntaxHelperSource {
             hbk_path: PathBuf::from("/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk"),
             locale: "ru".to_string(),
             toc_path: Some("0.1".to_string()),
             html_path: "objects/Global context/methods/catalog1566/XMLString1567.html".to_string(),
             page_title: "Глобальный контекст.XMLСтрока".to_string(),
-        };
+        }
+    }
+
+    fn name(primary: &str) -> model::LocalizedName {
+        model::LocalizedName {
+            primary: primary.to_string(),
+            alias: None,
+        }
+    }
+
+    fn link(primary: &str) -> model::MemberLink {
+        model::MemberLink {
+            name: name(primary),
+            html_path: format!("objects/{primary}.html"),
+        }
+    }
+
+    fn read_json(path: impl AsRef<Path>) -> Value {
+        let path = path.as_ref();
+        let json = fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("{} must be readable: {error}", path.display()));
+        serde_json::from_str(&json)
+            .unwrap_or_else(|error| panic!("{} must be valid JSON: {error}", path.display()))
+    }
+
+    fn assert_no_keys(value: &Value, keys: &[&str]) {
+        for key in keys {
+            assert!(
+                value.get(*key).is_none(),
+                "field '{key}' must be absent from {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn platform_context_serializes_with_source_provenance() {
+        let source = source();
         let context = PlatformContext {
-            global_methods: vec![GlobalMethod {
-                name: syntax_helper_model::LocalizedName {
+            global_methods: vec![model::GlobalMethod {
+                name: model::LocalizedName {
                     primary: "XMLСтрока".to_string(),
                     alias: Some("XMLString".to_string()),
                 },
@@ -356,7 +551,6 @@ mod tests {
     #[test]
     fn export_file_manifest_documents_canonical_json_files() {
         let expected = [
-            "global-contexts.json",
             "global-methods.json",
             "global-properties.json",
             "platform-types.json",
@@ -391,18 +585,18 @@ mod tests {
                 "global-methods.json",
                 "en",
                 "root",
-                "shcntx_root.hbk",
                 "global_method",
-                &Vec::<GlobalMethod>::new(),
+                &Vec::<Value>::new(),
             )
             .expect("record envelope must be writable");
 
         let json = fs::read_to_string(&path).expect("record envelope must be readable");
         assert!(!json.is_empty());
-        let parsed: serde_json::Value =
+        let parsed: Value =
             serde_json::from_str(&json).expect("record envelope must be valid JSON");
         assert_eq!(parsed["locale"], "en");
         assert_eq!(parsed["source_locale"], "root");
+        assert!(parsed.get("source_hbk").is_none());
 
         fs::remove_dir_all(&dir).expect("export test dir must be removable");
     }
@@ -422,26 +616,126 @@ mod tests {
             .expect("full canonical export must be writable");
 
         assert_eq!(summary.files.len(), EXPORT_FILES.len() + 1);
+        assert!(!dir.join("global-contexts.json").exists());
         for file in &summary.files {
             let json = fs::read_to_string(file)
                 .unwrap_or_else(|error| panic!("{} must be readable: {error}", file.display()));
             assert!(!json.is_empty(), "{} must be non-empty", file.display());
-            serde_json::from_str::<serde_json::Value>(&json)
+            serde_json::from_str::<Value>(&json)
                 .unwrap_or_else(|error| panic!("{} must be valid JSON: {error}", file.display()));
         }
 
-        let metadata =
-            fs::read_to_string(dir.join("metadata.json")).expect("metadata.json must be readable");
-        let metadata: serde_json::Value =
-            serde_json::from_str(&metadata).expect("metadata.json must be valid JSON");
+        let metadata = read_json(dir.join("metadata.json"));
         assert_eq!(metadata["locale"], "en");
         assert_eq!(metadata["source_locale"], "root");
+        assert!(metadata.get("source_hbk").is_none());
         assert_eq!(
             metadata["files"]
                 .as_array()
                 .expect("files must be an array")
                 .len(),
             EXPORT_FILES.len()
+        );
+
+        fs::remove_dir_all(&dir).expect("export test dir must be removable");
+    }
+
+    #[test]
+    fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
+        let dir = std::env::temp_dir().join(format!(
+            "v8-context-hbk-export-lean-test-{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            fs::remove_dir_all(&dir).expect("stale export test dir must be removable");
+        }
+
+        let source = source();
+        let context = PlatformContext {
+            global_methods: vec![model::GlobalMethod {
+                name: name("XMLСтрока"),
+                signatures: vec![model::Signature {
+                    text: "XMLСтрока(Значение)".to_string(),
+                    parameters: Vec::new(),
+                }],
+                return_types: vec![model::TypeRef {
+                    name: "Строка".to_string(),
+                }],
+                description: Some("Creates an XML string.".to_string()),
+                source: source.clone(),
+            }],
+            platform_types: vec![model::PlatformType {
+                name: name("Массив"),
+                method_links: vec![link("Добавить")],
+                constructor_links: vec![link("Массив")],
+                description: Some("Array type.".to_string()),
+                source: source.clone(),
+            }],
+            type_methods: vec![model::PlatformMethod {
+                owner: name("Массив"),
+                name: name("Добавить"),
+                signatures: Vec::new(),
+                return_types: Vec::new(),
+                description: None,
+                source: source.clone(),
+            }],
+            enums: vec![model::EnumDefinition {
+                name: name("ТипЗначенияJSON"),
+                value_links: vec![link("КонецМассива")],
+                description: None,
+                source: source.clone(),
+            }],
+            diagnostics: vec![model::SyntaxHelperDiagnostic {
+                severity: model::DiagnosticSeverity::Warning,
+                code: "UNKNOWN_PAGE_CLASS",
+                source,
+                parser_stage: "root_discovery",
+                message: "unknown page class".to_string(),
+            }],
+            ..PlatformContext::default()
+        };
+
+        JsonExporter::new(&dir)
+            .export_platform_context("ru", "ru", "shcntx_ru.hbk", &context)
+            .expect("lean export must be writable");
+
+        assert!(!dir.join("global-contexts.json").exists());
+        assert_no_keys(&read_json(dir.join("metadata.json")), &["source_hbk"]);
+
+        let forbidden = [
+            "source",
+            "source_hbk",
+            "toc_path",
+            "html_path",
+            "page_title",
+            "method_links",
+            "constructor_links",
+            "value_links",
+        ];
+        for file_name in [
+            "global-methods.json",
+            "platform-types.json",
+            "type-methods.json",
+            "enums.json",
+        ] {
+            let json = read_json(dir.join(file_name));
+            assert_no_keys(&json, &["source_hbk"]);
+            for record in json["records"]
+                .as_array()
+                .expect("records must be an array")
+            {
+                assert_no_keys(record, &forbidden);
+            }
+        }
+
+        let diagnostics = read_json(dir.join("diagnostics.json"));
+        assert_no_keys(&diagnostics, &["source_hbk"]);
+        let diagnostic = &diagnostics["records"][0];
+        assert!(diagnostic.get("source").is_some());
+        assert_eq!(diagnostic["source"]["locale"], "ru");
+        assert_eq!(
+            diagnostic["source"]["html_path"],
+            "objects/Global context/methods/catalog1566/XMLString1567.html"
         );
 
         fs::remove_dir_all(&dir).expect("export test dir must be removable");

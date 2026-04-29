@@ -40,7 +40,7 @@ T10 validated generic HBK container/book/TOC behavior across all `*.hbk` files u
 `toc --format json` successes, no fatal failures and no unsupported structures reported by the
 generic smoke commands.
 
-The current `v8-context-hbk` export model is intentionally provisional:
+The T9 `v8-context-hbk` export model was intentionally provisional:
 
 - record-family files are `metadata.json`, `global-contexts.json`, `global-methods.json`,
   `global-properties.json`, `platform-types.json`, `type-methods.json`, `type-properties.json`,
@@ -49,6 +49,11 @@ The current `v8-context-hbk` export model is intentionally provisional:
   `record_kind` and `records`;
 - records preserve HBK provenance under `source`: HBK path, source locale, TOC path, HTML path and
   page title.
+
+This concrete T9 shape is historical evidence, not the current export contract. ADR-0003 and
+FR-EXPORT-001 own the T14 lean consumer export shape: consumer files omit book hierarchy,
+per-record provenance and duplicate navigation scaffolding, while `diagnostics.json` keeps parser
+source context for maintenance.
 
 The current `v8-context` decision artifacts define a compatible boundary:
 
@@ -113,6 +118,8 @@ constraints on the internal model. No current consumer requires the legacy shape
 
 - Keep this repository independently buildable and testable.
 - Keep `syntax-helper --output` as the first integration surface.
+- Keep the concrete export shape aligned with current FR-EXPORT-001 and later ADRs; this ADR
+  preserves the file-level integration boundary, not the historical T9 field list.
 - Keep HBK container reading, TOC/page navigation, Syntax Assistant extraction and export ownership
   inside this repository until a downstream importer proves a more direct integration boundary.
 - Do not let `v8-context` query paths parse HBK containers, HTML pages or category files directly.
