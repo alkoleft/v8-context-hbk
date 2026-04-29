@@ -229,7 +229,7 @@ Status:
 
 - Completed with canonical JSON export files, source provenance serialization, `syntax-helper --output`, `_root` export locale mapping to `en`, full specialized-page extraction in the production reader path and reviewer-approved verification.
 
-### [ ] T8. Lookup helpers
+### [x] T8. Lookup helpers
 
 Depends on: T7.
 
@@ -250,6 +250,10 @@ Verification:
 
 - `cargo test`
 - `git diff --check`
+
+Status:
+
+- Completed with exact `PlatformContext` lookup helpers for global members, platform types, type members and constructors, including found/missing/ambiguous coverage.
 
 ### [ ] T9. Real-platform Syntax Assistant acceptance report
 

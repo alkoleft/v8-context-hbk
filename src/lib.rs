@@ -2995,6 +2995,143 @@ pub mod syntax_helper {
         pub diagnostics: Vec<SyntaxHelperDiagnostic>,
     }
 
+    impl PlatformContext {
+        pub fn find_global_member(
+            &self,
+            name: &str,
+        ) -> Result<Option<GlobalMemberRef<'_>>, LookupError> {
+            let mut matches = self
+                .global_methods
+                .iter()
+                .filter(|method| method.name.matches(name))
+                .map(GlobalMemberRef::Method)
+                .chain(
+                    self.global_properties
+                        .iter()
+                        .filter(|property| property.name.matches(name))
+                        .map(GlobalMemberRef::Property),
+                );
+            one_or_ambiguous(&mut matches, LookupKind::GlobalMember, name)
+        }
+
+        pub fn find_type(&self, name: &str) -> Result<Option<&PlatformType>, LookupError> {
+            let mut matches = self
+                .platform_types
+                .iter()
+                .filter(|platform_type| platform_type.name.matches(name));
+            one_or_ambiguous(&mut matches, LookupKind::Type, name)
+        }
+
+        pub fn find_type_member(
+            &self,
+            type_name: &str,
+            member_name: &str,
+        ) -> Result<Option<TypeMemberRef<'_>>, LookupError> {
+            let Some(platform_type) = self.find_type(type_name)? else {
+                return Ok(None);
+            };
+            let mut matches = self
+                .type_methods
+                .iter()
+                .filter(|method| {
+                    method.owner == platform_type.name && method.name.matches(member_name)
+                })
+                .map(TypeMemberRef::Method)
+                .chain(
+                    self.type_properties
+                        .iter()
+                        .filter(|property| {
+                            property.owner == platform_type.name
+                                && property.name.matches(member_name)
+                        })
+                        .map(TypeMemberRef::Property),
+                );
+            one_or_ambiguous(&mut matches, LookupKind::TypeMember, member_name)
+        }
+
+        pub fn constructors_for_type(
+            &self,
+            type_name: &str,
+        ) -> Result<Option<Vec<&Constructor>>, LookupError> {
+            let Some(platform_type) = self.find_type(type_name)? else {
+                return Ok(None);
+            };
+            Ok(Some(
+                self.constructors
+                    .iter()
+                    .filter(|constructor| constructor.owner == platform_type.name)
+                    .collect(),
+            ))
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum GlobalMemberRef<'a> {
+        Method(&'a GlobalMethod),
+        Property(&'a GlobalProperty),
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum TypeMemberRef<'a> {
+        Method(&'a PlatformMethod),
+        Property(&'a PlatformProperty),
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum LookupError {
+        Ambiguous { kind: LookupKind, name: String },
+    }
+
+    impl fmt::Display for LookupError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Ambiguous { kind, name } => {
+                    write!(
+                        f,
+                        "ambiguous Syntax Assistant {} lookup for '{name}'",
+                        kind.label()
+                    )
+                }
+            }
+        }
+    }
+
+    impl std::error::Error for LookupError {}
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum LookupKind {
+        GlobalMember,
+        Type,
+        TypeMember,
+    }
+
+    impl LookupKind {
+        fn label(self) -> &'static str {
+            match self {
+                Self::GlobalMember => "global member",
+                Self::Type => "type",
+                Self::TypeMember => "type member",
+            }
+        }
+    }
+
+    fn one_or_ambiguous<T>(
+        matches: &mut impl Iterator<Item = T>,
+        kind: LookupKind,
+        name: &str,
+    ) -> Result<Option<T>, LookupError> {
+        let Some(first) = matches.next() else {
+            return Ok(None);
+        };
+        if matches.next().is_some() {
+            return Err(LookupError::Ambiguous {
+                kind,
+                name: name.to_string(),
+            });
+        }
+        Ok(Some(first))
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
     pub struct GlobalContext {
         pub name: LocalizedName,
@@ -3099,6 +3236,12 @@ pub mod syntax_helper {
     pub struct LocalizedName {
         pub primary: String,
         pub alias: Option<String>,
+    }
+
+    impl LocalizedName {
+        pub fn matches(&self, value: &str) -> bool {
+            self.primary == value || self.alias.as_deref() == Some(value)
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -4263,6 +4406,249 @@ pub mod syntax_helper {
                     .any(|enum_value| enum_value.name.alias.as_deref() == Some("ArrayEnd"))
             );
             assert_eq!(context.diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn lookup_helpers_find_exact_names_and_aliases() {
+            let toc = fixture_toc();
+            let context =
+                extract_with_loader(Path::new("shcntx_ru.hbk"), "ru", &toc, |html_path| {
+                    Ok(fixture_content(&toc, html_path))
+                })
+                .expect("fixture extraction must succeed");
+
+            let global_member = context
+                .find_global_member("XMLString")
+                .expect("global member lookup must not be ambiguous")
+                .expect("global member must be found by alias");
+            assert!(
+                matches!(global_member, GlobalMemberRef::Method(method) if method.name.primary == "XMLСтрока")
+            );
+
+            let platform_type = context
+                .find_type("Array")
+                .expect("type lookup must not be ambiguous")
+                .expect("type must be found by alias");
+            assert_eq!(platform_type.name.primary, "Массив");
+
+            let type_member = context
+                .find_type_member("Array", "Add")
+                .expect("type member lookup must not be ambiguous")
+                .expect("type member must be found by aliases");
+            assert!(
+                matches!(type_member, TypeMemberRef::Method(method) if method.name.primary == "Добавить")
+            );
+
+            let constructors = context
+                .constructors_for_type("Array")
+                .expect("constructor lookup must not be ambiguous")
+                .expect("type must be found by alias");
+            assert_eq!(constructors.len(), 1);
+            assert_eq!(constructors[0].name.primary, "По количеству элементов");
+        }
+
+        #[test]
+        fn lookup_helpers_return_missing_without_guessing() {
+            let context = PlatformContext::default();
+
+            assert_eq!(context.find_global_member("Missing").unwrap(), None);
+            assert_eq!(context.find_type("Missing").unwrap(), None);
+            assert_eq!(context.find_type_member("Array", "Missing").unwrap(), None);
+            assert_eq!(context.constructors_for_type("Array").unwrap(), None);
+        }
+
+        #[test]
+        fn constructor_lookup_distinguishes_type_without_constructors() {
+            let context = PlatformContext {
+                platform_types: vec![PlatformType {
+                    name: LocalizedName {
+                        primary: "Тест".to_string(),
+                        alias: Some("Test".to_string()),
+                    },
+                    method_links: Vec::new(),
+                    constructor_links: Vec::new(),
+                    description: None,
+                    source: source("objects/Test.html"),
+                }],
+                ..PlatformContext::default()
+            };
+
+            let constructors = context
+                .constructors_for_type("Test")
+                .expect("constructor lookup must not be ambiguous")
+                .expect("existing type must be distinguished from a missing type");
+            assert!(constructors.is_empty());
+        }
+
+        #[test]
+        fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
+            let aliased_type = LocalizedName {
+                primary: "Тест".to_string(),
+                alias: Some("Test".to_string()),
+            };
+            let other_type = LocalizedName {
+                primary: "Test".to_string(),
+                alias: None,
+            };
+            let context = PlatformContext {
+                platform_types: vec![
+                    PlatformType {
+                        name: aliased_type,
+                        method_links: Vec::new(),
+                        constructor_links: Vec::new(),
+                        description: None,
+                        source: source("objects/AliasedTest.html"),
+                    },
+                    PlatformType {
+                        name: other_type.clone(),
+                        method_links: Vec::new(),
+                        constructor_links: Vec::new(),
+                        description: None,
+                        source: source("objects/OtherTest.html"),
+                    },
+                ],
+                type_methods: vec![PlatformMethod {
+                    owner: other_type.clone(),
+                    name: LocalizedName {
+                        primary: "Ping".to_string(),
+                        alias: None,
+                    },
+                    signatures: Vec::new(),
+                    return_types: Vec::new(),
+                    description: None,
+                    source: source("objects/OtherTest/methods/Ping.html"),
+                }],
+                constructors: vec![Constructor {
+                    owner: other_type,
+                    name: LocalizedName {
+                        primary: "New".to_string(),
+                        alias: None,
+                    },
+                    signatures: Vec::new(),
+                    description: None,
+                    source: source("objects/OtherTest/ctors/New.html"),
+                }],
+                ..PlatformContext::default()
+            };
+
+            assert_eq!(context.find_type_member("Тест", "Ping").unwrap(), None);
+            assert!(
+                context
+                    .constructors_for_type("Тест")
+                    .expect("type lookup must not be ambiguous")
+                    .expect("aliased type must exist")
+                    .is_empty()
+            );
+        }
+
+        #[test]
+        fn lookup_helpers_report_ambiguous_exact_matches() {
+            let toc = fixture_toc();
+            let mut context =
+                extract_with_loader(Path::new("shcntx_ru.hbk"), "ru", &toc, |html_path| {
+                    Ok(fixture_content(&toc, html_path))
+                })
+                .expect("fixture extraction must succeed");
+
+            let duplicate_global = GlobalMethod {
+                name: LocalizedName {
+                    primary: "XMLString".to_string(),
+                    alias: None,
+                },
+                signatures: Vec::new(),
+                return_types: Vec::new(),
+                description: None,
+                source: source("objects/duplicate-global.html"),
+            };
+            context.global_methods.push(duplicate_global);
+
+            assert!(matches!(
+                context.find_global_member("XMLString"),
+                Err(LookupError::Ambiguous {
+                    kind: LookupKind::GlobalMember,
+                    ..
+                })
+            ));
+
+            let duplicate_member = PlatformProperty {
+                owner: context
+                    .find_type("Array")
+                    .expect("type lookup must not be ambiguous before duplicate type")
+                    .expect("fixture type must exist")
+                    .name
+                    .clone(),
+                name: LocalizedName {
+                    primary: "Add".to_string(),
+                    alias: None,
+                },
+                usage: None,
+                type_refs: Vec::new(),
+                description: None,
+                source: source("objects/duplicate-member.html"),
+            };
+            context.type_properties.push(duplicate_member);
+
+            assert!(matches!(
+                context.find_type_member("Array", "Add"),
+                Err(LookupError::Ambiguous {
+                    kind: LookupKind::TypeMember,
+                    ..
+                })
+            ));
+
+            let duplicate_type = PlatformType {
+                name: LocalizedName {
+                    primary: "Array".to_string(),
+                    alias: None,
+                },
+                method_links: Vec::new(),
+                constructor_links: Vec::new(),
+                description: None,
+                source: source("objects/duplicate-type.html"),
+            };
+            context.platform_types.push(duplicate_type);
+
+            assert!(matches!(
+                context.find_type("Array"),
+                Err(LookupError::Ambiguous {
+                    kind: LookupKind::Type,
+                    ..
+                })
+            ));
+
+            let mut context_with_ambiguous_type =
+                extract_with_loader(Path::new("shcntx_ru.hbk"), "ru", &toc, |html_path| {
+                    Ok(fixture_content(&toc, html_path))
+                })
+                .expect("fixture extraction must succeed");
+            context_with_ambiguous_type
+                .platform_types
+                .push(PlatformType {
+                    name: LocalizedName {
+                        primary: "Array".to_string(),
+                        alias: None,
+                    },
+                    method_links: Vec::new(),
+                    constructor_links: Vec::new(),
+                    description: None,
+                    source: source("objects/duplicate-type.html"),
+                });
+
+            assert!(matches!(
+                context_with_ambiguous_type.find_type_member("Array", "Add"),
+                Err(LookupError::Ambiguous {
+                    kind: LookupKind::Type,
+                    ..
+                })
+            ));
+
+            assert!(matches!(
+                context.constructors_for_type("Array"),
+                Err(LookupError::Ambiguous {
+                    kind: LookupKind::Type,
+                    ..
+                })
+            ));
         }
 
         #[test]
