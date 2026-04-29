@@ -122,12 +122,36 @@ Acceptance:
 
 ## FR-EXPORT-001: Canonical JSON Export
 
-The system must serialize the extracted model to JSON as the canonical machine format.
+The system must serialize extracted Syntax Assistant platform facts to JSON as the canonical
+consumer machine format.
+
+The consumer export is not a help-book, TOC or parser-trace dump. It must expose platform API facts
+needed by downstream context/indexing tools:
+
+- names and aliases
+- descriptions
+- signatures
+- parameters and required flags
+- return types and property types
+- owner relationships for type members, constructors and enum values
+
+Consumer record files must not expose book hierarchy or per-record parser provenance:
+
+- source HBK path
+- source locale on every record
+- TOC/index path
+- HTML path
+- page title
+- root/global context link catalogs
+- method, constructor or enum value navigation links that duplicate dedicated record-family files
+
+Parser provenance remains part of the internal model and diagnostics contract. `diagnostics.json`
+keeps enough source context for parser maintenance; consumer record files stay focused on platform
+facts.
 
 Required files:
 
 - `metadata.json`
-- `global-contexts.json`
 - `global-methods.json`
 - `global-properties.json`
 - `platform-types.json`
@@ -138,14 +162,20 @@ Required files:
 - `enum-values.json`
 - `diagnostics.json`
 
-Each record-family file is a JSON object with `schema_version`, `locale`, `source_locale`,
-`source_hbk`, `record_kind` and `records`. Individual records keep parser provenance under `source`.
+Each consumer record-family file is a JSON object with `schema_version`, `locale`, `source_locale`,
+`record_kind` and `records`. `metadata.json` contains export-level metadata and file inventory; it
+must not expose source HBK paths or book hierarchy. `diagnostics.json` may keep parser source
+context because its audience is parser maintenance, not downstream platform API consumption.
 
 Acceptance:
 
 - `shcntx_ru.hbk` exports as locale `ru`.
 - `shcntx_root.hbk` exports as locale `en`.
 - Output files are non-empty and parse successfully.
+- Consumer record-family files do not contain `source_hbk` at the top level.
+- Consumer records do not contain `source`, `source_hbk`, `toc_path`, `html_path`, `page_title`,
+  `method_links`, `constructor_links` or `value_links`.
+- `metadata.json` does not expose source HBK paths.
 
 ## FR-LOOKUP-001: Exact Lookup Helpers
 

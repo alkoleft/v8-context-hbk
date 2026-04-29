@@ -25,6 +25,8 @@ Otherwise reconcile the specification files before implementing.
 - `requirements/non-functional.md`: reliability, performance, diagnostics, compatibility and testability requirements.
 - `use-cases.md`: users, jobs and externally observable use cases.
 - `implementation/components.md`: crate boundaries, dependency rules and provisional implementation contracts.
+- `implementation/performance-variants.md`: saved performance/resource optimization variants and
+  selection rules.
 - `acceptance/baseline.md`: acceptance gates, commands, durable T9/T10 conclusions and success metrics.
 - `acceptance/test-case-requirements.md`: rules for UAT and black-box test case specifications.
 - `acceptance/uat-test-cases.md`: current UAT test case catalog.

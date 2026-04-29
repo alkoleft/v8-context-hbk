@@ -7,7 +7,8 @@ Specification index: [Specification Index](README.md).
 Completed task history: [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md).
 
 Current status: T13 is the first active unchecked task and covers performance/resource baseline plus
-implementation-hypothesis review before any streaming or parallel extraction refactor.
+implementation-hypothesis review before any streaming or parallel extraction refactor. The saved
+performance variants are in `spec/implementation/performance-variants.md`.
 
 ## Loop Rule
 
@@ -34,6 +35,7 @@ Spec refs:
 - NFR-TEST-001
 - `spec/acceptance/baseline.md`
 - `spec/implementation/components.md`
+- `spec/implementation/performance-variants.md`
 
 Scope:
 
@@ -54,6 +56,8 @@ Scope:
   - keeping `memmap2` versus moving container access toward `Read + Seek`;
   - bounded parallel Syntax Assistant page parsing with deterministic diagnostics and output order;
   - streaming record-family JSON export if serialization is a measured bottleneck.
+- Use `spec/implementation/performance-variants.md` as the candidate option set and update it if the
+  measurements reject or reorder the saved variants.
 - Do not add broad pipeline frameworks, caches, plugin systems, tuning knobs or compatibility
   adapters as part of this task.
 - If the measurements make the tradeoff non-trivial, record the chosen implementation direction as a
@@ -72,4 +76,42 @@ Verification:
 - Artifact identifies the first implementation slice to try next, or explicitly records that no
   refactor is currently justified.
 - `cargo test --workspace`
+- `git diff --check`
+
+### [ ] T14. Lean Syntax Assistant consumer export
+
+Depends on: T13.
+
+Spec refs:
+
+- FR-EXPORT-001
+- UC-SH-001
+- NFR-PERF-001
+- NFR-DIAG-001
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- `spec/implementation/components.md`
+- `spec/implementation/performance-variants.md`
+
+Scope:
+
+- Implement Variant A from `spec/implementation/performance-variants.md` unless T13 records a
+  blocker or a better first slice.
+- Introduce lean consumer export DTOs in `hbk-export` derived from the provenance-rich domain model.
+- Stop writing `global-contexts.json` as a consumer export file.
+- Remove per-record `source` and book/TOC/page provenance from consumer record-family files.
+- Remove duplicate navigation-link fields from consumer records:
+  `method_links`, `constructor_links` and `value_links`.
+- Keep source context in `diagnostics.json` for parser maintenance.
+- Write compact JSON through a writer instead of materializing pretty JSON bytes.
+- Update README examples if they describe the old export shape.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
 - `git diff --check`

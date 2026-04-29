@@ -96,6 +96,9 @@ Expected public concepts:
 
 Owns the domain model used by FR-SH-002, FR-EXPORT-001 and FR-LOOKUP-001.
 
+The model remains provenance-rich for diagnostics and parser maintenance. Consumer export shape is
+owned by `hbk-export` and may intentionally omit internal provenance and navigation scaffolding.
+
 ### syntax-helper-extract
 
 Expected public concept:
@@ -110,7 +113,8 @@ Expected public concepts:
 
 - `JsonExporter`
 - `PlatformContextExporter`
-- optional legacy export adapters when a concrete consumer requires them
+- lean consumer export DTOs derived from the provenance-rich domain model
+- optional separate diagnostic/debug adapters when a concrete maintenance workflow requires them
 
 Owns FR-EXPORT-001.
 

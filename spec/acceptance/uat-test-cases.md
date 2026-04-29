@@ -100,6 +100,8 @@ Expected result:
 - `metadata.json` records locale `ru`.
 - Core record-family files parse as JSON and contain non-empty `records`.
 - `diagnostics.json` is present and parser gaps are visible if any remain.
+- Consumer record-family files expose platform API facts only and do not include book hierarchy,
+  per-record source provenance or duplicate navigation-link catalogs.
 
 Cleanup:
 
@@ -129,10 +131,85 @@ Expected result:
 - Required JSON files from FR-EXPORT-001 exist.
 - `metadata.json` records export locale `en`.
 - Core record-family files parse as JSON and contain non-empty `records`.
+- Consumer record-family files expose platform API facts only and do not include book hierarchy,
+  per-record source provenance or duplicate navigation-link catalogs.
 
 Cleanup:
 
 - `target/uat/shcntx-en` is service data and may be deleted after the run.
+
+## UAT-SH-003: Export Shape Omits HBK Navigation and Provenance from Consumer Records
+
+Related use case: UC-SH-001.
+
+Related requirements: FR-EXPORT-001, NFR-PERF-001, NFR-DIAG-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- `target/uat/shcntx-ru` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+test ! -f target/uat/shcntx-ru/global-contexts.json
+jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/metadata.json
+jq -e '
+  def forbidden:
+    has("source") or
+    has("source_hbk") or
+    has("toc_path") or
+    has("html_path") or
+    has("page_title") or
+    has("method_links") or
+    has("constructor_links") or
+    has("value_links");
+  all(.records[]; forbidden | not)
+' target/uat/shcntx-ru/platform-types.json
+jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/platform-types.json
+jq -e '
+  def forbidden:
+    has("source") or
+    has("source_hbk") or
+    has("toc_path") or
+    has("html_path") or
+    has("page_title") or
+    has("method_links") or
+    has("constructor_links") or
+    has("value_links");
+  all(.records[]; forbidden | not)
+' target/uat/shcntx-ru/type-methods.json
+jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/type-methods.json
+jq -e '
+  def forbidden:
+    has("source") or
+    has("source_hbk") or
+    has("toc_path") or
+    has("html_path") or
+    has("page_title") or
+    has("method_links") or
+    has("constructor_links") or
+    has("value_links");
+  all(.records[]; forbidden | not)
+' target/uat/shcntx-ru/enums.json
+jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/enums.json
+```
+
+Expected result:
+
+- Exit code is `0`.
+- `global-contexts.json` is not produced as a consumer export file.
+- Consumer record-family files parse as JSON.
+- `metadata.json` and consumer record-family envelopes do not expose source HBK paths.
+- Consumer records contain only platform API facts and do not contain the forbidden provenance,
+  hierarchy or navigation-link fields.
+- `diagnostics.json` remains present and may contain parser source context.
+
+Cleanup:
+
+- `target/uat/shcntx-ru` is service data and may be deleted after the run.
 
 ## UAT-ERR-001: Missing File Produces Readable CLI Error
 

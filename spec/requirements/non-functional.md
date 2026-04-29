@@ -32,6 +32,10 @@ Implementation hypotheses to evaluate after baseline measurement:
 3. Bounded parallel Syntax Assistant page parsing with deterministic diagnostics and output order.
 4. Streaming record-family JSON export if serialization is a measured bottleneck.
 
+Saved variants and selection rules live in
+[`spec/implementation/performance-variants.md`](../implementation/performance-variants.md). Treat
+that document as a candidate plan, not as approval to skip the baseline measurement.
+
 ## NFR-TEST-001: Testability
 
 - Test behavior, not implementation details.
