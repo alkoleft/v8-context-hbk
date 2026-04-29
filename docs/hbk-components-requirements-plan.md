@@ -401,6 +401,16 @@ Decision to make during implementation: whether the container reader should be g
 
 ## 9. Milestone Plan
 
+### Roadmap framing
+
+The implementation roadmap should be read as a Now/Next/Later plan:
+
+- Now: M0-M2. Prove that the HBK binary/container model is correct for real 8.5 Syntax Assistant files and expose book navigation.
+- Next: M3-M5. Turn pages into structured documentation and platform-context data with a provisional export schema.
+- Later: M6 and follow-ups. Run real-platform acceptance, decide localization merge rules, then integrate the component into `v8-context` or a downstream indexing/MCP layer.
+
+The first release is not an API-stability release. It is an evidence-building release whose main output is a working reader, parser gap inventory and a better model for the stable contract.
+
 ### M0. Project baseline and documentation
 
 Scope:
@@ -522,9 +532,375 @@ The first implementation is acceptable when:
    - enum value
 6. Errors include enough context to identify the failing HBK file and HTML page.
 
-## 11. Risks and Mitigations
+## 11. Epic Specifications
 
-### 11.1. HBK binary format drift
+### Epic E1. HBK container foundation
+
+Hypothesis: if the project provides a small, typed Rust container reader, then all later readers can be implemented and tested without carrying Java/Kotlin runtime dependencies because entity access, block chaining and diagnostics are isolated in one layer.
+
+Primary users:
+
+- library consumer
+- parser maintainer
+
+Requirements:
+
+- Implement the `hbk::container` API from section 6.1.
+- Keep entity access byte-oriented and independent from book/document semantics.
+- Preserve offsets and entity names in diagnostics.
+- Add `inspect` as the first CLI smoke path.
+
+Acceptance:
+
+- Real `shcntx_ru.hbk` opens successfully.
+- Entity list contains `PackBlock`, `FileStorage`, `Book`.
+- Missing entity and corrupt input return typed errors.
+- Unit tests cover descriptor parsing, UTF-16LE entity names and chained block reading.
+
+Out of scope:
+
+- ZIP handling.
+- TOC parsing.
+- Syntax Assistant semantics.
+
+### Epic E2. Help book navigation
+
+Hypothesis: if the project exposes metadata, TOC and page storage through a book-level API, then both documentation tooling and Syntax Assistant extraction can share a single navigation source instead of each parser re-solving paths independently.
+
+Primary users:
+
+- documentation consumer
+- platform-context consumer
+
+Requirements:
+
+- Implement `hbk::book` and `hbk::toc`.
+- Inflate `PackBlock`.
+- Open `FileStorage` through a ZIP reader.
+- Parse `Book` metadata and locale.
+- Normalize page paths at the book boundary.
+- Expose TOC tree, flattened traversal and lookups by HTML/index path.
+
+Acceptance:
+
+- `toc` CLI returns JSON for `shcntx_ru.hbk`.
+- At least one TOC page can be loaded from `FileStorage`.
+- `shcntx_ru.hbk` maps to locale `ru`; `shcntx_root.hbk` maps to root/default locale.
+
+Out of scope:
+
+- HTML text extraction beyond raw page access.
+- Merging localized books.
+
+### Epic E3. Documentation page model
+
+Hypothesis: if raw HTML is normalized into a documentation page model with source refs and deterministic link handling, then parser failures can be debugged from small fixtures and search/indexing consumers can use page previews before the full Syntax Assistant model is complete.
+
+Primary users:
+
+- documentation consumer
+- parser maintainer
+
+Requirements:
+
+- Implement `hbk::docs`.
+- Load raw page HTML lazily.
+- Extract title/path/body preview.
+- Resolve relative and `v8help://` links where possible.
+- Preserve unresolved links as diagnostics.
+
+Acceptance:
+
+- Fixture tests cover a global method page, object/type page and enum page.
+- Normalized text is stable enough for snapshot tests.
+- Unresolved links are observable in diagnostics.
+
+Out of scope:
+
+- Full search ranking.
+- Rendering a help UI.
+
+### Epic E4. Syntax Assistant extraction
+
+Hypothesis: if Syntax Assistant extraction is modeled around page types and provenance-rich domain records, then downstream AI/context consumers can use HBK as a structured source while parser gaps remain actionable instead of hidden in lossy exports.
+
+Primary users:
+
+- platform-context consumer
+- parser maintainer
+
+Requirements:
+
+- Implement `syntax_helper::SyntaxHelperReader`.
+- Detect root sections for global context, enums and type/object catalog.
+- Parse object, method, property, constructor, enum and enum-value pages.
+- Extract signatures, parameters, required flags, return types and descriptions when present.
+- Preserve localized names/aliases and `SourceRef` for every extracted record.
+- Report page-level parser warnings without aborting the entire extraction when partial extraction is possible.
+
+Acceptance:
+
+- Full extraction against `shcntx_ru.hbk` returns non-empty global methods, global properties, platform types and enums.
+- Representative fixture tests exist for every specialized parser.
+- Parser warnings include page path, page title and parser stage.
+
+Out of scope:
+
+- Runtime verification against 1C process objects.
+- Stable MCP/search API.
+
+### Epic E5. Provisional export and lookup helpers
+
+Hypothesis: if the first export is canonical to the new Rust domain model and explicitly provisional, then downstream experiments can start without freezing legacy DTO constraints too early.
+
+Primary users:
+
+- platform-context consumer
+- future `v8-context` integration
+
+Requirements:
+
+- Serialize canonical JSON from the internal model.
+- Include source provenance and localization fields.
+- Add exact lookup helpers for name/type/member/constructor access.
+- Keep any legacy-shaped export as an adapter only after a concrete consumer requires it.
+
+Acceptance:
+
+- `syntax-helper --output target/context` writes documented JSON files.
+- Shape tests cover core record kinds.
+- Export documentation marks compatibility as provisional.
+
+Out of scope:
+
+- Search index.
+- MCP server.
+- Long-term schema compatibility promise.
+
+### Epic E6. Real-platform acceptance and parser gap report
+
+Hypothesis: if the project records extraction counts, parser warnings and unresolved pages for both `shcntx_ru.hbk` and `shcntx_root.hbk`, then the team can make an evidence-based decision about stable contracts and `v8-context` integration.
+
+Primary users:
+
+- parser maintainer
+- future `v8-context` maintainer
+
+Requirements:
+
+- Run all CLI acceptance commands against both target files.
+- Record counts by global methods, global properties, types, type methods, type properties, constructors, enums and enum values.
+- Record parser warnings and unresolved pages as follow-up tasks.
+- Decide whether root/default book is an equal source, a localization pair, or a fallback source.
+
+Acceptance:
+
+- A checked-in acceptance report exists under `docs/` or `artifacts/`.
+- Known parser gaps are linked to actionable backlog items.
+- Stable-contract decision points are listed before integration into `v8-context`.
+
+## 12. Implementation Task Set
+
+### T0. Baseline repository shape
+
+Depends on: none.
+
+Tasks:
+
+- Keep `README.md` aligned with the current baseline files and reference projects.
+- Keep this document as the planning source of truth until a later ADR/spec split is needed.
+- Add a minimal `cargo test` baseline.
+
+Verification:
+
+- `cargo test`
+
+### T1. Container reader and inspect command
+
+Depends on: T0.
+
+Tasks:
+
+- Add library crate modules under `src/lib.rs`.
+- Implement typed container errors with source path/entity context.
+- Implement header/descriptor/block parsing.
+- Implement entity enumeration and byte reads.
+- Add `inspect` CLI through `clap`.
+- Add unit fixtures for binary parsing.
+- Add ignored real-file smoke test for `shcntx_ru.hbk`.
+
+Verification:
+
+- `cargo test`
+- `cargo run -- inspect /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+
+### T2. Book, ZIP storage and TOC reader
+
+Depends on: T1.
+
+Tasks:
+
+- Implement `HbkBook` on top of `HbkContainer`.
+- Inflate `PackBlock`.
+- Open `FileStorage` as ZIP.
+- Parse `Book` metadata.
+- Implement locale inference.
+- Implement TOC tree and lookup APIs.
+- Add `toc` and `page` CLI commands.
+
+Verification:
+
+- `cargo test`
+- `cargo run -- toc /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --format json`
+- `cargo run -- page /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --path "<known-page>"`
+
+### T3. Documentation page parser
+
+Depends on: T2.
+
+Tasks:
+
+- Implement HTML loading and parsing abstraction.
+- Extract page title and normalized text preview.
+- Implement deterministic link normalization.
+- Add diagnostics for unresolved links.
+- Add fixture tests for representative pages.
+
+Verification:
+
+- `cargo test`
+- Fixture snapshot tests for normalized page text and links.
+
+### T4. Syntax Assistant root discovery
+
+Depends on: T2, T3.
+
+Tasks:
+
+- Implement root section detection for global context, enum catalog and type/object catalog.
+- Implement catalog traversal before specialized parsing.
+- Add diagnostics for unknown page classes.
+- Add fixture coverage for root/catalog pages.
+
+Verification:
+
+- `cargo test`
+- Temporary debug/report command or test output that lists discovered root sections for `shcntx_ru.hbk`.
+
+### T5. Specialized Syntax Assistant parsers
+
+Depends on: T4.
+
+Tasks:
+
+- Implement object/type parser.
+- Implement method parser.
+- Implement property parser.
+- Implement constructor parser.
+- Implement enum parser.
+- Implement enum value parser.
+- Implement global context parser.
+- Add fixtures for every parser kind.
+
+Verification:
+
+- `cargo test`
+- Known representative method/property/type/enum assertions pass.
+
+### T6. Domain model and canonical JSON export
+
+Depends on: T5.
+
+Tasks:
+
+- Finalize provisional internal domain structs.
+- Add `serde` serialization.
+- Add source provenance fields to all exported records.
+- Implement `syntax-helper --output`.
+- Document export file names and schema intent.
+
+Verification:
+
+- `cargo test`
+- `cargo run -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context`
+- Output files are non-empty and parse as JSON.
+
+### T7. Lookup helpers
+
+Depends on: T6.
+
+Tasks:
+
+- Add exact lookup by global member name.
+- Add exact lookup by type name.
+- Add exact lookup by type/member name.
+- Add constructor lookup by type name.
+- Keep search ranking out of scope.
+
+Verification:
+
+- `cargo test`
+- Unit tests for lookup ambiguity and missing items.
+
+### T8. Real-platform acceptance report
+
+Depends on: T6, T7.
+
+Tasks:
+
+- Run acceptance commands against `shcntx_ru.hbk`.
+- Run acceptance commands against `shcntx_root.hbk`.
+- Record counts by entity kind and parser warnings.
+- Record unresolved pages/links.
+- Convert parser gaps into follow-up tasks.
+- Make the localization/root-source decision explicit.
+
+Verification:
+
+- Checked-in report with commands, exit codes, counts and gaps.
+
+### T9. Integration decision for `v8-context`
+
+Depends on: T8.
+
+Tasks:
+
+- Compare HBK export model with existing `v8-context` source model.
+- Decide whether this crate remains standalone, becomes a workspace member, or exposes a file-level integration artifact first.
+- Record the decision in an ADR or integration note before implementation.
+
+Verification:
+
+- Decision artifact exists and references T8 evidence.
+
+## 13. Requirement Traceability
+
+| Requirement area | Primary epic | Primary tasks | First verification |
+| --- | --- | --- | --- |
+| HBK container reader | E1 | T1 | `inspect shcntx_ru.hbk` lists core entities |
+| Book metadata and storage | E2 | T2 | `toc` and `page` commands load real book data |
+| TOC navigation | E2 | T2 | TOC lookup tests and real-file smoke |
+| HTML page model | E3 | T3 | Fixture snapshot tests |
+| Syntax Assistant extraction | E4 | T4, T5 | Parser fixture tests and non-empty real extraction |
+| JSON export | E5 | T6 | `syntax-helper --output` writes valid JSON |
+| Lookup helpers | E5 | T7 | Exact lookup unit tests |
+| Real-platform acceptance | E6 | T8 | Checked-in acceptance report |
+| `v8-context` integration decision | E6 | T9 | ADR/integration note |
+
+## 14. Success Metrics
+
+The project is successful for the first delivery when:
+
+- Reader correctness: both target HBK files open and expose expected core entities.
+- Extraction coverage: real `shcntx_ru.hbk` extraction returns non-empty records for all top-level model families.
+- Parser observability: parser warnings and unresolved pages are counted and source-linked.
+- Test confidence: every specialized parser has at least one representative fixture.
+- Consumer usability: downstream tooling can consume canonical JSON without reading HBK directly.
+- Contract discipline: stable API/export commitments are deferred until after the real-platform acceptance report.
+
+## 15. Risks and Mitigations
+
+### 15.1. HBK binary format drift
 
 Risk: 8.5 HBK files may differ from examples tested in `hbk-reader`.
 
@@ -534,7 +910,7 @@ Mitigation:
 - Keep block/header parsing strict but diagnostic.
 - Record unsupported fields instead of ignoring suspicious values silently.
 
-### 11.2. HTML shape drift
+### 15.2. HTML shape drift
 
 Risk: Syntax Assistant page markup may differ across platform versions.
 
@@ -544,7 +920,7 @@ Mitigation:
 - Keep page-type parsers isolated.
 - Return parse warnings/gaps with source refs.
 
-### 11.3. Legacy DTO reuse
+### 15.3. Legacy DTO reuse
 
 Risk: `platform-context-exporter` DTOs may be convenient to copy, but they can freeze old constraints and lose localization/provenance.
 
@@ -554,7 +930,7 @@ Mitigation:
 - Treat legacy DTO/export shapes as optional adapters for concrete consumers.
 - Prefer new algorithms and schemas when they reduce complexity or improve correctness.
 
-### 11.4. Mixing documentation and runtime context truth
+### 15.4. Mixing documentation and runtime context truth
 
 Risk: HBK documentation data may be confused with runtime platform introspection.
 
@@ -564,18 +940,20 @@ Mitigation:
 - Keep runtime extraction out of this project milestone.
 - Later compare against runtime/static sources in separate artifacts.
 
-## 12. Open Questions
+## 16. Open Questions
 
 1. Should the crate expose only a library plus tiny CLI, or should the CLI be a first-class supported tool?
 2. Should `shcntx_root.hbk` and `shcntx_ru.hbk` be merged into bilingual records, or treated as separate localized books?
 3. What is the canonical internal field naming for the new Rust/domain model: English field names with `ru_name`/`en_name`, or another explicit localization structure?
 4. Should search/indexing live in this crate later, or remain in a separate consumer crate?
 5. Which minimal real HTML pages from 8.5 may be committed as parser fixtures without overloading the repository?
+6. Should the first acceptance report live under `docs/` for visibility or under `artifacts/` to match evidence/report conventions from `v8-context`?
+7. Should ignored real-platform tests be enabled automatically when `/opt/1cv8/x86_64/8.5.1.1150/` exists, or only through an explicit environment flag?
 
-## 13. Immediate Next Steps
+## 17. Immediate Next Steps
 
-1. Add README that points to this document and declares the current baseline.
-2. Implement M1 container reader.
-3. Copy or synthesize minimal binary fixture tests for block parsing.
-4. Add ignored smoke test for `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`.
-5. After M1 passes, port TOC parsing and validate `PackBlock` against real `shcntx_ru.hbk`.
+1. Implement T1/M1 container reader.
+2. Copy or synthesize minimal binary fixture tests for block parsing.
+3. Add ignored smoke test for `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`.
+4. After T1 passes, implement T2/M2 book, TOC and page access.
+5. Keep export/API names provisional until T8 acceptance data exists.
