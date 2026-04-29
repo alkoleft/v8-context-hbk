@@ -282,7 +282,7 @@ Status:
 
 - Completed with `docs/syntax-helper-acceptance-report.md`, covering real `shcntx_ru.hbk` and `shcntx_root.hbk` command exits, record counts, diagnostics, unresolved page classes, follow-up parser gaps and `_root` export locale mapping to `en`.
 
-### [ ] T10. All-HBK smoke report
+### [x] T10. All-HBK smoke report
 
 Depends on: T9.
 
@@ -302,6 +302,10 @@ Verification:
 - All-HBK smoke report exists and references the exact commands used.
 - `cargo test`
 - `git diff --check`
+
+Status:
+
+- Completed with `docs/all-hbk-smoke-report.md`, covering 116 target-platform HBK files with per-file `inspect` and `toc --format json` exit codes and no fatal failures or unsupported structures.
 
 ### [ ] T11. Integration decision for `v8-context`
 
