@@ -1,30 +1,87 @@
 # v8-context-hbk
 
-Rust components for reading 1C `*.hbk` help books and extracting structured platform documentation/context from Syntax Assistant books.
+`v8-context-hbk` is a command-line tool for reading 1C `*.hbk` help books and extracting structured platform documentation from Syntax Assistant books.
 
-This repository is planned as a future HBK-backed component for `/home/alko/develop/open-source/v8-context/`. For now it remains a separately testable workspace while the extraction model and contracts are still provisional.
+Use it when you need to inspect an installed 1C help book, print its table of contents, read a help page, or export Syntax Assistant data into JSON files for downstream tools.
 
-Current planning baseline:
+The current extraction baseline is 1C platform `8.5.1.1150`. Other versions may work, but the command and export contracts are still provisional.
 
-- target platform: `/opt/1cv8/x86_64/8.5.1.1150/`
-- small real HBK smoke files for container/book/navigation stages:
-  - `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk`
-  - `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk`
-- Syntax Assistant acceptance files:
-  - `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
-  - `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
-- final broad smoke target: all `*.hbk` files under `/opt/1cv8/x86_64/8.5.1.1150/`
-- primary implementation reference: `/home/alko/develop/open-source/hbk-reader`
-- secondary model/export/search reference: `/home/alko/develop/open-source/bsl-context-multi-project/platform-context-exporter`
+## Prepare
 
-Workspace crates:
+Build the CLI from the repository:
 
-- `hbk-container`: binary HBK container reading and entity byte access.
-- `hbk-book`: book metadata, locale inference, ZIP storage, TOC and page reads.
-- `hbk-docs`: documentation HTML parsing, normalized text/link extraction and page diagnostics.
-- `syntax-helper-model`: provenance-rich platform context domain model and lookup helpers.
-- `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized parsers.
-- `hbk-export`: canonical JSON export adapters.
-- `v8-context-hbk-cli`: command wiring for the installed `v8-context-hbk` binary.
+```bash
+cargo build -p v8-context-hbk-cli
+```
 
-See [HBK components requirements and implementation plan](docs/hbk-components-requirements-plan.md).
+Use the binary through Cargo:
+
+```bash
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- <command>
+```
+
+The examples below assume the platform help files are installed under `/opt/1cv8/x86_64/8.5.1.1150/`.
+
+## Inspect a Help Book
+
+List HBK container entities:
+
+```bash
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk
+```
+
+Print a table of contents as JSON:
+
+```bash
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json
+```
+
+Read a page by its HTML path from the book storage:
+
+```bash
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --path "<html-path>"
+```
+
+## Export Syntax Assistant Data
+
+Export Russian Syntax Assistant data:
+
+```bash
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru
+```
+
+Export root/English-source Syntax Assistant data. The export locale is written as `en`:
+
+```bash
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en
+```
+
+The output directory contains JSON files by record family:
+
+- `metadata.json`
+- `global-contexts.json`
+- `global-methods.json`
+- `global-properties.json`
+- `platform-types.json`
+- `type-methods.json`
+- `type-properties.json`
+- `constructors.json`
+- `enums.json`
+- `enum-values.json`
+- `diagnostics.json`
+
+## Current Limitations
+
+- The JSON export schema is provisional.
+- The tool reads existing HBK files; it does not create or modify HBK files.
+- Syntax Assistant extraction is evidence-based on the current target platform and may need parser updates for other platform versions.
+- Runtime 1C introspection is out of scope. The tool extracts documentation from HBK files only.
+
+## More Documentation
+
+- End-user documentation: this file.
+- Specification index: [spec/README.md](spec/README.md).
+- Functional requirements: [spec/requirements/functional.md](spec/requirements/functional.md).
+- Non-functional requirements: [spec/requirements/non-functional.md](spec/requirements/non-functional.md).
+- UAT test cases: [spec/acceptance/uat-test-cases.md](spec/acceptance/uat-test-cases.md).
+- Integration decision: [spec/decisions/ADR-0001-v8-context-integration.md](spec/decisions/ADR-0001-v8-context-integration.md).

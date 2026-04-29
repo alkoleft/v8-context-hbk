@@ -1,10 +1,10 @@
-# v8-context Integration Decision
+# ADR-0001: Keep v8-context-hbk Standalone and Integrate Through File Export First
 
 Task: T11 integration decision for `/home/alko/develop/open-source/v8-context/`.
 
 Date: 2026-04-29.
 
-Status: accepted for the current provisional HBK extraction stage.
+Status: Accepted for the current provisional HBK extraction stage.
 
 ## Decision
 
@@ -108,3 +108,18 @@ constraints on the internal model. No current consumer requires the legacy shape
 - Decide whether `v8-context-hbk` stays a separate crate consumed through CLI/file artifacts, is
   published as a library dependency, or is moved into the `v8-context` workspace after the importer
   proves stable.
+
+## Implementation Plan
+
+- Keep this repository independently buildable and testable.
+- Keep `syntax-helper --output` as the first integration surface.
+- Keep HBK container reading, TOC/page navigation, Syntax Assistant extraction and export ownership
+  inside this repository until a downstream importer proves a more direct integration boundary.
+- Do not let `v8-context` query paths parse HBK containers, HTML pages or category files directly.
+
+## Verification
+
+- [x] T11 decision exists under `spec/decisions/`.
+- [x] Decision references T9 Syntax Assistant acceptance evidence.
+- [x] Decision references T10 all-HBK smoke evidence.
+- [x] `README.md` and `spec/README.md` point to the numbered ADR path.

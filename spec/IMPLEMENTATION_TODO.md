@@ -1,383 +1,75 @@
 # v8-context-hbk Implementation TODO
 
-Source of truth: [HBK components requirements and implementation plan](../docs/hbk-components-requirements-plan.md).
+Purpose: active implementation task ledger only.
 
-Loop rule:
+Specification index: [Specification Index](README.md).
+
+Completed task history: [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md).
+
+Current status: T13 is the first active unchecked task and covers performance/resource baseline plus
+implementation-hypothesis review before any streaming or parallel extraction refactor.
+
+## Loop Rule
 
 - Take the first unchecked task.
+- If there is no unchecked task, add one before implementing new scope.
+- Every new task must reference the relevant requirement, UAT, acceptance, implementation spec or
+  ADR IDs from `spec/`.
 - Keep scope limited to that task and its direct verification.
 - Mark a task complete only after its listed verification passes.
-- If a task cannot be completed, leave it unchecked and record the blocker in the task notes or final response.
+- If a task cannot be completed, leave it unchecked and record the blocker in the task notes or final
+  response.
 - Do not start the next task in the same run unless the prompt explicitly asks for multiple tasks.
-- Before committing, stage only files changed for the current task and verify `git diff --cached --name-only`.
+- Before committing, stage only files changed for the current task and verify
+  `git diff --cached --name-only`.
 - Do not create empty commits.
 
-## Tasks
+### [ ] T13. Performance/resource baseline and implementation hypotheses
 
-### [x] T0. Baseline repository shape
+Depends on: T12.
 
-Scope:
+Spec refs:
 
-- Keep `README.md` aligned with the current baseline files and reference projects.
-- Keep `docs/hbk-components-requirements-plan.md` as the planning source of truth until a later ADR/spec split is needed.
-- Keep the minimal `cargo test` baseline passing.
-
-Expected artifacts:
-
-- Updated docs only if the live repository state differs from the baseline.
-
-Verification:
-
-- `cargo test`
-- `git diff --check`
-
-Status:
-
-- Completed by planning baseline commit `fc2b3d1`.
-
-### [x] T1. Container reader and inspect command
-
-Depends on: T0.
+- NFR-PERF-001
+- NFR-TEST-001
+- `spec/acceptance/baseline.md`
+- `spec/implementation/components.md`
 
 Scope:
 
-- Add library crate modules under `src/lib.rs`.
-- Implement typed container errors with source path/entity context.
-- Implement HBK header, descriptor and block parsing.
-- Implement entity enumeration and byte reads.
-- Add `inspect` CLI through `clap`.
-- Add unit fixtures for binary parsing.
-- Add real-file smoke checks for `fmtdui_root.hbk` and `fmtdui_ru.hbk` that are ignored by default or gated by an explicit environment variable.
+- Treat minimum resource consumption and high throughput as first-class non-functional requirements.
+- Measure the current implementation before refactoring: wall-clock time, peak RSS or equivalent
+  memory metric, command exit status and output counts for representative commands.
+- Cover at least:
+  - `inspect` and `toc --format json` on the small `fmtdui_root.hbk` / `fmtdui_ru.hbk` smoke pair
+    when the fixtures exist;
+  - `syntax-helper --output` on `shcntx_ru.hbk` and `shcntx_root.hbk` when the fixtures exist;
+  - the all-HBK smoke path or a documented equivalent command set for every target-platform
+    `*.hbk` file when the platform directory exists.
+- Inspect the current resource hotspots in `hbk-container`, `hbk-book`, `syntax-helper-extract` and
+  `hbk-export`, especially whole-entity reads, `FileStorage` ZIP buffering, page `BTreeMap`
+  accumulation, domain model accumulation and JSON serialization.
+- Evaluate implementation hypotheses without committing to an architecture prematurely:
+  - narrower streaming or batched reads across `FileStorage` and page loading;
+  - keeping `memmap2` versus moving container access toward `Read + Seek`;
+  - bounded parallel Syntax Assistant page parsing with deterministic diagnostics and output order;
+  - streaming record-family JSON export if serialization is a measured bottleneck.
+- Do not add broad pipeline frameworks, caches, plugin systems, tuning knobs or compatibility
+  adapters as part of this task.
+- If the measurements make the tradeoff non-trivial, record the chosen implementation direction as a
+  follow-up decision before code refactoring.
 
 Expected artifacts:
 
-- Rust container module.
-- CLI `inspect` command.
-- Unit tests and optional real-platform smoke test.
+- Checked-in performance/resource baseline and hypothesis note, or an updated specification section
+  with exact commands, measurements, observations and recommended next task.
+- Follow-up T14+ task for the selected implementation slice, if a refactor is justified.
 
 Verification:
 
-- `cargo test`
-- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` exists: `cargo run -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk`
-- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` exists: `cargo run -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk`
-- If the files are absent: document that the real-platform smoke was skipped because the platform fixtures are unavailable.
-- `git diff --check`
-
-### [x] T2. Book, ZIP storage and TOC reader
-
-Depends on: T1.
-
-Scope:
-
-- Implement `HbkBook` on top of `HbkContainer`.
-- Inflate `PackBlock`.
-- Open `FileStorage` as ZIP.
-- Parse `Book` metadata.
-- Implement locale inference.
-- Implement TOC tree and lookup APIs.
-- Add `toc` and `page` CLI commands.
-- Add committed deterministic known-page path fixtures for `fmtdui_root.hbk` and `fmtdui_ru.hbk` so page smoke verification is reproducible.
-
-Expected artifacts:
-
-- Book and TOC modules.
-- CLI `toc` and `page` commands.
-- Tests for metadata, locale, TOC traversal and page access.
-
-Verification:
-
-- `cargo test`
-- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` exists: `cargo run -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json`
-- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` exists: `cargo run -- page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --path "<committed-known-ru-page>"`
-- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` exists: `cargo run -- page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk --path "<committed-known-root-page>"`
-- If the files are absent: document that real-platform TOC/page smoke was skipped because the platform fixtures are unavailable.
-- `git diff --check`
-
-### [x] T3. Documentation page parser
-
-Depends on: T2.
-
-Scope:
-
-- Implement HTML loading and parsing abstraction.
-- Extract page title and normalized text preview.
-- Implement deterministic link normalization.
-- Add diagnostics for unresolved links.
-- Add fixture tests for representative pages.
-
-Expected artifacts:
-
-- Documentation page module.
-- Fixture tests for normalized text and links.
-
-Verification:
-
-- `cargo test`
-- `git diff --check`
-
-### [x] T4. Syntax Assistant fixture corpus
-
-Depends on: T2, T3.
-
-Scope:
-
-- Inspect representative pages from `shcntx_ru.hbk` and `shcntx_root.hbk`.
-- Select the minimal committed fixture set for root/catalog pages and every specialized parser kind.
-- Add a fixture manifest with source HBK file, HTML path, page title, parser kind and reason for inclusion.
-- Copy only minimal real HTML fragments needed for parser behavior tests.
-
-Expected artifacts:
-
-- Syntax Assistant fixture manifest.
-- Minimal real HTML fixtures for root/catalog and specialized parsers.
-
-Verification:
-
-- `cargo test`
-- Fixture manifest covers global context, global method, global property, object/type, object method, object property, constructor, enum, enum value and root/catalog pages.
-- `git diff --check`
-
-Status:
-
-- Completed with a curated `tests/fixtures/syntax-helper/manifest.tsv` and minimal real HTML fragments from `shcntx_ru.hbk` and `shcntx_root.hbk`.
-
-### [x] T5. Syntax Assistant root discovery
-
-Depends on: T4.
-
-Scope:
-
-- Implement root section detection for global context, enum catalog and type/object catalog.
-- Implement catalog traversal before specialized parsing.
-- Add diagnostics for unknown page classes.
-- Add fixture coverage for root/catalog pages.
-
-Expected artifacts:
-
-- Syntax Assistant traversal/root discovery module.
-- Stable automated assertion for discovered root sections in `shcntx_ru.hbk`.
-
-Verification:
-
-- `cargo test`
-- Stable automated assertion that discovered root sections for `shcntx_ru.hbk` include candidates for global context, enum catalog and type/object catalog.
-- If the file is absent: document that real-platform root discovery smoke was skipped because the platform fixture is unavailable.
-- `git diff --check`
-
-Status:
-
-- Completed with `syntax_helper` root discovery, catalog traversal, unknown-page diagnostics and fixture/real-platform assertions for Syntax Assistant root sections.
-
-### [x] T6. Specialized Syntax Assistant parsers
-
-Depends on: T5.
-
-Scope:
-
-- Implement object/type parser.
-- Implement method parser.
-- Implement property parser.
-- Implement constructor parser.
-- Implement enum parser.
-- Implement enum value parser.
-- Implement global context parser.
-- Add fixtures for every parser kind.
-
-Expected artifacts:
-
-- Specialized parser modules.
-- Representative parser fixtures and assertions.
-
-Verification:
-
-- `cargo test`
-- Known representative assertions pass for object/type, method, property, constructor, enum, enum-value and global-context parsers.
-- Full in-memory extraction against `shcntx_ru.hbk` returns non-empty global methods, global properties, platform types and enums when the file exists.
-- `git diff --check`
-
-Status:
-
-- Completed with specialized Syntax Assistant parser domain structs, fixture assertions for every parser kind, and real `shcntx_ru.hbk` extraction smoke for the required non-empty families.
-
-### [x] T7. Domain model and canonical JSON export
-
-Depends on: T6.
-
-Scope:
-
-- Finalize provisional internal domain structs.
-- Add `serde` serialization.
-- Add source provenance fields to all exported records.
-- Implement `syntax-helper --output`.
-- Map `_root` source locale to export locale `en`.
-- Document export file names and schema intent.
-
-Expected artifacts:
-
-- Export module and JSON schema notes.
-- CLI `syntax-helper --output`.
-
-Verification:
-
-- `cargo test`
-- `cargo run -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru`
-- `cargo run -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en`
-- JSON output files are non-empty and parse successfully.
-- `git diff --check`
-
-Status:
-
-- Completed with canonical JSON export files, source provenance serialization, `syntax-helper --output`, `_root` export locale mapping to `en`, full specialized-page extraction in the production reader path and reviewer-approved verification.
-
-### [x] T8. Lookup helpers
-
-Depends on: T7.
-
-Scope:
-
-- Add exact lookup by global member name.
-- Add exact lookup by type name.
-- Add exact lookup by type/member name.
-- Add constructor lookup by type name.
-- Keep search ranking out of scope.
-
-Expected artifacts:
-
-- Lookup API.
-- Tests for found, missing and ambiguous items.
-
-Verification:
-
-- `cargo test`
-- `git diff --check`
-
-Status:
-
-- Completed with exact `PlatformContext` lookup helpers for global members, platform types, type members and constructors, including found/missing/ambiguous coverage.
-
-### [x] T9. Real-platform Syntax Assistant acceptance report
-
-Depends on: T7, T8.
-
-Scope:
-
-- Run acceptance commands against `shcntx_ru.hbk`.
-- Run acceptance commands against `shcntx_root.hbk`.
-- Record counts by: global methods, global properties, types, type methods, type properties, constructors, enums and enum values; record parser warnings.
-- Record unresolved pages/links.
-- Convert parser gaps into follow-up tasks.
-- Confirm that `shcntx_root.hbk` exports as locale `en` and list remaining localization merge decisions.
-
-Expected artifacts:
-
-- Checked-in acceptance report with commands, exit codes, counts and gaps.
-
-Verification:
-
-- Acceptance report exists and references the exact commands used.
-- `cargo test`
-- `git diff --check`
-
-Status:
-
-- Completed with `docs/syntax-helper-acceptance-report.md`, covering real `shcntx_ru.hbk` and `shcntx_root.hbk` command exits, record counts, diagnostics, unresolved page classes, follow-up parser gaps and `_root` export locale mapping to `en`.
-
-### [x] T10. All-HBK smoke report
-
-Depends on: T9.
-
-Scope:
-
-- Enumerate every `*.hbk` file under `/opt/1cv8/x86_64/8.5.1.1150/`.
-- Run generic container/book/TOC smoke checks for every file.
-- Record per-file successes, fatal failures and unsupported structures.
-- Convert relevant unsupported structures into follow-up tasks.
-
-Expected artifacts:
-
-- Checked-in all-HBK smoke report with file count, commands, exit codes and per-file failures.
-
-Verification:
-
-- All-HBK smoke report exists and references the exact commands used.
-- `cargo test`
-- `git diff --check`
-
-Status:
-
-- Completed with `docs/all-hbk-smoke-report.md`, covering 116 target-platform HBK files with per-file `inspect` and `toc --format json` exit codes and no fatal failures or unsupported structures.
-
-### [x] T11. Integration decision for `v8-context`
-
-Depends on: T9, T10.
-
-Scope:
-
-- Compare HBK export model with existing `v8-context` source model.
-- Inspect current `/home/alko/develop/open-source/v8-context` model/decision artifacts before making the integration decision.
-- Decide whether this crate remains standalone, becomes a workspace member, or exposes a file-level integration artifact first.
-- Record the decision in an ADR or integration note before implementation.
-
-Expected artifacts:
-
-- Decision artifact referencing T9/T10 evidence.
-
-Verification:
-
-- Decision artifact exists.
-- `cargo test`
-- `git diff --check`
-
-Status:
-
-- Completed with `docs/v8-context-integration-decision.md`, deciding that `v8-context-hbk` remains standalone for now and exposes the first `v8-context` integration through the file-level `syntax-helper --output` export before any workspace merge or direct HBK query-path coupling.
-
-### [x] T12. Split implementation into reusable workspace crates
-
-Depends on: T11.
-
-Scope:
-
-- Convert the repository to a Cargo workspace without changing accepted CLI behavior.
-- Split the current monolithic `src/lib.rs` implementation along the existing context boundaries:
-  - `hbk-container`: binary HBK container reading, entity descriptors and entity byte reads.
-  - `hbk-book`: book metadata, locale inference, ZIP storage access, TOC and page reads.
-  - `hbk-docs`: documentation HTML page parsing, normalized text/link extraction and page diagnostics.
-  - `syntax-helper-model`: provenance-rich platform context domain model and lookup helpers.
-  - `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized page parsers.
-  - `hbk-export`: canonical JSON export adapters for the Rust domain model.
-  - `v8-context-hbk-cli`: `inspect`, `toc`, `page` and `syntax-helper` command wiring.
-- Keep lower-level crates independent from higher-level concerns: container must not depend on book/docs/extractor/export, book must not depend on Syntax Assistant extraction, and the domain model must not depend on HBK/HTML parsing.
-- Preserve provisional contracts; do not add compatibility layers, broad facades, caches, plugin systems or legacy-shaped DTOs unless a concrete consumer requires them.
-- Move behavior tests with the crate that owns the public behavior being tested; keep tests focused on observable contracts.
-
-Expected artifacts:
-
-- Root workspace `Cargo.toml`.
-- Reusable crates under `crates/`.
-- CLI package that preserves the existing command names and accepted smoke paths.
-- Updated docs only where package names, command paths or crate boundaries become repository truth.
-
-Verification:
-
-- `cargo fmt`
+- Baseline/hypothesis artifact references exact commands and fixture availability.
+- Artifact records whether each fixture-backed command was run or skipped.
+- Artifact identifies the first implementation slice to try next, or explicitly records that no
+  refactor is currently justified.
 - `cargo test --workspace`
-- `cargo check -p hbk-container`
-- `cargo check -p hbk-book`
-- `cargo check -p hbk-docs`
-- `cargo check -p syntax-helper-model`
-- `cargo check -p syntax-helper-extract`
-- `cargo check -p hbk-export`
-- `cargo check -p v8-context-hbk-cli`
-- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` when the fixture exists.
-- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json` when the fixture exists.
-- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --path "<committed-known-ru-page>"` when the fixture exists.
-- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru` when the fixture exists.
-- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en` when the fixture exists.
-- Negative missing-file smoke through `cargo run -p v8-context-hbk-cli --bin v8-context-hbk`.
-- If platform fixtures are absent, document skipped real-platform smoke commands.
 - `git diff --check`
-
-Status:
-
-- Completed with a Cargo workspace split into reusable crates, the preserved `v8-context-hbk` binary, package-level checks, real-platform CLI smokes and reviewer-approved completeness verification.

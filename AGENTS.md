@@ -8,11 +8,23 @@ These rules apply to the whole repository.
 
 The project is currently an independently testable component with provisional contracts. It may later become an HBK-backed source for `/home/alko/develop/open-source/v8-context/`, but do not couple it to unfinished downstream contracts before the extraction model is validated on real HBK data.
 
-Use these files as the main sources of project truth:
+Use `spec/` as the only durable project source of truth. Start from the
+specification index before changing behavior or tasks:
 
-- `README.md`
-- `docs/hbk-components-requirements-plan.md`
+- `spec/README.md`
+- `spec/requirements/functional.md`
+- `spec/requirements/non-functional.md`
+- `spec/use-cases.md`
+- `spec/acceptance/uat-test-cases.md`
+- `spec/acceptance/baseline.md`
+- `spec/implementation/components.md`
+- `spec/decisions/`
 - `spec/IMPLEMENTATION_TODO.md`
+
+`README.md` is user-facing CLI documentation, not the source of product or
+implementation truth. `IMPLEMENTATION_TODO.md` is the active task ledger only.
+When chat, README, code comments or task text conflict with `spec/`, reconcile
+the relevant spec or ADR before implementation.
 
 ## Context Boundaries
 
@@ -54,6 +66,13 @@ Test behavior, not implementation.
 
 ## Implementation Discipline
 
+- Follow this order for non-trivial work:
+  1. Read `spec/README.md` and the relevant requirement, use-case, acceptance, implementation and ADR files.
+  2. If the requested behavior is not covered, update the appropriate spec or add an ADR before implementation.
+  3. Add or update UAT test cases when the behavior is user-visible through CLI, files, exports or diagnostics.
+  4. Add or update the first active task in `spec/IMPLEMENTATION_TODO.md`, referencing spec/UAT/ADR IDs.
+  5. Implement only that task and its direct verification unless the prompt explicitly asks for broader scope.
+  6. After verification, update the task ledger and promote durable findings back into spec/ADR files.
 - Follow the active implementation plan before adding new scope.
 - Keep public contracts provisional unless the plan or ADRs explicitly stabilize them.
 - Prefer Rust-native models and algorithms over reproducing Java/Kotlin reference APIs.
