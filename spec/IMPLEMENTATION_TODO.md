@@ -255,7 +255,7 @@ Status:
 
 - Completed with exact `PlatformContext` lookup helpers for global members, platform types, type members and constructors, including found/missing/ambiguous coverage.
 
-### [ ] T9. Real-platform Syntax Assistant acceptance report
+### [x] T9. Real-platform Syntax Assistant acceptance report
 
 Depends on: T7, T8.
 
@@ -277,6 +277,10 @@ Verification:
 - Acceptance report exists and references the exact commands used.
 - `cargo test`
 - `git diff --check`
+
+Status:
+
+- Completed with `docs/syntax-helper-acceptance-report.md`, covering real `shcntx_ru.hbk` and `shcntx_root.hbk` command exits, record counts, diagnostics, unresolved page classes, follow-up parser gaps and `_root` export locale mapping to `en`.
 
 ### [ ] T10. All-HBK smoke report
 
