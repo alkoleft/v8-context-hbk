@@ -35,7 +35,7 @@ Status:
 
 - Completed by planning baseline commit `fc2b3d1`.
 
-### [ ] T1. Container reader and inspect command
+### [x] T1. Container reader and inspect command
 
 Depends on: T0.
 
