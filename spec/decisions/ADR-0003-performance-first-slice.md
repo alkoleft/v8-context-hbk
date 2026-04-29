@@ -4,6 +4,10 @@ Date: 2026-04-30.
 
 Status: Accepted for the first post-baseline performance slice.
 
+Post-decision status: T14 completed Variant A. T15 completed Variant B after post-T14 measurements
+showed peak RSS was still high. The current active follow-up is T16 memory attribution before
+choosing Variant C, Variant E or no immediate refactor.
+
 ## Context
 
 T13 measured the current implementation before any streaming or parallel extraction refactor.
@@ -62,7 +66,7 @@ the current evidence is not enough to replace the lower-level access model first
 
 ## Consequences
 
-- T14 remains the next active task.
+- At decision time, T14 became the next active task.
 - T14 must keep diagnostics provenance available while removing provenance from consumer record
   files.
 - T14 must write compact JSON through a writer instead of materializing pretty JSON bytes.

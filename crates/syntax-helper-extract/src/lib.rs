@@ -32,64 +32,30 @@ impl<'a> SyntaxHelperReader<'a> {
 
     pub fn extract(&self) -> Result<PlatformContext, SyntaxHelperError> {
         let toc_index = syntax_toc_index(self.book.toc());
-        let root_paths = self
-            .book
-            .toc()
-            .flat_pages()
-            .filter(|flat_page| {
-                flat_page.index_path.indexes().len() == 1
-                    && is_syntax_helper_path(&flat_page.page.html_path)
-            })
-            .map(|flat_page| flat_page.page.html_path.clone())
-            .collect::<Vec<_>>();
-        let root_pages = self
-            .book
-            .read_pages(root_paths.iter().map(String::as_str))?;
+        let mut file_storage = self.book.file_storage_reader()?;
+        let mut load_page = |html_path: &str| {
+            let raw_html = file_storage.read_page(html_path)?;
+            Ok(parse_syntax_page_content_with_index_owned(
+                self.book.path(),
+                self.book.locale().source_code(),
+                &toc_index,
+                html_path,
+                raw_html,
+            ))
+        };
         let discovery = discover_roots_with_loader(
             self.book.path(),
             self.book.locale().source_code(),
             self.book.toc(),
-            |html_path| {
-                let raw_html = root_pages.get(html_path).ok_or_else(|| {
-                    SyntaxHelperError::Book(BookError::MissingZipEntry {
-                        path: self.book.path().to_path_buf(),
-                        entry_name: html_path.to_string(),
-                    })
-                })?;
-                Ok(parse_syntax_page_content_with_index(
-                    self.book.path(),
-                    self.book.locale().source_code(),
-                    &toc_index,
-                    html_path,
-                    raw_html,
-                ))
-            },
+            &mut load_page,
         )?;
-        let page_paths = extraction_page_paths(&discovery);
-        let pages = self
-            .book
-            .read_pages(page_paths.iter().map(String::as_str))?;
         let discovery = extraction_discovery(discovery);
         parse_extraction_pages(
             self.book.path(),
             self.book.locale().source_code(),
             self.book.toc(),
             discovery,
-            |html_path| {
-                let raw_html = pages.get(html_path).ok_or_else(|| {
-                    SyntaxHelperError::Book(BookError::MissingZipEntry {
-                        path: self.book.path().to_path_buf(),
-                        entry_name: html_path.to_string(),
-                    })
-                })?;
-                Ok(parse_syntax_page_content_with_index(
-                    self.book.path(),
-                    self.book.locale().source_code(),
-                    &toc_index,
-                    html_path,
-                    raw_html,
-                ))
-            },
+            load_page,
         )
     }
 }
@@ -171,21 +137,6 @@ pub fn extract_with_loader(
     parse_extraction_pages(hbk_path, locale, toc, discovery, load_page)
 }
 
-fn extraction_page_paths(discovery: &RootDiscovery) -> Vec<String> {
-    let mut paths = BTreeSet::new();
-    for root in &discovery.roots {
-        if root.kind == RootSectionKind::GlobalContext {
-            paths.insert(root.source.html_path.clone());
-        }
-        for page in &root.pages {
-            if !matches!(page.class, PageClass::Catalog | PageClass::Unknown) {
-                paths.insert(page.source.html_path.clone());
-            }
-        }
-    }
-    paths.into_iter().collect()
-}
-
 fn extraction_discovery(mut discovery: RootDiscovery) -> RootDiscovery {
     for root in &mut discovery.roots {
         root.pages
@@ -207,8 +158,14 @@ fn parse_extraction_pages(
     };
     let mut visited = BTreeSet::new();
 
-    for root in &discovery.roots {
-        for catalog_page in &root.pages {
+    for root in discovery.roots {
+        let RootSection {
+            kind,
+            source: root_source,
+            pages,
+        } = root;
+
+        for catalog_page in pages {
             if matches!(catalog_page.class, PageClass::Catalog | PageClass::Unknown) {
                 continue;
             }
@@ -244,11 +201,9 @@ fn parse_extraction_pages(
             }
         }
 
-        if root.kind == RootSectionKind::GlobalContext
-            && visited.insert(root.source.html_path.clone())
-        {
-            let content = load_page(&root.source.html_path)?;
-            let source = source_from_content(&root.source, &content);
+        if kind == RootSectionKind::GlobalContext && visited.insert(root_source.html_path.clone()) {
+            let content = load_page(&root_source.html_path)?;
+            let source = source_from_content(&root_source, &content);
             context
                 .global_contexts
                 .push(parse_global_context(&content, source));
@@ -561,6 +516,7 @@ fn parse_syntax_page_content(
     parse_syntax_page_content_with_index(hbk_path, locale, &toc_index, html_path, raw_html)
 }
 
+#[cfg(test)]
 fn parse_syntax_page_content_with_index(
     hbk_path: &Path,
     locale: &str,
@@ -568,15 +524,31 @@ fn parse_syntax_page_content_with_index(
     html_path: &str,
     raw_html: &str,
 ) -> PageContent {
+    parse_syntax_page_content_with_index_owned(
+        hbk_path,
+        locale,
+        toc_index,
+        html_path,
+        raw_html.to_string(),
+    )
+}
+
+fn parse_syntax_page_content_with_index_owned(
+    hbk_path: &Path,
+    locale: &str,
+    toc_index: &SyntaxTocIndex,
+    html_path: &str,
+    raw_html: String,
+) -> PageContent {
     let normalized_page_path = html_path.trim_start_matches('/').to_string();
     let toc_page = toc_index.get(&normalized_page_path);
     let toc_path = toc_page.and_then(|page| page.toc_path.clone());
     let toc_title = toc_page.and_then(|page| page.toc_title.clone());
-    let title = select_first_html_text(raw_html, ".V8SH_pagetitle")
-        .or_else(|| select_first_html_text(raw_html, "title"))
+    let title = select_first_html_text(&raw_html, ".V8SH_pagetitle")
+        .or_else(|| select_first_html_text(&raw_html, "title"))
         .or_else(|| toc_title.clone())
         .unwrap_or_default();
-    let body_text = body_text(raw_html);
+    let body_text = body_text(&raw_html);
     let text_preview = body_text.chars().take(240).collect();
 
     PageContent {
@@ -588,7 +560,7 @@ fn parse_syntax_page_content_with_index(
             toc_title,
         },
         title,
-        raw_html: raw_html.to_string(),
+        raw_html,
         body_text,
         text_preview,
         links: Vec::new(),
@@ -761,7 +733,7 @@ fn text_from_html_fragment(fragment: &str) -> String {
             ch => output.push(ch),
         }
     }
-    output.split_whitespace().collect::<Vec<_>>().join(" ")
+    collapse_whitespace(&output)
 }
 
 fn text_lines_from_html_fragment(fragment: &str) -> String {
@@ -949,7 +921,7 @@ fn section_text(content: &PageContent, labels: &[&str]) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
-fn section_html(raw_html: &str, labels: &[&str]) -> Option<String> {
+fn section_html<'a>(raw_html: &'a str, labels: &[&str]) -> Option<&'a str> {
     let (label, start) = find_label(raw_html, labels)?;
     let chapter_end = raw_html[start..]
         .find("</p>")
@@ -964,7 +936,7 @@ fn section_html(raw_html: &str, labels: &[&str]) -> Option<String> {
         })
         .min()
         .unwrap_or(raw_html.len());
-    Some(raw_html[chapter_end..section_end].to_string())
+    Some(&raw_html[chapter_end..section_end])
 }
 
 fn find_label<'a>(value: &str, labels: &'a [&str]) -> Option<(&'a str, usize)> {
@@ -996,8 +968,25 @@ fn normalize_member_href(current_html_path: &str, href: &str) -> String {
 
 fn non_empty_text<'a>(parts: impl Iterator<Item = &'a str>) -> Option<String> {
     let text = parts.collect::<Vec<_>>().join(" ");
-    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let text = collapse_whitespace(&text);
     (!text.is_empty()).then_some(text)
+}
+
+fn collapse_whitespace(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut pending_space = false;
+    for ch in value.chars() {
+        if ch.is_whitespace() {
+            pending_space = !output.is_empty();
+            continue;
+        }
+        if pending_space {
+            output.push(' ');
+            pending_space = false;
+        }
+        output.push(ch);
+    }
+    output
 }
 
 const ALL_SECTION_LABELS: &[&str] = &[

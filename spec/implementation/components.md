@@ -56,6 +56,7 @@ Expected public concepts:
 - `BookLocale`
 - `BookEntityKind`
 - `BookError`
+- `FileStorageReader`
 - `Toc`
 - `TocPage`
 - `LocalizedTitle`
@@ -64,6 +65,10 @@ Expected public concepts:
 - `TocError`
 
 Owns FR-HBK-002 and FR-HBK-003.
+
+`FileStorageReader` is a narrow book-level reader for repeated `FileStorage` page reads. It may
+reuse ZIP archive state inside the `hbk-book` boundary, but it must not expose Syntax Assistant
+extraction, export or CLI concerns.
 
 ### hbk-docs
 

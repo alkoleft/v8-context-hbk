@@ -73,6 +73,9 @@ Test behavior, not implementation.
   4. Add or update the first active task in `spec/IMPLEMENTATION_TODO.md`, referencing spec/UAT/ADR IDs.
   5. Implement only that task and its direct verification unless the prompt explicitly asks for broader scope.
   6. After verification, update the task ledger and promote durable findings back into spec/ADR files.
+- At the end of development, explicitly актуализируй `spec/`: update requirements, acceptance
+  baseline, implementation specs, ADRs and `spec/IMPLEMENTATION_TODO.md` when the implemented
+  behavior, measurements, task status or durable conclusions changed.
 - Follow the active implementation plan before adding new scope.
 - Keep public contracts provisional unless the plan or ADRs explicitly stabilize them.
 - Prefer Rust-native models and algorithms over reproducing Java/Kotlin reference APIs.

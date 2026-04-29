@@ -25,8 +25,8 @@ Otherwise reconcile the specification files before implementing.
 - `requirements/non-functional.md`: reliability, performance, diagnostics, compatibility and testability requirements.
 - `use-cases.md`: users, jobs and externally observable use cases.
 - `implementation/components.md`: crate boundaries, dependency rules and provisional implementation contracts.
-- `implementation/performance-baseline-t13.md`: measured T13 performance/resource baseline and
-  implementation direction.
+- `implementation/performance-baseline-t13.md`: measured T13 performance/resource baseline,
+  post-baseline performance updates and current implementation direction.
 - `implementation/performance-variants.md`: saved performance/resource optimization variants and
   selection rules.
 - `acceptance/baseline.md`: acceptance gates, commands, durable T9/T10 conclusions and success metrics.
@@ -48,6 +48,8 @@ Otherwise reconcile the specification files before implementing.
 - Add an ADR before changing architecture, source-of-truth policy, public contract stability, integration strategy or long-lived process.
 - Add or update UAT cases when a behavior must be validated through CLI/file-level user workflows.
 - Keep `IMPLEMENTATION_TODO.md` short: active tasks, dependencies, spec references and verification only.
+- After development, актуализируй `spec/`: update affected requirements, acceptance baselines,
+  implementation notes, ADRs and the active task ledger before treating the work as complete.
 - Move completed task detail to `archive/` when it stops being needed for the first unchecked task.
 
 ## Service Data Policy

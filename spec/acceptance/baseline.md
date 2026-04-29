@@ -9,6 +9,9 @@ directories are service data unless promoted here.
 - T9 Syntax Assistant acceptance passed for `shcntx_ru.hbk` and `shcntx_root.hbk`.
 - T10 all-HBK smoke passed for every `*.hbk` file under `/opt/1cv8/x86_64/8.5.1.1150/`.
 - T12 workspace split passed with package-level checks and preserved CLI behavior.
+- T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
+  `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
+  `14.62s / 324476 KiB`.
 
 ## Standard Verification Gates
 
@@ -89,6 +92,37 @@ Results:
 - 116 `toc --format json` successes.
 - No fatal failures.
 - No unsupported structures reported by the generic smoke commands.
+
+## T15 Durable Conclusions
+
+Post-T15 Syntax Assistant extraction was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+Both commands exited successfully through the built debug binary. Each source book produced:
+
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 `UNKNOWN_PAGE_CLASS` diagnostics
+
+Resource results:
+
+| Source | Elapsed, s | Peak RSS, KiB |
+| --- | ---: | ---: |
+| `shcntx_ru.hbk` | 19.26 | 590988 |
+| `shcntx_root.hbk` | 14.62 | 324476 |
+
+The T15 pass keeps the canonical export shape from FR-EXPORT-001: consumer record-family files do
+not expose HBK navigation or per-record provenance, while `diagnostics.json` keeps parser source
+context. The remaining `shcntx_ru.hbk` peak remains above 500 MiB and requires T16 attribution before
+the next optimization slice is selected.
 
 ## First Delivery Success Metrics
 

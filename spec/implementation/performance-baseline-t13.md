@@ -7,6 +7,10 @@ Task: T13, performance/resource baseline and implementation hypotheses.
 Raw command outputs and generated exports were written under `target/t13-baseline-20260430/`.
 That directory is service data and is not a durable source of truth.
 
+This document keeps the original T13 baseline and the promoted post-baseline conclusions. T14 and
+T15 measurements were recorded after their implementation tasks because the current optimization
+direction depends on the delta, not only the initial baseline.
+
 ## Measurement Method
 
 The CLI was built once before measurement so that compile time did not pollute runtime results:
@@ -134,6 +138,8 @@ All-HBK output bytes combine `inspect` and `toc --format json` stdout:
 
 ## Hotspot Review
 
+This section records the original T13 code review before Variant A and Variant B were implemented.
+
 `hbk-container`:
 
 - `HbkContainer::open` maps the whole HBK file with `memmap2`; this is currently simple and does not
@@ -146,14 +152,14 @@ All-HBK output bytes combine `inspect` and `toc --format json` stdout:
 - `HbkBook` stores `file_storage: Vec<u8>`.
 - `HbkBook::from_container` reads the whole `FileStorage` entity into that vector when a book is
   opened.
-- `read_file` opens a `ZipArchive` over the stored `FileStorage` bytes for each page read.
-- `read_pages` builds a requested-path set, scans ZIP entries, decodes matching pages, and
-  accumulates all requested page strings in a `BTreeMap<String, String>`.
+- At T13, `read_file` opened a `ZipArchive` over the stored `FileStorage` bytes for each page read.
+- At T13, `read_pages` built a requested-path set, scanned ZIP entries, decoded matching pages, and
+  accumulated all requested page strings in a `BTreeMap<String, String>`.
 
 `syntax-helper-extract`:
 
-- `SyntaxHelperReader::extract` first reads root pages into a `BTreeMap`, then reads all selected
-  extraction pages into another `BTreeMap` before parsing.
+- At T13, `SyntaxHelperReader::extract` first read root pages into a `BTreeMap`, then read all
+  selected extraction pages into another `BTreeMap` before parsing.
 - `parse_extraction_pages` accumulates the full `PlatformContext` vectors before export.
 - Current traversal is deterministic because page paths and visited sets are ordered, but memory is
   paid up front before export starts.
@@ -161,10 +167,41 @@ All-HBK output bytes combine `inspect` and `toc --format json` stdout:
 `hbk-export`:
 
 - `JsonExporter` writes every record family from the already materialized `PlatformContext`.
-- Current envelopes include export-level `source_hbk`, and records still contain provenance and
+- At T13, envelopes included export-level `source_hbk`, and records still contained provenance and
   navigation scaffolding from the internal model.
-- `write_file` uses `serde_json::to_vec_pretty`, which materializes pretty JSON bytes for each file
-  before writing them to disk.
+- At T13, `write_file` used `serde_json::to_vec_pretty`, which materialized pretty JSON bytes for
+  each file before writing them to disk.
+
+## Post-Baseline Measurements
+
+T14 implemented Variant A: lean consumer export plus compact streaming JSON writing.
+
+| Slice | Command label | Exit | Elapsed, s | Peak RSS, KiB | Export bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| T14 | `syntax-helper shcntx_ru --output` | 0 | 20.20 | 752392 | 21946830 |
+| T14 | `syntax-helper shcntx_root --output` | 0 | 15.82 | 518844 | 12265898 |
+
+T14 significantly reduced export size but did not reduce peak RSS, so the next active slice became
+Variant B.
+
+T15 implemented Variant B: lazy Syntax Assistant page loading through a reusable `FileStorageReader`,
+consuming traversal metadata during parsing, and removing avoidable per-page parser copies.
+
+| Slice | Command label | Exit | Elapsed, s | Peak RSS, KiB | Output count |
+| --- | ---: | ---: | ---: | ---: | --- |
+| T15 | `syntax-helper shcntx_ru --output` | 0 | 19.26 | 590988 | 24837 records, 703 diagnostics, 10 files |
+| T15 | `syntax-helper shcntx_root --output` | 0 | 14.62 | 324476 | 24837 records, 703 diagnostics, 10 files |
+
+T15 improved wall-clock time slightly and reduced peak RSS, especially for `shcntx_root.hbk`.
+`shcntx_ru.hbk` still peaks above 500 MiB, so the remaining memory must be attributed before
+choosing the next implementation slice.
+
+Current post-T15 hotspots to measure:
+
+- full `PlatformContext` accumulation before export;
+- export adapter allocation during JSON writing;
+- whole `FileStorage` ownership and container/entity copies;
+- parser temporary allocation or allocator retention.
 
 ## Variant Evaluation
 
@@ -208,14 +245,14 @@ Variant E is not first.
 - The whole `FileStorage` copy may matter, but the first lower-risk check is to remove export bloat
   and then bound page loading before replacing the container/book access model.
 
-## Implementation Direction
+## Current Implementation Direction
 
-The saved variant order is not rejected or reordered by this baseline.
+The original T13 direction selected T14 / Variant A first. T14 completed but left peak RSS high, so
+T15 / Variant B was implemented next.
 
-The next implementation slice remains T14 / Variant A: lean Syntax Assistant consumer export plus
-streaming compact JSON writing. No additional T14+ task is needed because T14 already describes that
-slice. After T14, rerun the `syntax-helper shcntx_ru` and `syntax-helper shcntx_root` measurements;
-if peak RSS remains high, promote Variant B into the next active task.
+The next active task is T16: attribute the remaining post-T15 memory before choosing Variant C
+(streaming extraction into record-family sinks), Variant E (container/FileStorage access model), or
+no immediate refactor.
 
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
-by this baseline.
+by the current evidence.

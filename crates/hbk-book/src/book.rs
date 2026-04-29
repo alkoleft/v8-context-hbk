@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::io::{self, Cursor, Read};
 use std::path::{Path, PathBuf};
@@ -207,117 +207,33 @@ impl HbkBook {
         &self.toc
     }
 
+    pub fn file_storage_reader(&self) -> Result<FileStorageReader<'_>, BookError> {
+        FileStorageReader::new(self.path(), self.file_storage.as_slice())
+    }
+
     pub fn read_file(&self, path: &str) -> Result<Vec<u8>, BookError> {
-        let entry_name = normalize_storage_path(path).to_string();
-        if entry_name.is_empty() {
-            return Err(BookError::MissingZipEntry {
-                path: self.path().to_path_buf(),
-                entry_name,
-            });
-        }
-        let mut archive =
-            ZipArchive::new(Cursor::new(self.file_storage.as_slice())).map_err(|source| {
-                BookError::InvalidZip {
-                    path: self.path().to_path_buf(),
-                    entity_name: FILE_STORAGE_NAME,
-                    source,
-                }
-            })?;
-        let mut entry = archive
-            .by_name(&entry_name)
-            .map_err(|source| match source {
-                zip::result::ZipError::FileNotFound => BookError::MissingZipEntry {
-                    path: self.path().to_path_buf(),
-                    entry_name: entry_name.clone(),
-                },
-                source => BookError::InvalidZip {
-                    path: self.path().to_path_buf(),
-                    entity_name: FILE_STORAGE_NAME,
-                    source,
-                },
-            })?;
-        let mut bytes = Vec::new();
-        entry
-            .read_to_end(&mut bytes)
-            .map_err(|source| BookError::Io {
-                path: self.path().to_path_buf(),
-                entry_name,
-                source,
-            })?;
-        Ok(bytes)
+        let mut reader = self.file_storage_reader()?;
+        reader.read_file(path)
     }
 
     pub fn read_page(&self, path: &str) -> Result<String, BookError> {
-        let bytes = self.read_file(path)?;
-        String::from_utf8(bytes).map_err(|source| BookError::InvalidUtf8 {
-            path: self.path().to_path_buf(),
-            entity_name: FILE_STORAGE_NAME,
-            source,
-        })
+        let mut reader = self.file_storage_reader()?;
+        reader.read_page(path)
     }
 
     pub fn read_pages<'p>(
         &self,
         paths: impl IntoIterator<Item = &'p str>,
     ) -> Result<BTreeMap<String, String>, BookError> {
-        let mut requested = BTreeSet::new();
+        let mut pages = BTreeMap::new();
+        let mut reader = self.file_storage_reader()?;
         for path in paths {
             let entry_name = normalize_storage_path(path).to_string();
-            if entry_name.is_empty() {
-                return Err(BookError::MissingZipEntry {
-                    path: self.path().to_path_buf(),
-                    entry_name,
-                });
-            }
-            requested.insert(entry_name);
-        }
-        let mut archive =
-            ZipArchive::new(Cursor::new(self.file_storage.as_slice())).map_err(|source| {
-                BookError::InvalidZip {
-                    path: self.path().to_path_buf(),
-                    entity_name: FILE_STORAGE_NAME,
-                    source,
-                }
-            })?;
-        let mut pages = BTreeMap::new();
-        for index in 0..archive.len() {
-            let mut entry = archive
-                .by_index(index)
-                .map_err(|source| BookError::InvalidZip {
-                    path: self.path().to_path_buf(),
-                    entity_name: FILE_STORAGE_NAME,
-                    source,
-                })?;
-            let entry_name = entry.name().to_string();
-            if !requested.contains(&entry_name) {
+            if pages.contains_key(&entry_name) {
                 continue;
             }
-            let mut bytes = Vec::new();
-            entry
-                .read_to_end(&mut bytes)
-                .map_err(|source| BookError::Io {
-                    path: self.path().to_path_buf(),
-                    entry_name: entry_name.clone(),
-                    source,
-                })?;
-            let page = String::from_utf8(bytes).map_err(|source| BookError::InvalidUtf8 {
-                path: self.path().to_path_buf(),
-                entity_name: FILE_STORAGE_NAME,
-                source,
-            })?;
+            let page = reader.read_page(&entry_name)?;
             pages.insert(entry_name, page);
-            if pages.len() == requested.len() {
-                break;
-            }
-        }
-        if let Some(entry_name) = requested
-            .iter()
-            .find(|entry_name| !pages.contains_key(*entry_name))
-        {
-            return Err(BookError::MissingZipEntry {
-                path: self.path().to_path_buf(),
-                entry_name: entry_name.clone(),
-            });
         }
         Ok(pages)
     }
@@ -357,6 +273,66 @@ impl HbkBook {
     #[cfg(test)]
     fn from_bytes(path: PathBuf, bytes: Vec<u8>) -> Result<Self, BookError> {
         Self::from_container(HbkContainer::from_bytes(path, bytes)?)
+    }
+}
+
+#[derive(Debug)]
+pub struct FileStorageReader<'a> {
+    path: &'a Path,
+    archive: ZipArchive<Cursor<&'a [u8]>>,
+}
+
+impl<'a> FileStorageReader<'a> {
+    fn new(path: &'a Path, bytes: &'a [u8]) -> Result<Self, BookError> {
+        let archive =
+            ZipArchive::new(Cursor::new(bytes)).map_err(|source| BookError::InvalidZip {
+                path: path.to_path_buf(),
+                entity_name: FILE_STORAGE_NAME,
+                source,
+            })?;
+        Ok(Self { path, archive })
+    }
+
+    pub fn read_file(&mut self, path: &str) -> Result<Vec<u8>, BookError> {
+        let entry_name = normalize_storage_path(path).to_string();
+        if entry_name.is_empty() {
+            return Err(BookError::MissingZipEntry {
+                path: self.path.to_path_buf(),
+                entry_name,
+            });
+        }
+        let mut entry = self
+            .archive
+            .by_name(&entry_name)
+            .map_err(|source| match source {
+                zip::result::ZipError::FileNotFound => BookError::MissingZipEntry {
+                    path: self.path.to_path_buf(),
+                    entry_name: entry_name.clone(),
+                },
+                source => BookError::InvalidZip {
+                    path: self.path.to_path_buf(),
+                    entity_name: FILE_STORAGE_NAME,
+                    source,
+                },
+            })?;
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|source| BookError::Io {
+                path: self.path.to_path_buf(),
+                entry_name,
+                source,
+            })?;
+        Ok(bytes)
+    }
+
+    pub fn read_page(&mut self, path: &str) -> Result<String, BookError> {
+        let bytes = self.read_file(path)?;
+        String::from_utf8(bytes).map_err(|source| BookError::InvalidUtf8 {
+            path: self.path.to_path_buf(),
+            entity_name: FILE_STORAGE_NAME,
+            source,
+        })
     }
 }
 
@@ -621,6 +597,50 @@ mod tests {
         assert_eq!(
             book.read_page("/docs/page.html").unwrap(),
             "<html>page</html>"
+        );
+    }
+
+    #[test]
+    fn file_storage_reader_reads_multiple_pages_from_one_book() {
+        let toc = r#"{
+            2
+            {1,0,0,{0,0,{0,0,{"ru","Первая"}},"/docs/first.html"}}
+            {2,0,0,{0,0,{0,0,{"ru","Вторая"}},"/docs/second.html"}}
+        }"#;
+        let book = HbkBook::from_bytes(
+            PathBuf::from("fmtdui_ru.hbk"),
+            fixture_container(vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", Some(zip_bytes("toc.txt", toc.as_bytes()))),
+                (
+                    "FileStorage",
+                    Some(zip_entries(vec![
+                        ("docs/first.html", b"<html>first</html>"),
+                        ("docs/second.html", b"<html>second</html>"),
+                    ])),
+                ),
+            ]),
+        )
+        .expect("book must open");
+
+        let mut reader = book
+            .file_storage_reader()
+            .expect("FileStorage reader must open");
+
+        assert_eq!(
+            reader.read_page("/docs/first.html").unwrap(),
+            "<html>first</html>"
+        );
+        assert_eq!(
+            reader.read_page("docs/second.html").unwrap(),
+            "<html>second</html>"
         );
     }
 

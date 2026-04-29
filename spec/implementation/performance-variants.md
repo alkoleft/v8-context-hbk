@@ -3,6 +3,13 @@
 This document preserves the current optimization options for Syntax Assistant export. It does not
 replace the T13 measurement baseline. Use the baseline to choose the first implementation slice.
 
+Current status:
+
+- Variant A was implemented in T14.
+- Variant B was implemented in T15.
+- Post-T15 measurements reduced peak RSS but `shcntx_ru.hbk` still peaks above 500 MiB, so T16 must
+  attribute the remaining memory before choosing Variant C, Variant E or no immediate refactor.
+
 ## Selection Rules
 
 - Measure before refactoring: wall-clock time, peak RSS or equivalent, exit status, output counts
@@ -127,10 +134,18 @@ Risks:
 
 ## Initial Ordering
 
-Unless T13 contradicts it, use this order:
+The original T13 ordering was:
 
 1. Variant A, because it fixes known consumer-output bloat and has a narrow export boundary.
 2. Variant B, because current extraction reads page sets into memory before parsing.
 3. Variant D only if wall-clock time remains dominated by parsing CPU.
 4. Variant C only if full-model accumulation remains a measured problem.
 5. Variant E only if container/FileStorage ownership is proven to be the limiting resource.
+
+After T15, do not advance directly to Variant C or Variant E from this ordering alone. First run
+T16 memory attribution and choose the next slice from measured evidence:
+
+- choose Variant C if full `PlatformContext` accumulation or export-only command shape dominates;
+- choose Variant E if `FileStorage` ownership or container/entity copies dominate;
+- choose no immediate refactor if the remaining peak is allocator retention or cannot be reduced
+  without a disproportionate speed/complexity tradeoff.
