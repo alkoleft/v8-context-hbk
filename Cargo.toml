@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.5.51", features = ["derive"] }
 memmap2 = "0.9.9"
+scraper = "0.26.0"
 serde_json = "1.0.149"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

@@ -93,7 +93,7 @@ Verification:
 - If the files are absent: document that real-platform TOC/page smoke was skipped because the platform fixtures are unavailable.
 - `git diff --check`
 
-### [ ] T3. Documentation page parser
+### [x] T3. Documentation page parser
 
 Depends on: T2.
 
