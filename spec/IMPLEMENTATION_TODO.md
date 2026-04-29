@@ -63,7 +63,7 @@ Verification:
 - If the files are absent: document that the real-platform smoke was skipped because the platform fixtures are unavailable.
 - `git diff --check`
 
-### [ ] T2. Book, ZIP storage and TOC reader
+### [x] T2. Book, ZIP storage and TOC reader
 
 Depends on: T1.
 
