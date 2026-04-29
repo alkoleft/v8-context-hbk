@@ -25,6 +25,8 @@ Otherwise reconcile the specification files before implementing.
 - `requirements/non-functional.md`: reliability, performance, diagnostics, compatibility and testability requirements.
 - `use-cases.md`: users, jobs and externally observable use cases.
 - `implementation/components.md`: crate boundaries, dependency rules and provisional implementation contracts.
+- `implementation/performance-baseline-t13.md`: measured T13 performance/resource baseline and
+  implementation direction.
 - `implementation/performance-variants.md`: saved performance/resource optimization variants and
   selection rules.
 - `acceptance/baseline.md`: acceptance gates, commands, durable T9/T10 conclusions and success metrics.

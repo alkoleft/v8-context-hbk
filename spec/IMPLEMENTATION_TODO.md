@@ -6,9 +6,9 @@ Specification index: [Specification Index](README.md).
 
 Completed task history: [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md).
 
-Current status: T13 is the first active unchecked task and covers performance/resource baseline plus
-implementation-hypothesis review before any streaming or parallel extraction refactor. The saved
-performance variants are in `spec/implementation/performance-variants.md`.
+Current status: T14 is the first active unchecked task and covers lean Syntax Assistant consumer
+export. T13 measured the current implementation and accepted ADR-0003 as the first performance
+slice.
 
 ## Loop Rule
 
@@ -25,7 +25,7 @@ performance variants are in `spec/implementation/performance-variants.md`.
   `git diff --cached --name-only`.
 - Do not create empty commits.
 
-### [ ] T13. Performance/resource baseline and implementation hypotheses
+### [x] T13. Performance/resource baseline and implementation hypotheses
 
 Depends on: T12.
 

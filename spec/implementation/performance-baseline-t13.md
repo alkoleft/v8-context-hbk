@@ -1,0 +1,221 @@
+# T13 Performance and Resource Baseline
+
+Date: 2026-04-30.
+
+Task: T13, performance/resource baseline and implementation hypotheses.
+
+Raw command outputs and generated exports were written under `target/t13-baseline-20260430/`.
+That directory is service data and is not a durable source of truth.
+
+## Measurement Method
+
+The CLI was built once before measurement so that compile time did not pollute runtime results:
+
+```bash
+cargo build -p v8-context-hbk-cli --bin v8-context-hbk
+```
+
+Runtime commands used the built debug binary:
+
+```bash
+target/debug/v8-context-hbk
+```
+
+Resource metrics were collected with GNU `time`:
+
+```bash
+/usr/bin/time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x'
+```
+
+`peak_rss_kb` is the maximum resident set size reported by `/usr/bin/time`.
+Output byte sizes were measured with `wc -c`. Syntax Assistant record counts were measured from the
+exported JSON envelopes with `jq '.records | length'` where applicable.
+
+Host tool versions:
+
+- `cargo 1.93.1 (083ac5135 2025-12-15)`
+- `rustc 1.93.1 (01f6ddf75 2026-02-11)`
+
+## Fixture Availability
+
+Target platform directory:
+`/opt/1cv8/x86_64/8.5.1.1150`.
+
+| Fixture | Status | Size, bytes |
+| --- | --- | ---: |
+| `fmtdui_root.hbk` | ran | 2587 |
+| `fmtdui_ru.hbk` | ran | 4429 |
+| `shcntx_root.hbk` | ran | 35021688 |
+| `shcntx_ru.hbk` | ran | 41361963 |
+| all target-platform `*.hbk` files | ran | 116 files discovered |
+
+No fixture-backed T13 command was skipped on this host.
+
+## Measured Commands
+
+Small HBK smoke:
+
+```bash
+target/debug/v8-context-hbk inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk
+target/debug/v8-context-hbk inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk
+target/debug/v8-context-hbk toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk --format json
+target/debug/v8-context-hbk toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json
+```
+
+Syntax Assistant export:
+
+```bash
+target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t13-baseline-20260430/exports/shcntx-ru
+target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/t13-baseline-20260430/exports/shcntx-root
+```
+
+All-HBK smoke equivalent:
+
+```bash
+for path in /opt/1cv8/x86_64/8.5.1.1150/*.hbk; do
+  target/debug/v8-context-hbk inspect "$path"
+  target/debug/v8-context-hbk toc "$path" --format json
+done
+```
+
+## Command Results
+
+| Command label | Exit | Elapsed, s | Peak RSS, KiB | Output count | Stdout bytes | Stderr bytes |
+| --- | ---: | ---: | ---: | --- | ---: | ---: |
+| `inspect fmtdui_root` | 0 | 0.00 | 5884 | 7 entities | 557 | 0 |
+| `inspect fmtdui_ru` | 0 | 0.00 | 5760 | 7 entities | 551 | 0 |
+| `toc fmtdui_root --format json` | 0 | 0.00 | 6272 | 1 HTML path | 186 | 0 |
+| `toc fmtdui_ru --format json` | 0 | 0.00 | 6272 | 1 HTML path | 186 | 0 |
+| `syntax-helper shcntx_ru --output` | 0 | 20.80 | 752392 | 24837 records, 703 diagnostics, 11 files | 278 | 0 |
+| `syntax-helper shcntx_root --output` | 0 | 16.15 | 518972 | 24837 records, 703 diagnostics, 11 files | 282 | 0 |
+| all-HBK smoke equivalent | 0 | 14.69 | 386304 | 116 inspect successes, 116 TOC successes | 24556320 | 0 |
+
+All-HBK output bytes combine `inspect` and `toc --format json` stdout:
+
+- `inspect` stdout: 63952 bytes.
+- `toc --format json` stdout: 24492368 bytes.
+- no stderr output.
+
+## Syntax Assistant Export Sizes
+
+`shcntx_ru.hbk` export:
+
+| File | Bytes | Records |
+| --- | ---: | ---: |
+| `metadata.json` | 1036 | n/a |
+| `global-contexts.json` | 40785 | 1 |
+| `global-methods.json` | 1697049 | 500 |
+| `global-properties.json` | 120483 | 101 |
+| `platform-types.json` | 5127153 | 2533 |
+| `type-methods.json` | 14168616 | 6702 |
+| `type-properties.json` | 13817149 | 10732 |
+| `constructors.json` | 747331 | 445 |
+| `enums.json` | 1559004 | 713 |
+| `enum-values.json` | 2590954 | 3110 |
+| `diagnostics.json` | 334019 | 703 |
+| total directory size | 40207675 | n/a |
+
+`shcntx_root.hbk` export:
+
+| File | Bytes | Records |
+| --- | ---: | ---: |
+| `metadata.json` | 1040 | n/a |
+| `global-contexts.json` | 55788 | 1 |
+| `global-methods.json` | 1063961 | 500 |
+| `global-properties.json` | 71058 | 101 |
+| `platform-types.json` | 3736901 | 2533 |
+| `type-methods.json` | 8762280 | 6702 |
+| `type-properties.json` | 8768194 | 10732 |
+| `constructors.json` | 509902 | 445 |
+| `enums.json` | 1231352 | 713 |
+| `enum-values.json` | 1889432 | 3110 |
+| `diagnostics.json` | 335281 | 703 |
+| total directory size | 26429285 | n/a |
+
+## Hotspot Review
+
+`hbk-container`:
+
+- `HbkContainer::open` maps the whole HBK file with `memmap2`; this is currently simple and does not
+  eagerly copy the mapped file contents.
+- `HbkContainer::read_entity` returns a fresh `Vec<u8>` for each entity body, so consumers that read
+  large entities own a full copy after crossing the container boundary.
+
+`hbk-book`:
+
+- `HbkBook` stores `file_storage: Vec<u8>`.
+- `HbkBook::from_container` reads the whole `FileStorage` entity into that vector when a book is
+  opened.
+- `read_file` opens a `ZipArchive` over the stored `FileStorage` bytes for each page read.
+- `read_pages` builds a requested-path set, scans ZIP entries, decodes matching pages, and
+  accumulates all requested page strings in a `BTreeMap<String, String>`.
+
+`syntax-helper-extract`:
+
+- `SyntaxHelperReader::extract` first reads root pages into a `BTreeMap`, then reads all selected
+  extraction pages into another `BTreeMap` before parsing.
+- `parse_extraction_pages` accumulates the full `PlatformContext` vectors before export.
+- Current traversal is deterministic because page paths and visited sets are ordered, but memory is
+  paid up front before export starts.
+
+`hbk-export`:
+
+- `JsonExporter` writes every record family from the already materialized `PlatformContext`.
+- Current envelopes include export-level `source_hbk`, and records still contain provenance and
+  navigation scaffolding from the internal model.
+- `write_file` uses `serde_json::to_vec_pretty`, which materializes pretty JSON bytes for each file
+  before writing them to disk.
+
+## Variant Evaluation
+
+Variant A, lean consumer export and streaming JSON writer, remains the first slice.
+
+Evidence:
+
+- `syntax-helper` output is large: about 40 MB for `shcntx_ru` and 26 MB for `shcntx_root`.
+- The largest record-family files are `type-methods.json`, `type-properties.json` and
+  `platform-types.json`.
+- Export currently serializes pretty JSON into memory before writing.
+- Variant A also aligns FR-EXPORT-001 with the actual consumer contract by removing source
+  provenance and navigation scaffolding from consumer files.
+
+Variant B, lazy or batched page loading, is the likely next memory-focused slice after Variant A.
+
+Evidence:
+
+- `syntax-helper shcntx_ru` reached 752392 KiB peak RSS, while the aggregate all-HBK generic smoke
+  reached 386304 KiB.
+- Code review shows full `FileStorage` ownership plus whole-page `BTreeMap` accumulation before
+  parsing.
+- Variant B should be measured after Variant A so export-size savings and page-loading savings are
+  not conflated.
+
+Variant D is not first.
+
+- The debug build wall-clock for `syntax-helper` is 16.15-20.80 seconds, but this baseline does not
+  isolate CPU-bound HTML parsing from ZIP reads, page accumulation or JSON serialization.
+- Parallel parsing would add ordering and memory-risk surfaces before a narrower streaming/export
+  slice is tried.
+
+Variant C is not first.
+
+- Streaming extraction into record-family sinks crosses model and export boundaries and should wait
+  until Variant A and B evidence shows full-model accumulation is still a material bottleneck.
+
+Variant E is not first.
+
+- `memmap2` remains the simplest low-copy container-open strategy.
+- The whole `FileStorage` copy may matter, but the first lower-risk check is to remove export bloat
+  and then bound page loading before replacing the container/book access model.
+
+## Implementation Direction
+
+The saved variant order is not rejected or reordered by this baseline.
+
+The next implementation slice remains T14 / Variant A: lean Syntax Assistant consumer export plus
+streaming compact JSON writing. No additional T14+ task is needed because T14 already describes that
+slice. After T14, rerun the `syntax-helper shcntx_ru` and `syntax-helper shcntx_root` measurements;
+if peak RSS remains high, promote Variant B into the next active task.
+
+No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
+by this baseline.
