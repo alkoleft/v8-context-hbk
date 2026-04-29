@@ -332,7 +332,7 @@ Status:
 
 - Completed with `docs/v8-context-integration-decision.md`, deciding that `v8-context-hbk` remains standalone for now and exposes the first `v8-context` integration through the file-level `syntax-helper --output` export before any workspace merge or direct HBK query-path coupling.
 
-### [ ] T12. Split implementation into reusable workspace crates
+### [x] T12. Split implementation into reusable workspace crates
 
 Depends on: T11.
 
@@ -362,8 +362,22 @@ Verification:
 
 - `cargo fmt`
 - `cargo test --workspace`
-- `cargo run -p v8-context-hbk-cli -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` when the fixture exists.
-- `cargo run -p v8-context-hbk-cli -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json` when the fixture exists.
-- `cargo run -p v8-context-hbk-cli -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru` when the fixture exists.
+- `cargo check -p hbk-container`
+- `cargo check -p hbk-book`
+- `cargo check -p hbk-docs`
+- `cargo check -p syntax-helper-model`
+- `cargo check -p syntax-helper-extract`
+- `cargo check -p hbk-export`
+- `cargo check -p v8-context-hbk-cli`
+- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` when the fixture exists.
+- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json` when the fixture exists.
+- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --path "<committed-known-ru-page>"` when the fixture exists.
+- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru` when the fixture exists.
+- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en` when the fixture exists.
+- Negative missing-file smoke through `cargo run -p v8-context-hbk-cli --bin v8-context-hbk`.
 - If platform fixtures are absent, document skipped real-platform smoke commands.
 - `git diff --check`
+
+Status:
+
+- Completed with a Cargo workspace split into reusable crates, the preserved `v8-context-hbk` binary, package-level checks, real-platform CLI smokes and reviewer-approved completeness verification.

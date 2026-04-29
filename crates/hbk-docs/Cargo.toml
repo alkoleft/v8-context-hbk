@@ -1,0 +1,8 @@
+[package]
+name = "hbk-docs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hbk-book.workspace = true
+scraper.workspace = true

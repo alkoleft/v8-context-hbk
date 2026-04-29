@@ -1,0 +1,16 @@
+[package]
+name = "v8-context-hbk-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "v8-context-hbk"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+hbk-book.workspace = true
+hbk-container.workspace = true
+hbk-export.workspace = true
+serde_json.workspace = true
+syntax-helper-extract.workspace = true

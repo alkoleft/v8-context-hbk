@@ -8,11 +8,15 @@ The early HBK container/book/navigation stages should use small real HBK files, 
 
 The project is expected to become a component of `/home/alko/develop/open-source/v8-context/` after the HBK extraction model and contracts are validated. Until that integration point, it should stay independently testable and avoid coupling its internal model to unfinished `v8-context` contracts.
 
-The implementation should be split into three reusable layers:
+The implementation is split into reusable crates that preserve the same context boundaries:
 
-1. HBK container reader: binary container parsing, entity enumeration, entity byte access, ZIP-backed files inside `FileStorage`.
-2. Documentation reader: book metadata, TOC parsing, page navigation, HTML/page access, link resolution.
-3. Syntax helper context reader: extraction of the 1C platform object model from Syntax Assistant pages: global methods/properties, types, methods, properties, constructors, enums, signatures, parameters, return types and descriptions.
+1. `hbk-container`: binary container parsing, entity enumeration and entity byte access.
+2. `hbk-book`: book metadata, locale inference, ZIP-backed `FileStorage`, TOC parsing and page reads.
+3. `hbk-docs`: documentation HTML/page parsing, normalized text/link extraction and page diagnostics.
+4. `syntax-helper-model`: provenance-rich platform context domain model and lookup helpers.
+5. `syntax-helper-extract`: extraction of the 1C platform object model from Syntax Assistant pages: global methods/properties, types, methods, properties, constructors, enums, signatures, parameters, return types and descriptions.
+6. `hbk-export`: canonical JSON export adapters.
+7. `v8-context-hbk-cli`: command wiring for the installed `v8-context-hbk` binary.
 
 Primary implementation reference: `/home/alko/develop/open-source/hbk-reader`.
 
@@ -439,6 +443,7 @@ The implementation roadmap should be read as a Now/Next/Later plan:
 - Now: M0-M3. Prove the HBK binary/container, book, TOC and documentation-page layers on small real 8.5 HBK files.
 - Next: M4-M6. Curate Syntax Assistant fixtures from real `shcntx_*` pages, implement extraction and add provisional export/lookup helpers.
 - Later: M7-M9. Run `shcntx_*` acceptance, smoke all target-platform HBK files, then decide `v8-context` integration.
+- Structural follow-up: M10 splits the validated monolithic implementation into the reusable workspace crates listed above without changing accepted CLI behavior.
 
 The first release is not an API-stability release. It is an evidence-building release whose main output is a working reader, parser gap inventory and a better model for the stable contract.
 
@@ -586,13 +591,28 @@ Exit criteria:
 
 - Decision artifact exists and references M7/M8 evidence.
 
+### M10. Reusable workspace crate split
+
+Scope:
+
+- Convert the repository to a Cargo workspace.
+- Move the validated implementation into `hbk-container`, `hbk-book`, `hbk-docs`, `syntax-helper-model`, `syntax-helper-extract`, `hbk-export` and `v8-context-hbk-cli`.
+- Preserve the installed binary name `v8-context-hbk` and the accepted `inspect`, `toc`, `page` and `syntax-helper` command behavior.
+- Keep lower-level crates independent from higher-level concerns.
+
+Exit criteria:
+
+- `cargo test --workspace` passes.
+- Package-level checks for every workspace crate pass.
+- The accepted CLI smoke commands still work through `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- ...`.
+
 ## 10. Acceptance Baseline
 
 The first implementation is acceptable when:
 
-1. `cargo test` passes.
-2. `cargo run -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` and `cargo run -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` succeed and list core entities.
-3. `cargo run -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json` succeeds, and a known page from `fmtdui_ru.hbk` can be read through `page`.
+1. `cargo test --workspace` passes.
+2. `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` and `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` succeed and list core entities.
+3. `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json` succeeds, and a known page from `fmtdui_ru.hbk` can be read through `page`.
 4. A Syntax Assistant fixture corpus exists with a manifest for each parser kind:
    - object
    - method
@@ -602,7 +622,7 @@ The first implementation is acceptable when:
    - enum value
    - global context
    - root/catalog
-5. `cargo run -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru` and `cargo run -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en` create JSON files with non-empty methods/properties/types/enums.
+5. `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru` and `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en` create JSON files with non-empty methods/properties/types/enums.
 6. Errors and recoverable diagnostics include enough context to identify the failing HBK file, locale/source locale, HTML page and parser stage.
 7. The final all-HBK smoke report covers every `*.hbk` file under `/opt/1cv8/x86_64/8.5.1.1150/`.
 
@@ -1043,6 +1063,27 @@ Verification:
 - `cargo test`
 - `git diff --check`
 
+### T12. Split implementation into reusable workspace crates
+
+Depends on: T11.
+
+Tasks:
+
+- Convert the repository to a Cargo workspace without changing accepted CLI behavior.
+- Split the current implementation into `hbk-container`, `hbk-book`, `hbk-docs`, `syntax-helper-model`, `syntax-helper-extract`, `hbk-export` and `v8-context-hbk-cli`.
+- Preserve the installed binary name `v8-context-hbk`.
+- Keep lower-level crates independent from higher-level concerns.
+- Move behavior tests with the crate that owns the public behavior being tested.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- Package-level checks for every workspace crate.
+- Real-platform CLI smokes through `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- ...` when fixtures exist.
+- Negative missing-file CLI smoke.
+- `git diff --check`
+
 ## 13. Requirement Traceability
 
 | Requirement area | Primary epic | Primary tasks | First verification |
@@ -1058,6 +1099,7 @@ Verification:
 | Real-platform Syntax Assistant acceptance | E6 | T9 | Checked-in acceptance report |
 | All-HBK smoke | E7 | T10 | Checked-in all-HBK smoke report |
 | `v8-context` integration decision | E8 | T11 | ADR/integration note |
+| Reusable crate boundaries | E8 | T12 | `cargo test --workspace` and package-level checks |
 
 ## 14. Success Metrics
 

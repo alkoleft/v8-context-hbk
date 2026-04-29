@@ -1,0 +1,342 @@
+use std::fmt;
+use std::path::PathBuf;
+
+use serde::Serialize;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RootDiscovery {
+    pub roots: Vec<RootSection>,
+    pub diagnostics: Vec<SyntaxHelperDiagnostic>,
+}
+
+impl RootDiscovery {
+    pub fn has_kind(&self, kind: RootSectionKind) -> bool {
+        self.roots.iter().any(|root| root.kind == kind)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RootSection {
+    pub kind: RootSectionKind,
+    pub source: SyntaxHelperSource,
+    pub pages: Vec<CatalogPage>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RootSectionKind {
+    GlobalContext,
+    EnumCatalog,
+    TypeObjectCatalog,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CatalogPage {
+    pub class: PageClass,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageClass {
+    Catalog,
+    GlobalMethod,
+    GlobalProperty,
+    ObjectType,
+    ObjectMethod,
+    ObjectProperty,
+    Constructor,
+    Enum,
+    EnumValue,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SyntaxHelperSource {
+    pub hbk_path: PathBuf,
+    pub locale: String,
+    pub toc_path: Option<String>,
+    pub html_path: String,
+    pub page_title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SyntaxHelperDiagnostic {
+    pub severity: DiagnosticSeverity,
+    pub code: &'static str,
+    pub source: SyntaxHelperSource,
+    pub parser_stage: &'static str,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticSeverity {
+    Warning,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct PlatformContext {
+    pub global_contexts: Vec<GlobalContext>,
+    pub global_methods: Vec<GlobalMethod>,
+    pub global_properties: Vec<GlobalProperty>,
+    pub platform_types: Vec<PlatformType>,
+    pub type_methods: Vec<PlatformMethod>,
+    pub type_properties: Vec<PlatformProperty>,
+    pub constructors: Vec<Constructor>,
+    pub enums: Vec<EnumDefinition>,
+    pub enum_values: Vec<EnumValue>,
+    pub diagnostics: Vec<SyntaxHelperDiagnostic>,
+}
+
+impl PlatformContext {
+    pub fn find_global_member(
+        &self,
+        name: &str,
+    ) -> Result<Option<GlobalMemberRef<'_>>, LookupError> {
+        let mut matches = self
+            .global_methods
+            .iter()
+            .filter(|method| method.name.matches(name))
+            .map(GlobalMemberRef::Method)
+            .chain(
+                self.global_properties
+                    .iter()
+                    .filter(|property| property.name.matches(name))
+                    .map(GlobalMemberRef::Property),
+            );
+        one_or_ambiguous(&mut matches, LookupKind::GlobalMember, name)
+    }
+
+    pub fn find_type(&self, name: &str) -> Result<Option<&PlatformType>, LookupError> {
+        let mut matches = self
+            .platform_types
+            .iter()
+            .filter(|platform_type| platform_type.name.matches(name));
+        one_or_ambiguous(&mut matches, LookupKind::Type, name)
+    }
+
+    pub fn find_type_member(
+        &self,
+        type_name: &str,
+        member_name: &str,
+    ) -> Result<Option<TypeMemberRef<'_>>, LookupError> {
+        let Some(platform_type) = self.find_type(type_name)? else {
+            return Ok(None);
+        };
+        let mut matches = self
+            .type_methods
+            .iter()
+            .filter(|method| method.owner == platform_type.name && method.name.matches(member_name))
+            .map(TypeMemberRef::Method)
+            .chain(
+                self.type_properties
+                    .iter()
+                    .filter(|property| {
+                        property.owner == platform_type.name && property.name.matches(member_name)
+                    })
+                    .map(TypeMemberRef::Property),
+            );
+        one_or_ambiguous(&mut matches, LookupKind::TypeMember, member_name)
+    }
+
+    pub fn constructors_for_type(
+        &self,
+        type_name: &str,
+    ) -> Result<Option<Vec<&Constructor>>, LookupError> {
+        let Some(platform_type) = self.find_type(type_name)? else {
+            return Ok(None);
+        };
+        Ok(Some(
+            self.constructors
+                .iter()
+                .filter(|constructor| constructor.owner == platform_type.name)
+                .collect(),
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlobalMemberRef<'a> {
+    Method(&'a GlobalMethod),
+    Property(&'a GlobalProperty),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeMemberRef<'a> {
+    Method(&'a PlatformMethod),
+    Property(&'a PlatformProperty),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LookupError {
+    Ambiguous { kind: LookupKind, name: String },
+}
+
+impl fmt::Display for LookupError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ambiguous { kind, name } => {
+                write!(
+                    f,
+                    "ambiguous Syntax Assistant {} lookup for '{name}'",
+                    kind.label()
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for LookupError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LookupKind {
+    GlobalMember,
+    Type,
+    TypeMember,
+}
+
+impl LookupKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::GlobalMember => "global member",
+            Self::Type => "type",
+            Self::TypeMember => "type member",
+        }
+    }
+}
+
+fn one_or_ambiguous<T>(
+    matches: &mut impl Iterator<Item = T>,
+    kind: LookupKind,
+    name: &str,
+) -> Result<Option<T>, LookupError> {
+    let Some(first) = matches.next() else {
+        return Ok(None);
+    };
+    if matches.next().is_some() {
+        return Err(LookupError::Ambiguous {
+            kind,
+            name: name.to_string(),
+        });
+    }
+    Ok(Some(first))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GlobalContext {
+    pub name: LocalizedName,
+    pub property_links: Vec<MemberLink>,
+    pub method_links: Vec<MemberLink>,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GlobalMethod {
+    pub name: LocalizedName,
+    pub signatures: Vec<Signature>,
+    pub return_types: Vec<TypeRef>,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GlobalProperty {
+    pub name: LocalizedName,
+    pub usage: Option<String>,
+    pub type_refs: Vec<TypeRef>,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PlatformType {
+    pub name: LocalizedName,
+    pub method_links: Vec<MemberLink>,
+    pub constructor_links: Vec<MemberLink>,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PlatformMethod {
+    pub owner: LocalizedName,
+    pub name: LocalizedName,
+    pub signatures: Vec<Signature>,
+    pub return_types: Vec<TypeRef>,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PlatformProperty {
+    pub owner: LocalizedName,
+    pub name: LocalizedName,
+    pub usage: Option<String>,
+    pub type_refs: Vec<TypeRef>,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Constructor {
+    pub owner: LocalizedName,
+    pub name: LocalizedName,
+    pub signatures: Vec<Signature>,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EnumDefinition {
+    pub name: LocalizedName,
+    pub value_links: Vec<MemberLink>,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EnumValue {
+    pub owner: LocalizedName,
+    pub name: LocalizedName,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Signature {
+    pub text: String,
+    pub parameters: Vec<Parameter>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Parameter {
+    pub name: String,
+    pub required: bool,
+    pub type_refs: Vec<TypeRef>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypeRef {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LocalizedName {
+    pub primary: String,
+    pub alias: Option<String>,
+}
+
+impl LocalizedName {
+    pub fn matches(&self, value: &str) -> bool {
+        self.primary == value || self.alias.as_deref() == Some(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MemberLink {
+    pub name: LocalizedName,
+    pub html_path: String,
+}

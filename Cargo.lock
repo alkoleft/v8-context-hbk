@@ -228,6 +228,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51"
 
 [[package]]
+name = "hbk-book"
+version = "0.1.0"
+dependencies = [
+ "hbk-container",
+ "zip",
+]
+
+[[package]]
+name = "hbk-container"
+version = "0.1.0"
+dependencies = [
+ "memmap2",
+]
+
+[[package]]
+name = "hbk-docs"
+version = "0.1.0"
+dependencies = [
+ "hbk-book",
+ "scraper",
+]
+
+[[package]]
+name = "hbk-export"
+version = "0.1.0"
+dependencies = [
+ "hbk-book",
+ "serde",
+ "serde_json",
+ "syntax-helper-model",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -622,6 +655,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntax-helper-extract"
+version = "0.1.0"
+dependencies = [
+ "hbk-book",
+ "hbk-docs",
+ "scraper",
+ "syntax-helper-model",
+]
+
+[[package]]
+name = "syntax-helper-model"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "tendril"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -662,15 +712,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
-name = "v8-context-hbk"
+name = "v8-context-hbk-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "memmap2",
- "scraper",
- "serde",
+ "hbk-book",
+ "hbk-container",
+ "hbk-export",
  "serde_json",
- "zip",
+ "syntax-helper-extract",
 ]
 
 [[package]]

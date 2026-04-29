@@ -1,0 +1,10 @@
+[package]
+name = "syntax-helper-extract"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hbk-book.workspace = true
+hbk-docs.workspace = true
+scraper.workspace = true
+syntax-helper-model.workspace = true

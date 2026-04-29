@@ -17,4 +17,14 @@ Current planning baseline:
 - primary implementation reference: `/home/alko/develop/open-source/hbk-reader`
 - secondary model/export/search reference: `/home/alko/develop/open-source/bsl-context-multi-project/platform-context-exporter`
 
+Workspace crates:
+
+- `hbk-container`: binary HBK container reading and entity byte access.
+- `hbk-book`: book metadata, locale inference, ZIP storage, TOC and page reads.
+- `hbk-docs`: documentation HTML parsing, normalized text/link extraction and page diagnostics.
+- `syntax-helper-model`: provenance-rich platform context domain model and lookup helpers.
+- `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized parsers.
+- `hbk-export`: canonical JSON export adapters.
+- `v8-context-hbk-cli`: command wiring for the installed `v8-context-hbk` binary.
+
 See [HBK components requirements and implementation plan](docs/hbk-components-requirements-plan.md).

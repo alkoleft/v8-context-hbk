@@ -1,0 +1,10 @@
+[package]
+name = "hbk-container"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+memmap2.workspace = true
+
+[features]
+test-utils = []

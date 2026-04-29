@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use hbk_book::HbkBook;
+use hbk_book::{Toc, TocPage};
+use hbk_container::HbkContainer;
+use hbk_export::JsonExporter;
 use serde_json::json;
-use v8_context_hbk::export::JsonExporter;
-use v8_context_hbk::hbk::book::HbkBook;
-use v8_context_hbk::hbk::container::HbkContainer;
-use v8_context_hbk::hbk::toc::{Toc, TocPage};
-use v8_context_hbk::syntax_helper::SyntaxHelperReader;
+use syntax_helper_extract::SyntaxHelperReader;
 
 #[derive(Debug, Parser)]
 #[command(version, about = "Read and inspect 1C HBK help book containers")]

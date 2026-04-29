@@ -1,0 +1,11 @@
+[package]
+name = "hbk-book"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hbk-container.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+hbk-container = { workspace = true, features = ["test-utils"] }
