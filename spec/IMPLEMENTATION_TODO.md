@@ -9,10 +9,12 @@ Loop rule:
 - Mark a task complete only after its listed verification passes.
 - If a task cannot be completed, leave it unchecked and record the blocker in the task notes or final response.
 - Do not start the next task in the same run unless the prompt explicitly asks for multiple tasks.
+- Before committing, stage only files changed for the current task and verify `git diff --cached --name-only`.
+- Do not create empty commits.
 
 ## Tasks
 
-### [ ] T0. Baseline repository shape
+### [x] T0. Baseline repository shape
 
 Scope:
 
@@ -29,6 +31,10 @@ Verification:
 - `cargo test`
 - `git diff --check`
 
+Status:
+
+- Completed by planning baseline commit `fc2b3d1`.
+
 ### [ ] T1. Container reader and inspect command
 
 Depends on: T0.
@@ -41,7 +47,7 @@ Scope:
 - Implement entity enumeration and byte reads.
 - Add `inspect` CLI through `clap`.
 - Add unit fixtures for binary parsing.
-- Add ignored real-file smoke test for `shcntx_ru.hbk`.
+- Add real-file smoke checks for `fmtdui_root.hbk` and `fmtdui_ru.hbk` that are ignored by default or gated by an explicit environment variable.
 
 Expected artifacts:
 
@@ -52,7 +58,9 @@ Expected artifacts:
 Verification:
 
 - `cargo test`
-- `cargo run -- inspect /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` exists: `cargo run -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk`
+- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` exists: `cargo run -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk`
+- If the files are absent: document that the real-platform smoke was skipped because the platform fixtures are unavailable.
 - `git diff --check`
 
 ### [ ] T2. Book, ZIP storage and TOC reader
@@ -68,6 +76,7 @@ Scope:
 - Implement locale inference.
 - Implement TOC tree and lookup APIs.
 - Add `toc` and `page` CLI commands.
+- Add committed deterministic known-page path fixtures for `fmtdui_root.hbk` and `fmtdui_ru.hbk` so page smoke verification is reproducible.
 
 Expected artifacts:
 
@@ -78,8 +87,10 @@ Expected artifacts:
 Verification:
 
 - `cargo test`
-- `cargo run -- toc /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --format json`
-- `cargo run -- page /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --path "<known-page>"`
+- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` exists: `cargo run -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json`
+- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` exists: `cargo run -- page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --path "<committed-known-ru-page>"`
+- If `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` exists: `cargo run -- page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk --path "<committed-known-root-page>"`
+- If the files are absent: document that real-platform TOC/page smoke was skipped because the platform fixtures are unavailable.
 - `git diff --check`
 
 ### [ ] T3. Documentation page parser
@@ -104,9 +115,31 @@ Verification:
 - `cargo test`
 - `git diff --check`
 
-### [ ] T4. Syntax Assistant root discovery
+### [ ] T4. Syntax Assistant fixture corpus
 
 Depends on: T2, T3.
+
+Scope:
+
+- Inspect representative pages from `shcntx_ru.hbk` and `shcntx_root.hbk`.
+- Select the minimal committed fixture set for root/catalog pages and every specialized parser kind.
+- Add a fixture manifest with source HBK file, HTML path, page title, parser kind and reason for inclusion.
+- Copy only minimal real HTML fragments needed for parser behavior tests.
+
+Expected artifacts:
+
+- Syntax Assistant fixture manifest.
+- Minimal real HTML fixtures for root/catalog and specialized parsers.
+
+Verification:
+
+- `cargo test`
+- Fixture manifest covers global context, global method, global property, object/type, object method, object property, constructor, enum, enum value and root/catalog pages.
+- `git diff --check`
+
+### [ ] T5. Syntax Assistant root discovery
+
+Depends on: T4.
 
 Scope:
 
@@ -118,16 +151,18 @@ Scope:
 Expected artifacts:
 
 - Syntax Assistant traversal/root discovery module.
-- Tests or debug/report path listing discovered root sections for `shcntx_ru.hbk`.
+- Stable automated assertion for discovered root sections in `shcntx_ru.hbk`.
 
 Verification:
 
 - `cargo test`
+- Stable automated assertion that discovered root sections for `shcntx_ru.hbk` include candidates for global context, enum catalog and type/object catalog.
+- If the file is absent: document that real-platform root discovery smoke was skipped because the platform fixture is unavailable.
 - `git diff --check`
 
-### [ ] T5. Specialized Syntax Assistant parsers
+### [ ] T6. Specialized Syntax Assistant parsers
 
-Depends on: T4.
+Depends on: T5.
 
 Scope:
 
@@ -148,11 +183,13 @@ Expected artifacts:
 Verification:
 
 - `cargo test`
+- Known representative assertions pass for object/type, method, property, constructor, enum, enum-value and global-context parsers.
+- Full in-memory extraction against `shcntx_ru.hbk` returns non-empty global methods, global properties, platform types and enums when the file exists.
 - `git diff --check`
 
-### [ ] T6. Domain model and canonical JSON export
+### [ ] T7. Domain model and canonical JSON export
 
-Depends on: T5.
+Depends on: T6.
 
 Scope:
 
@@ -160,6 +197,7 @@ Scope:
 - Add `serde` serialization.
 - Add source provenance fields to all exported records.
 - Implement `syntax-helper --output`.
+- Map `_root` source locale to export locale `en`.
 - Document export file names and schema intent.
 
 Expected artifacts:
@@ -170,13 +208,14 @@ Expected artifacts:
 Verification:
 
 - `cargo test`
-- `cargo run -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context`
+- `cargo run -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru`
+- `cargo run -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en`
 - JSON output files are non-empty and parse successfully.
 - `git diff --check`
 
-### [ ] T7. Lookup helpers
+### [ ] T8. Lookup helpers
 
-Depends on: T6.
+Depends on: T7.
 
 Scope:
 
@@ -196,18 +235,18 @@ Verification:
 - `cargo test`
 - `git diff --check`
 
-### [ ] T8. Real-platform acceptance report
+### [ ] T9. Real-platform Syntax Assistant acceptance report
 
-Depends on: T6, T7.
+Depends on: T7, T8.
 
 Scope:
 
 - Run acceptance commands against `shcntx_ru.hbk`.
 - Run acceptance commands against `shcntx_root.hbk`.
-- Record counts by entity kind and parser warnings.
+- Record counts by: global methods, global properties, types, type methods, type properties, constructors, enums and enum values; record parser warnings.
 - Record unresolved pages/links.
 - Convert parser gaps into follow-up tasks.
-- Make the localization/root-source decision explicit.
+- Confirm that `shcntx_root.hbk` exports as locale `en` and list remaining localization merge decisions.
 
 Expected artifacts:
 
@@ -219,19 +258,41 @@ Verification:
 - `cargo test`
 - `git diff --check`
 
-### [ ] T9. Integration decision for `v8-context`
+### [ ] T10. All-HBK smoke report
 
-Depends on: T8.
+Depends on: T9.
+
+Scope:
+
+- Enumerate every `*.hbk` file under `/opt/1cv8/x86_64/8.5.1.1150/`.
+- Run generic container/book/TOC smoke checks for every file.
+- Record per-file successes, fatal failures and unsupported structures.
+- Convert relevant unsupported structures into follow-up tasks.
+
+Expected artifacts:
+
+- Checked-in all-HBK smoke report with file count, commands, exit codes and per-file failures.
+
+Verification:
+
+- All-HBK smoke report exists and references the exact commands used.
+- `cargo test`
+- `git diff --check`
+
+### [ ] T11. Integration decision for `v8-context`
+
+Depends on: T9, T10.
 
 Scope:
 
 - Compare HBK export model with existing `v8-context` source model.
+- Inspect current `/home/alko/develop/open-source/v8-context` model/decision artifacts before making the integration decision.
 - Decide whether this crate remains standalone, becomes a workspace member, or exposes a file-level integration artifact first.
 - Record the decision in an ADR or integration note before implementation.
 
 Expected artifacts:
 
-- Decision artifact referencing T8 evidence.
+- Decision artifact referencing T9/T10 evidence.
 
 Verification:
 
