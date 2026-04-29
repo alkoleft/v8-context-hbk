@@ -2713,3 +2713,133 @@ pub mod hbk {
         }
     }
 }
+
+#[cfg(test)]
+mod syntax_helper_fixture_tests {
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::Path;
+
+    const MANIFEST: &str = include_str!("../tests/fixtures/syntax-helper/manifest.tsv");
+
+    #[derive(Debug)]
+    struct ManifestEntry<'a> {
+        parser_kind: &'a str,
+        source_hbk: &'a str,
+        page_title: &'a str,
+        fixture_path: &'a str,
+        reason: &'a str,
+    }
+
+    #[test]
+    fn syntax_assistant_fixture_manifest_covers_required_parser_kinds() {
+        let entries = parse_manifest();
+        let actual_kinds = entries
+            .iter()
+            .map(|entry| entry.parser_kind)
+            .collect::<BTreeSet<_>>();
+        let required_kinds = BTreeSet::from([
+            "global_context",
+            "global_method",
+            "global_property",
+            "object_type",
+            "object_method",
+            "object_property",
+            "constructor",
+            "enum",
+            "enum_value",
+            "root_catalog",
+        ]);
+
+        assert_eq!(actual_kinds, required_kinds);
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.source_hbk.ends_with("shcntx_ru.hbk"))
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.source_hbk.ends_with("shcntx_root.hbk"))
+        );
+        assert!(
+            entries
+                .iter()
+                .filter(|entry| entry.parser_kind == "root_catalog")
+                .count()
+                >= 3
+        );
+        assert!(
+            entries
+                .iter()
+                .filter(|entry| entry.parser_kind == "root_catalog")
+                .all(|entry| entry.reason.contains("TOC records")),
+            "root/catalog HTML fixtures must document that catalog children are represented by TOC records"
+        );
+    }
+
+    #[test]
+    fn syntax_assistant_fixture_manifest_points_to_real_html_fragments() {
+        for entry in parse_manifest() {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(entry.fixture_path);
+            let html = fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{} must be readable: {error}", path.display()));
+
+            assert!(
+                html.contains("<h1 class=\"V8SH_pagetitle\">"),
+                "{} must keep the real Syntax Assistant page-title marker",
+                entry.fixture_path
+            );
+            assert!(
+                html.contains(entry.page_title),
+                "{} must contain manifest page title '{}'",
+                entry.fixture_path,
+                entry.page_title
+            );
+            assert!(
+                html.contains("V8SH_") || entry.parser_kind == "root_catalog",
+                "{} must preserve Syntax Assistant class markers",
+                entry.fixture_path
+            );
+        }
+    }
+
+    fn parse_manifest() -> Vec<ManifestEntry<'static>> {
+        let mut lines = MANIFEST.lines();
+        assert_eq!(
+            lines.next(),
+            Some("parser_kind\tsource_hbk\thtml_path\tpage_title\tfixture_path\treason")
+        );
+
+        lines
+            .enumerate()
+            .filter(|(_, line)| !line.trim().is_empty())
+            .map(|(index, line)| {
+                let fields = line.split('\t').collect::<Vec<_>>();
+                assert_eq!(
+                    fields.len(),
+                    6,
+                    "manifest line {} must have 6 tab-separated fields",
+                    index + 2
+                );
+                assert!(
+                    fields[1].ends_with(".hbk"),
+                    "manifest line {} must record source HBK file",
+                    index + 2
+                );
+                assert!(
+                    fields[2].ends_with(".html"),
+                    "manifest line {} must record HTML path",
+                    index + 2
+                );
+                ManifestEntry {
+                    parser_kind: fields[0],
+                    source_hbk: fields[1],
+                    page_title: fields[3],
+                    fixture_path: fields[4],
+                    reason: fields[5],
+                }
+            })
+            .collect()
+    }
+}

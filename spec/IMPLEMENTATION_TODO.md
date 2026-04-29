@@ -115,7 +115,7 @@ Verification:
 - `cargo test`
 - `git diff --check`
 
-### [ ] T4. Syntax Assistant fixture corpus
+### [x] T4. Syntax Assistant fixture corpus
 
 Depends on: T2, T3.
 
@@ -136,6 +136,10 @@ Verification:
 - `cargo test`
 - Fixture manifest covers global context, global method, global property, object/type, object method, object property, constructor, enum, enum value and root/catalog pages.
 - `git diff --check`
+
+Status:
+
+- Completed with a curated `tests/fixtures/syntax-helper/manifest.tsv` and minimal real HTML fragments from `shcntx_ru.hbk` and `shcntx_root.hbk`.
 
 ### [ ] T5. Syntax Assistant root discovery
 
