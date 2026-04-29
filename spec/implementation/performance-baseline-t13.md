@@ -203,6 +203,80 @@ Current post-T15 hotspots to measure:
 - whole `FileStorage` ownership and container/entity copies;
 - parser temporary allocation or allocator retention.
 
+T16 attributed the remaining post-T15 memory. Raw command outputs, generated exports and the
+temporary attribution probe were written under `target/t16-memory-attribution-20260430/`; that
+directory is service data and is not a durable source of truth.
+
+T16 built the debug CLI and a temporary probe that reused the same workspace crates:
+
+```bash
+cargo build -p v8-context-hbk-cli --bin v8-context-hbk
+cargo build --manifest-path target/t16-memory-attribution-20260430/probe/Cargo.toml
+```
+
+The actual CLI was re-measured with GNU `time`:
+
+```bash
+/usr/bin/time -o target/t16-memory-attribution-20260430/logs/cli-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t16-memory-attribution-20260430/exports/cli-shcntx-ru
+/usr/bin/time -o target/t16-memory-attribution-20260430/logs/cli-shcntx-root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/t16-memory-attribution-20260430/exports/cli-shcntx-root
+```
+
+The probe ran the same books through `open`, `discover`, `extract` and `export` modes with the same
+GNU `time` format. Export mode used:
+
+```bash
+target/t16-memory-attribution-20260430/probe/target/debug/t16-memory-probe export /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk target/t16-memory-attribution-20260430/exports/probe-shcntx-ru
+target/t16-memory-attribution-20260430/probe/target/debug/t16-memory-probe export /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk target/t16-memory-attribution-20260430/exports/probe-shcntx-root
+```
+
+The other probe modes used the same binary and HBK path with `open`, `discover` or `extract` in
+place of `export`, without an output directory.
+
+No fixture-backed T16 command was skipped on this host.
+
+| T16 command label | Exit | Elapsed, s | Peak RSS, KiB | Output bytes |
+| --- | ---: | ---: | ---: | ---: |
+| CLI `syntax-helper shcntx_ru --output` | 0 | 18.64 | 588892 | 21950926 |
+| CLI `syntax-helper shcntx_root --output` | 0 | 14.07 | 324352 | 12269994 |
+
+| Probe mode | `shcntx_ru` peak RSS, KiB | `shcntx_root` peak RSS, KiB |
+| --- | ---: | ---: |
+| `open` | 385024 | 323196 |
+| `discover` | 385024 | 323200 |
+| `extract` | 590532 | 323328 |
+| `export` | 588876 | 323072 |
+
+Key probe stage readings from `/proc/self/status`:
+
+| Source | Stage | Current RSS, KiB | VmHWM, KiB |
+| --- | --- | ---: | ---: |
+| `shcntx_ru.hbk` | after `HbkBook::open` | 112660 | 385152 |
+| `shcntx_ru.hbk` | after extract | 589152 | 589152 |
+| `shcntx_ru.hbk` | after export | 589248 | 589248 |
+| `shcntx_root.hbk` | after `HbkBook::open` | 100084 | 323072 |
+| `shcntx_root.hbk` | after extract | 313036 | 323072 |
+| `shcntx_root.hbk` | after export | 313100 | 323072 |
+
+T16 attribution:
+
+- Full `PlatformContext` accumulation and parser-held extracted data dominate the remaining
+  `shcntx_ru.hbk` peak: RSS rises from about 113 MiB after open to about 589 MiB after extract, and
+  the extraction-only probe peak matches the full export path.
+- Export adapter allocation during JSON writing is not the dominant remaining peak. Export adds
+  about 96 KiB current RSS on `shcntx_ru.hbk`, about 64 KiB on `shcntx_root.hbk`, and no material
+  high-water increase.
+- Whole `FileStorage` ownership and container/entity copies are still a real lower-level hotspot.
+  `HbkBook::open` reaches a high-water mark of 385024 KiB for `shcntx_ru.hbk` and 323196 KiB for
+  `shcntx_root.hbk`, while the retained RSS after open is only about 100-113 MiB. Code inspection
+  attributes that opening spike to `read_block_content_with_offsets` building per-byte
+  `source_offsets` for entity reads even when the caller only needs bytes.
+- Allocator retention is visible after dropping the context/book in the probe logs, but the peak is
+  already reached before export and is tied to the extraction/model path for `shcntx_ru.hbk`.
+
+T16 selects Variant C for T17. Variant E remains a later candidate if the lower-level open-time
+spike or retained `FileStorage` ownership remains limiting after streaming extraction, but Variant E
+alone would not reduce the current `shcntx_ru.hbk` extraction peak below the post-T15 value.
+
 ## Variant Evaluation
 
 Variant A, lean consumer export and streaming JSON writer, remains the first slice.
@@ -234,25 +308,27 @@ Variant D is not first.
 - Parallel parsing would add ordering and memory-risk surfaces before a narrower streaming/export
   slice is tried.
 
-Variant C is not first.
+Variant C is the selected T17 slice after T16.
 
-- Streaming extraction into record-family sinks crosses model and export boundaries and should wait
-  until Variant A and B evidence shows full-model accumulation is still a material bottleneck.
+- Streaming extraction into record-family sinks crosses model and export boundaries, so it was
+  deferred until Variant A and B completed.
+- T16 showed full `PlatformContext` accumulation and the export-oriented command shape are the
+  dominant remaining `shcntx_ru.hbk` peak after page loading was bounded.
 
 Variant E is not first.
 
 - `memmap2` remains the simplest low-copy container-open strategy.
-- The whole `FileStorage` copy may matter, but the first lower-risk check is to remove export bloat
-  and then bound page loading before replacing the container/book access model.
+- The whole `FileStorage` copy and per-byte `source_offsets` temporary allocation matter, but T16
+  showed they are not the next slice most likely to reduce the current `shcntx_ru.hbk` peak.
 
 ## Current Implementation Direction
 
 The original T13 direction selected T14 / Variant A first. T14 completed but left peak RSS high, so
 T15 / Variant B was implemented next.
 
-The next active task is T16: attribute the remaining post-T15 memory before choosing Variant C
-(streaming extraction into record-family sinks), Variant E (container/FileStorage access model), or
-no immediate refactor.
+T16 attributed the remaining post-T15 memory and selected T17 / Variant C next: streaming extraction
+into record-family sinks for the export command path while preserving the in-memory
+`syntax-helper-model` lookup use case.
 
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
 by the current evidence.

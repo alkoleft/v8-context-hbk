@@ -12,6 +12,9 @@ directories are service data unless promoted here.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.
+- T16 memory attribution selected Variant C for T17. The current debug CLI measured
+  `18.64s / 588892 KiB` for `shcntx_ru.hbk` and `14.07s / 324352 KiB` for `shcntx_root.hbk`;
+  extraction, not JSON export, is the remaining dominant `shcntx_ru.hbk` peak.
 
 ## Standard Verification Gates
 
@@ -123,6 +126,32 @@ The T15 pass keeps the canonical export shape from FR-EXPORT-001: consumer recor
 not expose HBK navigation or per-record provenance, while `diagnostics.json` keeps parser source
 context. The remaining `shcntx_ru.hbk` peak remains above 500 MiB and requires T16 attribution before
 the next optimization slice is selected.
+
+## T16 Durable Conclusions
+
+Post-T15 Syntax Assistant memory attribution was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+Both source books were available and no fixture-backed command was skipped.
+
+Actual debug CLI results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | 0 | 18.64 | 588892 | 21950926 |
+| `shcntx_root.hbk` | 0 | 14.07 | 324352 | 12269994 |
+
+Attribution probe conclusions:
+
+- `extract` reaches the same peak class as the full export path for `shcntx_ru.hbk`.
+- JSON export adds no material high-water RSS after extraction.
+- `HbkBook::open` still has a lower-level container/FileStorage opening spike, but that is not the
+  next slice most likely to reduce the current `shcntx_ru.hbk` peak.
+
+T16 selects Variant C for T17: streaming extraction into record-family sinks for the export command
+path while keeping the in-memory model as a library lookup use case.
 
 ## First Delivery Success Metrics
 

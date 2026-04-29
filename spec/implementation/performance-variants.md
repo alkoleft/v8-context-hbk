@@ -7,8 +7,9 @@ Current status:
 
 - Variant A was implemented in T14.
 - Variant B was implemented in T15.
-- Post-T15 measurements reduced peak RSS but `shcntx_ru.hbk` still peaks above 500 MiB, so T16 must
-  attribute the remaining memory before choosing Variant C, Variant E or no immediate refactor.
+- T16 attributed the remaining post-T15 memory and selected Variant C for T17 because the
+  extraction/export command path accumulates the full `PlatformContext` before writing record-family
+  JSON.
 
 ## Selection Rules
 
@@ -142,10 +143,13 @@ The original T13 ordering was:
 4. Variant C only if full-model accumulation remains a measured problem.
 5. Variant E only if container/FileStorage ownership is proven to be the limiting resource.
 
-After T15, do not advance directly to Variant C or Variant E from this ordering alone. First run
-T16 memory attribution and choose the next slice from measured evidence:
+T16 memory attribution selected Variant C from measured evidence:
 
-- choose Variant C if full `PlatformContext` accumulation or export-only command shape dominates;
-- choose Variant E if `FileStorage` ownership or container/entity copies dominate;
-- choose no immediate refactor if the remaining peak is allocator retention or cannot be reduced
-  without a disproportionate speed/complexity tradeoff.
+- the actual CLI peak on `shcntx_ru.hbk` was `588892 KiB`;
+- the `extract` probe reached the same peak class as the full `export` path;
+- export adapter allocation did not materially raise high-water RSS after extraction;
+- container/FileStorage opening still has a measured temporary spike, but Variant E alone would not
+  reduce the current `shcntx_ru.hbk` extraction peak.
+
+Variant E remains a later candidate if the open-time spike or retained `FileStorage` ownership
+remains limiting after Variant C.

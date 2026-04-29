@@ -6,9 +6,8 @@ Specification index: [Specification Index](README.md).
 
 Completed task history: [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md).
 
-Current status: T16 is the first active unchecked task and covers post-T15 memory attribution before
-choosing the next optimization slice. T15 completed Variant B and reduced peak RSS without a
-wall-clock regression, but `shcntx_ru.hbk` still peaks above the desired workstation budget.
+Current status: T17 is the first active unchecked task. T16 attributed post-T15 memory and selected
+Variant C, streaming extraction into record-family sinks, as the next optimization slice.
 
 ## Loop Rule
 
@@ -180,7 +179,7 @@ Completion notes:
   the Russian Syntax Assistant export remains above 500 MiB; the next task must attribute the
   remaining memory before selecting Variant C or Variant E.
 
-### [ ] T16. Attribute post-T15 Syntax Assistant memory
+### [x] T16. Attribute post-T15 Syntax Assistant memory
 
 Depends on: T15.
 
@@ -223,6 +222,22 @@ Verification:
 - `cargo test --workspace`
 - `git diff --check`
 
+Completion notes:
+
+- Raw command outputs, generated exports and the temporary attribution probe were written under
+  `target/t16-memory-attribution-20260430/` as service data.
+- Both `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+  `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` existed and were run; no T16 fixture-backed command
+  was skipped.
+- Current debug CLI measurements:
+  - `shcntx_ru.hbk`: exit `0`, elapsed `18.64s`, peak RSS `588892 KiB`, export bytes `21950926`.
+  - `shcntx_root.hbk`: exit `0`, elapsed `14.07s`, peak RSS `324352 KiB`, export bytes `12269994`.
+- Probe results showed `extract` reaches the same peak class as full `export`, while export adapter
+  allocation adds no material high-water RSS after extraction.
+- `HbkBook::open` still has a measured lower-level container/FileStorage opening spike, but Variant E
+  alone would not reduce the current `shcntx_ru.hbk` extraction peak.
+- T16 selects Variant C for T17.
+
 ### [ ] T17. Implement selected post-T16 memory optimization
 
 Depends on: T16.
@@ -241,13 +256,10 @@ Spec refs:
 
 Scope:
 
-- Implement only the next optimization slice selected by T16 evidence.
-- If T16 selects Variant C, implement streaming extraction into record-family sinks while preserving
+- Implement Variant C selected by T16: streaming extraction into record-family sinks while preserving
   `syntax-helper-model` lookup helpers as the in-memory library use case.
-- If T16 selects Variant E, change only the container/`FileStorage` access model needed to remove
-  measured whole-entity or ZIP setup memory pressure.
-- If T16 selects no immediate refactor, do not implement this task; record the T16 conclusion in the
-  completion notes or leave this task blocked with the reason.
+- Do not implement Variant E container/`FileStorage` access changes in this task; T16 leaves them as
+  a later candidate only if they remain limiting after Variant C.
 - Preserve deterministic diagnostics and deterministic JSON record order.
 - Preserve FR-EXPORT-001 consumer export shape unless T16 explicitly records a required export
   contract change.
@@ -258,7 +270,7 @@ Scope:
 
 Expected artifacts:
 
-- Code changes for the T16-selected optimization slice.
+- Code changes for Variant C, the T16-selected optimization slice.
 - Completion notes with exact before/after elapsed time, peak RSS and output counts for both
   Syntax Assistant books.
 - Spec or ADR update only if the implementation changes a durable boundary, public contract,

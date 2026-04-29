@@ -5,8 +5,9 @@ Date: 2026-04-30.
 Status: Accepted for the first post-baseline performance slice.
 
 Post-decision status: T14 completed Variant A. T15 completed Variant B after post-T14 measurements
-showed peak RSS was still high. The current active follow-up is T16 memory attribution before
-choosing Variant C, Variant E or no immediate refactor.
+showed peak RSS was still high. T16 attributed the remaining post-T15 memory and selected Variant C
+for T17 because the full extraction/export command path, not JSON writing alone, dominates the
+remaining `shcntx_ru.hbk` peak.
 
 ## Context
 
@@ -72,6 +73,8 @@ the current evidence is not enough to replace the lower-level access model first
 - T14 must write compact JSON through a writer instead of materializing pretty JSON bytes.
 - After T14, rerun the T13 `syntax-helper` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`.
 - If peak RSS remains high after T14, promote Variant B as the next implementation task.
+- After T16, implement Variant C as the next optimization slice before revisiting the lower-level
+  container/FileStorage access model.
 
 ## Verification
 
