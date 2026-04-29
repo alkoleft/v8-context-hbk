@@ -307,7 +307,7 @@ Status:
 
 - Completed with `docs/all-hbk-smoke-report.md`, covering 116 target-platform HBK files with per-file `inspect` and `toc --format json` exit codes and no fatal failures or unsupported structures.
 
-### [ ] T11. Integration decision for `v8-context`
+### [x] T11. Integration decision for `v8-context`
 
 Depends on: T9, T10.
 
@@ -327,3 +327,7 @@ Verification:
 - Decision artifact exists.
 - `cargo test`
 - `git diff --check`
+
+Status:
+
+- Completed with `docs/v8-context-integration-decision.md`, deciding that `v8-context-hbk` remains standalone for now and exposes the first `v8-context` integration through the file-level `syntax-helper --output` export before any workspace merge or direct HBK query-path coupling.
