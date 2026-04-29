@@ -2,9 +2,11 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::json;
+use v8_context_hbk::export::JsonExporter;
 use v8_context_hbk::hbk::book::HbkBook;
 use v8_context_hbk::hbk::container::HbkContainer;
 use v8_context_hbk::hbk::toc::{Toc, TocPage};
+use v8_context_hbk::syntax_helper::SyntaxHelperReader;
 
 #[derive(Debug, Parser)]
 #[command(version, about = "Read and inspect 1C HBK help book containers")]
@@ -31,6 +33,12 @@ enum Command {
         #[arg(long, value_name = "HTML_PATH")]
         path: String,
     },
+    SyntaxHelper {
+        #[arg(value_name = "HBK_FILE")]
+        book: PathBuf,
+        #[arg(long, value_name = "DIR")]
+        output: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -52,6 +60,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::Inspect { path } => inspect(path)?,
         Command::Toc { path, format } => toc(path, format)?,
         Command::Page { book, path } => page(book, &path)?,
+        Command::SyntaxHelper { book, output } => syntax_helper(book, output)?,
     }
     Ok(())
 }
@@ -86,6 +95,31 @@ fn page(book_path: PathBuf, path: &str) -> Result<(), Box<dyn std::error::Error>
     let book = HbkBook::open(book_path)?;
     let page = book.read_page(path)?;
     print!("{page}");
+    Ok(())
+}
+
+fn syntax_helper(book_path: PathBuf, output: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let book = HbkBook::open(book_path)?;
+    let context = SyntaxHelperReader::new(&book).extract()?;
+    let summary = JsonExporter::new(output).export_syntax_helper(&book, &context)?;
+
+    println!("output: {}", summary.output_dir.display());
+    println!(
+        "locale: {} (source: {})",
+        summary.locale, summary.source_locale
+    );
+    println!("files: {}", summary.files.len());
+    println!("global_contexts: {}", context.global_contexts.len());
+    println!("global_methods: {}", context.global_methods.len());
+    println!("global_properties: {}", context.global_properties.len());
+    println!("platform_types: {}", context.platform_types.len());
+    println!("type_methods: {}", context.type_methods.len());
+    println!("type_properties: {}", context.type_properties.len());
+    println!("constructors: {}", context.constructors.len());
+    println!("enums: {}", context.enums.len());
+    println!("enum_values: {}", context.enum_values.len());
+    println!("diagnostics: {}", context.diagnostics.len());
+
     Ok(())
 }
 

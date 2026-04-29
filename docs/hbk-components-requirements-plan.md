@@ -328,6 +328,8 @@ Required API capabilities:
 - Serialize the extracted model to JSON as the canonical machine format.
 - Use an internal export shape that best represents the Rust domain model, including provenance and localization.
 - Export locale for `_root` books is `en`, even if the internal book locale keeps a `root` marker.
+- Write one metadata file plus one JSON file per exported record family. The provisional canonical file names are `metadata.json`, `global-contexts.json`, `global-methods.json`, `global-properties.json`, `platform-types.json`, `type-methods.json`, `type-properties.json`, `constructors.json`, `enums.json`, `enum-values.json` and `diagnostics.json`.
+- Each record-family file is a JSON object with `schema_version`, `locale`, `source_locale`, `source_hbk`, `record_kind` and `records`. Individual records keep parser provenance under `source`: HBK path, source locale, TOC path, HTML path and page title.
 - A legacy-shaped export inspired by `platform-context-exporter` may be added only when a real consumer needs it; it must remain an adapter, not a constraint on the internal model.
 - Do not preserve old DTO field names or file layout when a clearer schema is available for current consumers.
 - Mark first-stage export schemas as provisional until M7/T9 acceptance data and downstream consumer needs are reviewed.

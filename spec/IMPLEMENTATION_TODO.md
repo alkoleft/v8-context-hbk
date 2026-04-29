@@ -199,7 +199,7 @@ Status:
 
 - Completed with specialized Syntax Assistant parser domain structs, fixture assertions for every parser kind, and real `shcntx_ru.hbk` extraction smoke for the required non-empty families.
 
-### [ ] T7. Domain model and canonical JSON export
+### [x] T7. Domain model and canonical JSON export
 
 Depends on: T6.
 
@@ -224,6 +224,10 @@ Verification:
 - `cargo run -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en`
 - JSON output files are non-empty and parse successfully.
 - `git diff --check`
+
+Status:
+
+- Completed with canonical JSON export files, source provenance serialization, `syntax-helper --output`, `_root` export locale mapping to `en`, full specialized-page extraction in the production reader path and reviewer-approved verification.
 
 ### [ ] T8. Lookup helpers
 
