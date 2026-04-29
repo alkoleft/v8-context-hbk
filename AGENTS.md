@@ -64,6 +64,19 @@ Test behavior, not implementation.
 - When refactoring without behavior change, existing behavior tests should remain valid.
 - Add broader tests when a change crosses module boundaries or changes a public contract; keep tests focused for local implementation changes.
 
+## Subagent Usage
+
+- Use subagents for non-trivial implementation, performance, parser, export, architecture or
+  cross-crate changes when subagents are available.
+- Prefer independent subagent passes for evidence gathering, test execution and code review before
+  finalizing a task with meaningful behavioral or resource-impact risk.
+- Keep deterministic repository operations in the main session: spec updates, final verification,
+  staging, commits and reconciliation of subagent findings.
+- Delegate only bounded, self-contained work with clear read/write scope. Do not use subagents for
+  trivial docs-only edits or tasks where delegation would add more coordination than value.
+- If subagents are unavailable, continue in the main session and mention the skipped subagent pass
+  in the final response or task notes when the task expected one.
+
 ## Implementation Discipline
 
 - Follow this order for non-trivial work:
