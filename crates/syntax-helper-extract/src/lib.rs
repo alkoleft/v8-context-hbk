@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::Path;
 
@@ -31,6 +31,7 @@ impl<'a> SyntaxHelperReader<'a> {
     }
 
     pub fn extract(&self) -> Result<PlatformContext, SyntaxHelperError> {
+        let toc_index = syntax_toc_index(self.book.toc());
         let root_paths = self
             .book
             .toc()
@@ -55,10 +56,10 @@ impl<'a> SyntaxHelperReader<'a> {
                         entry_name: html_path.to_string(),
                     })
                 })?;
-                Ok(parse_syntax_page_content(
+                Ok(parse_syntax_page_content_with_index(
                     self.book.path(),
                     self.book.locale().source_code(),
-                    self.book.toc(),
+                    &toc_index,
                     html_path,
                     raw_html,
                 ))
@@ -81,10 +82,10 @@ impl<'a> SyntaxHelperReader<'a> {
                         entry_name: html_path.to_string(),
                     })
                 })?;
-                Ok(parse_syntax_page_content(
+                Ok(parse_syntax_page_content_with_index(
                     self.book.path(),
                     self.book.locale().source_code(),
-                    self.book.toc(),
+                    &toc_index,
                     html_path,
                     raw_html,
                 ))
@@ -548,6 +549,7 @@ fn source_from_content(fallback: &SyntaxHelperSource, content: &PageContent) -> 
     }
 }
 
+#[cfg(test)]
 fn parse_syntax_page_content(
     hbk_path: &Path,
     locale: &str,
@@ -555,16 +557,21 @@ fn parse_syntax_page_content(
     html_path: &str,
     raw_html: &str,
 ) -> PageContent {
+    let toc_index = syntax_toc_index(toc);
+    parse_syntax_page_content_with_index(hbk_path, locale, &toc_index, html_path, raw_html)
+}
+
+fn parse_syntax_page_content_with_index(
+    hbk_path: &Path,
+    locale: &str,
+    toc_index: &SyntaxTocIndex,
+    html_path: &str,
+    raw_html: &str,
+) -> PageContent {
     let normalized_page_path = html_path.trim_start_matches('/').to_string();
-    let toc_page = toc
-        .flat_pages()
-        .find(|flat_page| flat_page.page.html_path == normalized_page_path);
-    let toc_path = toc_page
-        .as_ref()
-        .map(|flat_page| flat_page.index_path.to_string());
-    let toc_title = toc_page
-        .as_ref()
-        .map(|flat_page| flat_page.page.title.display().to_string());
+    let toc_page = toc_index.get(&normalized_page_path);
+    let toc_path = toc_page.and_then(|page| page.toc_path.clone());
+    let toc_title = toc_page.and_then(|page| page.toc_title.clone());
     let title = select_first_html_text(raw_html, ".V8SH_pagetitle")
         .or_else(|| select_first_html_text(raw_html, "title"))
         .or_else(|| toc_title.clone())
@@ -587,6 +594,28 @@ fn parse_syntax_page_content(
         links: Vec::new(),
         diagnostics: Vec::new(),
     }
+}
+
+type SyntaxTocIndex = BTreeMap<String, SyntaxTocPage>;
+
+#[derive(Debug, Clone)]
+struct SyntaxTocPage {
+    toc_path: Option<String>,
+    toc_title: Option<String>,
+}
+
+fn syntax_toc_index(toc: &Toc) -> SyntaxTocIndex {
+    toc.flat_pages()
+        .map(|flat_page| {
+            (
+                flat_page.page.html_path.clone(),
+                SyntaxTocPage {
+                    toc_path: Some(flat_page.index_path.to_string()),
+                    toc_title: Some(flat_page.page.title.display().to_string()),
+                },
+            )
+        })
+        .collect()
 }
 
 fn page_title_name(content: &PageContent) -> LocalizedName {
