@@ -56,6 +56,11 @@ The first semantic-search experiment must preserve the local deterministic searc
 or model-backed ranking may rerank or supplement results, but exact lookup and relationship graph
 queries must continue to work without network access or an embedding provider.
 
+The first query index storage must remain local and rebuildable. A SQLite/FTS5 index is the current
+preferred implementation direction because it supports exact lookup, full-text search and bounded
+relationship traversal without running a service. External search engines or graph databases require
+a measured limitation in the SQLite-backed slice and a separate ADR update.
+
 ## NFR-TEST-001: Testability
 
 - Test behavior, not implementation details.

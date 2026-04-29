@@ -232,27 +232,30 @@ Preconditions:
 - The Syntax Assistant export command is runnable.
 - The separate Syntax Assistant query CLI is runnable as `v8-sh` or the accepted ADR-0004 binary
   name.
-- `target/uat/shcntx-ru` and `target/uat/sh-search-ru` can be created or removed.
+- `target/uat/shcntx-ru` can be created or removed.
+- `target/uat/sh-search-ru.sqlite` can be created or removed.
 
 Steps:
 
 ```bash
-rm -rf target/uat/shcntx-ru target/uat/sh-search-ru
+rm -rf target/uat/shcntx-ru target/uat/sh-search-ru.sqlite
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
-v8-sh index target/uat/shcntx-ru --output target/uat/sh-search-ru
+v8-sh index target/uat/shcntx-ru --output target/uat/sh-search-ru.sqlite
 ```
 
 Expected result:
 
 - Exit code is `0`.
-- The index directory contains a manifest and deterministic search/relationship artifacts.
+- The index artifact is a SQLite database.
+- The database contains schema metadata plus deterministic document, exact-name, FTS and
+  relationship-edge data.
 - The index build records locale `ru`, source locale `ru` and source export schema version.
 - The query CLI does not require the HBK file path for later lookup commands.
 
 Cleanup:
 
-- `target/uat/shcntx-ru` and `target/uat/sh-search-ru` are service data and may be deleted after the
-  run.
+- `target/uat/shcntx-ru` and `target/uat/sh-search-ru.sqlite` are service data and may be deleted
+  after the run.
 
 ## UAT-SH-005: Exact Syntax Assistant Lookup
 
@@ -262,14 +265,14 @@ Related requirements: FR-SH-SEARCH-001, NFR-QUERY-001.
 
 Preconditions:
 
-- `target/uat/sh-search-ru` exists from UAT-SH-004.
+- `target/uat/sh-search-ru.sqlite` exists from UAT-SH-004.
 
 Steps:
 
 ```bash
-v8-sh get --index target/uat/sh-search-ru --name "ОтборКомпоновкиДанных" --format json
-v8-sh get --index target/uat/sh-search-ru --name "DataCompositionFilter" --format json
-v8-sh get --index target/uat/sh-search-ru --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
+v8-sh get --index target/uat/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных" --format json
+v8-sh get --index target/uat/sh-search-ru.sqlite --name "DataCompositionFilter" --format json
+v8-sh get --index target/uat/sh-search-ru.sqlite --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
 ```
 
 Expected result:
@@ -291,13 +294,13 @@ Related requirements: FR-SH-SEARCH-001, FR-SH-SEARCH-002, NFR-QUERY-001.
 
 Preconditions:
 
-- `target/uat/sh-search-ru` exists from UAT-SH-004.
+- `target/uat/sh-search-ru.sqlite` exists from UAT-SH-004.
 
 Steps:
 
 ```bash
-v8-sh search --index target/uat/sh-search-ru --query "отбор скд" --mode keywords --format json
-v8-sh related --index target/uat/sh-search-ru --name "ОтборКомпоновкиДанных" --format json
+v8-sh search --index target/uat/sh-search-ru.sqlite --query "отбор скд" --mode keywords --format json
+v8-sh related --index target/uat/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных" --format json
 ```
 
 Expected result:

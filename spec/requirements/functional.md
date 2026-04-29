@@ -197,8 +197,9 @@ separate query CLI search behavior.
 The system must provide a separate Syntax Assistant-focused CLI surface for interactive retrieval
 over extracted platform API facts.
 
-Query commands must operate on a prebuilt local export or search index. They must not open and parse
-large `shcntx_*.hbk` books on every query.
+Query commands must operate on a prebuilt local export or search index. The first durable index
+format is expected to be a local SQLite/FTS5 database unless ADR-0004 is revised. Query commands
+must not open and parse large `shcntx_*.hbk` books on every query.
 
 Required query modes:
 
