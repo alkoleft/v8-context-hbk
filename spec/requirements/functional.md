@@ -15,6 +15,8 @@ the file-level export decided in ADR-0001.
   content.
 - Expose documentation navigation and page content from compatible `.hbk` files.
 - Extract structured Syntax Assistant data from `shcntx_*.hbk`.
+- Provide a separate Syntax Assistant query CLI for fast retrieval of extracted platform API facts,
+  including exact lookup, description/keyword search and relationship exploration.
 - Preserve provenance for diagnostics: HBK file path, entity name, TOC path, HTML path and page
   title.
 - Keep public library, CLI and export contracts provisional until real-platform acceptance and
@@ -24,12 +26,13 @@ the file-level export decided in ADR-0001.
 
 - Writing or modifying `.hbk` containers.
 - Rendering the full HTML help UI.
-- Full-text search ranking or indexing beyond exact lookup helpers.
 - MCP server implementation.
 - Runtime extraction from 1C processes.
 - Complete compatibility proof for every platform version.
 - Backward-compatible reproduction of Java/Kotlin public APIs, class names, DTOs or CLI behavior.
 - Immediate merge into `/home/alko/develop/open-source/v8-context/`.
+- General-purpose question answering that is not grounded in extracted Syntax Assistant facts.
+- Network-hosted semantic search or embedding-provider integration as the first search CLI slice.
 
 ## FR-HBK-001: Container Reader
 
@@ -186,7 +189,70 @@ The system must provide exact lookup helpers for:
 - type member by type/member name
 - constructors by type name
 
-Search ranking is out of scope.
+Search ranking is out of scope for these in-memory lookup helpers. FR-SH-SEARCH-001 covers the
+separate query CLI search behavior.
+
+## FR-SH-SEARCH-001: Fast Syntax Assistant Query CLI
+
+The system must provide a separate Syntax Assistant-focused CLI surface for interactive retrieval
+over extracted platform API facts.
+
+Query commands must operate on a prebuilt local export or search index. They must not open and parse
+large `shcntx_*.hbk` books on every query.
+
+Required query modes:
+
+- exact lookup by primary name or alias;
+- exact owner/member lookup, such as `НастройкиКомпоновкиДанных.Отбор`;
+- keyword/full-text search over names, aliases, signatures, parameter names, return/type references
+  and descriptions;
+- fuzzy name search for small spelling differences;
+- purpose-oriented search over descriptions, such as finding APIs related to filtering, reports or
+  data composition;
+- relationship search from one API fact to related facts.
+
+The first implementation may use lexical ranking only. Semantic search is a planned extension point
+after the local index and relationship graph prove useful on real extracted data.
+
+Acceptance:
+
+- Exact lookup for `ОтборКомпоновкиДанных` or `DataCompositionFilter` returns the platform type and
+  its description from the Russian Syntax Assistant export.
+- Exact lookup for `НастройкиКомпоновкиДанных.Отбор` returns the property with type reference
+  `ОтборКомпоновкиДанных`.
+- Keyword search for `отбор скд` returns data-composition filter facts ahead of unrelated filter
+  facts when the Russian Syntax Assistant fixture exists.
+- Query output is available as readable text and deterministic JSON.
+
+## FR-SH-SEARCH-002: Syntax Assistant Relationship Graph
+
+The system must derive a relationship graph for Syntax Assistant facts.
+
+Required relationship sources:
+
+- owner-to-member edges for type methods, type properties, constructors and enum values;
+- member-to-type edges from property type references, method return types, constructor owners and
+  parameter type references;
+- collection/item edges visible through property type references and descriptions;
+- Syntax Assistant navigation links such as section member links and "see also" links when they are
+  extracted from the HBK page HTML;
+- TOC/page provenance when the index was built from provenance-rich extraction data.
+
+Relationship search must be able to answer deterministic graph-style questions before any semantic
+model is introduced. For example, "how is an SKD filter created" should be explainable through:
+
+- `НастройкиКомпоновкиДанных.Отбор` -> `ОтборКомпоновкиДанных`;
+- `ОтборКомпоновкиДанных.Элементы` -> `КоллекцияЭлементовОтбораКомпоновкиДанных`;
+- `КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить`;
+- `ЭлементОтбораКомпоновкиДанных` fields such as `ЛевоеЗначение`, `ВидСравнения`,
+  `ПравоеЗначение` and `Использование`.
+
+Acceptance:
+
+- Relationship output for `ОтборКомпоновкиДанных` includes its properties, methods and constructor.
+- Relationship output for `НастройкиКомпоновкиДанных.Отбор` includes the target type
+  `ОтборКомпоновкиДанных`.
+- Relationship output remains deterministic and does not depend on query-time HBK parsing.
 
 ## FR-CLI-001: Verification-Oriented CLI
 

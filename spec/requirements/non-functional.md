@@ -36,6 +36,26 @@ Saved variants and selection rules live in
 [`spec/implementation/performance-variants.md`](../implementation/performance-variants.md). Treat
 that document as a candidate plan, not as approval to skip the baseline measurement.
 
+## NFR-QUERY-001: Search Query Latency
+
+Fast Syntax Assistant lookup is a separate requirement from HBK extraction throughput.
+
+Query commands must use a prebuilt local export or search index and must not parse `shcntx_*.hbk`
+inside the query path. Index build commands may be slower and may reuse extraction/export pipelines,
+but interactive query commands must be optimized for repeated use.
+
+Provisional targets for the first indexed CLI slice on the target developer workstation:
+
+- exact name or owner/member lookup returns in under 1 second for the `shcntx_ru.hbk` data set;
+- keyword/fuzzy/relationship search returns in under 2 seconds for the `shcntx_ru.hbk` data set;
+- JSON output order is deterministic across runs;
+- if the command cannot meet these targets, the implementation task must record exact measurements
+  and identify the limiting index or ranking component before adding broader optimization.
+
+The first semantic-search experiment must preserve the local deterministic search path. Embeddings
+or model-backed ranking may rerank or supplement results, but exact lookup and relationship graph
+queries must continue to work without network access or an embedding provider.
+
 ## NFR-TEST-001: Testability
 
 - Test behavior, not implementation details.

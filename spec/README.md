@@ -29,6 +29,8 @@ Otherwise reconcile the specification files before implementing.
   post-baseline performance updates and current implementation direction.
 - `implementation/performance-variants.md`: saved performance/resource optimization variants and
   selection rules.
+- `implementation/syntax-helper-query-cli.md`: draft architecture for the separate Syntax
+  Assistant query/search CLI and its index/relationship model.
 - `acceptance/baseline.md`: acceptance gates, commands, durable T9/T10 conclusions and success metrics.
 - `acceptance/test-case-requirements.md`: rules for UAT and black-box test case specifications.
 - `acceptance/uat-test-cases.md`: current UAT test case catalog.

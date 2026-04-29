@@ -98,3 +98,67 @@ Reference anchors:
 
 Legacy DTO shape is an adapter option for concrete consumers, not a constraint on the internal Rust
 model.
+
+## Syntax Assistant Query CLI Evidence
+
+On 2026-04-30 the current CLI export was rechecked against the Russian Syntax Assistant source:
+
+```bash
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/analysis/syntax-helper-cli-requirement-20260430/ru
+```
+
+The command exited successfully and measured `19.12s / 588836 KiB` through GNU `time` in the debug
+profile. The generated directory was service data and contained 10 JSON files, about 21 MiB total.
+
+Current record counts:
+
+| File | Record kind | Records |
+| --- | --- | ---: |
+| `global-methods.json` | `global_method` | 500 |
+| `global-properties.json` | `global_property` | 101 |
+| `platform-types.json` | `platform_type` | 2533 |
+| `type-methods.json` | `type_method` | 6702 |
+| `type-properties.json` | `type_property` | 10732 |
+| `constructors.json` | `constructor` | 445 |
+| `enums.json` | `enum` | 713 |
+| `enum-values.json` | `enum_value` | 3110 |
+| `diagnostics.json` | `diagnostic` | 703 |
+
+Current consumer record fields are enough for a first local search index:
+
+- `name.primary` and `name.alias` support exact and fuzzy name search;
+- `owner` on type members, constructors and enum values supports owner/member lookup;
+- `signatures`, parameter names and parameter `type_refs` support signature search;
+- `return_types` and property `type_refs` support type-reference relationships;
+- `description` supports keyword and purpose-oriented lexical search.
+
+Observed data-composition filter facts for relationship-search design:
+
+- `ОтборКомпоновкиДанных` / `DataCompositionFilter` exists as a `platform_type` and is described as
+  the object used for record filtering.
+- `НастройкиКомпоновкиДанных.Отбор` exists as a type property whose type reference is
+  `ОтборКомпоновкиДанных`.
+- `ОтборКомпоновкиДанных.Элементы` exists as a type property whose type reference is
+  `КоллекцияЭлементовОтбораКомпоновкиДанных`.
+- `КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` exists as a method that adds a new item and
+  returns it.
+- `ЭлементОтбораКомпоновкиДанных` exposes comparison-item properties such as `ЛевоеЗначение`,
+  `ВидСравнения`, `ПравоеЗначение` and `Использование`.
+
+Current export limitations for the query CLI:
+
+- Consumer record-family files intentionally omit per-record HBK provenance and navigation links per
+  FR-EXPORT-001.
+- `hbk-docs` can resolve generic page links, but the current Syntax Assistant extraction path
+  creates `PageContent` with empty generic `links`.
+- `syntax-helper-extract` parses section member links for global context, platform types and enums
+  in the provenance-rich model, but the lean consumer export omits those link lists.
+- "See also" links are currently flattened into description text, not emitted as structured
+  relationships.
+
+Therefore the first search CLI can be built from the current canonical export for exact lookup,
+keyword/fuzzy search and owner/type-reference relationships. A richer relationship graph requires
+either a search-specific indexed artifact built during extraction or an enriched maintenance/search
+export that preserves structured section and "see also" links outside the lean consumer files.

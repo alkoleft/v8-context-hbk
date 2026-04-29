@@ -13,6 +13,10 @@ context boundaries and keeps CLI/export behavior provisional.
 6. `hbk-export`: canonical JSON export adapters.
 7. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
 
+Planned search/query components are described in
+[`syntax-helper-query-cli.md`](syntax-helper-query-cli.md). They are not current workspace members
+until an implementation task adds them.
+
 ## Dependency Rules
 
 - `hbk-container` must not depend on book, docs, extraction or export concerns.
@@ -22,6 +26,9 @@ context boundaries and keeps CLI/export behavior provisional.
 - `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages.
 - `hbk-export` owns output adapters for the Rust domain model.
 - `v8-context-hbk-cli` wires commands and error presentation only.
+- Planned Syntax Assistant search/query code must not make `hbk-export` carry search-only fields in
+  the lean consumer export. Use a search-specific index or maintenance export when structured links
+  or provenance are required for query workflows.
 
 ## Public Contract Policy
 
@@ -129,6 +136,14 @@ Owns FR-CLI-001.
 
 The installed binary name remains `v8-context-hbk`. Accepted command names are `inspect`, `toc`,
 `page` and `syntax-helper`.
+
+### Planned Syntax Assistant query CLI
+
+Owns FR-SH-SEARCH-001 and FR-SH-SEARCH-002 after implementation.
+
+The separate query CLI must read a prebuilt export or index artifact for interactive commands. It
+must not parse `shcntx_*.hbk` in exact lookup, text search, fuzzy search or relationship search
+commands.
 
 ## Implementation Dependencies
 

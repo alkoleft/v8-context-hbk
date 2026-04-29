@@ -17,6 +17,11 @@ follow links consistently.
 As an AI/indexing tool, I need structured platform API data from Syntax Assistant: methods,
 properties, types, constructors, enums, signatures, parameters and return types.
 
+### Syntax Assistant CLI User
+
+As a developer or agent, I need to quickly find platform API facts by exact name, purpose,
+keywords, approximate spelling and relationships without re-extracting HBK books for every query.
+
 ### Parser Maintainer
 
 As a maintainer, I need deterministic parser tests with small fixtures and clear failure context when
@@ -57,6 +62,28 @@ Outcome: a maintainer can identify unknown page classes, unresolved links or uns
 with enough HBK/page provenance to create follow-up parser tasks.
 
 Related requirements: FR-DOC-001, FR-SH-001, FR-SH-002, NFR-DIAG-001.
+
+## UC-SH-003: Find Syntax Assistant API Facts Quickly
+
+Primary user: Syntax Assistant CLI user.
+
+Outcome: a user can query an already extracted or indexed Syntax Assistant data set and get a small,
+ranked list of platform API facts without opening the HBK source book again.
+
+Related requirements: FR-SH-SEARCH-001, NFR-QUERY-001.
+
+## UC-SH-004: Explore Syntax Assistant Relationships
+
+Primary user: Syntax Assistant CLI user.
+
+Outcome: a user can start from a type, property, method, constructor or natural-language task and
+see related API facts needed to understand how the platform feature is assembled.
+
+Example: from "отбор скд" or `ОтборКомпоновкиДанных`, the CLI can show the settings property,
+filter item collection, item creation method and comparison item fields that are present in the
+extracted Syntax Assistant data.
+
+Related requirements: FR-SH-SEARCH-001, FR-SH-SEARCH-002, NFR-QUERY-001.
 
 ## UC-INT-001: Consume HBK Data from v8-context Later
 

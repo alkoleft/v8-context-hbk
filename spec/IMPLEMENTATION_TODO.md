@@ -7,7 +7,9 @@ Specification index: [Specification Index](README.md).
 Completed task history: [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md).
 
 Current status: T17 is the first active unchecked task. T16 attributed post-T15 memory and selected
-Variant C, streaming extraction into record-family sinks, as the next optimization slice.
+Variant C, streaming extraction into record-family sinks, as the next optimization slice. T18 records
+the new Syntax Assistant query CLI requirement and follows T17 unless the ledger is explicitly
+reprioritized.
 
 ## Loop Rule
 
@@ -284,4 +286,59 @@ Verification:
 - UAT-SH-002
 - UAT-SH-003
 - T13-style `syntax-helper` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`
+- `git diff --check`
+
+### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
+
+Depends on: T17 unless this task is explicitly reprioritized.
+
+Spec refs:
+
+- FR-SH-SEARCH-001
+- FR-SH-SEARCH-002
+- NFR-QUERY-001
+- UC-SH-003
+- UC-SH-004
+- UAT-SH-004
+- UAT-SH-005
+- UAT-SH-006
+- ADR-0004
+- `spec/source-evidence.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Confirm or revise ADR-0004 before coding. If the accepted binary name, crate split or index
+  artifact differs from the draft, update ADR-0004 and the implementation spec first.
+- Implement the first deterministic local search slice before semantic search:
+  - build a local index from the current canonical Syntax Assistant export directory;
+  - exact lookup by primary name and alias;
+  - exact owner/member lookup;
+  - keyword search over names, aliases, signatures, type references and descriptions;
+  - relationship traversal over owner/member and type-reference edges.
+- Keep query commands on a prebuilt local export or index. Do not parse `shcntx_*.hbk` in query
+  commands.
+- Keep the lean consumer export shape from FR-EXPORT-001. If search needs structured links or page
+  provenance, add a search-specific index/maintenance artifact instead of putting those fields back
+  into consumer record-family files.
+- Do not implement semantic search, embedding providers, network calls, caches, server mode, MCP or
+  UI in this first slice.
+- Measure query latency against NFR-QUERY-001 on the Russian Syntax Assistant data set.
+
+Expected artifacts:
+
+- Search/index library code and separate query CLI surface.
+- README usage for the implemented query CLI only after the command exists.
+- Completion notes with query measurements and any relationship-quality gaps.
+- Follow-up task for structured "see also" link extraction if deterministic relationships are not
+  sufficient for the SKD-filter UAT path.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-004
+- UAT-SH-005
+- UAT-SH-006
+- NFR-QUERY-001 measurement notes for exact lookup, keyword search and relationship search
 - `git diff --check`

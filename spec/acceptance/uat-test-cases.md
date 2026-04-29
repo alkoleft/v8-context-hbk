@@ -220,6 +220,102 @@ Cleanup:
 
 - `target/uat/shcntx-ru` is service data and may be deleted after the run.
 
+## UAT-SH-004: Build a Syntax Assistant Search Index
+
+Related use case: UC-SH-003.
+
+Related requirements: FR-SH-SEARCH-001, NFR-QUERY-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- The Syntax Assistant export command is runnable.
+- The separate Syntax Assistant query CLI is runnable as `v8-sh` or the accepted ADR-0004 binary
+  name.
+- `target/uat/shcntx-ru` and `target/uat/sh-search-ru` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shcntx-ru target/uat/sh-search-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+v8-sh index target/uat/shcntx-ru --output target/uat/sh-search-ru
+```
+
+Expected result:
+
+- Exit code is `0`.
+- The index directory contains a manifest and deterministic search/relationship artifacts.
+- The index build records locale `ru`, source locale `ru` and source export schema version.
+- The query CLI does not require the HBK file path for later lookup commands.
+
+Cleanup:
+
+- `target/uat/shcntx-ru` and `target/uat/sh-search-ru` are service data and may be deleted after the
+  run.
+
+## UAT-SH-005: Exact Syntax Assistant Lookup
+
+Related use case: UC-SH-003.
+
+Related requirements: FR-SH-SEARCH-001, NFR-QUERY-001.
+
+Preconditions:
+
+- `target/uat/sh-search-ru` exists from UAT-SH-004.
+
+Steps:
+
+```bash
+v8-sh get --index target/uat/sh-search-ru --name "ОтборКомпоновкиДанных" --format json
+v8-sh get --index target/uat/sh-search-ru --name "DataCompositionFilter" --format json
+v8-sh get --index target/uat/sh-search-ru --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
+```
+
+Expected result:
+
+- Exit code is `0`.
+- The first two commands return the same platform type fact.
+- The returned type fact contains primary name `ОтборКомпоновкиДанных`, alias
+  `DataCompositionFilter` and a non-empty description.
+- The owner/member command returns a type property whose type reference includes
+  `ОтборКомпоновкиДанных`.
+- The commands return within the NFR-QUERY-001 provisional target when measured on the target
+  workstation.
+
+## UAT-SH-006: Relationship Search for SKD Filter Creation
+
+Related use case: UC-SH-004.
+
+Related requirements: FR-SH-SEARCH-001, FR-SH-SEARCH-002, NFR-QUERY-001.
+
+Preconditions:
+
+- `target/uat/sh-search-ru` exists from UAT-SH-004.
+
+Steps:
+
+```bash
+v8-sh search --index target/uat/sh-search-ru --query "отбор скд" --mode keywords --format json
+v8-sh related --index target/uat/sh-search-ru --name "ОтборКомпоновкиДанных" --format json
+```
+
+Expected result:
+
+- Exit code is `0`.
+- Keyword search ranks data-composition filter facts ahead of unrelated DOM/file dialog filter
+  facts.
+- Relationship output for `ОтборКомпоновкиДанных` includes:
+  - constructor `Новый ОтборКомпоновкиДанных()`;
+  - property `Элементы` with type reference `КоллекцияЭлементовОтбораКомпоновкиДанных`;
+  - method facts for `ПолучитьКоличествоИспользуемых`, `ПолучитьИдентификаторПоОбъекту` and
+    `ПолучитьОбъектПоИдентификатору`.
+- The relationship path needed for filter item creation is discoverable through
+  `КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` and `ЭлементОтбораКомпоновкиДанных`
+  properties such as `ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and `Использование`.
+- The command returns within the NFR-QUERY-001 provisional target when measured on the target
+  workstation.
+
 ## UAT-ERR-001: Missing File Produces Readable CLI Error
 
 Related use cases: UC-HBK-001, UC-HBK-002, UC-SH-001.
