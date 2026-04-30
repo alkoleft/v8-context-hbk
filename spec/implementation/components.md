@@ -169,11 +169,15 @@ exporter remains available for in-memory model consumers and tests. Streaming ex
 lean sink detail mode to skip consumer-omitted navigation fields, but omission from JSON remains an
 `hbk-export` adapter concern rather than an internal model constraint.
 
-Schema version 4 record-family JSON exposes structured `availability`, `examples`, `see_also`,
-`available_since` and `signatures[].variant` fields from the domain model while still omitting
-source HBK paths, TOC paths, HTML paths, page titles and duplicate navigation-link catalogs from
-consumer records. It also includes `global-context-events.json`, `table-fields.json` and
-`table-parameters.json` for Syntax Assistant event and query/table metadata families.
+Schema version 5 record-family JSON exposes structured `availability`, `examples`, `see_also`,
+signature variant metadata, enum values and type-reference facts from the domain model while still
+omitting source HBK paths, TOC paths, HTML paths, page titles and duplicate navigation-link catalogs
+from consumer records. The export adapter owns consumer-shape simplification: `owner`,
+`type_refs`, `return_types`, `availability.since`, `see_also`, property `usage`, signature metadata
+and nested enum values are serialized in the lean FR-EXPORT-001 form without forcing the internal
+model to discard richer provenance or localized names. It also includes
+`global-context-events.json`, `table-fields.json` and `table-parameters.json` for Syntax Assistant
+event and query/table metadata families.
 
 ### v8-context-hbk-cli
 

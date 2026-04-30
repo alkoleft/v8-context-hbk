@@ -63,6 +63,7 @@ acceptance baseline, task ledger entry or ADR.
 
 ## Current Export Contract
 
-The current provisional Syntax Assistant consumer JSON contract is `schema_version: 4`.
+The accepted next provisional Syntax Assistant consumer JSON contract is `schema_version: 5`.
 `FR-EXPORT-001` owns the exact record-family shape; `acceptance/baseline.md` records the latest
-validated counts and schema-changing task conclusions.
+validated counts and schema-changing task conclusions. Until T32 is implemented, current binaries
+may still emit the previous `schema_version: 4` shape.

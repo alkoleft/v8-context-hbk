@@ -47,6 +47,40 @@ directories are service data unless promoted here.
 - T29 promoted global context events, query/table fields and query/table parameters into consumer
   export record families. Schema version is now 4, each source book exports 33 global context
   events, 588 table fields, 78 table parameters and 4 remaining diagnostics.
+- A 2026-04-30 post-T29 release-profile review found a `syntax-helper` runtime regression without
+  RSS growth. The main suspected cause is the T29 table-owner lookup path repeatedly calling
+  `Toc::find_by_html_path`, which rebuilds `flat_pages()` on each lookup. T30 owns the primary fix;
+  T31 owns residual parser-overhead attribution only after T30 is measured.
+
+## Post-T29 Runtime Regression To Fix
+
+The following release-profile measurements were taken after T29 to decide the next implementation
+task. Raw worktree exports and temporary comparison worktrees were service data and were not kept as
+durable artifacts.
+
+| Source / revision | Exit | Elapsed, s | Peak RSS, KiB | Notes |
+| --- | ---: | ---: | ---: | --- |
+| `shcntx_root.hbk` / T24 `e892da4` | 0 | 2.89 | 119936 | last accepted release performance baseline class |
+| `shcntx_root.hbk` / T28 `c3ff0df` | 0 | 3.53 | 119808 | before T29 table/event metadata export |
+| `shcntx_root.hbk` / T29 `8da6a7c` | 0 | 11.04 | 119808 | post-T29 regression |
+| `shcntx_ru.hbk` / T28 `c3ff0df` | 0 | 4.80 | 132352 | before T29 table/event metadata export |
+| `shcntx_ru.hbk` / T29 `8da6a7c` | 0 | 12.70 | 132352 | post-T29 regression |
+
+Primary suspected hot path:
+
+- `syntax-helper-extract::reader::query_table_owner` resolves every table field and table parameter
+  owner through `Toc::find_by_html_path`.
+- `Toc::find_by_html_path` calls `flat_pages()` and therefore rebuilds a flattened TOC vector on
+  each lookup.
+- T29 exports 588 table fields and 78 table parameters per Syntax Assistant source, so this creates
+  hundreds of full TOC flattening passes per `syntax-helper` run.
+
+Secondary candidate areas after T30:
+
+- repeated `section_text` / `section_html` scans over expanded boundary labels;
+- `section_facts` extraction for availability, examples, see-also and version facts;
+- `parse_variant_signatures` probing before ordinary signature parsing;
+- rubric-parameter parsing before plain text fallback.
 
 ## T24 Durable Conclusions
 

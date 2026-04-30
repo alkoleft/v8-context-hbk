@@ -9,10 +9,14 @@ Completed task history:
 - [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md)
 - [archive/completed-tasks-t13-t17-t19-t24.md](archive/completed-tasks-t13-t17-t19-t24.md)
 
-Current status: T18 is the first active unchecked task. T29 was explicitly reprioritized before T18
+Current status: T32 is the first active unchecked task. T29 was explicitly reprioritized before T18
 by the 2026-04-30 request to support previously out-of-scope Syntax Assistant event/table source
-families and is now complete. T13-T17 and T19-T24 are archived historical
-tasks; their durable performance conclusions live in `acceptance/baseline.md`,
+families and is now complete. T32 was explicitly reprioritized before the performance follow-up by
+the 2026-04-30 request to make the consumer JSON output leaner and easier for downstream agents to
+consume. Post-T29 measurements also found a release-profile `syntax-helper` runtime regression that
+must be corrected before the query CLI work resumes. T30-T31 are reprioritized before T18 by the
+2026-04-30 performance-regression review, after T32. T13-T17 and T19-T24 are
+archived historical tasks; their durable performance conclusions live in `acceptance/baseline.md`,
 `implementation/performance-baseline-t13.md` and `implementation/performance-variants.md`.
 T25-T28 record export-completeness gaps found by the 2026-04-30 audit across Russian and
 root/English Syntax Assistant exports. T25-T28 are closed after explicit export-completeness
@@ -96,9 +100,183 @@ Completion notes:
 - Verified with `cargo fmt`, `cargo test --workspace`, UAT-SH-001, UAT-SH-002, UAT-SH-003,
   UAT-SH-010, UAT-SH-011 and `git diff --check`.
 
+### [ ] T32. Switch consumer JSON export to lean schema version 5
+
+Depends on: T29.
+
+Spec refs:
+
+- FR-EXPORT-001
+- FR-SH-002
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- UAT-SH-008
+- UAT-SH-009
+- UAT-SH-011
+- UAT-SH-012
+
+Scope:
+
+- Bump the canonical consumer export schema to `schema_version: 5`.
+- Keep record-family envelopes and parser diagnostics structurally valid, but omit `null` fields
+  and empty arrays inside platform API consumer records.
+- Simplify owned consumer records by serializing `owner` as the owner's primary-name string.
+- Serialize `type_refs` and `return_types` as arrays of type-name strings wherever they appear,
+  including signature parameters.
+- Move recognized version facts from top-level `available_since` to `availability.since`; omit
+  `available_since` from consumer records.
+- Serialize `see_also` as an array of target primary-name strings.
+- Normalize property `usage` to enum strings `Read`, `Write`, `ReadWrite` or `Unknown` in both
+  `global-properties.json` and `type-properties.json`.
+- Strip leading type-reference prose from property descriptions when that fact is already exposed
+  through `type_refs`.
+- Remove `signatures[].text` for methods, global context events and constructors.
+- Move syntax-variant `title` and `description` directly onto signature records instead of nested
+  `variant`.
+- Merge enum values into owning records in `enums.json`; do not emit `enum-values.json`.
+- Keep enum and enum value `name` as the localized-name object with `primary` and optional `alias`.
+- For nested enum values, include `availability.since` only when it differs from the owning enum's
+  `availability.since`.
+- Do not implement the query CLI, semantic search, runtime 1C introspection or downstream
+  compatibility DTOs in this task.
+
+Expected artifacts:
+
+- Model/export adapter changes for the schema version 5 consumer JSON shape.
+- Fixture or export-level tests covering representative methods, events, constructors,
+  properties, see-also links and merged enum values.
+- Updated README and acceptance baseline for schema version, file inventory and record-family
+  counts.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- UAT-SH-008
+- UAT-SH-009
+- UAT-SH-011
+- UAT-SH-012
+- Full CLI export for `shcntx_ru.hbk`
+- Full CLI export for `shcntx_root.hbk`
+- `git diff --check`
+
+### [ ] T30. Remove post-T29 Syntax Assistant table-owner lookup regression
+
+Depends on: T29 and T32.
+
+Spec refs:
+
+- NFR-PERF-001
+- FR-SH-002
+- FR-EXPORT-001
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- UAT-SH-010
+- UAT-SH-011
+- `spec/acceptance/baseline.md`, post-T29 runtime regression note
+- `spec/implementation/performance-variants.md`
+
+Scope:
+
+- Replace the hot `query_table_owner` path that calls `Toc::find_by_html_path` for every
+  `QueryTableField` and `QueryTableParameter`.
+- Build or reuse a single deterministic TOC lookup/index during `SyntaxHelperReader::extract_into`
+  and pass it through the extraction path instead of repeatedly flattening the whole TOC.
+- Keep table owner names locale-aware and keep the accepted consumer record-family JSON shape
+  unchanged (`schema_version: 5` after T32).
+- Preserve deterministic record order, diagnostics order and streaming export behavior.
+- Do not add broad caches, generic pipeline abstractions, parallel parsing, query CLI work or
+  downstream compatibility DTOs in this task.
+
+Expected artifacts:
+
+- Extractor changes that make table-owner lookup O(1) or otherwise bounded by one prebuilt TOC
+  pass per `syntax-helper` run.
+- Unit or fixture coverage proving table field/parameter owner names still resolve for RU and
+  root/English examples.
+- Release-profile measurements for `shcntx_ru.hbk` and `shcntx_root.hbk` comparing current HEAD
+  against the fixed code.
+- Updated acceptance baseline and task completion notes with elapsed time, peak RSS, record counts
+  and remaining diagnostics.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- UAT-SH-010
+- UAT-SH-011
+- Release-profile `syntax-helper` measurement for `shcntx_ru.hbk`
+- Release-profile `syntax-helper` measurement for `shcntx_root.hbk`
+- `git diff --check`
+
+Regression evidence:
+
+- T24 release baseline measured `shcntx_ru.hbk` at `3.38s / 151136 KiB` and
+  `shcntx_root.hbk` at `2.57s / 119936 KiB`.
+- A 2026-04-30 commit-by-commit release measurement of `shcntx_root.hbk` showed
+  `c3ff0df` at `3.53s / 119808 KiB` and `8da6a7c` at `11.04s / 119808 KiB`.
+- The same review measured RU at `c3ff0df 4.80s / 132352 KiB` and
+  `8da6a7c 12.70s / 132352 KiB`.
+- The main suspected cause is the post-T29 table-owner resolution path:
+  `query_table_owner` calls `Toc::find_by_html_path`, and `find_by_html_path` rebuilds
+  `flat_pages()` on every call.
+
+### [ ] T31. Re-measure and optimize residual Syntax Assistant parser overhead after T30
+
+Depends on: T30.
+
+Spec refs:
+
+- NFR-PERF-001
+- FR-SH-002
+- FR-EXPORT-001
+- `spec/acceptance/baseline.md`, post-T29 runtime regression note
+- `spec/implementation/performance-variants.md`
+
+Scope:
+
+- Re-run release-profile measurements after T30 before changing parser code.
+- If elapsed time remains materially above the T24/T28 class, attribute the remaining overhead to
+  concrete parser helpers or export steps before implementation.
+- Candidate areas to measure first:
+  - repeated `section_text` / `section_html` scans over expanded section-boundary labels;
+  - `section_facts` extracting availability, examples, see-also and version facts on most pages;
+  - `parse_variant_signatures` detection before ordinary signature parsing;
+  - rubric-parameter parsing before plain text fallback.
+- Apply only the smallest measured parser/export optimization that preserves T25-T29 structured
+  facts and the accepted schema version 5 output from T32.
+- Do not introduce parallel parsing, generic HTML pipelines, persistent caches or query CLI work in
+  this task.
+
+Expected artifacts:
+
+- Measurement notes that distinguish fixed T30 lookup cost from residual parser cost.
+- Parser/export changes only if measurements identify a concrete bottleneck.
+- Fixture or unit tests for any parser behavior touched.
+- Updated acceptance baseline and completion notes with before/after release-profile measurements.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- Relevant Syntax Assistant UAT cases for any touched record families
+- Release-profile `syntax-helper` measurement for `shcntx_ru.hbk`
+- Release-profile `syntax-helper` measurement for `shcntx_root.hbk`
+- Deterministic export comparison for at least one Syntax Assistant book when parser output is
+  expected to stay semantically unchanged
+- `git diff --check`
+
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
-Depends on: T17 unless this task is explicitly reprioritized.
+Depends on: T17 and T31 unless this task is explicitly reprioritized.
 
 Spec refs:
 

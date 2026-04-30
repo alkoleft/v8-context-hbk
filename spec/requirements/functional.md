@@ -196,32 +196,54 @@ Required files:
 - `table-parameters.json`
 - `constructors.json`
 - `enums.json`
-- `enum-values.json`
 - `diagnostics.json`
 
-The current consumer export schema is `schema_version: 4`. Each consumer record-family file is a
-JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and `records`.
+The current accepted consumer export schema is `schema_version: 5`. Each consumer record-family
+file is a JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and
+`records`.
 `metadata.json` contains export-level metadata and file inventory; it must not expose source HBK
 paths or book hierarchy. `diagnostics.json` may keep parser source context because its audience is
 parser maintenance, not downstream platform API consumption.
 
-Schema version 3 and later consumer records include these structured section and overload fields.
-When a source page does not contain a fact, array fields are empty, `available_since` is `null` and
-signature `variant` is `null`:
+Schema version 5 keeps consumer records lean. Consumer records must omit `null` fields and empty
+arrays. This omission rule applies to platform API consumer records; it does not remove the
+top-level `records` array from record-family envelopes and does not weaken the parser-maintenance
+diagnostics contract.
 
-- `signatures`: array of callable signatures; each signature has `text`, `parameters` and
-  `variant`. `variant` is an object with `title` and `description` when the source page contains a
-  Syntax Assistant syntax-variant heading, otherwise `null`. Variant metadata must not expose HBK,
-  TOC or HTML provenance.
+- `owner`: string with the owner's primary name, such as `"ГруппаФормы"`, for type members,
+  constructors, table fields, table parameters and other owned consumer records.
+- `type_refs`: deterministic array of type-name strings, such as `["Строка", "Массив"]`, wherever
+  type references are exposed, including properties, table fields, table parameters and signature
+  parameters.
+- `return_types`: deterministic array of type-name strings, such as `["Строка"]`.
+- `signatures`: array of callable signatures with `parameters` and optional variant metadata.
+  `signatures[].text` is not part of the consumer JSON contract for methods, global context events
+  or constructors. Syntax-variant `title` and `description` are written directly on the signature
+  object when present; the nested `variant` object is not emitted. Variant metadata must not expose
+  HBK, TOC or HTML provenance.
 - `availability`: object with `contexts`, a deterministic array of normalized snake_case execution
   context values such as `thin_client`, `web_client`, `mobile_client`, `server`, `thick_client`,
   `external_connection`, `mobile_application_client`, `mobile_application_server` and
-  `mobile_standalone_server`
+  `mobile_standalone_server`, and optional `since`, a normalized version string such as `"8.3.6"`.
+  If neither `contexts` nor `since` is present, the whole `availability` field is omitted.
 - `examples`: array of objects with `text` containing extracted Syntax Assistant example/code text
-- `see_also`: array of relationship targets with `name`; consumer records still omit target HTML
-  paths
-- `available_since`: `null` or an object with normalized `version` when it can be recognized and
-  the source version `text`
+- `see_also`: deterministic array of target primary-name strings, such as `["Форма",
+  "ОбработкаПроверкиЗаполнения"]`; consumer records still omit target HTML paths.
+- `available_since`: not emitted as a top-level consumer record field. Recognized version facts are
+  serialized as `availability.since`.
+
+Property records in `global-properties.json` and `type-properties.json` share the same semantic
+shape: `name`, optional `owner` for type properties, `usage`, `type_refs`, `description` and shared
+section facts. `usage` is a stable enum string with values `Read`, `Write`, `ReadWrite` or
+`Unknown`, not localized free text. Property descriptions must not retain leading type-reference
+prose such as `Тип: ВидГруппыФормы . ` / `Type: ... .`; that fact belongs to `type_refs`.
+
+Method records in `global-methods.json` and `type-methods.json` share the same semantic shape:
+`name`, optional `owner` for type methods, `signatures`, `return_types`, `description` and shared
+section facts.
+
+Constructors use the same signature shape as methods: `signatures[].text` is not emitted, and
+variant metadata, if ever present, is direct signature metadata.
 
 Schema version 4 adds Syntax Assistant source families that were previously diagnostic-only:
 
@@ -235,6 +257,12 @@ Schema version 4 adds Syntax Assistant source families that were previously diag
 Global context events, table fields and table parameters are first-class consumer record families.
 They must no longer be reported as `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`,
 `OUT_OF_SCOPE_TABLE_FIELD` or `OUT_OF_SCOPE_TABLE_PARAMETER` for the target platform source books.
+
+Schema version 5 merges enum values into `enums.json`. `enum-values.json` is no longer emitted.
+Each enum record has `values`, a deterministic array of enum value records. Nested enum value
+records include `name`, `description` when present and `availability.since` only when the value's
+version differs from the owning enum's `availability.since`. Enum and enum value `name` fields keep
+the localized-name object shape with `primary` and optional `alias`.
 
 Acceptance:
 
