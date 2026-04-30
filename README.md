@@ -69,13 +69,12 @@ The output directory contains JSON files by record family:
 - `table-parameters.json`
 - `constructors.json`
 - `enums.json`
-- `enum-values.json`
 - `diagnostics.json`
 
-The current provisional export schema is `schema_version: 4`. Consumer record-family files include
-structured `availability`, `examples`, `see_also`, `available_since` and syntax-variant metadata
-when the source page contains those facts. The export also includes global context events and
-query/table field and parameter metadata. Absent facts are represented as empty arrays or `null`.
+The current provisional export schema is `schema_version: 5`. Consumer record-family files include
+structured `availability`, `examples`, `see_also`, signature variant metadata, type references and
+return types when the source page contains those facts. Absent facts are omitted from platform API
+consumer records. Enum values are nested in `enums.json`; `enum-values.json` is not emitted.
 Consumer records omit HBK file paths, TOC paths, HTML paths and page titles; `diagnostics.json`
 keeps parser provenance for maintenance.
 

@@ -306,3 +306,28 @@ The remaining diagnostic count is 4 in each locale, all
 `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE`. `UNKNOWN_PAGE_CLASS`,
 `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`, `OUT_OF_SCOPE_TABLE_FIELD` and
 `OUT_OF_SCOPE_TABLE_PARAMETER` are absent from the T29 exports.
+
+T32 follow-up on 2026-04-30 switched the consumer export to lean schema version 5. Full CLI exports
+for both Syntax Assistant source locales still produce the same platform API record-family counts,
+but `enum-values.json` is no longer emitted and all 3110 enum values are nested under owning records
+in `enums.json` for both locales.
+
+| File | RU records | EN/root records |
+| --- | ---: | ---: |
+| `global-methods.json` | 500 | 500 |
+| `global-properties.json` | 101 | 101 |
+| `global-context-events.json` | 33 | 33 |
+| `platform-types.json` | 2533 | 2533 |
+| `type-methods.json` | 6702 | 6702 |
+| `type-properties.json` | 10732 | 10732 |
+| `table-fields.json` | 588 | 588 |
+| `table-parameters.json` | 78 | 78 |
+| `constructors.json` | 445 | 445 |
+| `enums.json` | 713 records / 3110 nested values | 713 records / 3110 nested values |
+| `diagnostics.json` | 4 | 4 |
+
+The current lean consumer records omit `null` fields and empty arrays, expose `owner` as a
+primary-name string, expose `type_refs` and `return_types` as arrays of type-name strings, emit
+recognized version facts as `availability.since`, flatten `see_also` to target primary-name
+strings, normalize property `usage`, remove callable `signatures[].text`, flatten syntax-variant
+metadata onto signatures and keep parser provenance only in `diagnostics.json`.

@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-pub(crate) const SCHEMA_VERSION: u32 = 4;
+pub(crate) const SCHEMA_VERSION: u32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ExportFile {
@@ -48,10 +48,6 @@ pub const EXPORT_FILES: &[ExportFile] = &[
     ExportFile {
         file_name: "enums.json",
         record_kind: "enum",
-    },
-    ExportFile {
-        file_name: "enum-values.json",
-        record_kind: "enum_value",
     },
     ExportFile {
         file_name: "diagnostics.json",

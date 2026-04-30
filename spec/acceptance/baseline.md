@@ -45,8 +45,13 @@ directories are service data unless promoted here.
   `18.40s / 134528 KiB` for `shcntx_ru.hbk` and `14.09s / 122108 KiB` for `shcntx_root.hbk`; a
   repeated `shcntx_root.hbk` run measured `14.34s / 122112 KiB` and matched byte-for-byte.
 - T29 promoted global context events, query/table fields and query/table parameters into consumer
-  export record families. Schema version is now 4, each source book exports 33 global context
-  events, 588 table fields, 78 table parameters and 4 remaining diagnostics.
+  export record families and raised the schema to version 4 at that milestone. Each source book
+  exports 33 global context events, 588 table fields, 78 table parameters and 4 remaining
+  diagnostics.
+- T32 switched the canonical consumer JSON export to lean `schema_version: 5`. Consumer platform
+  API records omit `null` fields and empty arrays, owner/type-reference fields are string-based,
+  `available_since` is emitted as `availability.since`, enum values are nested in `enums.json` and
+  `enum-values.json` is no longer emitted.
 - A 2026-04-30 post-T29 release-profile review found a `syntax-helper` runtime regression without
   RSS growth. The main suspected cause is the T29 table-owner lookup path repeatedly calling
   `Toc::find_by_html_path`, which rebuilds `flat_pages()` on each lookup. T30 owns the primary fix;
@@ -759,6 +764,62 @@ New required files:
 
 The new consumer records omit source HBK paths, TOC paths, HTML paths and page titles. Parser
 provenance remains internal and in `diagnostics.json`.
+
+## T32 Durable Conclusions
+
+Lean schema version 5 was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+T32 changed the consumer JSON shape and raised the canonical export schema to
+`schema_version: 5`. Both source books exported 12 JSON files including `metadata.json` and
+`diagnostics.json`; `enum-values.json` is no longer emitted. `enums.json` now nests all 3110 enum
+values under their owning enum records in both locales.
+
+Record-family counts remained stable for both source books:
+
+| File | RU records | EN/root records |
+| --- | ---: | ---: |
+| `global-methods.json` | 500 | 500 |
+| `global-properties.json` | 101 | 101 |
+| `global-context-events.json` | 33 | 33 |
+| `platform-types.json` | 2533 | 2533 |
+| `type-methods.json` | 6702 | 6702 |
+| `type-properties.json` | 10732 | 10732 |
+| `table-fields.json` | 588 | 588 |
+| `table-parameters.json` | 78 | 78 |
+| `constructors.json` | 445 | 445 |
+| `enums.json` | 713 | 713 |
+| `diagnostics.json` | 4 | 4 |
+
+Nested enum-value counts:
+
+| Source | Nested enum values | Enum records with values | Value-specific `availability.since` |
+| --- | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | 3110 | 709 | 458 |
+| `shcntx_root.hbk` | 3110 | 709 | 458 |
+
+Consumer shape changes verified by UAT:
+
+- platform API consumer records omit `null` fields and empty arrays across every record family;
+- `owner` fields are primary-name strings;
+- `type_refs` and `return_types` are arrays of type-name strings, including signature parameters;
+- recognized version facts are emitted as `availability.since`; top-level `available_since` is not
+  emitted;
+- `see_also` is an array of target primary-name strings;
+- property `usage` is normalized to `Read`, `Write`, `ReadWrite` or `Unknown`;
+- leading property type prose such as `Тип: ... .` / `Type: ... .` is stripped from descriptions;
+- method, global context event and constructor signatures do not emit `text`;
+- syntax-variant `title` and `description` are direct signature fields rather than nested
+  `variant`;
+- nested enum value records omit `owner` and include `availability.since` only when the value
+  version differs from the owning enum version.
+
+Generated export byte totals by `wc -c` were `18555205` bytes for the Russian export and
+`11911554` bytes for the root/English export. The remaining diagnostics in each locale are all
+`UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE`. T32 did not change parser behavior or the post-T29
+runtime-regression attribution owned by T30.
 
 ## First Delivery Success Metrics
 

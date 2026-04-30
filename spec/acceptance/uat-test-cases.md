@@ -555,8 +555,28 @@ jq -e '.schema_version == 5 and (.files | all(.[]; .file_name != "enum-values.js
 test ! -e target/uat/shcntx-ru/enum-values.json
 test ! -e target/uat/shcntx-en/enum-values.json
 
-jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .value == [])] | length) == 0' target/uat/shcntx-ru/global-methods.json target/uat/shcntx-ru/type-methods.json target/uat/shcntx-ru/constructors.json target/uat/shcntx-ru/enums.json
-jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .value == [])] | length) == 0' target/uat/shcntx-en/global-methods.json target/uat/shcntx-en/type-methods.json target/uat/shcntx-en/constructors.json target/uat/shcntx-en/enums.json
+jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .value == [])] | length) == 0' \
+  target/uat/shcntx-ru/global-methods.json \
+  target/uat/shcntx-ru/global-properties.json \
+  target/uat/shcntx-ru/global-context-events.json \
+  target/uat/shcntx-ru/platform-types.json \
+  target/uat/shcntx-ru/type-methods.json \
+  target/uat/shcntx-ru/type-properties.json \
+  target/uat/shcntx-ru/table-fields.json \
+  target/uat/shcntx-ru/table-parameters.json \
+  target/uat/shcntx-ru/constructors.json \
+  target/uat/shcntx-ru/enums.json
+jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .value == [])] | length) == 0' \
+  target/uat/shcntx-en/global-methods.json \
+  target/uat/shcntx-en/global-properties.json \
+  target/uat/shcntx-en/global-context-events.json \
+  target/uat/shcntx-en/platform-types.json \
+  target/uat/shcntx-en/type-methods.json \
+  target/uat/shcntx-en/type-properties.json \
+  target/uat/shcntx-en/table-fields.json \
+  target/uat/shcntx-en/table-parameters.json \
+  target/uat/shcntx-en/constructors.json \
+  target/uat/shcntx-en/enums.json
 
 jq -e '.records[] | select(.name.primary == "ТипЗначенияJSON") | (.values | any(.name.primary == "КонецМассива")) and all(.values[]; (has("owner") | not) and (has("available_since") | not))' target/uat/shcntx-ru/enums.json
 jq -e '.records[] | select(.usage == "Read" and (.type_refs | index("СправочникиМенеджер") != null)) | (.description | startswith("Тип:") | not)' target/uat/shcntx-ru/global-properties.json
@@ -567,7 +587,7 @@ Expected result:
 - Consumer record-family files use `schema_version: 5`.
 - `enum-values.json` is absent; enum values are nested under owning enum records as `values`.
 - Nested enum value names keep the localized-name object shape with `primary` and optional `alias`.
-- Consumer records do not emit `null` fields or empty arrays.
+- Platform API consumer records do not emit `null` fields or empty arrays in any record family.
 - `usage` is a stable enum string.
 - Property descriptions do not keep leading type-reference prose that already appears in
   `type_refs`.

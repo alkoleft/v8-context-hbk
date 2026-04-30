@@ -4,14 +4,19 @@ use std::path::PathBuf;
 use syntax_helper_model::{self as model, SyntaxHelperSink};
 
 use crate::consumer::{
-    ConsumerConstructor, ConsumerEnumDefinition, ConsumerEnumValue, ConsumerGlobalContextEvent,
-    ConsumerGlobalMethod, ConsumerGlobalProperty, ConsumerPlatformMethod, ConsumerPlatformProperty,
-    ConsumerPlatformType, ConsumerQueryTableField, ConsumerQueryTableParameter, ExportMetadata,
+    ConsumerConstructor, ConsumerGlobalContextEvent, ConsumerGlobalMethod, ConsumerGlobalProperty,
+    ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType,
+    ConsumerQueryTableField, ConsumerQueryTableParameter, ExportMetadata, consumer_enums,
 };
 use crate::context::{JsonExportCounts, JsonExportSummary};
 use crate::error::ExportError;
 use crate::manifest::{EXPORT_FILES, SCHEMA_VERSION};
-use crate::writer::{RecordFileWriter, open_record_file, remove_export_files, write_json_file};
+use crate::writer::{
+    RecordFileWriter, open_record_file, remove_export_files, remove_named_export_files,
+    write_json_file,
+};
+
+const REMOVED_EXPORT_FILES: &[&str] = &["enum-values.json"];
 
 pub struct StreamingSyntaxHelperExport {
     output_dir: PathBuf,
@@ -29,7 +34,8 @@ pub struct StreamingSyntaxHelperExport {
     table_parameters: RecordFileWriter,
     constructors: RecordFileWriter,
     enums: RecordFileWriter,
-    enum_values: RecordFileWriter,
+    enum_definitions: Vec<model::EnumDefinition>,
+    enum_values: Vec<model::EnumValue>,
     diagnostics: RecordFileWriter,
 }
 
@@ -43,6 +49,7 @@ impl StreamingSyntaxHelperExport {
             path: output_dir.clone(),
             source,
         })?;
+        remove_named_export_files(&output_dir, REMOVED_EXPORT_FILES.iter().copied())?;
 
         let metadata = ExportMetadata {
             schema_version: SCHEMA_VERSION,
@@ -133,14 +140,6 @@ impl StreamingSyntaxHelperExport {
             source_locale,
             "enum",
         )?;
-        let enum_values = open_record_file(
-            &output_dir,
-            &mut files,
-            "enum-values.json",
-            locale,
-            source_locale,
-            "enum_value",
-        )?;
         let diagnostics = open_record_file(
             &output_dir,
             &mut files,
@@ -166,12 +165,18 @@ impl StreamingSyntaxHelperExport {
             table_parameters,
             constructors,
             enums,
-            enum_values,
+            enum_definitions: Vec::new(),
+            enum_values: Vec::new(),
             diagnostics,
         })
     }
 
     pub fn finish(mut self) -> Result<JsonExportSummary, ExportError> {
+        let enums = consumer_enums(&self.enum_definitions, &self.enum_values);
+        for enum_record in &enums {
+            self.enums.write_record(enum_record)?;
+        }
+
         self.global_methods.finish()?;
         self.global_properties.finish()?;
         self.global_context_events.finish()?;
@@ -182,7 +187,6 @@ impl StreamingSyntaxHelperExport {
         self.table_parameters.finish()?;
         self.constructors.finish()?;
         self.enums.finish()?;
-        self.enum_values.finish()?;
         self.diagnostics.finish()?;
 
         Ok(JsonExportSummary {
@@ -207,7 +211,6 @@ impl StreamingSyntaxHelperExport {
             table_parameters,
             constructors,
             enums,
-            enum_values,
             diagnostics,
             ..
         } = self;
@@ -222,7 +225,6 @@ impl StreamingSyntaxHelperExport {
         table_parameters.close_unfinished();
         constructors.close_unfinished();
         enums.close_unfinished();
-        enum_values.close_unfinished();
         diagnostics.close_unfinished();
 
         remove_export_files(files)
@@ -308,15 +310,13 @@ impl SyntaxHelperSink for StreamingSyntaxHelperExport {
     }
 
     fn enum_definition(&mut self, record: model::EnumDefinition) -> Result<(), Self::Error> {
-        self.enums
-            .write_record(&ConsumerEnumDefinition::from(&record))?;
+        self.enum_definitions.push(record);
         self.counts.enums += 1;
         Ok(())
     }
 
     fn enum_value(&mut self, record: model::EnumValue) -> Result<(), Self::Error> {
-        self.enum_values
-            .write_record(&ConsumerEnumValue::from(&record))?;
+        self.enum_values.push(record);
         self.counts.enum_values += 1;
         Ok(())
     }

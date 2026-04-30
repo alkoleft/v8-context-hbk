@@ -78,6 +78,27 @@ fn assert_no_keys(value: &Value, keys: &[&str]) {
     }
 }
 
+fn assert_no_null_or_empty_array(value: &Value) {
+    match value {
+        Value::Null => panic!("consumer record must not contain null fields: {value}"),
+        Value::Array(values) => {
+            assert!(
+                !values.is_empty(),
+                "consumer record must not contain empty arrays: {value}"
+            );
+            for item in values {
+                assert_no_null_or_empty_array(item);
+            }
+        }
+        Value::Object(fields) => {
+            for field_value in fields.values() {
+                assert_no_null_or_empty_array(field_value);
+            }
+        }
+        Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
 #[test]
 fn platform_context_serializes_with_source_provenance() {
     let source = source();
@@ -117,7 +138,6 @@ fn export_file_manifest_documents_canonical_json_files() {
         "table-parameters.json",
         "constructors.json",
         "enums.json",
-        "enum-values.json",
         "diagnostics.json",
     ];
 
@@ -152,7 +172,7 @@ fn records_envelope_json_is_parseable_and_non_empty() {
     let json = fs::read_to_string(&path).expect("record envelope must be readable");
     assert!(!json.is_empty());
     let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
-    assert_eq!(parsed["schema_version"], 4);
+    assert_eq!(parsed["schema_version"], 5);
     assert_eq!(parsed["locale"], "en");
     assert_eq!(parsed["source_locale"], "root");
     assert!(parsed.get("source_hbk").is_none());
@@ -169,6 +189,8 @@ fn exporter_writes_full_canonical_file_set() {
     if dir.exists() {
         fs::remove_dir_all(&dir).expect("stale export test dir must be removable");
     }
+    fs::create_dir_all(&dir).expect("export test dir must be creatable");
+    fs::write(dir.join("enum-values.json"), "{}").expect("stale enum-values file must be writable");
 
     let summary = JsonExporter::new(&dir)
         .export_platform_context("en", "root", "shcntx_root.hbk", &PlatformContext::default())
@@ -176,6 +198,7 @@ fn exporter_writes_full_canonical_file_set() {
 
     assert_eq!(summary.files.len(), EXPORT_FILES.len() + 1);
     assert!(!dir.join("global-contexts.json").exists());
+    assert!(!dir.join("enum-values.json").exists());
     for file in &summary.files {
         let json = fs::read_to_string(file)
             .unwrap_or_else(|error| panic!("{} must be readable: {error}", file.display()));
@@ -185,7 +208,7 @@ fn exporter_writes_full_canonical_file_set() {
     }
 
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 4);
+    assert_eq!(metadata["schema_version"], 5);
     assert_eq!(metadata["locale"], "en");
     assert_eq!(metadata["source_locale"], "root");
     assert!(metadata.get("source_hbk").is_none());
@@ -211,12 +234,26 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     }
 
     let source = source();
+    let enum_facts = model::SectionFacts {
+        available_since: Some(model::VersionFact {
+            version: Some("8.3.6".to_string()),
+            text: "Доступен, начиная с версии 8.3.6.".to_string(),
+        }),
+        ..model::SectionFacts::default()
+    };
     let context = PlatformContext {
         global_methods: vec![model::GlobalMethod {
             name: name("XMLСтрока"),
             signatures: vec![model::Signature {
                 text: "XMLСтрока(Значение)".to_string(),
-                parameters: Vec::new(),
+                parameters: vec![model::Parameter {
+                    name: "Значение".to_string(),
+                    required: true,
+                    type_refs: vec![model::TypeRef {
+                        name: "Произвольный".to_string(),
+                    }],
+                    description: Some("Исходное значение.".to_string()),
+                }],
                 variant: Some(model::SyntaxVariant {
                     title: "По значению".to_string(),
                     description: Some("Creates an XML string from a value.".to_string()),
@@ -227,6 +264,55 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             }],
             description: Some("Creates an XML string.".to_string()),
             facts: facts(),
+            source: source.clone(),
+        }],
+        global_properties: vec![
+            model::GlobalProperty {
+                name: name("Справочники"),
+                usage: Some("Только чтение.".to_string()),
+                type_refs: vec![model::TypeRef {
+                    name: "СправочникиМенеджер".to_string(),
+                }],
+                description: Some(
+                    "Тип: СправочникиМенеджер.\nИспользуется для доступа к справочникам."
+                        .to_string(),
+                ),
+                facts: model::SectionFacts::default(),
+                source: source.clone(),
+            },
+            model::GlobalProperty {
+                name: name("ТолькоТип"),
+                usage: None,
+                type_refs: vec![model::TypeRef {
+                    name: "Булево".to_string(),
+                }],
+                description: Some("Тип: Булево".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source.clone(),
+            },
+        ],
+        global_context_events: vec![model::GlobalContextEvent {
+            name: name("ПередЗавершениемРаботыСистемы"),
+            signatures: vec![model::Signature {
+                text: "ПередЗавершениемРаботыСистемы(Отказ)".to_string(),
+                parameters: vec![model::Parameter {
+                    name: "Отказ".to_string(),
+                    required: true,
+                    type_refs: vec![model::TypeRef {
+                        name: "Булево".to_string(),
+                    }],
+                    description: None,
+                }],
+                variant: None,
+            }],
+            description: Some("Возникает перед завершением работы.".to_string()),
+            facts: model::SectionFacts {
+                available_since: Some(model::VersionFact {
+                    version: Some("8.2".to_string()),
+                    text: "Доступен, начиная с версии 8.2.".to_string(),
+                }),
+                ..model::SectionFacts::default()
+            },
             source: source.clone(),
         }],
         platform_types: vec![model::PlatformType {
@@ -240,23 +326,107 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         type_methods: vec![model::PlatformMethod {
             owner: name("Массив"),
             name: name("Добавить"),
-            signatures: Vec::new(),
-            return_types: Vec::new(),
-            description: None,
+            signatures: vec![model::Signature {
+                text: "Добавить(Значение)".to_string(),
+                parameters: vec![model::Parameter {
+                    name: "Значение".to_string(),
+                    required: false,
+                    type_refs: vec![model::TypeRef {
+                        name: "Произвольный".to_string(),
+                    }],
+                    description: None,
+                }],
+                variant: None,
+            }],
+            return_types: vec![model::TypeRef {
+                name: "Число".to_string(),
+            }],
+            description: Some("Добавляет значение.".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source.clone(),
+        }],
+        type_properties: vec![model::PlatformProperty {
+            owner: name("ГруппаФормы"),
+            name: name("Видимость"),
+            usage: Some("Чтение и запись.".to_string()),
+            type_refs: vec![model::TypeRef {
+                name: "Булево".to_string(),
+            }],
+            description: Some("Тип: Булево.\nОпределяет видимость группы.".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source.clone(),
+        }],
+        table_fields: vec![model::QueryTableField {
+            owner: name("Таблица бизнес-процессов"),
+            name: name("Представление"),
+            type_refs: vec![model::TypeRef {
+                name: "Строка".to_string(),
+            }],
+            description: Some("Содержит строку-представление.".to_string()),
+            note: Some("Заполняется платформой.".to_string()),
+            source: source.clone(),
+        }],
+        table_parameters: vec![model::QueryTableParameter {
+            owner: name("Таблица критерия отбора"),
+            name: name("Значение"),
+            required: true,
+            type_refs: Vec::new(),
+            description: Some("Значение отбора.".to_string()),
+            default_value: Some("Неопределено".to_string()),
+            source: source.clone(),
+        }],
+        constructors: vec![model::Constructor {
+            owner: name("Массив"),
+            name: name("По количеству элементов"),
+            signatures: vec![model::Signature {
+                text: "Массив(Количество)".to_string(),
+                parameters: vec![model::Parameter {
+                    name: "Количество".to_string(),
+                    required: true,
+                    type_refs: vec![model::TypeRef {
+                        name: "Число".to_string(),
+                    }],
+                    description: None,
+                }],
+                variant: None,
+            }],
+            description: Some("Создает массив.".to_string()),
             facts: model::SectionFacts::default(),
             source: source.clone(),
         }],
         enums: vec![model::EnumDefinition {
             name: name("ТипЗначенияJSON"),
             value_links: vec![link("КонецМассива")],
-            description: None,
-            facts: model::SectionFacts::default(),
+            description: Some("Содержит типы значений JSON.".to_string()),
+            facts: enum_facts.clone(),
             source: source.clone(),
         }],
+        enum_values: vec![
+            model::EnumValue {
+                owner: name("ТипЗначенияJSON"),
+                name: name("КонецМассива"),
+                description: None,
+                facts: enum_facts,
+                source: source.clone(),
+            },
+            model::EnumValue {
+                owner: name("ТипЗначенияJSON"),
+                name: name("Булево"),
+                description: Some("Логическое значение JSON.".to_string()),
+                facts: model::SectionFacts {
+                    available_since: Some(model::VersionFact {
+                        version: Some("8.3.7".to_string()),
+                        text: "Доступен, начиная с версии 8.3.7.".to_string(),
+                    }),
+                    ..model::SectionFacts::default()
+                },
+                source: source.clone(),
+            },
+        ],
         diagnostics: vec![model::SyntaxHelperDiagnostic {
             severity: model::DiagnosticSeverity::Warning,
             code: "UNKNOWN_PAGE_CLASS",
-            source,
+            source: source.clone(),
             parser_stage: "root_discovery",
             message: "unknown page class".to_string(),
         }],
@@ -269,7 +439,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
 
     assert!(!dir.join("global-contexts.json").exists());
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 4);
+    assert_eq!(metadata["schema_version"], 5);
     assert_no_keys(&metadata, &["source_hbk"]);
 
     let forbidden = [
@@ -284,11 +454,14 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     ];
     for file_name in [
         "global-methods.json",
+        "global-properties.json",
         "global-context-events.json",
         "platform-types.json",
         "type-methods.json",
+        "type-properties.json",
         "table-fields.json",
         "table-parameters.json",
+        "constructors.json",
         "enums.json",
     ] {
         let json = read_json(dir.join(file_name));
@@ -298,32 +471,84 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             .expect("records must be an array")
         {
             assert_no_keys(record, &forbidden);
+            assert_no_null_or_empty_array(record);
         }
     }
+    assert!(!dir.join("enum-values.json").exists());
+
     let global_methods = read_json(dir.join("global-methods.json"));
     let method = &global_methods["records"][0];
+    assert_eq!(method["return_types"], serde_json::json!(["Строка"]));
     assert_eq!(
         method["availability"]["contexts"],
         serde_json::json!(["thin_client", "server"])
     );
+    assert_eq!(method["availability"]["since"], "8.0");
     assert_eq!(
         method["examples"][0]["text"],
         "XMLWriter.WriteText(XMLString(MaturityDate));"
     );
-    assert_eq!(method["see_also"][0]["name"]["primary"], "XMLЗначение");
-    assert!(method["see_also"][0].get("html_path").is_none());
-    assert_eq!(method["available_since"]["version"], "8.0");
-    assert_eq!(method["signatures"][0]["variant"]["title"], "По значению");
+    assert_eq!(method["see_also"], serde_json::json!(["XMLЗначение"]));
+    assert!(method.get("available_since").is_none());
+    assert!(method["signatures"][0].get("text").is_none());
+    assert!(method["signatures"][0].get("variant").is_none());
+    assert_eq!(method["signatures"][0]["title"], "По значению");
     assert_eq!(
-        method["signatures"][0]["variant"]["description"],
+        method["signatures"][0]["description"],
         "Creates an XML string from a value."
     );
-    assert!(
-        method["signatures"][0]["variant"]
-            .get("html_path")
-            .is_none()
+    assert_eq!(
+        method["signatures"][0]["parameters"][0]["type_refs"],
+        serde_json::json!(["Произвольный"])
     );
     assert!(method.get("source").is_none());
+
+    let global_properties = read_json(dir.join("global-properties.json"));
+    let property = global_properties["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|record| record["name"]["primary"] == "Справочники")
+        .expect("Catalogs property must be exported");
+    assert_eq!(property["usage"], "Read");
+    assert_eq!(
+        property["type_refs"],
+        serde_json::json!(["СправочникиМенеджер"])
+    );
+    assert_eq!(
+        property["description"],
+        "Используется для доступа к справочникам."
+    );
+    let type_only_property = global_properties["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|record| record["name"]["primary"] == "ТолькоТип")
+        .expect("type-only property must be exported");
+    assert_eq!(type_only_property["usage"], "Unknown");
+    assert!(type_only_property.get("description").is_none());
+
+    let type_methods = read_json(dir.join("type-methods.json"));
+    let type_method = &type_methods["records"][0];
+    assert_eq!(type_method["owner"], "Массив");
+    assert_eq!(type_method["return_types"], serde_json::json!(["Число"]));
+
+    let type_properties = read_json(dir.join("type-properties.json"));
+    let type_property = &type_properties["records"][0];
+    assert_eq!(type_property["owner"], "ГруппаФормы");
+    assert_eq!(type_property["usage"], "ReadWrite");
+    assert_eq!(type_property["description"], "Определяет видимость группы.");
+
+    let table_parameters = read_json(dir.join("table-parameters.json"));
+    assert!(table_parameters["records"][0].get("type_refs").is_none());
+
+    let enums = read_json(dir.join("enums.json"));
+    let enum_record = &enums["records"][0];
+    assert_eq!(enum_record["availability"]["since"], "8.3.6");
+    assert_eq!(enum_record["values"][0]["name"]["primary"], "КонецМассива");
+    assert!(enum_record["values"][0].get("owner").is_none());
+    assert!(enum_record["values"][0].get("availability").is_none());
+    assert_eq!(enum_record["values"][1]["availability"]["since"], "8.3.7");
 
     let diagnostics = read_json(dir.join("diagnostics.json"));
     assert_no_keys(&diagnostics, &["source_hbk"]);
@@ -349,6 +574,8 @@ fn streaming_export_writes_lean_records_without_full_context() {
     if dir.exists() {
         fs::remove_dir_all(&dir).expect("stale export test dir must be removable");
     }
+    fs::create_dir_all(&dir).expect("stream export test dir must be creatable");
+    fs::write(dir.join("enum-values.json"), "{}").expect("stale enum-values file must be writable");
 
     let source = source();
     let mut export = JsonExporter::new(&dir)
@@ -374,6 +601,24 @@ fn streaming_export_writes_lean_records_without_full_context() {
         })
         .expect("global method must be writable");
     export
+        .enum_value(model::EnumValue {
+            owner: name("ТипЗначенияJSON"),
+            name: name("КонецМассива"),
+            description: None,
+            facts: model::SectionFacts::default(),
+            source: source.clone(),
+        })
+        .expect("enum value must be buffered before enum definition");
+    export
+        .enum_definition(model::EnumDefinition {
+            name: name("ТипЗначенияJSON"),
+            value_links: Vec::new(),
+            description: Some("JSON value types.".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source.clone(),
+        })
+        .expect("enum definition must be buffered");
+    export
         .diagnostic(model::SyntaxHelperDiagnostic {
             severity: model::DiagnosticSeverity::Warning,
             code: "UNKNOWN_PAGE_CLASS",
@@ -387,8 +632,11 @@ fn streaming_export_writes_lean_records_without_full_context() {
     assert_eq!(summary.files.len(), EXPORT_FILES.len() + 1);
     assert_eq!(summary.counts.global_contexts, 1);
     assert_eq!(summary.counts.global_methods, 1);
+    assert_eq!(summary.counts.enums, 1);
+    assert_eq!(summary.counts.enum_values, 1);
     assert_eq!(summary.counts.diagnostics, 1);
     assert!(!dir.join("global-contexts.json").exists());
+    assert!(!dir.join("enum-values.json").exists());
 
     let global_methods = read_json(dir.join("global-methods.json"));
     assert_eq!(global_methods["records"].as_array().unwrap().len(), 1);
@@ -398,13 +646,15 @@ fn streaming_export_writes_lean_records_without_full_context() {
         serde_json::json!(["thin_client", "server"])
     );
     assert_eq!(
-        global_methods["records"][0]["see_also"][0]["name"]["primary"],
-        "XMLЗначение"
+        global_methods["records"][0]["see_also"],
+        serde_json::json!(["XMLЗначение"])
     );
-    assert!(
-        global_methods["records"][0]["see_also"][0]
-            .get("html_path")
-            .is_none()
+
+    let enums = read_json(dir.join("enums.json"));
+    assert_eq!(enums["records"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        enums["records"][0]["values"][0]["name"]["primary"],
+        "КонецМассива"
     );
 
     let platform_types = read_json(dir.join("platform-types.json"));

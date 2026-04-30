@@ -7,15 +7,15 @@ use hbk_book::HbkBook;
 use syntax_helper_model::PlatformContext;
 
 use crate::consumer::{
-    ConsumerConstructor, ConsumerEnumDefinition, ConsumerEnumValue, ConsumerGlobalContextEvent,
-    ConsumerGlobalMethod, ConsumerGlobalProperty, ConsumerPlatformMethod, ConsumerPlatformProperty,
-    ConsumerPlatformType, ConsumerQueryTableField, ConsumerQueryTableParameter, ExportMetadata,
-    RecordsEnvelope,
+    ConsumerConstructor, ConsumerGlobalContextEvent, ConsumerGlobalMethod, ConsumerGlobalProperty,
+    ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType,
+    ConsumerQueryTableField, ConsumerQueryTableParameter, ExportMetadata, RecordsEnvelope,
+    consumer_enums,
 };
 use crate::error::ExportError;
 use crate::manifest::{EXPORT_FILES, SCHEMA_VERSION};
 use crate::stream::StreamingSyntaxHelperExport;
-use crate::writer::write_json_file;
+use crate::writer::{remove_named_export_files, write_json_file};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsonExporter {
@@ -70,6 +70,7 @@ impl JsonExporter {
             path: self.output_dir.clone(),
             source,
         })?;
+        remove_named_export_files(&self.output_dir, REMOVED_EXPORT_FILES.iter().copied())?;
 
         let metadata = ExportMetadata {
             schema_version: SCHEMA_VERSION,
@@ -188,24 +189,8 @@ impl JsonExporter {
             "constructor",
             &constructors,
         )?);
-        let enums = context
-            .enums
-            .iter()
-            .map(ConsumerEnumDefinition::from)
-            .collect::<Vec<_>>();
+        let enums = consumer_enums(&context.enums, &context.enum_values);
         files.push(self.write_records("enums.json", locale, source_locale, "enum", &enums)?);
-        let enum_values = context
-            .enum_values
-            .iter()
-            .map(ConsumerEnumValue::from)
-            .collect::<Vec<_>>();
-        files.push(self.write_records(
-            "enum-values.json",
-            locale,
-            source_locale,
-            "enum_value",
-            &enum_values,
-        )?);
         files.push(self.write_records(
             "diagnostics.json",
             locale,
@@ -249,6 +234,8 @@ impl JsonExporter {
         write_json_file(&self.output_dir, file_name, value)
     }
 }
+
+const REMOVED_EXPORT_FILES: &[&str] = &["enum-values.json"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsonExportSummary {

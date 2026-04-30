@@ -50,7 +50,9 @@ pub(crate) fn open_record_file(
     Ok(writer)
 }
 
-pub(crate) fn remove_export_files(files: Vec<PathBuf>) -> Result<(), ExportError> {
+pub(crate) fn remove_export_files(
+    files: impl IntoIterator<Item = PathBuf>,
+) -> Result<(), ExportError> {
     for path in files {
         match fs::remove_file(&path) {
             Ok(()) => {}
@@ -61,6 +63,17 @@ pub(crate) fn remove_export_files(files: Vec<PathBuf>) -> Result<(), ExportError
         }
     }
     Ok(())
+}
+
+pub(crate) fn remove_named_export_files(
+    output_dir: &Path,
+    file_names: impl IntoIterator<Item = &'static str>,
+) -> Result<(), ExportError> {
+    remove_export_files(
+        file_names
+            .into_iter()
+            .map(|file_name| output_dir.join(file_name)),
+    )
 }
 
 impl RecordFileWriter {

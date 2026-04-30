@@ -100,7 +100,7 @@ Completion notes:
 - Verified with `cargo fmt`, `cargo test --workspace`, UAT-SH-001, UAT-SH-002, UAT-SH-003,
   UAT-SH-010, UAT-SH-011 and `git diff --check`.
 
-### [ ] T32. Switch consumer JSON export to lean schema version 5
+### [x] T32. Switch consumer JSON export to lean schema version 5
 
 Depends on: T29.
 
@@ -163,6 +163,26 @@ Verification:
 - Full CLI export for `shcntx_ru.hbk`
 - Full CLI export for `shcntx_root.hbk`
 - `git diff --check`
+
+Completion notes:
+
+- Completed on 2026-04-30.
+- Raised canonical consumer export schema to `schema_version: 5`.
+- Removed `enum-values.json` from the export inventory and nested all 3110 enum values under
+  owning records in `enums.json` for both RU and root/English exports.
+- Record-family counts remained stable: 500 global methods, 101 global properties, 33 global
+  context events, 2533 platform types, 6702 type methods, 10732 type properties, 588 table fields,
+  78 table parameters, 445 constructors, 713 enums and 4 diagnostics in each locale.
+- Platform API consumer records now omit `null` fields and empty arrays, serialize `owner` as a
+  primary-name string, serialize `type_refs` and `return_types` as arrays of type-name strings,
+  move recognized version facts to `availability.since`, flatten `see_also` to target primary-name
+  strings, normalize property `usage`, strip leading property type prose from descriptions, remove
+  callable `signatures[].text` and flatten syntax-variant metadata onto signature records.
+- Consumer records still omit HBK provenance, TOC paths, HTML paths and page titles; diagnostics
+  remain provenance-rich for parser maintenance.
+- Verified with `cargo fmt`, `cargo test --workspace`, UAT-SH-001, UAT-SH-002, UAT-SH-003,
+  UAT-SH-008, UAT-SH-009, UAT-SH-011, UAT-SH-012, full CLI exports for `shcntx_ru.hbk` and
+  `shcntx_root.hbk`, and `git diff --check`.
 
 ### [ ] T30. Remove post-T29 Syntax Assistant table-owner lookup regression
 
