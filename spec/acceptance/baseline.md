@@ -877,7 +877,8 @@ Consumer shape and data-quality checks verified by UAT:
 - inline `Пример:` / `Example:` source sections embedded in descriptions are extracted as examples
   and do not absorb later availability/context text;
 - code examples generated from syntax-colored HTML no longer contain extra spaces around dots,
-  commas, semicolons, brackets or parentheses;
+  commas, semicolons, brackets or parentheses, including multiline string-continuation examples
+  such as `ЗадачаОбъект.<Имя задачи>.Записать` with `ОписаниеОшибки(), 60);`;
 - see-also source pairs such as owner link plus method/property link are exported as composed
   `Owner.Member` strings, for example `ИзбранноеРаботыПользователя.Вставить` and
   `Глобальный контекст.ИсторияРаботыПользователя`;

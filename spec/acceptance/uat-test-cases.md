@@ -603,6 +603,7 @@ for file in \
   jq -e '([.records[] | .. | objects | keys[] | select(. == "type_refs" or . == "return_types")] | length) == 0' "$file"
 done
 jq -e '.records[] | select(.owner == "ТабличноеПоле" and .name.primary == "СоздатьКолонки") | .examples[0].text == "ЭлементыФормы.ТабличноеПоле1.Значение = ТаблицаДанных;\nЭлементыФормы.ТабличноеПоле1.СоздатьКолонки();"' target/uat/shcntx-ru/type-methods.json
+jq -e '.records[] | select(.owner == "ЗадачаОбъект.<Имя задачи>" and .name.primary == "Записать") | (.examples[0].text | contains("ОписаниеОшибки ( )") | not) and (.examples[0].text | contains("ОписаниеОшибки(), 60);"))' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "Расширение поля формы для поля ввода" and .name.primary == "ПараметрыВыбора") | (.examples[0].text | startswith("НовыйПараметр = Новый ПараметрВыбора")) and (.examples[0].text | contains("Тонкий клиент") | not)' target/uat/shcntx-ru/type-properties.json
 jq -e '.records[] | select(.name.primary == "ЭлементИзбранногоРаботыПользователя") | (.see_also | index("ИзбранноеРаботыПользователя.Вставить") != null) and (.see_also | index("ИзбранноеРаботыПользователя.Добавить") != null) and (.see_also | index("ИзбранноеРаботыПользователя.Индекс") != null)' target/uat/shcntx-ru/platform-types.json
 jq -e '.records[] | select(.name.primary == "МенеджерИсторииРаботыПользователя") | (.see_also | index("Глобальный контекст.ИсторияРаботыПользователя") != null)' target/uat/shcntx-ru/platform-types.json

@@ -313,31 +313,31 @@ fn examples(content: &PageContent) -> Vec<ExampleBlock> {
 }
 
 fn normalize_example_text(text: &str) -> String {
+    let mut in_string = false;
     text.lines()
-        .map(normalize_example_line)
+        .map(|line| normalize_example_line(line, &mut in_string))
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-fn normalize_example_line(line: &str) -> String {
+fn normalize_example_line(line: &str, in_string: &mut bool) -> String {
     let mut output = String::with_capacity(line.len());
     let mut pending_space = false;
-    let mut in_string = false;
     let mut chars = line.chars().peekable();
     while let Some(ch) = chars.next() {
         if ch == '"' {
-            if pending_space && should_keep_space_before(ch, output.chars().last(), in_string) {
+            if pending_space && should_keep_space_before(ch, output.chars().last(), *in_string) {
                 output.push(' ');
             }
             pending_space = false;
             output.push(ch);
-            if in_string && chars.peek().is_some_and(|next| *next == '"') {
+            if *in_string && chars.peek().is_some_and(|next| *next == '"') {
                 if let Some(escaped) = chars.next() {
                     output.push(escaped);
                 }
             } else {
-                in_string = !in_string;
+                *in_string = !*in_string;
             }
             continue;
         }
@@ -345,7 +345,7 @@ fn normalize_example_line(line: &str) -> String {
             pending_space = !output.is_empty();
             continue;
         }
-        if pending_space && should_keep_space_before(ch, output.chars().last(), in_string) {
+        if pending_space && should_keep_space_before(ch, output.chars().last(), *in_string) {
             output.push(' ');
         }
         pending_space = false;

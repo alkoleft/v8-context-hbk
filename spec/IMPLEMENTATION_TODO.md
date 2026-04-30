@@ -412,6 +412,52 @@ Completion notes:
   exports for `shcntx_ru.hbk` and `shcntx_root.hbk`, targeted `jq` checks for the reported
   examples/see-also cases and `git diff --check`.
 
+### [x] T34. Fix multiline example punctuation normalization after string continuations
+
+Depends on: T33.
+
+Spec refs:
+
+- FR-SH-002
+- FR-EXPORT-001
+- UAT-SH-012
+- `spec/implementation/components.md`
+
+Scope:
+
+- Preserve example-text normalization across multiline BSL string continuations so a line that
+  starts by closing a string does not keep HTML-coloring spaces around later punctuation.
+- Fix the reported `ОписаниеОшибки ( ) , 60 ) ;` regression in full `syntax-helper` exports without
+  changing non-example text extraction, consumer schema shape or unrelated parser behavior.
+- Add regression coverage for a real HBK-style multiline example that crosses a string continuation.
+- Do not change query/search behavior, see-also extraction, provenance shape or record-family
+  counts in this task.
+
+Expected artifacts:
+
+- Narrow `syntax-helper-extract` normalization change.
+- Regression test for multiline string-continuation example punctuation.
+- Updated UAT-SH-012 check for the reported `Записать` example.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract`
+- `cargo test --workspace`
+- Full release export for `shcntx_ru.hbk`
+- `jq -e '.records[] | select(.owner == "ЗадачаОбъект.<Имя задачи>" and .name.primary == "Записать") | (.examples[0].text | contains("ОписаниеОшибки ( )") | not) and (.examples[0].text | contains("ОписаниеОшибки(), 60);"))' <output>/type-methods.json`
+- `git diff --check`
+
+Completion notes:
+
+- Completed on 2026-05-01.
+- Carried example-string state across multiline normalization so a continuation line that closes a
+  string no longer preserves HTML-coloring spaces around later call punctuation.
+- Added regression coverage for the real `ЗадачаОбъект.<Имя задачи>.Записать` HBK example from
+  `objects/catalog125/catalog719/object724/methods/Write1937.html`.
+- Verified with `cargo fmt`, targeted `syntax-helper-extract` parser tests, `cargo test --workspace`,
+  a fresh release export for `shcntx_ru.hbk`, the reported `jq` check for
+  `ЗадачаОбъект.<Имя задачи>.Записать`, and `git diff --check`.
+
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
 Depends on: T17 and T33 unless this task is explicitly reprioritized.

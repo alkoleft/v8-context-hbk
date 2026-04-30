@@ -1426,6 +1426,47 @@ fn parses_root_inline_example_section_and_normalizes_code_punctuation() {
 }
 
 #[test]
+fn normalizes_multiline_example_after_string_continuation() {
+    let toc = fixture_toc();
+    let html = r##"
+            <html><body>
+            <h1 class="V8SH_pagetitle">ЗадачаОбъект.&lt;Имя задачи&gt;.Записать</h1>
+            <p class="V8SH_title">ЗадачаОбъект.&lt;Имя задачи&gt;</p>
+            <p class="V8SH_heading">Записать</p>
+            <p class="V8SH_chapter">Описание:</p><p>Записывает задачу в базу данных.</p>
+            <p class="V8SH_chapter">Пример:</p>
+            <TABLE><TBODY><TR><TD><font face="Courier New">
+            <font color="#0000ff"><font color="#ff0000">Попытка<BR></font>&nbsp;&nbsp;&nbsp;&nbsp;Объект<font color="#ff0000">.</font>Записать<font color="#ff0000">(</font><font color="#ff0000">)</font><font color="#ff0000">;</font><font color="#ff0000"><BR>Исключение<BR></font>&nbsp;&nbsp;&nbsp;&nbsp;Предупреждение<font color="#ff0000">(</font>НСтр<font color="#ff0000">(</font><font color="#000000">"ru&nbsp;=&nbsp;'Не&nbsp;удалось&nbsp;записать&nbsp;объект';"</font><BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#ff0000">+</font>&nbsp;<font color="#000000">"&nbsp;en&nbsp;=&nbsp;'Can't&nbsp;write&nbsp;object&nbsp;-'"</font><font color="#ff0000">)</font>&nbsp;<font color="#ff0000">+</font>&nbsp;<font color="#000000">"&nbsp;'"</font>&nbsp;<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#ff0000">+</font>&nbsp;Объект&nbsp;<font color="#ff0000">+</font>&nbsp;'<font color="#000000">"!<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|"</font>&nbsp;<font color="#ff0000">+</font>&nbsp;ОписаниеОшибки<font color="#ff0000">(</font><font color="#ff0000">)</font><font color="#ff0000">,</font><font color="#000000">&nbsp;60</font><font color="#ff0000">)</font><font color="#ff0000">;</font><font color="#ff0000"><BR>КонецПопытки</font><font color="#ff0000">;</font></font>
+            </font></TD></TR></TBODY></TABLE>
+            </body></html>
+        "##;
+    let method = parse_platform_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_ru.hbk",
+            "ru",
+            "objects/catalog125/catalog719/object724/methods/Write1937.html",
+            html,
+        ),
+        source("objects/catalog125/catalog719/object724/methods/Write1937.html"),
+    );
+
+    assert_eq!(method.facts.examples.len(), 1);
+    assert!(
+        !method.facts.examples[0]
+            .text
+            .contains("ОписаниеОшибки ( ) , 60 ) ;")
+    );
+    assert!(
+        method.facts.examples[0]
+            .text
+            .contains("|\" + ОписаниеОшибки(), 60);"),
+        "normalized example must remove spaces around call punctuation: {}",
+        method.facts.examples[0].text
+    );
+}
+
+#[test]
 fn see_also_composes_owner_member_links() {
     let toc = fixture_toc();
     let html = r#"
