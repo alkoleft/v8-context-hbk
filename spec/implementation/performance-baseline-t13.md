@@ -440,6 +440,71 @@ T20 conclusion:
   change was made, and Variant E remains limited to the T19 byte-only entity path until new
   measurements show a dominant lower-level storage bottleneck.
 
+## Post-T21 Update
+
+T21 evaluated whether retained TOC, flattened traversal metadata and Syntax Assistant root-discovery
+state justified a production refactor before T18. Raw command outputs, generated exports and the
+temporary attribution probe were written under `target/t21-measurements/`. That directory is service
+data and is not a durable source of truth.
+
+The probe measured owned-by-root structure estimates for:
+
+- actual `Toc` tree retained by `HbkBook`;
+- actual retained `book.toc().flat_pages().collect::<Vec<_>>()` metadata;
+- actual public `SyntaxHelperReader::discover_roots()` result;
+- a shape-equivalent copy of the private `syntax_toc_index` fields retained by the export path:
+  cloned `html_path`, `toc_path` string and title string.
+
+The T21 pass used the built debug CLI and temporary probe under GNU `time`:
+
+```bash
+cargo build -p v8-context-hbk-cli --bin v8-context-hbk
+cargo build --manifest-path target/t21-measurements/probe/Cargo.toml
+```
+
+No fixture-backed T21 command was skipped on this host.
+
+Fresh-process attribution results:
+
+| Source | Mode | Exit | Elapsed, s | Current RSS, KiB | VmHWM / peak RSS, KiB | Retained estimate, bytes |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | `book-open` / `Toc` tree | 0 | 5.17 | 109864 | 133376 | 8367325 |
+| `shcntx_ru.hbk` | retained `flat_pages` metadata | 0 | 5.27 | 109772 | 133248 | 2139400 |
+| `shcntx_ru.hbk` | public `RootDiscovery` | 0 | 15.64 | 147000 | 147000 | 9177088 |
+| `shcntx_ru.hbk` | `syntax_toc_index` shape | 0 | 5.50 | 110276 | 133120 | 5149766 |
+| `shcntx_root.hbk` | `book-open` / `Toc` tree | 0 | 5.24 | 97420 | 120704 | 8332291 |
+| `shcntx_root.hbk` | retained `flat_pages` metadata | 0 | 5.24 | 97320 | 120704 | 2139400 |
+| `shcntx_root.hbk` | public `RootDiscovery` | 0 | 16.27 | 139520 | 139520 | 9257408 |
+| `shcntx_root.hbk` | `syntax_toc_index` shape | 0 | 5.60 | 97808 | 120704 | 5132816 |
+
+Both source books had 28736 TOC pages. Public root discovery found 10 roots, retained 28736 catalog
+pages and produced 703 diagnostics for each source book. The `syntax_toc_index` shape contained
+25883 entries for each source book.
+
+T13-style full `syntax-helper --output` results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes | Records and diagnostics |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `shcntx_ru.hbk` | 0 | 19.04 | 157788 | 21950926 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` | 0 | 14.33 | 139764 | 12269994 | 24836 records, 703 diagnostics |
+
+Each source book still produced 1 global context, 500 global methods, 101 global properties, 2533
+platform types, 6702 type methods, 10732 type properties, 445 constructors, 713 enums, 3110 enum
+values and 703 diagnostics.
+
+T21 conclusion:
+
+- The actual retained `RootDiscovery` graph is the largest T21-specific structure, but its
+  owned-by-root estimate is about 9 MiB, under 7% of the measured full export peak.
+- The private traversal index shape is about 5 MiB, retained flat-page metadata is about 2 MiB, and
+  the public `Toc` tree is about 8 MiB. The `Toc` tree is also required by the public help-book
+  navigation contract.
+- A production refactor would cross extraction traversal/root-discovery structure boundaries for a
+  bounded single-digit MiB gain, while the full export peak remains dominated by required book state
+  plus page parsing/export work.
+- A lean traversal/root-discovery representation is therefore not justified by T21 evidence. No
+  runtime code change was made.
+
 ## Variant Evaluation
 
 Variant A, lean consumer export and streaming JSON writer, remains the first slice.

@@ -571,7 +571,7 @@ Completion notes:
   small-book `inspect`/`toc --format json`/`page` smoke for `fmtdui_root.hbk` and `fmtdui_ru.hbk`,
   subagent completeness review (`no findings`) and `git diff --check`.
 
-### [ ] T21. Reduce TOC and root-discovery retained memory
+### [x] T21. Reduce TOC and root-discovery retained memory
 
 Depends on: T20 completion or explicit not-needed conclusion.
 
@@ -620,6 +620,32 @@ Verification:
 - T13-style `syntax-helper --output` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`
 - Deterministic export comparison for at least one Syntax Assistant book if traversal code changes
 - `git diff --check`
+
+Completion notes:
+
+- Measured T21 with fresh-process `book-open`, retained `flat-pages`, public `root-discovery` and
+  `syntax-page-index-shape` probe modes for both Syntax Assistant books, plus T13-style full
+  `syntax-helper --output` measurements.
+- Both source books had 28736 TOC pages. Public root discovery found 10 roots, retained 28736
+  catalog pages and produced 703 diagnostics for each source book. The `syntax_toc_index` shape
+  contained 25883 entries for each source book.
+- Retained estimates for `shcntx_ru.hbk`: `Toc` tree `8367325` bytes, flat metadata `2139400`
+  bytes, public `RootDiscovery` `9177088` bytes and `syntax_toc_index` shape `5149766` bytes.
+- Retained estimates for `shcntx_root.hbk`: `Toc` tree `8332291` bytes, flat metadata `2139400`
+  bytes, public `RootDiscovery` `9257408` bytes and `syntax_toc_index` shape `5132816` bytes.
+- Full `syntax-helper --output` measured `19.04s / 157788 KiB / 21950926 bytes` for
+  `shcntx_ru.hbk` and `14.33s / 139764 KiB / 12269994 bytes` for `shcntx_root.hbk`, with stable
+  record-family counts and 703 diagnostics for each book.
+- The measured TOC/root-discovery structures are bounded: the largest T21-specific retained
+  structure is public `RootDiscovery` at about 9 MiB, under 7% of the full export peak. A lean
+  traversal/root-discovery refactor is therefore not justified by T21 evidence.
+- No runtime code change was made. Durable conclusions were promoted to
+  `spec/implementation/performance-baseline-t13.md`, `spec/implementation/performance-variants.md`
+  and `spec/acceptance/baseline.md`.
+- Verification passed: `cargo fmt`, `cargo test --workspace`, UAT-SH-001, UAT-SH-002, UAT-SH-003,
+  T21 probes, T13-style full measurements and `git diff --check`. Scoped clippy was not applicable
+  because no production crate changed. Deterministic export comparison was not required because no
+  traversal code changed.
 
 ### [ ] T22. Release lower-level book state earlier in Syntax Helper export
 

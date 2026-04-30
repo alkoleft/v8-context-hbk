@@ -24,6 +24,10 @@ directories are service data unless promoted here.
   view. The exact retained vector was `38960718` bytes for `shcntx_ru.hbk` and `32620458` bytes for
   `shcntx_root.hbk`, while full `syntax-helper --output` measured `17.68s / 157916 KiB` and
   `13.50s / 139632 KiB` with stable export counts.
+- T21 measured retained TOC/root-discovery structures and did not justify a production refactor.
+  The largest T21-specific retained structure was public `RootDiscovery` at about 9 MiB, while full
+  `syntax-helper --output` measured `19.04s / 157788 KiB` for `shcntx_ru.hbk` and
+  `14.33s / 139764 KiB` for `shcntx_root.hbk` with stable export counts.
 
 ## Standard Verification Gates
 
@@ -296,6 +300,58 @@ The owned `FileStorage` vector is material but not dominant after T19. It accoun
 third of retained `HbkBook::open` RSS and less than one quarter of the full Syntax Assistant export
 peak on both measured books. A direct seekable `FileStorage` view is not justified without new
 evidence of a dominant lower-level storage bottleneck.
+
+## T21 Durable Conclusions
+
+TOC/root-discovery retained-memory attribution was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+All source books were available and no fixture-backed T21 command was skipped.
+
+Fresh-process attribution results:
+
+| Source | Mode | Exit | Current RSS, KiB | VmHWM / peak RSS, KiB | Retained estimate, bytes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | `Toc` tree | 0 | 109864 | 133376 | 8367325 |
+| `shcntx_ru.hbk` | retained `flat_pages` metadata | 0 | 109772 | 133248 | 2139400 |
+| `shcntx_ru.hbk` | public `RootDiscovery` | 0 | 147000 | 147000 | 9177088 |
+| `shcntx_ru.hbk` | `syntax_toc_index` shape | 0 | 110276 | 133120 | 5149766 |
+| `shcntx_root.hbk` | `Toc` tree | 0 | 97420 | 120704 | 8332291 |
+| `shcntx_root.hbk` | retained `flat_pages` metadata | 0 | 97320 | 120704 | 2139400 |
+| `shcntx_root.hbk` | public `RootDiscovery` | 0 | 139520 | 139520 | 9257408 |
+| `shcntx_root.hbk` | `syntax_toc_index` shape | 0 | 97808 | 120704 | 5132816 |
+
+Both source books had 28736 TOC pages. Public root discovery found 10 roots, retained 28736 catalog
+pages and produced 703 diagnostics for each source book. The `syntax_toc_index` shape contained
+25883 entries for each source book.
+
+Full debug CLI results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | 0 | 19.04 | 157788 | 21950926 |
+| `shcntx_root.hbk` | 0 | 14.33 | 139764 | 12269994 |
+
+Each source book still produced:
+
+- 1 global context
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 `UNKNOWN_PAGE_CLASS` diagnostics
+
+The measured retained TOC/root-discovery structures are bounded and do not justify a production
+refactor. The largest T21-specific structure is the public `RootDiscovery` graph at about 9 MiB,
+under 7% of the full Syntax Assistant export peak. The required public `Toc` tree is about 8 MiB,
+the private traversal-index shape is about 5 MiB, and retained flat-page metadata is about 2 MiB.
+No runtime code change was made.
 
 ## First Delivery Success Metrics
 

@@ -18,6 +18,8 @@ Current status:
 - T20 measured the remaining owned `FileStorage` copy after T19 and did not justify a direct
   seekable `FileStorage` view: the exact retained `Vec<u8>` capacity is material but not dominant
   against retained `HbkBook::open` RSS or the full `syntax-helper --output` peak.
+- T21 measured retained TOC/root-discovery structures and did not justify a production refactor:
+  the largest T21-specific retained structure was public `RootDiscovery` at about 9 MiB.
 
 ## Selection Rules
 
@@ -167,3 +169,9 @@ T20 rechecked that later candidate after explicit memory reprioritization. The o
 `FileStorage` vector remained about one third of retained `HbkBook::open` RSS and less than one
 quarter of the full Syntax Assistant export peak for both measured books, so a broader direct
 seekable view remains unjustified without new evidence.
+
+T21 rechecked the next memory-structure candidate after T20. The public `RootDiscovery` graph was
+about 9 MiB, the private `syntax_toc_index` shape about 5 MiB, retained flat-page metadata about
+2 MiB, and the required public `Toc` tree about 8 MiB. These structures are bounded and do not
+justify a production refactor without new evidence that TOC/root-discovery retention dominates the
+remaining export peak.
