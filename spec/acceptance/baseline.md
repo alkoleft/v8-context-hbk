@@ -28,6 +28,10 @@ directories are service data unless promoted here.
   The largest T21-specific retained structure was public `RootDiscovery` at about 9 MiB, while full
   `syntax-helper --output` measured `19.04s / 157788 KiB` for `shcntx_ru.hbk` and
   `14.33s / 139764 KiB` for `shcntx_root.hbk` with stable export counts.
+- T22 released the avoidable `HbkContainer` mmap retained by `HbkBook` after open. Full
+  `syntax-helper --output` measured `17.97s / 134656 KiB` for `shcntx_ru.hbk` and
+  `13.65s / 122112 KiB` for `shcntx_root.hbk` with byte-identical JSON export compared with the
+  pre-change run.
 
 ## Standard Verification Gates
 
@@ -352,6 +356,50 @@ refactor. The largest T21-specific structure is the public `RootDiscovery` graph
 under 7% of the full Syntax Assistant export peak. The required public `Toc` tree is about 8 MiB,
 the private traversal-index shape is about 5 MiB, and retained flat-page metadata is about 2 MiB.
 No runtime code change was made.
+
+## T22 Durable Conclusions
+
+Lower-level book-state retention was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+All source books were available and no fixture-backed T22 command was skipped.
+
+Fresh-process attribution results:
+
+| Source | Mode | Before RSS, KiB | After RSS, KiB | Before VmHWM, KiB | After VmHWM, KiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | `book-open` | 109748 | 70936 | 132992 | 132864 |
+| `shcntx_root.hbk` | `book-open` | 97264 | 64700 | 120448 | 120448 |
+| `shcntx_ru.hbk` | `root-discovery` | 146796 | 108016 | 146796 | 132992 |
+| `shcntx_root.hbk` | `root-discovery` | 139436 | 106868 | 139436 | 120448 |
+
+Full debug CLI results:
+
+| Source | Exit | Before elapsed, s | After elapsed, s | Before peak RSS, KiB | After peak RSS, KiB | Export bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | 0 | 19.02 | 17.97 | 168800 | 134656 | 21950926 |
+| `shcntx_root.hbk` | 0 | 14.79 | 13.65 | 140624 | 122112 | 12269994 |
+
+Each source book still produced:
+
+- 1 global context
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 `UNKNOWN_PAGE_CLASS` diagnostics
+
+The pre-change and post-change export directories were byte-identical for both source books. The
+only production refactor justified by T22 evidence was releasing `HbkContainer` from `HbkBook` after
+book metadata, TOC and `FileStorage` bytes are extracted. Further splitting of `FileStorage`,
+TOC/root-discovery or parser traversal lifetimes is not justified by the current retained-memory
+measurements.
 
 ## First Delivery Success Metrics
 

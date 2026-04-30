@@ -647,7 +647,7 @@ Completion notes:
   because no production crate changed. Deterministic export comparison was not required because no
   traversal code changed.
 
-### [ ] T22. Release lower-level book state earlier in Syntax Helper export
+### [x] T22. Release lower-level book state earlier in Syntax Helper export
 
 Depends on: T21 completion or explicit not-needed conclusion.
 
@@ -697,3 +697,25 @@ Verification:
 - Deterministic export comparison for at least one Syntax Assistant book if traversal/export
   lifetimes change
 - `git diff --check`
+
+Completion notes:
+
+- Measured lower-level book-state retention with fresh-process `book-open`, drop and
+  `root-discovery` probe modes for both Syntax Assistant books, plus T13-style full
+  `syntax-helper --output` before/after measurements.
+- The only justified production refactor was releasing `HbkContainer` from `HbkBook` after book
+  metadata, TOC and `FileStorage` bytes are extracted. `HbkBook` now retains the source path instead
+  of the lower-level container mmap.
+- Public `HbkBook` library behavior, help-book page reads, diagnostics provenance, deterministic
+  record order and FR-EXPORT-001 JSON shape were preserved.
+- Full `syntax-helper --output` peak RSS changed from `168800 -> 134656 KiB` for `shcntx_ru.hbk`
+  and from `140624 -> 122112 KiB` for `shcntx_root.hbk`, with stable record-family counts and
+  export byte counts.
+- Pre-change and post-change export directories were byte-identical for both Syntax Assistant
+  books.
+- Durable conclusions were promoted to `spec/implementation/performance-baseline-t13.md`,
+  `spec/implementation/performance-variants.md`, `spec/implementation/components.md` and
+  `spec/acceptance/baseline.md`.
+- Verification passed: `cargo fmt`, `cargo test --workspace`, `cargo clippy -p hbk-book
+  --all-targets`, UAT-SH-001, UAT-SH-002, UAT-SH-003, T22 probes, T13-style full measurements,
+  deterministic export comparisons and `git diff --check`.

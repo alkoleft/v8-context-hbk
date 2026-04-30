@@ -505,6 +505,66 @@ T21 conclusion:
 - A lean traversal/root-discovery representation is therefore not justified by T21 evidence. No
   runtime code change was made.
 
+## Post-T22 Update
+
+T22 evaluated which lower-level `HbkBook` state remained live during the `syntax-helper --output`
+streaming export path after T20/T21. Raw command outputs, generated exports and the temporary probe
+were written under `target/t22-measurements/`. That directory is service data and is not a durable
+source of truth.
+
+The probe measured fresh-process `book-open`, drop and public `root-discovery` modes for both Syntax
+Assistant books. The drop probe showed that the book object itself retained most of the current RSS
+after open: dropping the whole book reduced RSS from `109752 KiB` to `32984 KiB` for
+`shcntx_ru.hbk` and from `97212 KiB` to `32844 KiB` for `shcntx_root.hbk`.
+
+Before the change, `HbkBook` retained the lower-level `HbkContainer` mmap even though the public
+book API only needed the source path, metadata, locale, TOC and `FileStorage` bytes after open. T22
+therefore replaced that retained container field with an owned `PathBuf` and let `HbkContainer` drop
+after book construction.
+
+The T22 pass used the built debug CLI and temporary probe under GNU `time`:
+
+```bash
+cargo build -p v8-context-hbk-cli --bin v8-context-hbk
+cargo build --manifest-path target/t22-measurements/probe/Cargo.toml
+/usr/bin/time -o target/t22-measurements/logs/after-syntax-helper-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t22-measurements/exports/after/shcntx-ru
+/usr/bin/time -o target/t22-measurements/logs/after-syntax-helper-shcntx-root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/t22-measurements/exports/after/shcntx-root
+```
+
+No fixture-backed T22 command was skipped on this host.
+
+Fresh-process attribution results:
+
+| Source | Mode | Before RSS, KiB | After RSS, KiB | Before VmHWM, KiB | After VmHWM, KiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | `book-open` | 109748 | 70936 | 132992 | 132864 |
+| `shcntx_root.hbk` | `book-open` | 97264 | 64700 | 120448 | 120448 |
+| `shcntx_ru.hbk` | `root-discovery` | 146796 | 108016 | 146796 | 132992 |
+| `shcntx_root.hbk` | `root-discovery` | 139436 | 106868 | 139436 | 120448 |
+
+T13-style full `syntax-helper --output` results:
+
+| Source | Exit | Before elapsed, s | After elapsed, s | Before peak RSS, KiB | After peak RSS, KiB | Export bytes | Records and diagnostics |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `shcntx_ru.hbk` | 0 | 19.02 | 17.97 | 168800 | 134656 | 21950926 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` | 0 | 14.79 | 13.65 | 140624 | 122112 | 12269994 | 24836 records, 703 diagnostics |
+
+Each source book still produced 1 global context, 500 global methods, 101 global properties, 2533
+platform types, 6702 type methods, 10732 type properties, 445 constructors, 713 enums, 3110 enum
+values and 703 diagnostics.
+
+T22 conclusion:
+
+- The `HbkContainer` mmap retained by `HbkBook` was avoidable after book construction and material
+  during the streaming export path.
+- Releasing it reduced current `book-open` RSS by about 38 MiB for `shcntx_ru.hbk` and about
+  32 MiB for `shcntx_root.hbk`.
+- Full `syntax-helper --output` peak RSS decreased from `168800 KiB` to `134656 KiB` for
+  `shcntx_ru.hbk` and from `140624 KiB` to `122112 KiB` for `shcntx_root.hbk`.
+- Pre-change and post-change export directories were byte-identical for both source books.
+- Further splitting of `FileStorage`, TOC/root-discovery or parser traversal lifetimes is not
+  justified by the current evidence.
+
 ## Variant Evaluation
 
 Variant A, lean consumer export and streaming JSON writer, remains the first slice.
@@ -566,6 +626,10 @@ in-memory `syntax-helper-model` lookup use case.
 T19 completed the narrow byte-only Variant E slice. T20 evaluated the broader direct seekable
 `FileStorage` view and left it unimplemented because the remaining owned `FileStorage` vector is not
 the dominant retained memory contributor.
+
+T22 released the avoidable lower-level `HbkContainer` mmap retained by `HbkBook` after open. The
+remaining `FileStorage`, TOC/root-discovery and parser traversal lifetimes are bounded enough that
+no further production refactor is justified by the current measurements.
 
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
 by the current evidence.

@@ -20,6 +20,8 @@ Current status:
   against retained `HbkBook::open` RSS or the full `syntax-helper --output` peak.
 - T21 measured retained TOC/root-discovery structures and did not justify a production refactor:
   the largest T21-specific retained structure was public `RootDiscovery` at about 9 MiB.
+- T22 measured lower-level book state retained during streaming export and removed the avoidable
+  `HbkContainer` mmap retention from `HbkBook`. The public book API and export shape stayed stable.
 
 ## Selection Rules
 
@@ -175,3 +177,9 @@ about 9 MiB, the private `syntax_toc_index` shape about 5 MiB, retained flat-pag
 2 MiB, and the required public `Toc` tree about 8 MiB. These structures are bounded and do not
 justify a production refactor without new evidence that TOC/root-discovery retention dominates the
 remaining export peak.
+
+T22 rechecked the remaining lower-level book state retained by the streaming export path. The
+container mmap inside `HbkBook` was avoidable after metadata, TOC and `FileStorage` bytes were
+extracted, so `HbkBook` now stores the source path directly and releases `HbkContainer` during open.
+Further lifetime splitting for `FileStorage`, TOC/root discovery or parser traversal is not
+justified by the current measurements.

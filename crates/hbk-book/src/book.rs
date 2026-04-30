@@ -179,7 +179,7 @@ impl From<TocError> for BookError {
 
 #[derive(Debug)]
 pub struct HbkBook {
-    container: HbkContainer,
+    path: PathBuf,
     meta: BookMeta,
     locale: BookLocale,
     toc: Toc,
@@ -192,7 +192,7 @@ impl HbkBook {
     }
 
     pub fn path(&self) -> &Path {
-        self.container.path()
+        &self.path
     }
 
     pub fn meta(&self) -> &BookMeta {
@@ -262,8 +262,8 @@ impl HbkBook {
             Err(source) => return Err(BookError::Container(source)),
         };
         Ok(Self {
-            locale: BookLocale::infer_from_path(container.path()),
-            container,
+            locale: BookLocale::infer_from_path(&path),
+            path,
             meta,
             toc,
             file_storage,

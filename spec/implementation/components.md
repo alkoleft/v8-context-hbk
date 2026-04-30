@@ -81,6 +81,10 @@ Owns FR-HBK-002 and FR-HBK-003.
 reuse ZIP archive state inside the `hbk-book` boundary, but it must not expose Syntax Assistant
 extraction, export or CLI concerns.
 
+`HbkBook` owns the book-level state needed after open: path, metadata, locale, TOC and
+`FileStorage` bytes. It must not retain the lower-level `HbkContainer` mmap after these values are
+extracted.
+
 ### hbk-docs
 
 Expected public concepts:
