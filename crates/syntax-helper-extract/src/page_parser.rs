@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::path::Path;
 
 use hbk_book::Toc;
@@ -11,6 +11,27 @@ use crate::html::{
 };
 
 pub fn parse_global_context(content: &PageContent, source: SyntaxHelperSource) -> GlobalContext {
+    parse_global_context_for_mode(content, source, SyntaxHelperRecordDetailMode::Full)
+}
+
+pub(crate) fn parse_global_context_for_mode(
+    content: &PageContent,
+    source: SyntaxHelperSource,
+    mode: SyntaxHelperRecordDetailMode,
+) -> GlobalContext {
+    if mode == SyntaxHelperRecordDetailMode::LeanConsumerExport {
+        return GlobalContext {
+            name: LocalizedName {
+                primary: String::new(),
+                alias: None,
+            },
+            property_links: Vec::new(),
+            method_links: Vec::new(),
+            description: None,
+            source,
+        };
+    }
+
     GlobalContext {
         name: page_title_name(content),
         property_links: links_in_section(content, &["Свойства:", "Properties:"]),
@@ -41,10 +62,27 @@ pub fn parse_global_property(content: &PageContent, source: SyntaxHelperSource) 
 }
 
 pub fn parse_platform_type(content: &PageContent, source: SyntaxHelperSource) -> PlatformType {
+    parse_platform_type_for_mode(content, source, SyntaxHelperRecordDetailMode::Full)
+}
+
+pub(crate) fn parse_platform_type_for_mode(
+    content: &PageContent,
+    source: SyntaxHelperSource,
+    mode: SyntaxHelperRecordDetailMode,
+) -> PlatformType {
+    let parse_links = mode == SyntaxHelperRecordDetailMode::Full;
     PlatformType {
         name: page_title_name(content),
-        method_links: links_in_section(content, &["Методы:", "Methods:"]),
-        constructor_links: links_in_section(content, &["Конструкторы:", "Constructors:"]),
+        method_links: if parse_links {
+            links_in_section(content, &["Методы:", "Methods:"])
+        } else {
+            Vec::new()
+        },
+        constructor_links: if parse_links {
+            links_in_section(content, &["Конструкторы:", "Constructors:"])
+        } else {
+            Vec::new()
+        },
         description: section_text(content, &["Описание:", "Description:"]),
         source,
     }
@@ -86,9 +124,21 @@ pub fn parse_constructor(content: &PageContent, source: SyntaxHelperSource) -> C
 }
 
 pub fn parse_enum(content: &PageContent, source: SyntaxHelperSource) -> EnumDefinition {
+    parse_enum_for_mode(content, source, SyntaxHelperRecordDetailMode::Full)
+}
+
+pub(crate) fn parse_enum_for_mode(
+    content: &PageContent,
+    source: SyntaxHelperSource,
+    mode: SyntaxHelperRecordDetailMode,
+) -> EnumDefinition {
     EnumDefinition {
         name: page_title_name(content),
-        value_links: links_in_section(content, &["Значения", "Values"]),
+        value_links: if mode == SyntaxHelperRecordDetailMode::Full {
+            links_in_section(content, &["Значения", "Values"])
+        } else {
+            Vec::new()
+        },
         description: section_text(content, &["Описание:", "Description:"]),
         source,
     }
@@ -188,7 +238,7 @@ pub(crate) fn parse_syntax_page_content_with_index_owned(
     }
 }
 
-pub(crate) type SyntaxTocIndex = BTreeMap<String, SyntaxTocPage>;
+pub(crate) type SyntaxTocIndex = HashMap<String, SyntaxTocPage>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SyntaxTocPage {
@@ -255,7 +305,7 @@ fn parse_parameters(content: &PageContent) -> Vec<Parameter> {
             Some(Parameter {
                 name: name.trim().to_string(),
                 required,
-                type_refs: type_refs.clone(),
+                type_refs,
                 description,
             })
         })
@@ -265,9 +315,25 @@ fn parse_parameters(content: &PageContent) -> Vec<Parameter> {
 fn parameters_for_signature(signature: &str, parameters: &[Parameter]) -> Vec<Parameter> {
     parameters
         .iter()
-        .filter(|parameter| signature.contains(&format!("<{}>", parameter.name)))
+        .filter(|parameter| signature_contains_parameter(signature, parameter.name.as_str()))
         .cloned()
         .collect()
+}
+
+fn signature_contains_parameter(signature: &str, parameter_name: &str) -> bool {
+    let mut search_start = 0;
+    while let Some(offset) = signature[search_start..].find('<') {
+        let parameter_start = search_start + offset + 1;
+        let after_start = &signature[parameter_start..];
+        if after_start
+            .strip_prefix(parameter_name)
+            .is_some_and(|after_name| after_name.starts_with('>'))
+        {
+            return true;
+        }
+        search_start = parameter_start;
+    }
+    false
 }
 
 fn type_refs_from_section(content: &PageContent, labels: &[&str]) -> Vec<TypeRef> {

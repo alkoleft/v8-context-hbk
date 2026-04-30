@@ -40,6 +40,59 @@ directories are service data unless promoted here.
   `shcntx_ru.hbk` and `32928 KiB` for `shcntx_root.hbk`; open-path high-water RSS and full
   `syntax-helper --output` peak remain in the same class because open still validates the
   `FileStorage` entity body and extraction still owns `FileStorage` bytes for the reader lifetime.
+- T24 targeted parser, lookup and lean streaming-export optimizations kept JSON output
+  byte-identical to the local T23 production exports. Full `syntax-helper --output` measured
+  `18.40s / 134528 KiB` for `shcntx_ru.hbk` and `14.09s / 122108 KiB` for `shcntx_root.hbk`; a
+  repeated `shcntx_root.hbk` run measured `14.34s / 122112 KiB` and matched byte-for-byte.
+
+## T24 Durable Conclusions
+
+Post-T24 Syntax Assistant extraction was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+Both commands exited successfully through the built debug binary. The T24 export directories were
+byte-identical to `target/t23-prod-measurements/exports/shcntx-ru` and
+`target/t23-prod-measurements/exports/shcntx-root`; the repeated root export was also
+byte-identical.
+
+Each source book produced:
+
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 diagnostics
+
+Resource results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes by `wc -c` |
+| --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | 0 | 18.40 | 134528 | 21946830 |
+| `shcntx_root.hbk` | 0 | 14.09 | 122108 | 12265898 |
+| `shcntx_root.hbk` repeat | 0 | 14.34 | 122112 | 12265898 |
+
+Release-profile resource results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes by `wc -c` |
+| --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | 0 | 3.38 | 151136 | 21946830 |
+| `shcntx_root.hbk` | 0 | 2.57 | 119936 | 12265898 |
+| `shcntx_root.hbk` repeat | 0 | 2.42 | 119936 | 12265898 |
+
+The release binary measured `3040152` bytes. Release exports stayed byte-identical to the local T23
+production exports and to the release root repeat.
+
+T24 accepted only measurement-stable micro-optimizations: ZIP entry buffer pre-sizing,
+allocation-free exact parameter matching, `HashMap` TOC lookup and lean streaming-export parsing for
+consumer-omitted navigation fields. T24 rejected `HashSet` visited tracking, empty-source streaming
+records and the attempted single-pass HTML text-normalization rewrite because they did not preserve
+the accepted resource profile.
 
 ## Standard Verification Gates
 

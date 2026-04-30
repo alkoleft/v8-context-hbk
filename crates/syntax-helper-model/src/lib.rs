@@ -160,6 +160,10 @@ impl PlatformContext {
 pub trait SyntaxHelperSink {
     type Error;
 
+    fn record_detail_mode(&self) -> SyntaxHelperRecordDetailMode {
+        SyntaxHelperRecordDetailMode::Full
+    }
+
     fn global_context(&mut self, record: GlobalContext) -> Result<(), Self::Error>;
     fn global_method(&mut self, record: GlobalMethod) -> Result<(), Self::Error>;
     fn global_property(&mut self, record: GlobalProperty) -> Result<(), Self::Error>;
@@ -170,6 +174,12 @@ pub trait SyntaxHelperSink {
     fn enum_definition(&mut self, record: EnumDefinition) -> Result<(), Self::Error>;
     fn enum_value(&mut self, record: EnumValue) -> Result<(), Self::Error>;
     fn diagnostic(&mut self, record: SyntaxHelperDiagnostic) -> Result<(), Self::Error>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyntaxHelperRecordDetailMode {
+    Full,
+    LeanConsumerExport,
 }
 
 impl SyntaxHelperSink for PlatformContext {

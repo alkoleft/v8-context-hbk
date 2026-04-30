@@ -30,6 +30,11 @@ Current status:
   to short-lived `FileStorageReader` values. The direct/seekable block-backed storage design remains
   unimplemented because repeated page reads and full `syntax-helper --output` did not show a
   material peak-RSS benefit from broader storage work.
+- T24 completed targeted parser, lookup and lean streaming-export micro-optimizations. Accepted
+  changes were ZIP-entry pre-sizing, allocation-free exact parameter matching, `HashMap` for
+  Syntax Assistant TOC lookup and lean parsing of fields omitted by consumer JSON. Rejected measured
+  candidates were `HashSet` for extraction visited pages, empty-source streaming records and a
+  single-pass HTML text-normalization rewrite.
 
 ## Selection Rules
 
@@ -38,6 +43,8 @@ Current status:
 - Prefer the smallest change that removes a measured bottleneck.
 - Preserve deterministic diagnostics and deterministic JSON record order.
 - Keep consumer export focused on platform API facts, not HBK book hierarchy or parser traces.
+- Treat micro-optimizations as measurement-gated: retain them only when both Syntax Assistant
+  baseline books keep stable output and do not regress peak RSS.
 - Do not introduce caches, broad pipeline frameworks, plugin systems, compatibility adapters or
   tuning knobs without a measured bottleneck and a concrete consumer requirement.
 

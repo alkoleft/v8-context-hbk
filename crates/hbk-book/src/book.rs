@@ -309,7 +309,7 @@ impl FileStorageReader {
                     source,
                 },
             })?;
-        let mut bytes = Vec::new();
+        let mut bytes = Vec::with_capacity(zip_entry_capacity(entry.size()));
         entry
             .read_to_end(&mut bytes)
             .map_err(|source| BookError::Io {
@@ -362,7 +362,7 @@ fn read_first_zip_entry(
             entity_name,
             source,
         })?;
-    let mut output = Vec::new();
+    let mut output = Vec::with_capacity(zip_entry_capacity(entry.size()));
     entry
         .read_to_end(&mut output)
         .map_err(|source| BookError::Io {
@@ -371,6 +371,10 @@ fn read_first_zip_entry(
             source,
         })?;
     Ok(output)
+}
+
+fn zip_entry_capacity(size: u64) -> usize {
+    usize::try_from(size).unwrap_or(0)
 }
 
 fn list_storage_page_paths(path: &Path, bytes: &[u8]) -> Result<Vec<String>, BookError> {

@@ -193,6 +193,10 @@ impl StreamingSyntaxHelperExport {
 impl SyntaxHelperSink for StreamingSyntaxHelperExport {
     type Error = ExportError;
 
+    fn record_detail_mode(&self) -> model::SyntaxHelperRecordDetailMode {
+        model::SyntaxHelperRecordDetailMode::LeanConsumerExport
+    }
+
     fn global_context(&mut self, _record: model::GlobalContext) -> Result<(), Self::Error> {
         self.counts.global_contexts += 1;
         Ok(())

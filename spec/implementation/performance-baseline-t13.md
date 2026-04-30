@@ -644,6 +644,66 @@ T23 conclusion:
   `HbkBook` no longer retains `FileStorage` bytes, and `FileStorageReader` owns them only for its
   read lifetime.
 
+## Post-T24 Update
+
+T24 applied targeted parser, lookup and lean streaming-export optimizations requested before T18.
+Raw logs and exports were written under `target/t24-measurements/`; that directory is service data
+and is not a durable source of truth.
+
+The final pass used the built debug CLI under GNU `time`:
+
+```bash
+cargo build -p v8-context-hbk-cli --bin v8-context-hbk
+/usr/bin/time -o target/t24-measurements/logs/syntax-helper-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t24-measurements/exports/shcntx-ru
+/usr/bin/time -o target/t24-measurements/logs/syntax-helper-shcntx-root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/t24-measurements/exports/shcntx-root
+/usr/bin/time -o target/t24-measurements/logs/syntax-helper-shcntx-root-repeat.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/t24-measurements/exports/shcntx-root-repeat
+```
+
+T13-style full `syntax-helper --output` results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes by `wc -c` | Records and diagnostics |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `shcntx_ru.hbk` | 0 | 18.40 | 134528 | 21946830 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` | 0 | 14.09 | 122108 | 12265898 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` repeat | 0 | 14.34 | 122112 | 12265898 | 24836 records, 703 diagnostics |
+
+Follow-up release-profile results used `target/release/v8-context-hbk` and wrote raw logs under
+`target/t24-release-measurements/`:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes by `wc -c` | Records and diagnostics |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `shcntx_ru.hbk` | 0 | 3.38 | 151136 | 21946830 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` | 0 | 2.57 | 119936 | 12265898 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` repeat | 0 | 2.42 | 119936 | 12265898 | 24836 records, 703 diagnostics |
+
+The release binary size was `3040152` bytes. Release exports were byte-identical to the local T23
+production exports and to the release root repeat.
+
+Compared with the local T23 production baseline (`19.63s / 154504 KiB` for `shcntx_ru.hbk` and
+`15.15s / 122240 KiB` for `shcntx_root.hbk`), T24 improves the Russian book by about `6.3%`
+elapsed time and `12.9%` peak RSS, and keeps the root book in the same memory class with a small
+time improvement. The T24 exports are byte-identical to
+`target/t23-prod-measurements/exports/shcntx-ru` and
+`target/t23-prod-measurements/exports/shcntx-root`; the repeated root export is also
+byte-identical.
+
+T24 implementation conclusions:
+
+- Pre-sizing decompressed ZIP entry buffers is accepted for current `FileStorageReader` page reads
+  and PackBlock TOC reads.
+- `syntax_toc_index` uses `HashMap` because lookup order is not externally observable and output
+  order remains traversal-driven.
+- The extraction `visited` set stays `BTreeSet`: a `HashSet` replacement was measured and rejected
+  because it raised `shcntx_root.hbk` peak RSS into the 170 MiB class.
+- Streaming export uses a lean record-detail mode to skip fields omitted by the consumer JSON
+  contract for global context, platform type navigation links and enum value links. The
+  provenance-rich in-memory `PlatformContext` path remains the default.
+- Emptying per-record source/provenance during streaming export was measured and rejected because it
+  raised `shcntx_root.hbk` peak RSS; provenance is still built in the domain record and omitted only
+  by the consumer JSON adapter.
+- A single-pass HTML text-normalization rewrite was measured and rejected because it did not improve
+  the final memory class.
+
 ## Variant Evaluation
 
 Variant A, lean consumer export and streaming JSON writer, remains the first slice.
@@ -714,6 +774,11 @@ production refactor is justified by the current measurements. T23 remeasured `Fi
 baseline shift and confirmed that it is about half of current open-path RSS, but only about a
 quarter of open-path high-water RSS and full export peak. Repeated page reads and extractor access
 do not justify a direct or shorter-lived storage design.
+
+T24 completed the requested targeted parser, lookup and lean streaming-export optimizations. The
+accepted changes keep JSON output byte-identical while improving `shcntx_ru.hbk` and preserving the
+`shcntx_root.hbk` memory class. Broader parser rewrites, `HashSet` visited tracking and empty-source
+streaming records are not justified by the measured regressions.
 
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
 by the current evidence.

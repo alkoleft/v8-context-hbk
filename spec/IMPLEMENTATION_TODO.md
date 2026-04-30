@@ -14,7 +14,9 @@ memory work; T20-T22 record the completed optional memory-optimization candidate
 priority order. T22 changed the retained-memory baseline enough that the T20 FileStorage conclusion
 must be treated as pre-T22 evidence for the `HbkBook::open` path. T23 was re-opened by explicit user
 direction as a production follow-up to the measurement-only conclusion and completed the
-path-backed `FileStorageReader` lifetime change. T18 remains the next active query-CLI task.
+path-backed `FileStorageReader` lifetime change. T24 was explicitly reprioritized by user request
+before T18 and completed targeted parser, lookup and lean streaming-export optimizations. T18
+remains the next active query-CLI task.
 
 ## Loop Rule
 
@@ -825,3 +827,102 @@ Completion notes:
   `cargo clippy -p v8-context-hbk-cli --all-targets`, T23 fresh-process measurements, small-book
   `inspect`/`toc --format json`/`page` smoke, deterministic `shcntx_root.hbk` export comparison,
   all-HBK `inspect`/`toc --format json` smoke and `git diff --check`.
+
+### [x] T24. Apply targeted parser, lookup and lean export optimizations
+
+Depends on: T23. Explicitly reprioritized by user request before T18.
+
+Spec refs:
+
+- NFR-PERF-001
+- NFR-DIAG-001
+- NFR-TEST-001
+- FR-EXPORT-001
+- `spec/acceptance/baseline.md`
+- `spec/implementation/components.md`
+- `spec/implementation/performance-baseline-t13.md`
+- `spec/implementation/performance-variants.md`
+
+Scope:
+
+- Reduce parser and ZIP read temporary allocations without changing parser output:
+  - pre-size decompressed ZIP buffers where the archive reports entry size;
+  - avoid avoidable intermediate strings/vectors in Syntax Assistant HTML text extraction;
+  - avoid per-parameter formatting/cloning in signature/parameter matching.
+- Replace ordered lookup structures with hash-based structures only where ordering is not externally
+  observable: Syntax Assistant TOC lookup and extraction visited-page membership. Keep traversal and
+  JSON output order deterministic.
+- Add a lean streaming-export mode so the `syntax-helper --output` path does not build record fields
+  that the consumer JSON contract intentionally omits, while the in-memory `PlatformContext` path
+  continues to retain full provenance and navigation fields.
+- Do not add CLI tuning knobs, caches, a generic pipeline, parallelism, semantic search, new storage
+  engines or direct/seekable `FileStorage` work in this task.
+
+Expected artifacts:
+
+- Narrow runtime changes in `hbk-book`, `syntax-helper-model`, `syntax-helper-extract` and
+  `hbk-export`.
+- Stable record-family counts, diagnostics counts and deterministic JSON output.
+- Post-change T13-style measurements for both Syntax Assistant books.
+- Updated performance/acceptance notes when measured elapsed time, peak RSS or implementation
+  direction changes.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- `cargo clippy` for changed crates, or a documented unrelated workspace-clippy blocker
+- T13-style `syntax-helper --output` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`
+- Deterministic export comparison for at least one Syntax Assistant book
+- `git diff --check`
+
+Completion notes:
+
+- Implemented narrow allocation/time reductions without changing export bytes:
+  - `hbk-book` pre-sizes decompressed ZIP entry buffers for page reads and PackBlock TOC reads when
+    ZIP reports the uncompressed size;
+  - `syntax-helper-extract` avoids per-parameter `format!` allocation in signature matching and
+    removes an unnecessary `type_refs` clone while preserving the previous exact `<name>` matching
+    semantics;
+  - Syntax Assistant TOC lookup now uses `HashMap` because lookup order is not externally
+    observable.
+- Streaming export now advertises a lean record-detail mode through `SyntaxHelperSink`, so the
+  export path skips fields omitted from consumer JSON for global context, platform type navigation
+  links and enum value links. `PlatformContext` keeps the full parser/domain model by default.
+- Two candidate micro-optimizations were measured and deliberately not retained:
+  - replacing extraction `visited` with `HashSet` increased `shcntx_root.hbk` peak RSS to the
+    170 MiB class, so `BTreeSet` remains the accepted structure for that set;
+  - an alternative single-pass HTML text normalization was byte-compatible after fixing parameter
+    matching, but did not improve the final memory class and was removed.
+- Final T13-style measurements used the built debug binary under GNU `time` and wrote raw service
+  data under `target/t24-measurements/`.
+- Compared with the local T23 production baseline (`19.63s / 154504 KiB` for `shcntx_ru.hbk` and
+  `15.15s / 122240 KiB` for `shcntx_root.hbk`):
+  - `shcntx_ru.hbk`: exit `0`, elapsed `18.40s`, peak RSS `134528 KiB`, exported JSON
+    `21946830` bytes by `wc -c`.
+  - `shcntx_root.hbk`: exit `0`, elapsed `14.09s`, peak RSS `122108 KiB`, exported JSON
+    `12265898` bytes by `wc -c`.
+  - `shcntx_root.hbk` repeat: exit `0`, elapsed `14.34s`, peak RSS `122112 KiB`.
+- `diff -qr` reported no differences between the T24 `shcntx_root` export and its repeat, and no
+  differences between T24 exports and `target/t23-prod-measurements/exports/{shcntx-ru,shcntx-root}`.
+- A follow-up release-profile measurement requested after T24 used
+  `target/release/v8-context-hbk` and wrote raw service data under
+  `target/t24-release-measurements/`:
+  - `shcntx_ru.hbk`: exit `0`, elapsed `3.38s`, peak RSS `151136 KiB`, exported JSON
+    `21946830` bytes by `wc -c`.
+  - `shcntx_root.hbk`: exit `0`, elapsed `2.57s`, peak RSS `119936 KiB`, exported JSON
+    `12265898` bytes by `wc -c`.
+  - `shcntx_root.hbk` repeat: exit `0`, elapsed `2.42s`, peak RSS `119936 KiB`.
+  - Release binary size was `3040152` bytes.
+  - `diff -qr` reported no differences between the release exports, the release root repeat and
+    `target/t23-prod-measurements/exports/{shcntx-ru,shcntx-root}`.
+- Each source book still exported 500 global methods, 101 global properties, 2533 platform types,
+  6702 type methods, 10732 type properties, 445 constructors, 713 enums, 3110 enum values and
+  703 diagnostics.
+- Durable conclusions were promoted to `spec/implementation/performance-baseline-t13.md`,
+  `spec/implementation/performance-variants.md`, `spec/implementation/components.md` and
+  `spec/acceptance/baseline.md`.
+- Verification passed: `cargo fmt`, `cargo test --workspace`, `cargo clippy -p hbk-book
+  -p syntax-helper-model -p syntax-helper-extract -p hbk-export --all-targets` (exit 0 with
+  existing `hbk-docs` `result_large_err` warnings), final T24 measurements, deterministic export
+  comparisons and `git diff --check`.

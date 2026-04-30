@@ -8,9 +8,10 @@ use syntax_helper_model::*;
 use crate::discovery::discover_roots_with_loader;
 use crate::error::{SyntaxHelperError, SyntaxHelperStreamError, infallible_stream_error};
 use crate::page_parser::{
-    parse_constructor, parse_enum, parse_enum_value, parse_global_context, parse_global_method,
-    parse_global_property, parse_platform_method, parse_platform_property, parse_platform_type,
-    parse_syntax_page_content_with_index_owned, source_from_content, syntax_toc_index,
+    parse_constructor, parse_enum_for_mode, parse_enum_value, parse_global_context_for_mode,
+    parse_global_method, parse_global_property, parse_platform_method, parse_platform_property,
+    parse_platform_type_for_mode, parse_syntax_page_content_with_index_owned, source_from_content,
+    syntax_toc_index,
 };
 
 #[derive(Debug)]
@@ -129,6 +130,7 @@ where
     S: SyntaxHelperSink,
 {
     let mut visited = BTreeSet::new();
+    let record_detail_mode = sink.record_detail_mode();
     let RootDiscovery { roots, diagnostics } = discovery;
 
     for diagnostic in diagnostics {
@@ -161,7 +163,11 @@ where
                     .global_property(parse_global_property(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
                 PageClass::ObjectType => sink
-                    .platform_type(parse_platform_type(&content, source))
+                    .platform_type(parse_platform_type_for_mode(
+                        &content,
+                        source,
+                        record_detail_mode,
+                    ))
                     .map_err(SyntaxHelperStreamError::Sink)?,
                 PageClass::ObjectMethod => sink
                     .type_method(parse_platform_method(&content, source))
@@ -173,7 +179,7 @@ where
                     .constructor(parse_constructor(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
                 PageClass::Enum => sink
-                    .enum_definition(parse_enum(&content, source))
+                    .enum_definition(parse_enum_for_mode(&content, source, record_detail_mode))
                     .map_err(SyntaxHelperStreamError::Sink)?,
                 PageClass::EnumValue => sink
                     .enum_value(parse_enum_value(&content, source))
@@ -184,8 +190,12 @@ where
         if kind == RootSectionKind::GlobalContext && visited.insert(root_source.html_path.clone()) {
             let content = load_page(&root_source.html_path)?;
             let source = source_from_content(&root_source, &content);
-            sink.global_context(parse_global_context(&content, source))
-                .map_err(SyntaxHelperStreamError::Sink)?;
+            sink.global_context(parse_global_context_for_mode(
+                &content,
+                source,
+                record_detail_mode,
+            ))
+            .map_err(SyntaxHelperStreamError::Sink)?;
         }
     }
 

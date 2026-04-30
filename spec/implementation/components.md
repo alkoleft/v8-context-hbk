@@ -103,6 +103,7 @@ Expected public concepts:
 
 - `PlatformContext`
 - `SyntaxHelperSink`
+- `SyntaxHelperRecordDetailMode`
 - `GlobalMethod`
 - `GlobalProperty`
 - `PlatformType`
@@ -123,7 +124,9 @@ owned by `hbk-export` and may intentionally omit internal provenance and navigat
 
 `SyntaxHelperSink` is the shared record-family boundary used both by the in-memory
 `PlatformContext` lookup path and by streaming export adapters. It must stay typed by domain record
-families rather than becoming a generic pipeline abstraction.
+families rather than becoming a generic pipeline abstraction. A sink may request a narrower
+`SyntaxHelperRecordDetailMode` only to avoid building fields that its concrete consumer omits; the
+default mode remains the full provenance-rich domain model.
 
 ### syntax-helper-extract
 
@@ -147,7 +150,9 @@ Owns FR-EXPORT-001.
 
 The streaming export adapter consumes the `SyntaxHelperSink` boundary and writes canonical
 record-family JSON without retaining the full `PlatformContext`. The existing `PlatformContext`
-exporter remains available for in-memory model consumers and tests.
+exporter remains available for in-memory model consumers and tests. Streaming export may use the
+lean sink detail mode to skip consumer-omitted navigation fields, but omission from JSON remains an
+`hbk-export` adapter concern rather than an internal model constraint.
 
 ### v8-context-hbk-cli
 
