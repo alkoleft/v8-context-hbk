@@ -9,7 +9,10 @@ Completed task history: [archive/completed-tasks-t0-t12.md](archive/completed-ta
 Current status: T18 is the first active unchecked task. T17 implemented Variant C, streaming
 extraction into record-family sinks for the export command path, while preserving the in-memory
 lookup model. T19 was explicitly reprioritized ahead of T18 and completed the post-T17 lower-level
-HBK open-time memory slice. T18 remains the next active query-CLI task.
+HBK open-time memory slice. T20-prep records a behavior-preserving module split before the next
+memory work; T20-T22 record the next optional memory-optimization candidates in the requested
+priority order. T18 remains the next active query-CLI task unless memory work is explicitly
+reprioritized again.
 
 ## Loop Rule
 
@@ -440,3 +443,199 @@ Completion notes:
   `fmtdui_ru.hbk`.
 - The byte-only path removed the majority of the remaining open-time high-water mark, so no
   follow-up task for a seekable direct `FileStorage` view is added from T19.
+
+### [ ] T20-prep. Split large modules before memory optimization
+
+Depends on: T19. Run before T20 if memory work is explicitly reprioritized before T18; otherwise
+leave it behind the active T18 query-CLI task.
+
+Spec refs:
+
+- NFR-TEST-001
+- `spec/implementation/components.md`
+- `spec/implementation/performance-variants.md`
+- `spec/implementation/performance-baseline-t13.md`, post-T19 update
+
+Scope:
+
+- Split oversized crate source files into behavior-preserving modules to make T20-T22 easier to
+  implement and review.
+- Prioritize:
+  - `hbk-container/src/lib.rs` into focused `types`, `error`, `block` and `container` modules.
+  - `syntax-helper-extract/src/lib.rs` into focused reader/orchestration, discovery, catalog
+    traversal, page parser and HTML-helper modules.
+  - `hbk-export/src/lib.rs` into focused streaming export, context export, consumer DTO, writer and
+    error modules.
+- Keep public APIs, crate boundaries, CLI behavior, JSON export shape, diagnostics and deterministic
+  output order unchanged.
+- Do not combine the module split with memory-optimization logic, direct `FileStorage` view work,
+  query CLI work, parser behavior changes or spec contract changes.
+- Keep the split pragmatic: avoid a broad facade, generic pipeline abstraction or module hierarchy
+  that does not match the existing component boundaries.
+
+Expected artifacts:
+
+- Code-only module split for the targeted crates.
+- No durable performance conclusions unless verification unexpectedly changes measurements or
+  behavior.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- `cargo clippy` for changed crates, or a documented unrelated workspace-clippy blocker
+- Small-book smoke for `inspect` and `toc --format json` when fixtures exist if `hbk-container` or
+  `hbk-book` public wiring changes
+- T13-style `syntax-helper --output` smoke on at least one Syntax Assistant book if
+  `syntax-helper-extract` or `hbk-export` wiring changes
+- `git diff --check`
+
+### [ ] T20. Evaluate direct seekable FileStorage view
+
+Depends on: T19 and T20-prep. Scheduled after T18 unless memory footprint is explicitly
+reprioritized.
+
+Spec refs:
+
+- FR-HBK-001
+- FR-HBK-002
+- NFR-PERF-001
+- NFR-DIAG-001
+- NFR-TEST-001
+- `spec/acceptance/baseline.md`
+- `spec/implementation/components.md`
+- `spec/implementation/performance-variants.md`, Variant E
+- `spec/implementation/performance-baseline-t13.md`, post-T19 update
+
+Scope:
+
+- Measure post-T19 retained RSS enough to determine whether the owned `FileStorage: Vec<u8>` is still
+  a dominant memory contributor for `HbkBook::open` and `syntax-helper --output`.
+- If the `FileStorage` copy is not dominant, mark this task complete as not justified and record the
+  measurements instead of implementing a broader IO change.
+- If justified, replace the owned `FileStorage` copy in the relevant book/extraction path with the
+  narrowest direct seekable view over mmap/chained HBK blocks that satisfies ZIP archive access.
+- Keep direct block/seek concerns inside `hbk-container` / `hbk-book`; do not expose low-level HBK
+  block layout to docs, extractor, export or CLI code.
+- Preserve offset-aware diagnostics for descriptor/container validation and the byte-only entity path
+  introduced by T19.
+- Do not switch ZIP crates, add caches, add tuning knobs, introduce a generic pipeline framework or
+  change CLI/export contracts in this task.
+
+Expected artifacts:
+
+- Measurement notes with exact retained-RSS attribution and the implementation/not-needed decision.
+- Code changes only if the attribution proves a direct seekable view is justified.
+- Updated performance and acceptance baselines when measured RSS or elapsed time changes.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- `cargo clippy` for changed crates, or a documented unrelated workspace-clippy blocker
+- `HbkBook::open` RSS/VmHWM probe for `shcntx_ru.hbk` and `shcntx_root.hbk`
+- T13-style `syntax-helper --output` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`
+- Small-book smoke for `inspect`, `toc --format json` and `page` on `fmtdui_root.hbk` /
+  `fmtdui_ru.hbk` when fixtures exist
+- `git diff --check`
+
+### [ ] T21. Reduce TOC and root-discovery retained memory
+
+Depends on: T20 completion or explicit not-needed conclusion.
+
+Spec refs:
+
+- FR-HBK-003
+- FR-SH-001
+- FR-SH-002
+- NFR-PERF-001
+- NFR-DIAG-001
+- NFR-TEST-001
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- `spec/acceptance/baseline.md`
+- `spec/implementation/components.md`
+- `spec/implementation/performance-baseline-t13.md`
+
+Scope:
+
+- Attribute post-T19/T20 retained memory for the TOC tree, flattened traversal metadata and Syntax
+  Assistant root-discovery structures on `shcntx_ru.hbk` and `shcntx_root.hbk`.
+- If TOC/root-discovery memory is not material, mark this task complete as not justified and record
+  the measurements instead of changing model structure.
+- If justified, introduce a lean Syntax Assistant traversal/root-discovery representation for the
+  extraction path without weakening the public `Toc` behavior used by help-book navigation.
+- Preserve deterministic traversal order, page provenance, recoverable diagnostics and existing
+  Syntax Helper export shape.
+- Do not remove source context required by diagnostics and do not make `hbk-book` depend on Syntax
+  Assistant extraction concerns.
+
+Expected artifacts:
+
+- Measurement notes identifying retained TOC/root-discovery cost and the chosen action.
+- Narrow code changes in `hbk-book` / `syntax-helper-extract` only if justified.
+- Updated performance and acceptance baselines when measured RSS or elapsed time changes.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- `cargo clippy` for changed crates, or a documented unrelated workspace-clippy blocker
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- T13-style `syntax-helper --output` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`
+- Deterministic export comparison for at least one Syntax Assistant book if traversal code changes
+- `git diff --check`
+
+### [ ] T22. Release lower-level book state earlier in Syntax Helper export
+
+Depends on: T21 completion or explicit not-needed conclusion.
+
+Spec refs:
+
+- FR-SH-001
+- FR-SH-002
+- FR-EXPORT-001
+- NFR-PERF-001
+- NFR-DIAG-001
+- NFR-TEST-001
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- `spec/acceptance/baseline.md`
+- `spec/implementation/components.md`
+- `spec/implementation/performance-baseline-t13.md`
+
+Scope:
+
+- Attribute which lower-level `HbkBook` state remains live during the `syntax-helper --output`
+  streaming export path after T20/T21: container mmap, `FileStorage` access state, TOC, root
+  discovery and parser traversal state.
+- Refactor only if measurements show avoidable retained state during export after the extractor has
+  crossed a checked boundary and no longer needs the full book object.
+- Prefer a small extraction/export lifetime split or owned traversal plan over a broad facade,
+  global cache or generic pipeline abstraction.
+- Keep `HbkBook` public library behavior intact for help-book navigation and page reads.
+- Preserve diagnostics provenance, deterministic record order and FR-EXPORT-001 JSON shape.
+
+Expected artifacts:
+
+- Measurement notes showing which state was retained and what was released earlier.
+- Code changes in `syntax-helper-extract`, `hbk-book`, `hbk-export` or CLI wiring only where the
+  lifetime split directly requires them.
+- Updated performance and acceptance baselines when measured RSS or elapsed time changes.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- `cargo clippy` for changed crates, or a documented unrelated workspace-clippy blocker
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- T13-style `syntax-helper --output` measurements for `shcntx_ru.hbk` and `shcntx_root.hbk`
+- Deterministic export comparison for at least one Syntax Assistant book if traversal/export
+  lifetimes change
+- `git diff --check`
