@@ -374,6 +374,72 @@ also stayed unchanged, confirming that the change did not alter FR-EXPORT-001 ou
 The byte-only path removed the majority of the remaining open-time high-water mark. T19 therefore
 does not add a follow-up task for a seekable direct `FileStorage` view over mmap/chained blocks.
 
+## Post-T20 Update
+
+T20 evaluated whether the remaining owned `FileStorage: Vec<u8>` justified replacing it with a
+direct seekable view over mmap/chained HBK blocks. Raw command outputs, generated exports and the
+temporary attribution probe were written under `target/t20-measurements/`. That directory is service
+data and is not a durable source of truth.
+
+The T20 pass used the built debug CLI and a temporary fresh-process attribution probe under GNU
+`time`:
+
+```bash
+cargo build -p v8-context-hbk-cli --bin v8-context-hbk
+cargo build --manifest-path target/t20-measurements/probe/Cargo.toml
+/usr/bin/time -o target/t20-measurements/logs/container-open-shcntx_ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t20-measurements/probe/target/debug/t20-file-storage-probe container-open /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t20-measurements/logs/file-storage-copy-shcntx_ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t20-measurements/probe/target/debug/t20-file-storage-probe file-storage-copy /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t20-measurements/logs/book-open-shcntx_ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t20-measurements/probe/target/debug/t20-file-storage-probe book-open /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t20-measurements/logs/container-open-shcntx_root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t20-measurements/probe/target/debug/t20-file-storage-probe container-open /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk
+/usr/bin/time -o target/t20-measurements/logs/file-storage-copy-shcntx_root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t20-measurements/probe/target/debug/t20-file-storage-probe file-storage-copy /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk
+/usr/bin/time -o target/t20-measurements/logs/book-open-shcntx_root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t20-measurements/probe/target/debug/t20-file-storage-probe book-open /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk
+```
+
+The full export measurements used the same T13-style debug-binary command:
+
+```bash
+/usr/bin/time -o target/t20-measurements/logs/syntax-helper-shcntx_ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t20-measurements/exports/shcntx-ru
+/usr/bin/time -o target/t20-measurements/logs/syntax-helper-shcntx_root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/t20-measurements/exports/shcntx-root
+```
+
+Fresh-process attribution results:
+
+| Source | Mode | Exit | Elapsed, s | Current RSS, KiB | VmHWM, KiB | Exact `FileStorage` bytes |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | `container-open` | 0 | 0.00 | 2800 | 2800 | n/a |
+| `shcntx_ru.hbk` | `file-storage-copy` | 0 | 0.02 | 78740 | 78740 | 38960718 |
+| `shcntx_ru.hbk` | `book-open` | 0 | 5.19 | 108324 | 131712 | 38960718 |
+| `shcntx_root.hbk` | `container-open` | 0 | 0.00 | 2672 | 2672 | n/a |
+| `shcntx_root.hbk` | `file-storage-copy` | 0 | 0.02 | 66468 | 66468 | 32620458 |
+| `shcntx_root.hbk` | `book-open` | 0 | 5.26 | 95884 | 119296 | 32620458 |
+
+The `file-storage-copy` RSS includes both the retained destination vector and source mmap pages
+touched while copying. The exact vector capacity is therefore the decision input for retained
+`FileStorage` ownership: about `38048 KiB` for `shcntx_ru.hbk` and `31856 KiB` for
+`shcntx_root.hbk`.
+
+T13-style full `syntax-helper --output` results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes | Records and diagnostics |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `shcntx_ru.hbk` | 0 | 17.68 | 157916 | 21950926 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` | 0 | 13.50 | 139632 | 12269994 | 24836 records, 703 diagnostics |
+
+Each source book still produced 1 global context, 500 global methods, 101 global properties, 2533
+platform types, 6702 type methods, 10732 type properties, 445 constructors, 713 enums, 3110 enum
+values and 703 diagnostics.
+
+T20 conclusion:
+
+- The owned `FileStorage` vector is material but not dominant: it is about 35% of retained
+  `HbkBook::open` RSS for `shcntx_ru.hbk`, about 33% for `shcntx_root.hbk`, and less than one
+  quarter of the full export peak for both books.
+- Replacing it would require a broader direct seekable ZIP/storage design inside the low-level book
+  boundary while leaving larger retained book/extraction state in place.
+- A direct seekable `FileStorage` view is therefore not justified by T20 evidence. No runtime code
+  change was made, and Variant E remains limited to the T19 byte-only entity path until new
+  measurements show a dominant lower-level storage bottleneck.
+
 ## Variant Evaluation
 
 Variant A, lean consumer export and streaming JSON writer, remains the first slice.
@@ -419,6 +485,9 @@ Variant E is not first.
 - `memmap2` remains the simplest low-copy container-open strategy.
 - The whole `FileStorage` copy and per-byte `source_offsets` temporary allocation matter, but T16
   showed they are not the next slice most likely to reduce the current `shcntx_ru.hbk` peak.
+- T19 removed the dominant per-byte `source_offsets` allocation from ordinary entity reads.
+- T20 showed the remaining owned `FileStorage` vector is not dominant enough to justify a broader
+  direct seekable ZIP/storage design.
 
 ## Current Implementation Direction
 
@@ -428,6 +497,10 @@ T15 / Variant B was implemented next.
 T16 attributed the remaining post-T15 memory and selected T17 / Variant C next. T17 implemented
 streaming extraction into record-family sinks for the export command path while preserving the
 in-memory `syntax-helper-model` lookup use case.
+
+T19 completed the narrow byte-only Variant E slice. T20 evaluated the broader direct seekable
+`FileStorage` view and left it unimplemented because the remaining owned `FileStorage` vector is not
+the dominant retained memory contributor.
 
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
 by the current evidence.

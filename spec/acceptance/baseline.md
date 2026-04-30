@@ -20,6 +20,10 @@ directories are service data unless promoted here.
   `383232 KiB` to `131328 KiB` for `shcntx_ru.hbk` and from `321408 KiB` to `119168 KiB` for
   `shcntx_root.hbk`. Full `syntax-helper --output` remained shape/count stable and measured
   `21.19s / 168692 KiB` for `shcntx_ru.hbk` and `16.11s / 144500 KiB` for `shcntx_root.hbk`.
+- T20 measured the remaining owned `FileStorage` copy and did not justify a broader direct seekable
+  view. The exact retained vector was `38960718` bytes for `shcntx_ru.hbk` and `32620458` bytes for
+  `shcntx_root.hbk`, while full `syntax-helper --output` measured `17.68s / 157916 KiB` and
+  `13.50s / 139632 KiB` with stable export counts.
 
 ## Standard Verification Gates
 
@@ -242,6 +246,56 @@ Small-book smoke passed for `inspect` and `toc --format json` on `fmtdui_root.hb
 
 The byte-only path removed the majority of the open-time high-water mark, so acceptance does not
 require a follow-up seekable direct `FileStorage` view from T19.
+
+## T20 Durable Conclusions
+
+The direct seekable `FileStorage` view evaluation was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk`
+
+All source books were available and no fixture-backed T20 command was skipped.
+
+Fresh-process attribution results:
+
+| Source | Mode | Exit | Elapsed, s | Current RSS, KiB | VmHWM, KiB | Exact `FileStorage` bytes |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | `container-open` | 0 | 0.00 | 2800 | 2800 | n/a |
+| `shcntx_ru.hbk` | `file-storage-copy` | 0 | 0.02 | 78740 | 78740 | 38960718 |
+| `shcntx_ru.hbk` | `book-open` | 0 | 5.19 | 108324 | 131712 | 38960718 |
+| `shcntx_root.hbk` | `container-open` | 0 | 0.00 | 2672 | 2672 | n/a |
+| `shcntx_root.hbk` | `file-storage-copy` | 0 | 0.02 | 66468 | 66468 | 32620458 |
+| `shcntx_root.hbk` | `book-open` | 0 | 5.26 | 95884 | 119296 | 32620458 |
+
+Full debug CLI results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | 0 | 17.68 | 157916 | 21950926 |
+| `shcntx_root.hbk` | 0 | 13.50 | 139632 | 12269994 |
+
+Each source book still produced:
+
+- 1 global context
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 `UNKNOWN_PAGE_CLASS` diagnostics
+
+Small-book smoke passed for `inspect`, `toc --format json` and `page` on `fmtdui_root.hbk` and
+`fmtdui_ru.hbk`; TOC output parsed as JSON and page output was non-empty.
+
+The owned `FileStorage` vector is material but not dominant after T19. It accounts for about one
+third of retained `HbkBook::open` RSS and less than one quarter of the full Syntax Assistant export
+peak on both measured books. A direct seekable `FileStorage` view is not justified without new
+evidence of a dominant lower-level storage bottleneck.
 
 ## First Delivery Success Metrics
 

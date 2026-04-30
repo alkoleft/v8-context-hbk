@@ -501,7 +501,7 @@ Completion notes:
 - No performance or acceptance baseline update was needed because the task made no measured
   behavior or contract change.
 
-### [ ] T20. Evaluate direct seekable FileStorage view
+### [x] T20. Evaluate direct seekable FileStorage view
 
 Depends on: T19 and T20-prep. Scheduled after T18 unless memory footprint is explicitly
 reprioritized.
@@ -549,6 +549,27 @@ Verification:
 - Small-book smoke for `inspect`, `toc --format json` and `page` on `fmtdui_root.hbk` /
   `fmtdui_ru.hbk` when fixtures exist
 - `git diff --check`
+
+Completion notes:
+
+- Measured T20 with fresh-process `container-open`, `file-storage-copy` and `book-open` probe modes
+  for both Syntax Assistant books, plus T13-style full `syntax-helper --output` measurements.
+- Exact retained `FileStorage` vector capacity was `38960718` bytes for `shcntx_ru.hbk` and
+  `32620458` bytes for `shcntx_root.hbk`; retained `HbkBook::open` RSS/VmHWM measured
+  `108324 / 131712 KiB` and `95884 / 119296 KiB`.
+- Full `syntax-helper --output` measured `17.68s / 157916 KiB / 21950926 bytes` for
+  `shcntx_ru.hbk` and `13.50s / 139632 KiB / 12269994 bytes` for `shcntx_root.hbk`, with stable
+  record-family counts and 703 diagnostics for each book.
+- The remaining owned `FileStorage` vector is material but not dominant: about one third of
+  retained `HbkBook::open` RSS and less than one quarter of full export peak on both measured
+  books. A broader direct seekable `FileStorage` view is therefore not justified by T20 evidence.
+- No runtime code change was made. Durable conclusions were promoted to
+  `spec/implementation/performance-baseline-t13.md`, `spec/implementation/performance-variants.md`
+  and `spec/acceptance/baseline.md`.
+- Verification passed: `cargo fmt`, `cargo test --workspace`, `cargo clippy --workspace
+  --all-targets` (exit 0 with existing `hbk-docs` warnings), T20 probes and full measurements,
+  small-book `inspect`/`toc --format json`/`page` smoke for `fmtdui_root.hbk` and `fmtdui_ru.hbk`,
+  subagent completeness review (`no findings`) and `git diff --check`.
 
 ### [ ] T21. Reduce TOC and root-discovery retained memory
 

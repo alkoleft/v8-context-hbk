@@ -15,6 +15,9 @@ Current status:
 - The first Variant E slice was implemented in T19. Byte-only entity reads removed the per-byte
   `source_offsets` allocation from ordinary `FileStorage` and entity-body reads while keeping
   descriptor offsets available for diagnostics.
+- T20 measured the remaining owned `FileStorage` copy after T19 and did not justify a direct
+  seekable `FileStorage` view: the exact retained `Vec<u8>` capacity is material but not dominant
+  against retained `HbkBook::open` RSS or the full `syntax-helper --output` peak.
 
 ## Selection Rules
 
@@ -159,3 +162,8 @@ T16 memory attribution selected Variant C from measured evidence:
 Variant E remains a later candidate only if new measurements show retained `FileStorage` ownership
 or ZIP access costs dominate after the T19 byte-only path. T19 did not justify a broader seekable
 direct `FileStorage` view.
+
+T20 rechecked that later candidate after explicit memory reprioritization. The owned
+`FileStorage` vector remained about one third of retained `HbkBook::open` RSS and less than one
+quarter of the full Syntax Assistant export peak for both measured books, so a broader direct
+seekable view remains unjustified without new evidence.
