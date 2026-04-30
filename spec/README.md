@@ -36,7 +36,8 @@ Otherwise reconcile the specification files before implementing.
 - `acceptance/uat-test-cases.md`: current UAT test case catalog.
 - `decisions/`: ADRs and accepted decision records.
 - `IMPLEMENTATION_TODO.md`: first-unchecked-task ledger for implementation work.
-- `archive/`: completed milestones and task history moved out of the active ledger.
+- `archive/`: completed milestones and task history moved out of the active ledger
+  (`completed-tasks-t0-t12.md`, `completed-tasks-t13-t17-t19-t24.md`).
 
 ## External Files
 
