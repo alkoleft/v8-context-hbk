@@ -113,6 +113,10 @@ extraction remains meaningful:
 - parser field that cannot be mapped safely
 - data-contract gaps such as multiple return types per overload when unsupported
 
+Diagnostics for known unsupported source families must use stable family-specific codes so a
+maintainer can distinguish genuinely unknown pages from explicitly out-of-scope or unsupported
+families.
+
 Every recoverable diagnostic must include:
 
 - severity

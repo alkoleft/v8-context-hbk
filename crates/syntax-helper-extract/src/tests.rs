@@ -127,6 +127,57 @@ fn discovers_roots_and_traverses_catalogs_from_fixture_toc() {
 }
 
 #[test]
+fn classifies_remaining_audit_diagnostic_families_explicitly() {
+    let toc = Toc::parse(
+        r#"{
+                8
+                {1,0,3,2,3,4,{0,0,{0,0,{"ru","Глобальный контекст"}},"/objects/Global context.html"}}
+                {2,1,0,{0,0,{0,0,{"ru","ПолучитьОбщуюПалитруЦветовЗначковТаблицы"}},"/objects/Global context/GetCommonTableIconsColorPalette6560.html"}}
+                {3,1,1,5,{0,0,{0,0,{"ru","События"}},"/objects/Global context/events/catalog375.html"}}
+                {4,0,3,6,7,8,{0,0,{0,0,{"ru","Универсальные коллекции значений"}},"/objects/catalog234.html"}}
+                {5,3,0,{0,0,{0,0,{"ru","ПередЗавершениемРаботыСистемы"}},"/objects/Global context/events/catalog375/BeforeExit378.html"}}
+                {6,4,0,{0,0,{0,0,{"ru","Массив"}},"/objects/catalog234/Array.html"}}
+                {7,4,0,{0,0,{0,0,{"ru","Активность"}},"/tables/catalog1/table2/fields/Active4.html"}}
+                {8,4,0,{0,0,{0,0,{"ru","Параметр"}},"/tables/catalog1/table3/params/param1.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+
+    let discovery =
+        discover_roots_with_loader(Path::new("shcntx_ru.hbk"), "ru", &toc, |html_path| {
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_ru.hbk",
+                "ru",
+                html_path,
+                r#"<html><body><h1 class="V8SH_pagetitle">Раздел</h1></body></html>"#,
+            ))
+        })
+        .expect("root discovery must succeed");
+
+    let codes = discovery
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        codes,
+        vec![
+            "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE",
+            "OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT",
+            "OUT_OF_SCOPE_TABLE_FIELD",
+            "OUT_OF_SCOPE_TABLE_PARAMETER",
+        ]
+    );
+    assert!(discovery.diagnostics.iter().all(|diagnostic| {
+        diagnostic.severity == DiagnosticSeverity::Warning
+            && diagnostic.parser_stage == "root_discovery"
+            && diagnostic.source.toc_path.is_some()
+            && !diagnostic.message.is_empty()
+    }));
+}
+
+#[test]
 fn parses_representative_specialized_fixture_pages() {
     let toc = fixture_toc();
 

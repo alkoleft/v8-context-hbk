@@ -32,7 +32,7 @@ pub fn discover_roots_with_loader(
                 .iter()
                 .filter(|page| page.class == PageClass::Unknown)
                 .cloned()
-                .map(|page| unknown_page_diagnostic(page.source)),
+                .map(|page| unhandled_page_diagnostic(page.source)),
         );
         roots.push(RootSection {
             kind,
@@ -122,6 +122,54 @@ fn unknown_page_diagnostic(source: SyntaxHelperSource) -> SyntaxHelperDiagnostic
         parser_stage: "root_discovery",
         message: "Syntax Assistant page could not be classified for traversal".to_string(),
     }
+}
+
+fn unhandled_page_diagnostic(source: SyntaxHelperSource) -> SyntaxHelperDiagnostic {
+    let (code, message) = classified_page_gap(&source.html_path);
+    SyntaxHelperDiagnostic {
+        severity: DiagnosticSeverity::Warning,
+        code,
+        source,
+        parser_stage: "root_discovery",
+        message: message.to_string(),
+    }
+}
+
+fn classified_page_gap(html_path: &str) -> (&'static str, &'static str) {
+    if is_direct_global_context_page(html_path) {
+        return (
+            "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE",
+            "Direct global context method-like TOC page is in FR-SH-002 scope but is outside the supported Syntax Assistant method catalog layout",
+        );
+    }
+    if html_path.starts_with("objects/Global context/events/") {
+        return (
+            "OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT",
+            "Global context event pages are not part of the current FR-SH-002 extraction scope",
+        );
+    }
+    if html_path.contains("/fields/") {
+        return (
+            "OUT_OF_SCOPE_TABLE_FIELD",
+            "Syntax Assistant table field pages are not part of the current FR-SH-002 extraction scope",
+        );
+    }
+    if html_path.contains("/params/") {
+        return (
+            "OUT_OF_SCOPE_TABLE_PARAMETER",
+            "Syntax Assistant table parameter pages are not part of the current FR-SH-002 extraction scope",
+        );
+    }
+    (
+        "UNKNOWN_PAGE_CLASS",
+        "Syntax Assistant page could not be classified for traversal",
+    )
+}
+
+fn is_direct_global_context_page(html_path: &str) -> bool {
+    html_path
+        .strip_prefix("objects/Global context/")
+        .is_some_and(|tail| !tail.contains('/') && tail.ends_with(".html"))
 }
 
 fn normalized_title(page: &TocPage) -> String {

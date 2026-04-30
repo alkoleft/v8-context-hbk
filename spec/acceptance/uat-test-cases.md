@@ -416,6 +416,51 @@ Expected result:
 - Parameters belong to the correct variant and do not absorb following variant descriptions.
 - Return type extraction works for this page in both locales.
 
+## UAT-SH-010: Classified Syntax Assistant Diagnostic Families
+
+Related use case: UC-SH-001.
+
+Related requirements: FR-SH-001, FR-SH-002, NFR-DIAG-001.
+
+Preconditions:
+
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` exist from UAT-SH-007.
+
+Steps:
+
+```bash
+jq -e '
+  def counts: reduce .records[].code as $code ({}; .[$code] = (.[$code] // 0) + 1);
+  counts == {
+    "OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT": 33,
+    "OUT_OF_SCOPE_TABLE_FIELD": 588,
+    "OUT_OF_SCOPE_TABLE_PARAMETER": 78,
+    "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE": 4
+  }
+' target/uat/shcntx-ru/diagnostics.json
+jq -e '
+  def counts: reduce .records[].code as $code ({}; .[$code] = (.[$code] // 0) + 1);
+  counts == {
+    "OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT": 33,
+    "OUT_OF_SCOPE_TABLE_FIELD": 588,
+    "OUT_OF_SCOPE_TABLE_PARAMETER": 78,
+    "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE": 4
+  }
+' target/uat/shcntx-en/diagnostics.json
+```
+
+Expected result:
+
+- The export keeps deterministic diagnostic counts for both locales.
+- Known T28 source families are classified with family-specific diagnostic codes.
+- `UNKNOWN_PAGE_CLASS` is absent for the classified T28 families.
+- Diagnostic records keep source provenance needed by NFR-DIAG-001.
+
+Cleanup:
+
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` are service data and may be deleted after the
+  run.
+
 ## UAT-ERR-001: Missing File Produces Readable CLI Error
 
 Related use cases: UC-HBK-001, UC-HBK-002, UC-SH-001.

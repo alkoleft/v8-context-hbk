@@ -142,7 +142,9 @@ availability, examples, see-also, available-since and overload variant headings 
 boundaries so descriptions, signatures and parameter descriptions do not absorb later sections.
 T26 extracts structured availability/application contexts, examples, see-also relationships and
 available-since facts into the domain model. T27 extracts structured syntax-variant metadata and
-binds parameters to the variant signature that owns them.
+binds parameters to the variant signature that owns them. T28 classifies the remaining known
+diagnostic-only Syntax Assistant source families with stable family-specific diagnostic codes while
+leaving consumer record-family JSON unchanged.
 
 ### hbk-export
 

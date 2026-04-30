@@ -100,6 +100,8 @@ Acceptance:
 - `shcntx_ru.hbk` root discovery finds candidates for global context, enum catalog and type/object
   catalog when the platform fixture exists.
 - Unknown page classes become diagnostics rather than hidden skips.
+- Known unsupported Syntax Assistant source families must use stable family-specific diagnostics
+  rather than remaining generic `UNKNOWN_PAGE_CLASS` records.
 
 ## FR-SH-002: Syntax Assistant Extraction
 
@@ -118,6 +120,10 @@ The system must extract:
 - "see also" relationships when present, preserving them separately from descriptions
 - availability/version-introduced text when present
 - source provenance for every extracted item
+
+The extractor must not synthesize consumer records from TOC-only pages when source HTML cannot be
+loaded or parsed safely. Such in-scope-but-unsupported pages remain visible as recoverable
+diagnostics with source provenance until a typed extraction contract is added.
 
 Multiple signatures are overloads. If real pages expose multiple return types for one overload while
 the model assumes one return type per overload, report it as a parser/data-contract gap instead of

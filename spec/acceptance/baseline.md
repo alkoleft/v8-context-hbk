@@ -657,6 +657,42 @@ preserved. `ОткрытьФорму` / `OpenForm` exports both source syntax va
 containing raw overload labels or returned-value labels stayed at zero before and after T27. A
 repeated `shcntx_ru.hbk` export was compared with `diff -qr` to verify deterministic output.
 
+## T28 Durable Conclusions
+
+Syntax Assistant diagnostic-family classification was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+T28 did not change the consumer JSON shape or canonical schema version. Record-family counts
+remained stable for both source books:
+
+- 1 global context
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 diagnostics
+
+The 703 diagnostics in each locale are now classified with family-specific codes:
+
+| Diagnostic code | RU count | EN/root count |
+| --- | ---: | ---: |
+| `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE` | 4 | 4 |
+| `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT` | 33 | 33 |
+| `OUT_OF_SCOPE_TABLE_FIELD` | 588 | 588 |
+| `OUT_OF_SCOPE_TABLE_PARAMETER` | 78 | 78 |
+
+The previous audited `UNKNOWN_PAGE_CLASS` count is now zero for both locales. Direct
+`objects/Global context/*.html` method-like TOC entries remain visible as in-scope unsupported
+diagnostics rather than incomplete synthesized records because the audited HBK FileStorage archives
+do not contain their page HTML. Global-context events, table fields and table parameters are
+explicitly out of current FR-SH-002 scope until a future requirement promotes them.
+
 ## First Delivery Success Metrics
 
 The project is successful for the first delivery when:

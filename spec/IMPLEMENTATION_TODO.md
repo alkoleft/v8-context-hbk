@@ -13,8 +13,8 @@ Current status: T18 is the first active unchecked task. T13-T17 and T19-T24 are 
 tasks; their durable performance conclusions live in `acceptance/baseline.md`,
 `implementation/performance-baseline-t13.md` and `implementation/performance-variants.md`.
 T25-T28 record export-completeness gaps found by the 2026-04-30 audit across Russian and
-root/English Syntax Assistant exports. They remain scheduled after T18 unless explicitly
-reprioritized.
+root/English Syntax Assistant exports. T25-T28 are closed after explicit export-completeness
+reprioritization.
 
 ## Loop Rule
 
@@ -279,7 +279,7 @@ Completion notes:
   `shcntx_ru.hbk` export compared by `diff -qr`, `git diff --check` and an independent reviewer
   pass.
 
-### [ ] T28. Classify remaining Syntax Assistant diagnostics and extraction completeness
+### [x] T28. Classify remaining Syntax Assistant diagnostics and extraction completeness
 
 Depends on: T25.
 
@@ -288,6 +288,7 @@ Spec refs:
 - FR-SH-001
 - FR-SH-002
 - NFR-DIAG-001
+- UAT-SH-010
 - `spec/source-evidence.md`, Syntax Assistant Export Completeness Audit
 - `spec/acceptance/baseline.md`
 
@@ -322,3 +323,18 @@ Verification:
 - UAT-SH-003
 - Export diagnostic summary for `shcntx_ru.hbk` and `shcntx_root.hbk`
 - `git diff --check`
+
+Done notes:
+
+- Completed by explicit export-completeness reprioritization before T18.
+- Replaced the audited generic `UNKNOWN_PAGE_CLASS` diagnostics with stable family-specific codes
+  for both source locales:
+  - `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE`: 4 RU / 4 EN-root, in FR-SH-002 scope but not safely
+    extractable from the current TOC-only direct `objects/Global context/*.html` entries.
+  - `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`: 33 RU / 33 EN-root, explicitly out of current scope.
+  - `OUT_OF_SCOPE_TABLE_FIELD`: 588 RU / 588 EN-root, explicitly out of current scope.
+  - `OUT_OF_SCOPE_TABLE_PARAMETER`: 78 RU / 78 EN-root, explicitly out of current scope.
+- No global events, table fields or table parameters were promoted into scope, so no follow-up
+  implementation task was added for those families.
+- Consumer record-family JSON remains schema version 3 and still omits HBK provenance, TOC paths,
+  HTML paths and page titles.

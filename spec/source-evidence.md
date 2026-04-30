@@ -274,3 +274,19 @@ variant metadata on 266 records and 604 signatures in each locale:
 
 Signature text containing raw overload section labels or returned-value labels stayed at zero in
 the post-T26 baseline and remains zero after T27 for both locales.
+
+T28 follow-up on 2026-04-30 classified the remaining 703 diagnostics in each locale into stable
+source families. Record-family counts and schema version 3 stayed unchanged. The remaining
+diagnostics are no longer generic `UNKNOWN_PAGE_CLASS` records for the audited families:
+
+| Diagnostic code | RU count | EN/root count | T28 decision |
+| --- | ---: | ---: | --- |
+| `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE` | 4 | 4 | In FR-SH-002 scope, but current source TOC entries are direct `objects/Global context/*.html` method-like pages outside the supported method catalog layout. The audited HBK FileStorage does not contain these page HTML entries, so the extractor reports an explicit recoverable gap instead of synthesizing incomplete method records from TOC only. |
+| `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT` | 33 | 33 | Explicitly out of current FR-SH-002 scope; global events are not exported until a requirement promotes event records. |
+| `OUT_OF_SCOPE_TABLE_FIELD` | 588 | 588 | Explicitly out of current FR-SH-002 scope; table fields are documentation/table metadata, not current platform API record families. |
+| `OUT_OF_SCOPE_TABLE_PARAMETER` | 78 | 78 | Explicitly out of current FR-SH-002 scope; table parameters are documentation/table metadata, not current platform API record families. |
+
+The T28 classification used the existing Syntax Assistant export audit fixture set in
+`tests/fixtures/syntax-helper/manifest.tsv`. No new parser HTML fixture was added because the only
+new in-scope family found in diagnostics is represented by TOC entries whose corresponding page
+HTML is absent from both audited FileStorage archives.
