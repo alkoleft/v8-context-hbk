@@ -16,12 +16,15 @@ Current status:
   `source_offsets` allocation from ordinary `FileStorage` and entity-body reads while keeping
   descriptor offsets available for diagnostics.
 - T20 measured the remaining owned `FileStorage` copy after T19 and did not justify a direct
-  seekable `FileStorage` view: the exact retained `Vec<u8>` capacity is material but not dominant
-  against retained `HbkBook::open` RSS or the full `syntax-helper --output` peak.
+  seekable `FileStorage` view on the pre-T22 baseline: the exact retained `Vec<u8>` capacity was
+  material but not dominant against retained `HbkBook::open` RSS or the full
+  `syntax-helper --output` peak.
 - T21 measured retained TOC/root-discovery structures and did not justify a production refactor:
   the largest T21-specific retained structure was public `RootDiscovery` at about 9 MiB.
 - T22 measured lower-level book state retained during streaming export and removed the avoidable
   `HbkContainer` mmap retention from `HbkBook`. The public book API and export shape stayed stable.
+  This makes the T20 FileStorage percentage stale for current `HbkBook::open` attribution, although
+  the T20 result remains pre-T22 evidence for the broader full-export peak.
 
 ## Selection Rules
 
@@ -167,10 +170,10 @@ Variant E remains a later candidate only if new measurements show retained `File
 or ZIP access costs dominate after the T19 byte-only path. T19 did not justify a broader seekable
 direct `FileStorage` view.
 
-T20 rechecked that later candidate after explicit memory reprioritization. The owned
-`FileStorage` vector remained about one third of retained `HbkBook::open` RSS and less than one
-quarter of the full Syntax Assistant export peak for both measured books, so a broader direct
-seekable view remains unjustified without new evidence.
+T20 rechecked that later candidate after explicit memory reprioritization. On the pre-T22 baseline,
+the owned `FileStorage` vector remained about one third of retained `HbkBook::open` RSS and less
+than one quarter of the full Syntax Assistant export peak for both measured books, so a broader
+direct seekable view was not justified by that evidence.
 
 T21 rechecked the next memory-structure candidate after T20. The public `RootDiscovery` graph was
 about 9 MiB, the private `syntax_toc_index` shape about 5 MiB, retained flat-page metadata about
@@ -181,5 +184,8 @@ remaining export peak.
 T22 rechecked the remaining lower-level book state retained by the streaming export path. The
 container mmap inside `HbkBook` was avoidable after metadata, TOC and `FileStorage` bytes were
 extracted, so `HbkBook` now stores the source path directly and releases `HbkContainer` during open.
-Further lifetime splitting for `FileStorage`, TOC/root discovery or parser traversal is not
-justified by the current measurements.
+That change makes the T20 `HbkBook::open` percentage stale: after T22, the same retained
+`FileStorage` vector is about half of current open-path RSS. Further lifetime splitting for TOC/root
+discovery or parser traversal is not justified by the current measurements, while a direct or
+shorter-lived `FileStorage` design needs a post-T22 measurement pass before it is accepted or
+rejected again.

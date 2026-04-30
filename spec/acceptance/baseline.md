@@ -31,7 +31,9 @@ directories are service data unless promoted here.
 - T22 released the avoidable `HbkContainer` mmap retained by `HbkBook` after open. Full
   `syntax-helper --output` measured `17.97s / 134656 KiB` for `shcntx_ru.hbk` and
   `13.65s / 122112 KiB` for `shcntx_root.hbk` with byte-identical JSON export compared with the
-  pre-change run.
+  pre-change run. T22 also changed the attribution baseline for the retained `FileStorage` vector:
+  T20 remains pre-T22 evidence for the broader export peak, but no longer describes the current
+  `HbkBook::open` memory split.
 
 ## Standard Verification Gates
 
@@ -300,10 +302,10 @@ Each source book still produced:
 Small-book smoke passed for `inspect`, `toc --format json` and `page` on `fmtdui_root.hbk` and
 `fmtdui_ru.hbk`; TOC output parsed as JSON and page output was non-empty.
 
-The owned `FileStorage` vector is material but not dominant after T19. It accounts for about one
-third of retained `HbkBook::open` RSS and less than one quarter of the full Syntax Assistant export
-peak on both measured books. A direct seekable `FileStorage` view is not justified without new
-evidence of a dominant lower-level storage bottleneck.
+On the then-current post-T19/pre-T22 baseline, the owned `FileStorage` vector was material but not
+dominant. It accounted for about one third of retained `HbkBook::open` RSS and less than one
+quarter of the full Syntax Assistant export peak on both measured books. A direct seekable
+`FileStorage` view was not justified by that T20 evidence.
 
 ## T21 Durable Conclusions
 
@@ -397,9 +399,13 @@ Each source book still produced:
 
 The pre-change and post-change export directories were byte-identical for both source books. The
 only production refactor justified by T22 evidence was releasing `HbkContainer` from `HbkBook` after
-book metadata, TOC and `FileStorage` bytes are extracted. Further splitting of `FileStorage`,
-TOC/root-discovery or parser traversal lifetimes is not justified by the current retained-memory
-measurements.
+book metadata, TOC and `FileStorage` bytes are extracted.
+
+This baseline shift invalidates the T20 percentage claim for the current `HbkBook::open` path: the
+same retained `FileStorage` vector is now about half of current open-path RSS after the container
+mmap is released. The T20 no-go decision remains pre-T22 evidence against a broad seekable
+`FileStorage` change for the full export peak; it should not be reused as current open-path
+attribution without a post-T22 measurement pass.
 
 ## First Delivery Success Metrics
 

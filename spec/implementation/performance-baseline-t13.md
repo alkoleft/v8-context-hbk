@@ -431,9 +431,9 @@ values and 703 diagnostics.
 
 T20 conclusion:
 
-- The owned `FileStorage` vector is material but not dominant: it is about 35% of retained
-  `HbkBook::open` RSS for `shcntx_ru.hbk`, about 33% for `shcntx_root.hbk`, and less than one
-  quarter of the full export peak for both books.
+- On the then-current post-T19/pre-T22 baseline, the owned `FileStorage` vector was material but
+  not dominant: it was about 35% of retained `HbkBook::open` RSS for `shcntx_ru.hbk`, about 33% for
+  `shcntx_root.hbk`, and less than one quarter of the full export peak for both books.
 - Replacing it would require a broader direct seekable ZIP/storage design inside the low-level book
   boundary while leaving larger retained book/extraction state in place.
 - A direct seekable `FileStorage` view is therefore not justified by T20 evidence. No runtime code
@@ -508,9 +508,9 @@ T21 conclusion:
 ## Post-T22 Update
 
 T22 evaluated which lower-level `HbkBook` state remained live during the `syntax-helper --output`
-streaming export path after T20/T21. Raw command outputs, generated exports and the temporary probe
-were written under `target/t22-measurements/`. That directory is service data and is not a durable
-source of truth.
+streaming export path after T20/T21. Generated exports, GNU `time` logs and the temporary probe were
+written under `target/t22-measurements/`. That directory is service data and is not a durable source
+of truth.
 
 The probe measured fresh-process `book-open`, drop and public `root-discovery` modes for both Syntax
 Assistant books. The drop probe showed that the book object itself retained most of the current RSS
@@ -562,8 +562,12 @@ T22 conclusion:
 - Full `syntax-helper --output` peak RSS decreased from `168800 KiB` to `134656 KiB` for
   `shcntx_ru.hbk` and from `140624 KiB` to `122112 KiB` for `shcntx_root.hbk`.
 - Pre-change and post-change export directories were byte-identical for both source books.
-- Further splitting of `FileStorage`, TOC/root-discovery or parser traversal lifetimes is not
-  justified by the current evidence.
+- T22 changed the retained-memory baseline for the `HbkBook::open` path. The `FileStorage` vector
+  measured in T20 is now about half of current open-path RSS after the container mmap is released,
+  so the T20 "not dominant" percentage should not be reused as a current open-path conclusion.
+- Further splitting of TOC/root-discovery or parser traversal lifetimes is not justified by the
+  current evidence. A direct or shorter-lived `FileStorage` design requires a post-T22
+  remeasurement before any production refactor.
 
 ## Variant Evaluation
 
@@ -611,8 +615,8 @@ Variant E is not first.
 - The whole `FileStorage` copy and per-byte `source_offsets` temporary allocation matter, but T16
   showed they are not the next slice most likely to reduce the current `shcntx_ru.hbk` peak.
 - T19 removed the dominant per-byte `source_offsets` allocation from ordinary entity reads.
-- T20 showed the remaining owned `FileStorage` vector is not dominant enough to justify a broader
-  direct seekable ZIP/storage design.
+- T20 showed the remaining owned `FileStorage` vector was not dominant enough on the pre-T22
+  baseline to justify a broader direct seekable ZIP/storage design.
 
 ## Current Implementation Direction
 
@@ -624,12 +628,15 @@ streaming extraction into record-family sinks for the export command path while 
 in-memory `syntax-helper-model` lookup use case.
 
 T19 completed the narrow byte-only Variant E slice. T20 evaluated the broader direct seekable
-`FileStorage` view and left it unimplemented because the remaining owned `FileStorage` vector is not
-the dominant retained memory contributor.
+`FileStorage` view and left it unimplemented because the remaining owned `FileStorage` vector was
+not the dominant retained memory contributor on the pre-T22 baseline.
 
-T22 released the avoidable lower-level `HbkContainer` mmap retained by `HbkBook` after open. The
-remaining `FileStorage`, TOC/root-discovery and parser traversal lifetimes are bounded enough that
-no further production refactor is justified by the current measurements.
+T22 released the avoidable lower-level `HbkContainer` mmap retained by `HbkBook` after open. This
+changed the current retained-memory split: the T20 FileStorage no-go conclusion remains useful
+pre-T22 evidence for the full export peak, but it is stale for current `HbkBook::open` attribution.
+The remaining TOC/root-discovery and parser traversal lifetimes are bounded enough that no further
+production refactor is justified by the current measurements; FileStorage needs a post-T22
+remeasurement before any broader storage design is accepted or rejected.
 
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
 by the current evidence.

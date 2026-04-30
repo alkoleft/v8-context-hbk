@@ -10,9 +10,10 @@ Current status: T18 is the first active unchecked task. T17 implemented Variant 
 extraction into record-family sinks for the export command path, while preserving the in-memory
 lookup model. T19 was explicitly reprioritized ahead of T18 and completed the post-T17 lower-level
 HBK open-time memory slice. T20-prep records a behavior-preserving module split before the next
-memory work; T20-T22 record the next optional memory-optimization candidates in the requested
-priority order. T18 remains the next active query-CLI task unless memory work is explicitly
-reprioritized again.
+memory work; T20-T22 record the completed optional memory-optimization candidates in the requested
+priority order. T22 changed the retained-memory baseline enough that the T20 FileStorage conclusion
+must be treated as pre-T22 evidence for the `HbkBook::open` path. T18 remains the next active
+query-CLI task unless memory work is explicitly reprioritized again.
 
 ## Loop Rule
 
@@ -560,9 +561,10 @@ Completion notes:
 - Full `syntax-helper --output` measured `17.68s / 157916 KiB / 21950926 bytes` for
   `shcntx_ru.hbk` and `13.50s / 139632 KiB / 12269994 bytes` for `shcntx_root.hbk`, with stable
   record-family counts and 703 diagnostics for each book.
-- The remaining owned `FileStorage` vector is material but not dominant: about one third of
-  retained `HbkBook::open` RSS and less than one quarter of full export peak on both measured
-  books. A broader direct seekable `FileStorage` view is therefore not justified by T20 evidence.
+- On the then-current post-T19/pre-T22 baseline, the remaining owned `FileStorage` vector was
+  material but not dominant: about one third of retained `HbkBook::open` RSS and less than one
+  quarter of full export peak on both measured books. A broader direct seekable `FileStorage` view
+  was therefore not justified by T20 evidence.
 - No runtime code change was made. Durable conclusions were promoted to
   `spec/implementation/performance-baseline-t13.md`, `spec/implementation/performance-variants.md`
   and `spec/acceptance/baseline.md`.
@@ -711,6 +713,9 @@ Completion notes:
 - Full `syntax-helper --output` peak RSS changed from `168800 -> 134656 KiB` for `shcntx_ru.hbk`
   and from `140624 -> 122112 KiB` for `shcntx_root.hbk`, with stable record-family counts and
   export byte counts.
+- After this change, the retained `FileStorage` vector measured in T20 is about half of current
+  `HbkBook::open` RSS. The T20 no-go decision remains valid as pre-T22 evidence for the broader
+  export peak, but it is no longer a current open-path attribution conclusion.
 - Pre-change and post-change export directories were byte-identical for both Syntax Assistant
   books.
 - Durable conclusions were promoted to `spec/implementation/performance-baseline-t13.md`,
@@ -719,3 +724,55 @@ Completion notes:
 - Verification passed: `cargo fmt`, `cargo test --workspace`, `cargo clippy -p hbk-book
   --all-targets`, UAT-SH-001, UAT-SH-002, UAT-SH-003, T22 probes, T13-style full measurements,
   deterministic export comparisons and `git diff --check`.
+
+### [ ] T23. Re-evaluate FileStorage lifetime after T22 baseline shift
+
+Depends on: T22. Scheduled after T18 unless memory footprint is explicitly reprioritized.
+
+Spec refs:
+
+- FR-HBK-001
+- FR-HBK-002
+- FR-SH-001
+- NFR-PERF-001
+- NFR-DIAG-001
+- NFR-TEST-001
+- `spec/acceptance/baseline.md`
+- `spec/implementation/components.md`
+- `spec/implementation/performance-baseline-t13.md`
+- `spec/implementation/performance-variants.md`, Variant E
+
+Scope:
+
+- Re-measure retained `FileStorage` cost against the post-T22 baseline where `HbkBook` no longer
+  retains `HbkContainer`.
+- Decide separately for:
+  - `HbkBook::open` retained RSS;
+  - full `syntax-helper --output` peak RSS;
+  - repeated page-read and extractor access cost.
+- If the gain is only an open-path percentage shift without a material full-export or page-access
+  benefit, leave the seekable/direct storage design unimplemented and record that conclusion.
+- If justified, implement the narrowest `FileStorage` lifetime/access change inside
+  `hbk-container` / `hbk-book` without reintroducing retained container mmap, exposing HBK block
+  layout to extractor/export/CLI code or changing JSON export contracts.
+- Do not add caches, tuning knobs, a generic storage pipeline, a new ZIP crate or downstream
+  compatibility DTOs in this task.
+
+Expected artifacts:
+
+- Post-T22 measurements with explicit percentages for `FileStorage` vs current `book-open` RSS and
+  full export peak.
+- Runtime code only if those measurements justify a narrow storage change.
+- Updated performance and acceptance baselines when measured RSS, elapsed time or the implementation
+  direction changes.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- `cargo clippy` for changed crates, or a documented unrelated workspace-clippy blocker
+- Fresh-process `HbkBook::open` and `syntax-helper --output` measurements for `shcntx_ru.hbk` and
+  `shcntx_root.hbk`
+- Small-book `inspect`, `toc --format json` and `page` smoke if `hbk-book` access behavior changes
+- Deterministic export comparison for at least one Syntax Assistant book if storage access changes
+- `git diff --check`
