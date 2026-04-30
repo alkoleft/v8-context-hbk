@@ -78,12 +78,13 @@ Expected public concepts:
 Owns FR-HBK-002 and FR-HBK-003.
 
 `FileStorageReader` is a narrow book-level reader for repeated `FileStorage` page reads. It may
-reuse ZIP archive state inside the `hbk-book` boundary, but it must not expose Syntax Assistant
-extraction, export or CLI concerns.
+own `FileStorage` bytes and reuse ZIP archive state for the reader lifetime inside the `hbk-book`
+boundary, but it must not expose Syntax Assistant extraction, export or CLI concerns.
 
-`HbkBook` owns the book-level state needed after open: path, metadata, locale, TOC and
-`FileStorage` bytes. It must not retain the lower-level `HbkContainer` mmap after these values are
-extracted.
+`HbkBook` owns the book-level state needed after open: path, metadata, locale and TOC. It validates
+the `FileStorage` entity body during open, but must not retain the lower-level `HbkContainer` mmap
+or `FileStorage` bytes after construction. Page/file reads are path-backed: the source HBK file must
+remain readable after `open` so `HbkBook` can create a short-lived `FileStorageReader` for access.
 
 ### hbk-docs
 

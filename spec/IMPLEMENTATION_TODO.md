@@ -12,8 +12,9 @@ lookup model. T19 was explicitly reprioritized ahead of T18 and completed the po
 HBK open-time memory slice. T20-prep records a behavior-preserving module split before the next
 memory work; T20-T22 record the completed optional memory-optimization candidates in the requested
 priority order. T22 changed the retained-memory baseline enough that the T20 FileStorage conclusion
-must be treated as pre-T22 evidence for the `HbkBook::open` path. T18 remains the next active
-query-CLI task unless memory work is explicitly reprioritized again.
+must be treated as pre-T22 evidence for the `HbkBook::open` path. T23 was re-opened by explicit user
+direction as a production follow-up to the measurement-only conclusion and completed the
+path-backed `FileStorageReader` lifetime change. T18 remains the next active query-CLI task.
 
 ## Loop Rule
 
@@ -757,6 +758,10 @@ Scope:
   layout to extractor/export/CLI code or changing JSON export contracts.
 - Do not add caches, tuning knobs, a generic storage pipeline, a new ZIP crate or downstream
   compatibility DTOs in this task.
+- Production follow-up after the initial T23 measurement-only pass: remove retained `FileStorage`
+  bytes from `HbkBook` while preserving open-time `FileStorage` entity body validation. `HbkBook`
+  remains path-backed for later page access; callers must keep the source HBK file readable for
+  `read_file`, `read_page`, `read_pages` and `file_storage_reader` after `open`.
 
 Expected artifacts:
 
@@ -779,30 +784,44 @@ Verification:
 
 Completion notes:
 
-- Measured T23 with a temporary fresh-process probe under `target/t23-measurements/` plus full
-  `syntax-helper --output` runs for both Syntax Assistant books. The probe modes covered exact
-  `FileStorage` bytes, `HbkBook::open`, repeated page reads through one `FileStorageReader` and
-  extractor access through `SyntaxHelperReader::extract_into` with a counting sink.
-- Exact retained `FileStorage` vector capacity remained `38960718` bytes for `shcntx_ru.hbk` and
-  `32620458` bytes for `shcntx_root.hbk`. Current `book-open` RSS/VmHWM measured
-  `71068 / 133376 KiB` and `64820 / 120832 KiB`; the vector is therefore about `53.5%` and `49.1%`
-  of retained open-path RSS, but only about `28.5%` and `26.4%` of open-path VmHWM.
-- Repeated page-read access stayed in the same memory class as `book-open`: `shcntx_ru.hbk`
-  measured `9.08s / 133248 KiB`, and `shcntx_root.hbk` measured `8.27s / 120960 KiB`. Each run
-  read `25878` available unique pages, skipped `2851` empty TOC paths and observed `4` missing
-  entries that match existing diagnostic-like source data.
-- Extractor access with a counting sink measured `17.24s / 169864 KiB` for `shcntx_ru.hbk` and
-  `13.43s / 120704 KiB` for `shcntx_root.hbk`, with stable counts: `1` global context,
+- The initial T23 measurement-only pass used a temporary fresh-process probe under
+  `target/t23-measurements/` plus full `syntax-helper --output` runs for both Syntax Assistant
+  books. It showed that the retained `FileStorage` vector had become about half of current
+  `HbkBook::open` RSS after T22.
+- After explicit user direction to produce a real runtime effect, T23 removed retained
+  `FileStorage` bytes from `HbkBook`. `HbkBook` now retains path, metadata, locale and TOC; it still
+  validates the `FileStorage` entity body during `open`, then drops those bytes. `FileStorageReader`
+  owns `FileStorage` bytes only for its reader lifetime and is created by reopening the path-backed
+  source HBK file.
+- `DocumentationReader::load_page` now uses one `FileStorageReader` for the page HTML and link
+  existence checks, and `SyntaxHelperReader::discover_roots` reuses one reader for discovery. This
+  avoids turning link resolution into repeated full `FileStorage` loads.
+- Post-production fresh-process measurements were written under `target/t23-prod-measurements/`.
+  Exact `FileStorage` sizes remained `38960718` bytes for `shcntx_ru.hbk` and `32620458` bytes for
+  `shcntx_root.hbk`. `book-open` current RSS/VmHWM measured `33164 / 133376 KiB` and
+  `32928 / 120832 KiB`, so current retained RSS dropped by about `37904 KiB` and `31892 KiB`
+  compared with the initial T23 measurement-only run while open high-water RSS stayed in the
+  previous class.
+- Repeated page-read access measured `9.39s / 133120 KiB` for `shcntx_ru.hbk` and
+  `9.06s / 120704 KiB` for `shcntx_root.hbk`. Each run read `25878` available unique pages, skipped
+  `2851` empty TOC paths and observed `4` missing entries that match existing diagnostic-like
+  source data.
+- Extractor access with a counting sink measured `17.34s / 133248 KiB` for `shcntx_ru.hbk` and
+  `13.96s / 120960 KiB` for `shcntx_root.hbk`, with stable counts: `1` global context,
   `24836` consumer records, `703` diagnostics and `25540` total probe-emitted items for each book.
-- Full `syntax-helper --output` measured `18.60s / 148096 KiB / 21950926 bytes` for
-  `shcntx_ru.hbk` and `14.01s / 122240 KiB / 12269994 bytes` for `shcntx_root.hbk`, with stable
+- Full `syntax-helper --output` measured `19.63s / 154504 KiB / 21950926 bytes` for
+  `shcntx_ru.hbk` and `15.15s / 122240 KiB / 12269994 bytes` for `shcntx_root.hbk`, with stable
   record-family counts and `703` diagnostics for each book.
-- T23 confirms the post-T22 percentage shift for `HbkBook::open`, but does not show a material
-  repeated page-read or full-export benefit that justifies a direct/shorter-lived `FileStorage`
-  design. No runtime code change was made; `spec/implementation/components.md` did not change.
-- Durable conclusions were promoted to `spec/implementation/performance-baseline-t13.md`,
-  `spec/implementation/performance-variants.md` and `spec/acceptance/baseline.md`.
-- Verification passed: `cargo fmt`, `cargo test --workspace`, T23 fresh-process measurements,
-  subagent measurement-decision review (`APPROVED`), subagent docs review with findings resolved and
-  `git diff --check`. Crate-specific `cargo clippy` was not run because T23 made no runtime crate
-  changes.
+- The accepted runtime change is the path-backed reader lifetime, not a direct/seekable
+  block-backed `FileStorage` view. The broader direct storage design remains unimplemented because
+  full export peak and repeated page-read high-water RSS did not show a material benefit.
+- Durable conclusions were promoted to `spec/requirements/functional.md`,
+  `spec/requirements/non-functional.md`, `spec/implementation/components.md`,
+  `spec/implementation/performance-baseline-t13.md`, `spec/implementation/performance-variants.md`
+  and `spec/acceptance/baseline.md`.
+- Verification passed: `cargo fmt`, `cargo test --workspace`, `cargo clippy -p hbk-book
+  --all-targets`, `cargo clippy -p hbk-docs --all-targets` (exit 0 with existing
+  `result_large_err` warnings), `cargo clippy -p syntax-helper-extract --all-targets`,
+  `cargo clippy -p v8-context-hbk-cli --all-targets`, T23 fresh-process measurements, small-book
+  `inspect`/`toc --format json`/`page` smoke, deterministic `shcntx_root.hbk` export comparison,
+  all-HBK `inspect`/`toc --format json` smoke and `git diff --check`.

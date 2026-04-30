@@ -24,12 +24,15 @@ impl<'a> SyntaxHelperReader<'a> {
     }
 
     pub fn discover_roots(&self) -> Result<RootDiscovery, SyntaxHelperError> {
+        let mut documentation = DocumentationReader::new(self.book)
+            .page_loader()
+            .map_err(SyntaxHelperError::from)?;
         discover_roots_with_loader(
             self.book.path(),
             self.book.locale().source_code(),
             self.book.toc(),
             |html_path| {
-                DocumentationReader::new(self.book)
+                documentation
                     .load_page(html_path)
                     .map_err(SyntaxHelperError::from)
             },

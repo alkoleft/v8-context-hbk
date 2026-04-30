@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use scraper::node::Node;
 use scraper::{ElementRef, Html, Selector};
 
-use hbk_book::{BookError, HbkBook, Toc, normalize_storage_path};
+use hbk_book::{BookError, FileStorageReader, HbkBook, Toc, normalize_storage_path};
 
 #[derive(Debug)]
 pub struct DocumentationReader<'a> {
@@ -17,8 +17,35 @@ impl<'a> DocumentationReader<'a> {
     }
 
     pub fn load_page(&self, html_path: &str) -> Result<PageContent, DocumentationError> {
-        let raw_html =
+        self.page_loader()?.load_page(html_path)
+    }
+
+    pub fn page_loader(&self) -> Result<DocumentationPageLoader<'a>, DocumentationError> {
+        let storage =
             self.book
+                .file_storage_reader()
+                .map_err(|source| DocumentationError::PageRead {
+                    path: self.book.path().to_path_buf(),
+                    html_path: String::new(),
+                    source,
+                })?;
+        Ok(DocumentationPageLoader {
+            book: self.book,
+            storage,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct DocumentationPageLoader<'a> {
+    book: &'a HbkBook,
+    storage: FileStorageReader,
+}
+
+impl DocumentationPageLoader<'_> {
+    pub fn load_page(&mut self, html_path: &str) -> Result<PageContent, DocumentationError> {
+        let raw_html =
+            self.storage
                 .read_page(html_path)
                 .map_err(|source| DocumentationError::PageRead {
                     path: self.book.path().to_path_buf(),
@@ -31,7 +58,7 @@ impl<'a> DocumentationReader<'a> {
             self.book.toc(),
             html_path,
             &raw_html,
-            |path| self.book.read_file(path).is_ok(),
+            |path| self.storage.read_file(path).is_ok(),
         ))
     }
 }
@@ -127,7 +154,7 @@ pub fn parse_page_html(
     toc: &Toc,
     html_path: &str,
     raw_html: &str,
-    storage_contains: impl Fn(&str) -> bool,
+    mut storage_contains: impl FnMut(&str) -> bool,
 ) -> PageContent {
     let normalized_page_path = normalize_storage_path(html_path).to_string();
     let toc_page = toc
@@ -153,7 +180,7 @@ pub fn parse_page_html(
         locale,
         &normalized_page_path,
         &title,
-        storage_contains,
+        &mut storage_contains,
     );
 
     PageContent {
@@ -310,7 +337,7 @@ fn extract_links(
     locale: &str,
     current_html_path: &str,
     page_title: &str,
-    storage_contains: impl Fn(&str) -> bool,
+    mut storage_contains: impl FnMut(&str) -> bool,
 ) -> (Vec<ResolvedLink>, Vec<LinkDiagnostic>) {
     let selector = Selector::parse("a[href]").expect("static selector must be valid");
     let mut links = Vec::new();
@@ -330,7 +357,10 @@ fn extract_links(
                 title: Some(page.title.display().to_string()),
                 status: LinkStatus::Resolved,
             });
-        } else if normalized_path.as_deref().is_some_and(&storage_contains) {
+        } else if normalized_path
+            .as_deref()
+            .is_some_and(&mut storage_contains)
+        {
             links.push(ResolvedLink {
                 raw_href,
                 normalized_path,
@@ -423,6 +453,10 @@ mod tests {
     use super::*;
     use hbk_book::HbkBook;
     use hbk_book::Toc;
+    use hbk_book::test_utils::{write_fixture_hbk, zip_bytes, zip_entries};
+    use std::fs;
+    use std::io;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn extracts_title_text_preview_and_provenance() {
@@ -581,7 +615,7 @@ mod tests {
         assert!(content.diagnostics.iter().all(|diagnostic| {
             diagnostic.severity == DiagnosticSeverity::Warning
                 && diagnostic.code == "UNRESOLVED_LINK"
-                && diagnostic.hbk_path == PathBuf::from("fmtdui_ru.hbk")
+                && diagnostic.hbk_path == Path::new("fmtdui_ru.hbk")
                 && diagnostic.locale == "ru"
                 && diagnostic.html_path == "docs/current.html"
         }));
@@ -692,6 +726,54 @@ mod tests {
     }
 
     #[test]
+    fn load_page_resolves_file_storage_link_outside_toc() {
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Current"}},"/docs/current.html"}}
+        }"#;
+        let fixture = TempHbk::new(
+            "fmtdui_ru.hbk",
+            vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", Some(zip_bytes("toc.txt", toc.as_bytes()))),
+                (
+                    "FileStorage",
+                    Some(zip_entries(vec![
+                        (
+                            "docs/current.html",
+                            br#"<html><head><title>Current</title></head>
+                            <body><a href="../shared/topic.html">shared</a></body></html>"#,
+                        ),
+                        ("shared/topic.html", b"<html><body>shared</body></html>"),
+                    ])),
+                ),
+            ],
+        )
+        .expect("fixture must be written");
+        let book = HbkBook::open(fixture.path()).expect("book must open");
+
+        let page = DocumentationReader::new(&book)
+            .load_page("/docs/current.html")
+            .expect("page must load");
+
+        assert_eq!(page.links.len(), 1);
+        assert_eq!(
+            page.links[0].normalized_path.as_deref(),
+            Some("shared/topic.html")
+        );
+        assert_eq!(page.links[0].status, LinkStatus::Resolved);
+        assert_eq!(page.links[0].title, None);
+        assert!(page.diagnostics.is_empty());
+    }
+
+    #[test]
     fn real_fmtdui_page_loads_when_platform_fixture_exists() {
         let cases = [
             (
@@ -718,6 +800,37 @@ mod tests {
             assert!(!page.raw_html.is_empty());
             assert!(!page.body_text.is_empty());
             assert!(!page.title.is_empty());
+        }
+    }
+
+    struct TempHbk {
+        path: PathBuf,
+    }
+
+    impl TempHbk {
+        fn new(file_name: &str, entities: Vec<(&str, Option<Vec<u8>>)>) -> io::Result<Self> {
+            static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+            let dir = std::env::temp_dir().join(format!(
+                "v8-context-hbk-docs-test-{}-{}",
+                std::process::id(),
+                NEXT_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir_all(&dir)?;
+            let path = dir.join(file_name);
+            write_fixture_hbk(&path, entities)?;
+            Ok(Self { path })
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempHbk {
+        fn drop(&mut self) {
+            if let Some(dir) = self.path.parent() {
+                let _ = fs::remove_dir_all(dir);
+            }
         }
     }
 }

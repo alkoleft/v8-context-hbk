@@ -56,9 +56,10 @@ Acceptance:
 
 ## FR-HBK-002: Help Book Reader
 
-The system must open a help book on top of the container reader, inflate `PackBlock`, open
-`FileStorage` as ZIP, parse `Book` metadata, infer locale from filename and read stored files by
-HTML/resource path.
+The system must open a help book on top of the container reader, inflate `PackBlock`, validate the
+`FileStorage` entity body, open `FileStorage` as ZIP for stored-file reads, parse `Book` metadata,
+infer locale from filename and read stored files by HTML/resource path. The source HBK file must
+remain readable for page/file access after `open`.
 
 Acceptance:
 

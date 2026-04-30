@@ -183,7 +183,6 @@ pub struct HbkBook {
     meta: BookMeta,
     locale: BookLocale,
     toc: Toc,
-    file_storage: Vec<u8>,
 }
 
 impl HbkBook {
@@ -207,8 +206,8 @@ impl HbkBook {
         &self.toc
     }
 
-    pub fn file_storage_reader(&self) -> Result<FileStorageReader<'_>, BookError> {
-        FileStorageReader::new(self.path(), self.file_storage.as_slice())
+    pub fn file_storage_reader(&self) -> Result<FileStorageReader, BookError> {
+        FileStorageReader::new(self.path(), read_file_storage(self.path())?)
     }
 
     pub fn read_file(&self, path: &str) -> Result<Vec<u8>, BookError> {
@@ -266,27 +265,22 @@ impl HbkBook {
             path,
             meta,
             toc,
-            file_storage,
         })
-    }
-
-    #[cfg(test)]
-    fn from_bytes(path: PathBuf, bytes: Vec<u8>) -> Result<Self, BookError> {
-        Self::from_container(HbkContainer::from_bytes(path, bytes)?)
     }
 }
 
 #[derive(Debug)]
-pub struct FileStorageReader<'a> {
-    path: &'a Path,
-    archive: ZipArchive<Cursor<&'a [u8]>>,
+pub struct FileStorageReader {
+    path: PathBuf,
+    archive: ZipArchive<Cursor<Vec<u8>>>,
 }
 
-impl<'a> FileStorageReader<'a> {
-    fn new(path: &'a Path, bytes: &'a [u8]) -> Result<Self, BookError> {
+impl FileStorageReader {
+    fn new(path: impl AsRef<Path>, bytes: Vec<u8>) -> Result<Self, BookError> {
+        let path = path.as_ref().to_path_buf();
         let archive =
             ZipArchive::new(Cursor::new(bytes)).map_err(|source| BookError::InvalidZip {
-                path: path.to_path_buf(),
+                path: path.clone(),
                 entity_name: FILE_STORAGE_NAME,
                 source,
             })?;
@@ -297,7 +291,7 @@ impl<'a> FileStorageReader<'a> {
         let entry_name = normalize_storage_path(path).to_string();
         if entry_name.is_empty() {
             return Err(BookError::MissingZipEntry {
-                path: self.path.to_path_buf(),
+                path: self.path.clone(),
                 entry_name,
             });
         }
@@ -306,11 +300,11 @@ impl<'a> FileStorageReader<'a> {
             .by_name(&entry_name)
             .map_err(|source| match source {
                 zip::result::ZipError::FileNotFound => BookError::MissingZipEntry {
-                    path: self.path.to_path_buf(),
+                    path: self.path.clone(),
                     entry_name: entry_name.clone(),
                 },
                 source => BookError::InvalidZip {
-                    path: self.path.to_path_buf(),
+                    path: self.path.clone(),
                     entity_name: FILE_STORAGE_NAME,
                     source,
                 },
@@ -319,7 +313,7 @@ impl<'a> FileStorageReader<'a> {
         entry
             .read_to_end(&mut bytes)
             .map_err(|source| BookError::Io {
-                path: self.path.to_path_buf(),
+                path: self.path.clone(),
                 entry_name,
                 source,
             })?;
@@ -329,11 +323,15 @@ impl<'a> FileStorageReader<'a> {
     pub fn read_page(&mut self, path: &str) -> Result<String, BookError> {
         let bytes = self.read_file(path)?;
         String::from_utf8(bytes).map_err(|source| BookError::InvalidUtf8 {
-            path: self.path.to_path_buf(),
+            path: self.path.clone(),
             entity_name: FILE_STORAGE_NAME,
             source,
         })
     }
+}
+
+fn read_file_storage(path: &Path) -> Result<Vec<u8>, BookError> {
+    Ok(HbkContainer::open(path)?.read_entity(BookEntityKind::FileStorage.entity_name())?)
 }
 
 fn entity_utf8(container: &HbkContainer, entity_kind: BookEntityKind) -> Result<String, BookError> {
@@ -481,10 +479,10 @@ fn parse_number_pair(parser: &mut TokenParser) -> Result<(), MetaError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
-    use std::io::Write;
-    use zip::write::SimpleFileOptions;
-    use zip::{CompressionMethod, ZipWriter};
+    use crate::test_utils::{fixture_container, zip_bytes, zip_entries};
+    use hbk_container::ContainerError;
+    use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn infers_source_and_export_locale() {
@@ -527,8 +525,8 @@ mod tests {
             1
             {1,0,0,{0,0,{0,0,{"ru","Страница"}{"en","Page"}},"/docs/page.html"}}
         }"#;
-        let book = HbkBook::from_bytes(
-            PathBuf::from("fmtdui_ru.hbk"),
+        let fixture = TempHbk::new(
+            "fmtdui_ru.hbk",
             fixture_container(vec![
                 (
                     "Book",
@@ -545,7 +543,8 @@ mod tests {
                 ),
             ]),
         )
-        .expect("book must open");
+        .expect("fixture must be written");
+        let book = HbkBook::open(fixture.path()).expect("book must open");
 
         assert_eq!(book.locale().source_code(), "ru");
         assert_eq!(book.meta().book_name, "Interface");
@@ -565,8 +564,8 @@ mod tests {
 
     #[test]
     fn opens_book_with_storage_toc_when_pack_block_has_no_body() {
-        let book = HbkBook::from_bytes(
-            PathBuf::from("fmtdui_ru.hbk"),
+        let fixture = TempHbk::new(
+            "fmtdui_ru.hbk",
             fixture_container(vec![
                 (
                     "Book",
@@ -583,7 +582,9 @@ mod tests {
                 ),
             ]),
         )
-        .expect("book without readable PackBlock must open");
+        .expect("fixture must be written");
+        let book =
+            HbkBook::open(fixture.path()).expect("book without readable PackBlock must open");
 
         assert_eq!(book.toc().pages()[0].html_path, "docs/page.html");
         assert_eq!(
@@ -607,8 +608,8 @@ mod tests {
             {1,0,0,{0,0,{0,0,{"ru","Первая"}},"/docs/first.html"}}
             {2,0,0,{0,0,{0,0,{"ru","Вторая"}},"/docs/second.html"}}
         }"#;
-        let book = HbkBook::from_bytes(
-            PathBuf::from("fmtdui_ru.hbk"),
+        let fixture = TempHbk::new(
+            "fmtdui_ru.hbk",
             fixture_container(vec![
                 (
                     "Book",
@@ -628,7 +629,8 @@ mod tests {
                 ),
             ]),
         )
-        .expect("book must open");
+        .expect("fixture must be written");
+        let book = HbkBook::open(fixture.path()).expect("book must open");
 
         let mut reader = book
             .file_storage_reader()
@@ -644,93 +646,119 @@ mod tests {
         );
     }
 
-    fn zip_bytes(name: &str, body: &[u8]) -> Vec<u8> {
-        zip_entries(vec![(name, body)])
+    #[test]
+    fn read_pages_deduplicates_storage_paths() {
+        let toc = r#"{
+            2
+            {1,0,0,{0,0,{0,0,{"ru","Первая"}},"/docs/first.html"}}
+            {2,0,0,{0,0,{0,0,{"ru","Вторая"}},"/docs/second.html"}}
+        }"#;
+        let fixture = TempHbk::new(
+            "fmtdui_ru.hbk",
+            fixture_container(vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", Some(zip_bytes("toc.txt", toc.as_bytes()))),
+                (
+                    "FileStorage",
+                    Some(zip_entries(vec![
+                        ("docs/first.html", b"<html>first</html>"),
+                        ("docs/second.html", b"<html>second</html>"),
+                    ])),
+                ),
+            ]),
+        )
+        .expect("fixture must be written");
+        let book = HbkBook::open(fixture.path()).expect("book must open");
+
+        let pages = book
+            .read_pages(["/docs/first.html", "docs/second.html", "/docs/first.html"])
+            .expect("pages must read");
+
+        assert_eq!(pages.len(), 2);
+        assert_eq!(pages["docs/first.html"], "<html>first</html>");
+        assert_eq!(pages["docs/second.html"], "<html>second</html>");
     }
 
-    fn zip_entries(entries: Vec<(&str, &[u8])>) -> Vec<u8> {
-        let mut output = Cursor::new(Vec::new());
-        {
-            let mut zip = ZipWriter::new(&mut output);
-            let options =
-                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-            for (name, body) in entries {
-                zip.start_file(name, options).unwrap();
-                zip.write_all(body).unwrap();
+    #[test]
+    fn page_access_requires_source_file_after_open() {
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Страница"}},"/docs/page.html"}}
+        }"#;
+        let fixture = TempHbk::new(
+            "fmtdui_ru.hbk",
+            fixture_container(vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", Some(zip_bytes("toc.txt", toc.as_bytes()))),
+                (
+                    "FileStorage",
+                    Some(zip_bytes("docs/page.html", b"<html>page</html>")),
+                ),
+            ]),
+        )
+        .expect("fixture must be written");
+        let path = fixture.path().to_path_buf();
+        let book = HbkBook::open(&path).expect("book must open");
+        fixture.remove_file().expect("fixture file must be removed");
+
+        let error = book.read_page("/docs/page.html").unwrap_err();
+
+        match error {
+            BookError::Container(ContainerError::Io {
+                path: error_path, ..
+            }) => {
+                assert_eq!(error_path, path);
             }
-            zip.finish().unwrap();
+            other => panic!("expected source file IO error, got {other}"),
         }
-        output.into_inner()
     }
 
-    fn fixture_container(entities: Vec<(&str, Option<Vec<u8>>)>) -> Vec<u8> {
-        const BLOCK_HEADER_SIZE: usize = 31;
-        const FILE_DESCRIPTOR_SIZE: usize = 12;
-        const SPLITTER: u32 = i32::MAX as u32;
-
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&SPLITTER.to_le_bytes());
-        bytes.extend_from_slice(&512_u32.to_le_bytes());
-        bytes.extend_from_slice(&(entities.len() as u32).to_le_bytes());
-        bytes.extend_from_slice(&0_u32.to_le_bytes());
-
-        let descriptor_payload_size = entities.len() * FILE_DESCRIPTOR_SIZE;
-        let descriptor_block_offset = bytes.len();
-        push_block(
-            &mut bytes,
-            descriptor_payload_size,
-            &vec![0; descriptor_payload_size],
-            None,
-        );
-
-        let mut descriptors = Vec::new();
-        for (name, body) in entities {
-            let header_offset = bytes.len() as u32;
-            push_block(
-                &mut bytes,
-                entity_header_payload(name).len(),
-                &entity_header_payload(name),
-                None,
-            );
-
-            let body_offset = if let Some(body) = body {
-                let body_offset = bytes.len() as u32;
-                push_block(&mut bytes, body.len(), &body, None);
-                body_offset
-            } else {
-                SPLITTER
-            };
-
-            descriptors.extend_from_slice(&header_offset.to_le_bytes());
-            descriptors.extend_from_slice(&body_offset.to_le_bytes());
-            descriptors.extend_from_slice(&SPLITTER.to_le_bytes());
-        }
-
-        let descriptor_body_offset = descriptor_block_offset + BLOCK_HEADER_SIZE;
-        bytes[descriptor_body_offset..descriptor_body_offset + descriptors.len()]
-            .copy_from_slice(&descriptors);
-        bytes
+    struct TempHbk {
+        path: PathBuf,
     }
 
-    fn entity_header_payload(name: &str) -> Vec<u8> {
-        let mut payload = vec![0; 20];
-        for code_unit in name.encode_utf16() {
-            payload.extend_from_slice(&code_unit.to_le_bytes());
+    impl TempHbk {
+        fn new(file_name: &str, bytes: Vec<u8>) -> io::Result<Self> {
+            static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+            let dir = std::env::temp_dir().join(format!(
+                "v8-context-hbk-book-test-{}-{}",
+                std::process::id(),
+                NEXT_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir_all(&dir)?;
+            let path = dir.join(file_name);
+            fs::write(&path, bytes)?;
+            Ok(Self { path })
         }
-        payload.extend_from_slice(&[0; 4]);
-        payload
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+
+        fn remove_file(&self) -> io::Result<()> {
+            fs::remove_file(&self.path)
+        }
     }
 
-    fn push_block(bytes: &mut Vec<u8>, payload_size: usize, chunk: &[u8], next: Option<usize>) {
-        const SPLITTER: u32 = i32::MAX as u32;
-        bytes.extend_from_slice(
-            format!(
-                "\r\n{payload_size:08x} {block_size:08x} {next:08x} \r\n",
-                block_size = chunk.len(),
-                next = next.unwrap_or(SPLITTER as usize)
-            )
-            .as_bytes(),
-        );
-        bytes.extend_from_slice(chunk);
+    impl Drop for TempHbk {
+        fn drop(&mut self) {
+            if let Some(dir) = self.path.parent() {
+                let _ = fs::remove_dir_all(dir);
+            }
+        }
     }
 }

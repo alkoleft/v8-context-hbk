@@ -3,6 +3,9 @@ name = "hbk-book"
 version.workspace = true
 edition.workspace = true
 
+[features]
+test-utils = []
+
 [dependencies]
 hbk-container.workspace = true
 zip.workspace = true

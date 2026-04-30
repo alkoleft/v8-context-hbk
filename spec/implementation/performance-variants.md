@@ -25,9 +25,11 @@ Current status:
   `HbkContainer` mmap retention from `HbkBook`. The public book API and export shape stayed stable.
   This makes the T20 FileStorage percentage stale for current `HbkBook::open` attribution, although
   the T20 result remains pre-T22 evidence for the broader full-export peak.
-- T23 remeasured retained `FileStorage` ownership on the post-T22 baseline. The vector is now about
-  half of current `HbkBook::open` RSS, but repeated page reads and full `syntax-helper --output`
-  did not show a material benefit that justifies a direct or shorter-lived storage design.
+- T23 remeasured retained `FileStorage` ownership on the post-T22 baseline. A user-directed
+  production follow-up then removed retained `FileStorage` bytes from `HbkBook` and moved ownership
+  to short-lived `FileStorageReader` values. The direct/seekable block-backed storage design remains
+  unimplemented because repeated page reads and full `syntax-helper --output` did not show a
+  material peak-RSS benefit from broader storage work.
 
 ## Selection Rules
 
@@ -193,11 +195,12 @@ discovery or parser traversal is not justified by the current measurements, whil
 shorter-lived `FileStorage` design needs a post-T22 measurement pass before it is accepted or
 rejected again.
 
-T23 performed that post-T22 measurement pass. The exact retained `FileStorage` vector stayed about
-`38048 KiB` for `shcntx_ru.hbk` and about `31856 KiB` for `shcntx_root.hbk`, which is about
-`53.5%` and `49.1%` of current `HbkBook::open` RSS. Against open-path high-water RSS and full
-`syntax-helper --output` peak, however, it is only about one quarter. Repeated page reads through one
-`FileStorageReader` stayed in the `book-open` peak-RSS class, and the full export path kept stable
-record counts and output sizes. Variant E therefore remains limited to the T19 byte-only entity
-path; no direct/seekable or shorter-lived `FileStorage` runtime refactor is justified by current
-evidence.
+T23 performed that post-T22 measurement pass. The exact `FileStorage` entity size stayed about
+`38048 KiB` for `shcntx_ru.hbk` and about `31856 KiB` for `shcntx_root.hbk`. The user-directed
+production follow-up removed those bytes from retained `HbkBook` state: current RSS after
+`book-open` dropped to `33164 KiB` and `32928 KiB` for the measured books. Open-path high-water RSS
+stayed in the previous class because `HbkBook::open` still validates the `FileStorage` entity body.
+Repeated page reads through one `FileStorageReader` stayed in the `book-open` high-water class, and
+the full export path kept stable record counts and output sizes without a material peak-RSS win.
+Variant E therefore consists of the T19 byte-only entity path plus the T23 path-backed reader
+lifetime; no direct/seekable block-backed `FileStorage` refactor is justified by current evidence.

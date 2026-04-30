@@ -6,3 +6,6 @@ edition.workspace = true
 [dependencies]
 hbk-book.workspace = true
 scraper.workspace = true
+
+[dev-dependencies]
+hbk-book = { workspace = true, features = ["test-utils"] }

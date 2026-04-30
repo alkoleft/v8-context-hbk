@@ -34,11 +34,12 @@ directories are service data unless promoted here.
   pre-change run. T22 also changed the attribution baseline for the retained `FileStorage` vector:
   T20 remains pre-T22 evidence for the broader export peak, but no longer describes the current
   `HbkBook::open` memory split.
-- T23 remeasured the same `FileStorage` vector on the post-T22 baseline. It is now about half of
-  current `HbkBook::open` RSS (`53.5%` for `shcntx_ru.hbk`, `49.1%` for `shcntx_root.hbk`), but
-  repeated page reads stayed bounded by open-path high-water RSS and full `syntax-helper --output`
-  measured `18.60s / 148096 KiB` and `14.01s / 122240 KiB` with stable export counts. A
-  direct/shorter-lived `FileStorage` design was not justified by T23 evidence.
+- T23 remeasured the same `FileStorage` vector on the post-T22 baseline, then a user-directed
+  production follow-up removed retained `FileStorage` bytes from `HbkBook` without reintroducing
+  retained `HbkContainer` mmap. `HbkBook::open` current RSS now measures `33164 KiB` for
+  `shcntx_ru.hbk` and `32928 KiB` for `shcntx_root.hbk`; open-path high-water RSS and full
+  `syntax-helper --output` peak remain in the same class because open still validates the
+  `FileStorage` entity body and extraction still owns `FileStorage` bytes for the reader lifetime.
 
 ## Standard Verification Gates
 
@@ -414,30 +415,34 @@ attribution without a post-T22 measurement pass.
 
 ## T23 Durable Conclusions
 
-Post-T22 `FileStorage` lifetime re-evaluation was validated against:
+Post-T22 `FileStorage` lifetime re-evaluation and the user-directed production follow-up were
+validated against:
 
 - `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
 - `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
 
-All source books were available and no fixture-backed T23 measurement was skipped.
+All source books were available and no fixture-backed T23 measurement was skipped. Initial
+measurement-only logs were written under `target/t23-measurements/`; post-production logs were
+written under `target/t23-prod-measurements/`. These directories are service data and are not a
+durable source of truth.
 
-Fresh-process attribution results:
+Post-production fresh-process attribution results:
 
 | Source | Mode | Exit | Elapsed, s | Current RSS, KiB | VmHWM / peak RSS, KiB | Exact `FileStorage` bytes |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `shcntx_ru.hbk` | `file-storage-len` | 0 | 0.02 | 80056 | 80056 | 38960718 |
-| `shcntx_ru.hbk` | `book-open` | 0 | 5.55 | 71068 | 133376 | 38960718 |
-| `shcntx_root.hbk` | `file-storage-len` | 0 | 0.02 | 67600 | 67600 | 32620458 |
-| `shcntx_root.hbk` | `book-open` | 0 | 5.48 | 64820 | 120832 | 32620458 |
+| `shcntx_ru.hbk` | `file-storage-len` | 0 | 0.02 | 80416 | 80416 | 38960718 |
+| `shcntx_ru.hbk` | `book-open` | 0 | 5.92 | 33164 | 133376 | 38960718 |
+| `shcntx_root.hbk` | `file-storage-len` | 0 | 0.02 | 68012 | 68012 | 32620458 |
+| `shcntx_root.hbk` | `book-open` | 0 | 5.68 | 32928 | 120832 | 32620458 |
 
 Repeated page-read and extractor-access results:
 
 | Source | Mode | Exit | Elapsed, s | Current RSS, KiB | VmHWM / peak RSS, KiB | Counts |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
-| `shcntx_ru.hbk` | `page-read-all` | 0 | 9.08 | 98028 | 133248 | 25878 pages, 4 missing entries |
-| `shcntx_root.hbk` | `page-read-all` | 0 | 8.27 | 91852 | 120960 | 25878 pages, 4 missing entries |
-| `shcntx_ru.hbk` | `extract-counts` | 0 | 17.24 | 169864 | 169864 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
-| `shcntx_root.hbk` | `extract-counts` | 0 | 13.43 | 110512 | 120704 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
+| `shcntx_ru.hbk` | `page-read-all` | 0 | 9.39 | 98000 | 133120 | 25878 pages, 4 missing entries |
+| `shcntx_root.hbk` | `page-read-all` | 0 | 9.06 | 91744 | 120704 | 25878 pages, 4 missing entries |
+| `shcntx_ru.hbk` | `extract-counts` | 0 | 17.34 | 73308 | 133248 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
+| `shcntx_root.hbk` | `extract-counts` | 0 | 13.96 | 110328 | 120960 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
 
 The page-read probe used a single `FileStorageReader`, skipped `2851` empty TOC paths and counted
 missing entries instead of treating known missing source pages as a storage failure.
@@ -446,8 +451,8 @@ Full debug CLI results:
 
 | Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes |
 | --- | ---: | ---: | ---: | ---: |
-| `shcntx_ru.hbk` | 0 | 18.60 | 148096 | 21950926 |
-| `shcntx_root.hbk` | 0 | 14.01 | 122240 | 12269994 |
+| `shcntx_ru.hbk` | 0 | 19.63 | 154504 | 21950926 |
+| `shcntx_root.hbk` | 0 | 15.15 | 122240 | 12269994 |
 
 Each source book still produced:
 
@@ -462,14 +467,19 @@ Each source book still produced:
 - 3110 enum values
 - 703 `UNKNOWN_PAGE_CLASS` diagnostics
 
-The retained `FileStorage` vector is now a larger share of current `HbkBook::open` RSS than it was
-before T22: about `53.5%` for `shcntx_ru.hbk` and `49.1%` for `shcntx_root.hbk`. Against open-path
-VmHWM it is about `28.5%` and `26.4%`; against full export peak it is about `25.7%` and `26.1%`.
+The initial T23 pass confirmed that the retained `FileStorage` vector had become about half of
+current `HbkBook::open` RSS after T22. The production follow-up removed that retained vector from
+`HbkBook`: current RSS after `book-open` dropped from `71068 KiB` to `33164 KiB` for
+`shcntx_ru.hbk` and from `64820 KiB` to `32928 KiB` for `shcntx_root.hbk`. The exact
+`FileStorage` bytes are still `38960718` and `32620458`, but they are now owned only by
+short-lived `FileStorageReader` values.
 
-T23 therefore confirms the open-path percentage shift but does not justify a production
-direct/shorter-lived `FileStorage` refactor. Repeated page reads remain bounded by the existing
-open-path high-water class, and the full export path still needs the book-level ZIP bytes while
-Syntax Assistant extraction parses and writes records. No runtime code change was made.
+Open-path VmHWM remains in the previous class because `HbkBook::open` still validates the
+`FileStorage` entity body to preserve existing failure timing. Full export peak did not show a
+material win: `shcntx_root.hbk` stayed at `122240 KiB`, while `shcntx_ru.hbk` measured
+`154504 KiB` in this run. A direct/seekable block-backed `FileStorage` view remains unimplemented;
+the accepted T23 production effect is limited to removing retained `FileStorage` bytes from
+`HbkBook` and using path-backed reader lifetimes.
 
 ## First Delivery Success Metrics
 

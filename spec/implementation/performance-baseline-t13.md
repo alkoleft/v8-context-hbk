@@ -571,21 +571,25 @@ T22 conclusion:
 
 ## Post-T23 Update
 
-T23 re-evaluated retained `FileStorage` ownership after the T22 baseline shift. Raw command outputs,
-generated exports and the temporary probe were written under `target/t23-measurements/`. That
-directory is service data and is not a durable source of truth.
+T23 re-evaluated retained `FileStorage` ownership after the T22 baseline shift. The initial
+measurement-only pass wrote raw command outputs, generated exports and the temporary probe under
+`target/t23-measurements/`. A user-directed production follow-up then removed retained
+`FileStorage` bytes from `HbkBook` and wrote fresh post-change logs under
+`target/t23-prod-measurements/`. These directories are service data and are not durable sources of
+truth.
 
 The probe measured exact `FileStorage` bytes, fresh-process `HbkBook::open`, repeated page reads
 through one `FileStorageReader` and extractor access through `SyntaxHelperReader::extract_into`
-with a counting sink. The T23 pass used the built debug CLI and temporary probe under GNU `time`:
+with a counting sink. The post-production pass used the built debug CLI and temporary probe under
+GNU `time`:
 
 ```bash
 cargo build -p v8-context-hbk-cli --bin v8-context-hbk
 cargo build --manifest-path target/t23-measurements/probe/Cargo.toml
-/usr/bin/time -o target/t23-measurements/logs/book-open-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t23-measurements/probe/target/debug/t23-file-storage-probe book-open /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
-/usr/bin/time -o target/t23-measurements/logs/page-read-all-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t23-measurements/probe/target/debug/t23-file-storage-probe page-read-all /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
-/usr/bin/time -o target/t23-measurements/logs/extract-counts-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t23-measurements/probe/target/debug/t23-file-storage-probe extract-counts /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
-/usr/bin/time -o target/t23-measurements/logs/syntax-helper-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t23-measurements/exports/shcntx-ru
+/usr/bin/time -o target/t23-prod-measurements/logs/book-open-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t23-measurements/probe/target/debug/t23-file-storage-probe book-open /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t23-prod-measurements/logs/page-read-all-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t23-measurements/probe/target/debug/t23-file-storage-probe page-read-all /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t23-prod-measurements/logs/extract-counts-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t23-measurements/probe/target/debug/t23-file-storage-probe extract-counts /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t23-prod-measurements/logs/syntax-helper-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t23-prod-measurements/exports/shcntx-ru
 ```
 
 Equivalent commands were run for `shcntx_root.hbk`, and both source books were available.
@@ -594,19 +598,19 @@ Fresh-process open-path attribution:
 
 | Source | Mode | Exit | Elapsed, s | Current RSS, KiB | VmHWM / peak RSS, KiB | Exact `FileStorage` bytes |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `shcntx_ru.hbk` | `file-storage-len` | 0 | 0.02 | 80056 | 80056 | 38960718 |
-| `shcntx_ru.hbk` | `book-open` | 0 | 5.55 | 71068 | 133376 | 38960718 |
-| `shcntx_root.hbk` | `file-storage-len` | 0 | 0.02 | 67600 | 67600 | 32620458 |
-| `shcntx_root.hbk` | `book-open` | 0 | 5.48 | 64820 | 120832 | 32620458 |
+| `shcntx_ru.hbk` | `file-storage-len` | 0 | 0.02 | 80416 | 80416 | 38960718 |
+| `shcntx_ru.hbk` | `book-open` | 0 | 5.92 | 33164 | 133376 | 38960718 |
+| `shcntx_root.hbk` | `file-storage-len` | 0 | 0.02 | 68012 | 68012 | 32620458 |
+| `shcntx_root.hbk` | `book-open` | 0 | 5.68 | 32928 | 120832 | 32620458 |
 
 Repeated page-read and extractor-access results:
 
 | Source | Mode | Exit | Elapsed, s | Current RSS, KiB | VmHWM / peak RSS, KiB | Counts |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
-| `shcntx_ru.hbk` | `page-read-all` | 0 | 9.08 | 98028 | 133248 | 25878 pages, 4 missing entries |
-| `shcntx_root.hbk` | `page-read-all` | 0 | 8.27 | 91852 | 120960 | 25878 pages, 4 missing entries |
-| `shcntx_ru.hbk` | `extract-counts` | 0 | 17.24 | 169864 | 169864 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
-| `shcntx_root.hbk` | `extract-counts` | 0 | 13.43 | 110512 | 120704 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
+| `shcntx_ru.hbk` | `page-read-all` | 0 | 9.39 | 98000 | 133120 | 25878 pages, 4 missing entries |
+| `shcntx_root.hbk` | `page-read-all` | 0 | 9.06 | 91744 | 120704 | 25878 pages, 4 missing entries |
+| `shcntx_ru.hbk` | `extract-counts` | 0 | 17.34 | 73308 | 133248 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
+| `shcntx_root.hbk` | `extract-counts` | 0 | 13.96 | 110328 | 120960 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
 
 The page-read probe traversed `28736` flat TOC pages per book, skipped `2851` empty TOC paths,
 read `25878` available unique pages and counted `4` missing entries. It measured repeated access to
@@ -616,23 +620,29 @@ T13-style full `syntax-helper --output` results:
 
 | Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes | Records and diagnostics |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `shcntx_ru.hbk` | 0 | 18.60 | 148096 | 21950926 | 24836 records, 703 diagnostics |
-| `shcntx_root.hbk` | 0 | 14.01 | 122240 | 12269994 | 24836 records, 703 diagnostics |
+| `shcntx_ru.hbk` | 0 | 19.63 | 154504 | 21950926 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` | 0 | 15.15 | 122240 | 12269994 | 24836 records, 703 diagnostics |
 
 T23 conclusion:
 
-- The exact retained `FileStorage` vector is unchanged from T20: about `38048 KiB` for
-  `shcntx_ru.hbk` and about `31856 KiB` for `shcntx_root.hbk`.
-- After T22, that vector is about `53.5%` and `49.1%` of current `HbkBook::open` RSS. This confirms
-  the open-path attribution shift that made the T20 percentage stale.
-- The same vector is only about `28.5%` and `26.4%` of open-path VmHWM, and about `25.7%` and
-  `26.1%` of the measured full export peak.
-- Repeated page reads stay in the same peak-RSS class as `book-open`; they do not reveal a separate
-  repeated ZIP setup or access-cost bottleneck.
-- A direct or shorter-lived `FileStorage` design would require broader low-level ZIP/storage work
-  inside `hbk-container` / `hbk-book`, while the measured full export and page-access paths do not
-  show a material benefit beyond the open-path percentage shift. No runtime refactor is justified by
-  T23 evidence.
+- The exact `FileStorage` entity size is unchanged from T20: about `38048 KiB` for `shcntx_ru.hbk`
+  and about `31856 KiB` for `shcntx_root.hbk`.
+- The production follow-up removes those bytes from retained `HbkBook` state. Current RSS after
+  `book-open` dropped from the initial T23 `71068 KiB` to `33164 KiB` for `shcntx_ru.hbk` and from
+  `64820 KiB` to `32928 KiB` for `shcntx_root.hbk`.
+- Open-path VmHWM stays in the previous class because `HbkBook::open` still validates the
+  `FileStorage` entity body and then drops it. That preserves existing open-time body-validation
+  behavior while avoiding long-lived `FileStorage` ownership.
+- Repeated page reads now load `FileStorage` into the short-lived `FileStorageReader`; page-read
+  peak RSS remains bounded by the open-path high-water class.
+- Extractor-count current RSS after `SyntaxHelperReader::extract_into` drops when the reader goes
+  out of scope (`73308 KiB` for `shcntx_ru.hbk` in this run), but full `syntax-helper --output`
+  peak does not show a material win because export still owns `FileStorage` during extraction and
+  writer state overlaps with parsing.
+- A direct/seekable block-backed `FileStorage` view remains unjustified by current full-export and
+  page-access evidence. T23's accepted runtime change is the narrower path-backed reader lifetime:
+  `HbkBook` no longer retains `FileStorage` bytes, and `FileStorageReader` owns them only for its
+  read lifetime.
 
 ## Variant Evaluation
 

@@ -100,6 +100,9 @@ Fatal errors stop the current command/test:
 - malformed book metadata
 - TOC corruption
 
+Path-backed help-book access may surface `FileStorage` ZIP read errors at the page/file access
+boundary after the initial book metadata/TOC open has succeeded.
+
 Recoverable extraction diagnostics must not abort a full Syntax Assistant pass when partial
 extraction remains meaningful:
 
