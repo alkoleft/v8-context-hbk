@@ -69,6 +69,12 @@ The output directory contains JSON files by record family:
 - `enum-values.json`
 - `diagnostics.json`
 
+The current provisional export schema is `schema_version: 2`. Consumer record-family files include
+structured `availability`, `examples`, `see_also` and `available_since` fields when the source page
+contains those facts; absent facts are represented as empty arrays or `null`. Consumer records omit
+HBK file paths, TOC paths, HTML paths and page titles; `diagnostics.json` keeps parser provenance
+for maintenance.
+
 ## Current Limitations
 
 - The JSON export schema is provisional.

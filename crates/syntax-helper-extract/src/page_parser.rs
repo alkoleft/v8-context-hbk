@@ -50,6 +50,7 @@ pub fn parse_global_method(content: &PageContent, source: SyntaxHelperSource) ->
             &["Возвращаемое значение:", "Return value:", "Returned value:"],
         ),
         description: section_text(content, &["Описание:", "Description:"]),
+        facts: section_facts(content),
         source,
     }
 }
@@ -60,6 +61,7 @@ pub fn parse_global_property(content: &PageContent, source: SyntaxHelperSource) 
         usage: section_text(content, &["Использование:", "Use:"]),
         type_refs: type_refs_from_section(content, &["Описание:", "Description:"]),
         description: section_text(content, &["Описание:", "Description:"]),
+        facts: section_facts(content),
         source,
     }
 }
@@ -87,6 +89,7 @@ pub(crate) fn parse_platform_type_for_mode(
             Vec::new()
         },
         description: section_text(content, &["Описание:", "Description:"]),
+        facts: section_facts(content),
         source,
     }
 }
@@ -101,6 +104,7 @@ pub fn parse_platform_method(content: &PageContent, source: SyntaxHelperSource) 
             &["Возвращаемое значение:", "Return value:", "Returned value:"],
         ),
         description: section_text(content, &["Описание:", "Description:"]),
+        facts: section_facts(content),
         source,
     }
 }
@@ -115,6 +119,7 @@ pub fn parse_platform_property(
         usage: section_text(content, &["Использование:", "Use:"]),
         type_refs: type_refs_from_section(content, &["Описание:", "Description:"]),
         description: section_text(content, &["Описание:", "Description:"]),
+        facts: section_facts(content),
         source,
     }
 }
@@ -125,6 +130,7 @@ pub fn parse_constructor(content: &PageContent, source: SyntaxHelperSource) -> C
         name: heading_name(content),
         signatures: parse_signatures(content),
         description: section_text(content, &["Описание:", "Description:"]),
+        facts: section_facts(content),
         source,
     }
 }
@@ -146,6 +152,7 @@ pub(crate) fn parse_enum_for_mode(
             Vec::new()
         },
         description: section_text(content, &["Описание:", "Description:"]),
+        facts: section_facts(content),
         source,
     }
 }
@@ -155,8 +162,132 @@ pub fn parse_enum_value(content: &PageContent, source: SyntaxHelperSource) -> En
         owner: title_name(content),
         name: heading_name(content),
         description: section_text(content, &["Описание:", "Description:"]),
+        facts: section_facts(content),
         source,
     }
+}
+
+fn section_facts(content: &PageContent) -> SectionFacts {
+    SectionFacts {
+        availability: availability(content),
+        examples: examples(content),
+        see_also: links_in_section(content, &["См. также:", "See also:"]),
+        available_since: available_since(content),
+    }
+}
+
+fn availability(content: &PageContent) -> Availability {
+    let contexts = section_text(content, &["Доступность:", "Availability:"])
+        .map(|text| availability_contexts(&text))
+        .unwrap_or_default();
+    Availability { contexts }
+}
+
+fn availability_contexts(text: &str) -> Vec<AvailabilityContext> {
+    let tokens = text
+        .split([',', ';', '.'])
+        .map(normalize_availability_token)
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    AVAILABILITY_CONTEXT_LABELS
+        .iter()
+        .filter_map(|(context, labels)| {
+            tokens
+                .iter()
+                .any(|token| labels.iter().any(|label| token == label))
+                .then_some(*context)
+        })
+        .collect()
+}
+
+fn normalize_availability_token(value: &str) -> String {
+    value
+        .trim()
+        .to_lowercase()
+        .replace('\u{2011}', "-")
+        .replace('\u{2013}', "-")
+}
+
+const AVAILABILITY_CONTEXT_LABELS: &[(AvailabilityContext, &[&str])] = &[
+    (
+        AvailabilityContext::ThinClient,
+        &["thin client", "тонкий клиент"],
+    ),
+    (
+        AvailabilityContext::WebClient,
+        &["web-client", "web client", "веб-клиент", "веб клиент"],
+    ),
+    (
+        AvailabilityContext::MobileClient,
+        &["mobile client", "мобильный клиент"],
+    ),
+    (AvailabilityContext::Server, &["server", "сервер"]),
+    (
+        AvailabilityContext::ThickClient,
+        &["thick client", "толстый клиент"],
+    ),
+    (
+        AvailabilityContext::ExternalConnection,
+        &["external connection", "внешнее соединение"],
+    ),
+    (
+        AvailabilityContext::MobileApplicationClient,
+        &[
+            "mobile application (client)",
+            "мобильное приложение (клиент)",
+        ],
+    ),
+    (
+        AvailabilityContext::MobileApplicationServer,
+        &[
+            "mobile application (server)",
+            "мобильное приложение (сервер)",
+        ],
+    ),
+    (
+        AvailabilityContext::MobileStandaloneServer,
+        &["mobile standalone server", "мобильный автономный сервер"],
+    ),
+];
+
+fn examples(content: &PageContent) -> Vec<ExampleBlock> {
+    let Some(section_html) = section_html(&content.raw_html, &["Пример:", "Example:"]) else {
+        return Vec::new();
+    };
+    let text = text_lines_from_html_fragment(section_html)
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        Vec::new()
+    } else {
+        vec![ExampleBlock { text }]
+    }
+}
+
+fn available_since(content: &PageContent) -> Option<VersionFact> {
+    select_first_html_text(&content.raw_html, ".V8SH_versionInfo")
+        .or_else(|| section_text(content, &["Использование в версии:", "Available since:"]))
+        .or_else(|| select_first_html_text(&content.raw_html, ".__SINCE_SHOW_STYLE__"))
+        .and_then(|text| version_fact(text.trim()))
+}
+
+fn version_fact(text: &str) -> Option<VersionFact> {
+    (!text.is_empty()).then(|| VersionFact {
+        version: extract_version(text),
+        text: text.to_string(),
+    })
+}
+
+fn extract_version(text: &str) -> Option<String> {
+    let start = text
+        .char_indices()
+        .find_map(|(index, ch)| ch.is_ascii_digit().then_some(index))?;
+    let end = text[start..]
+        .char_indices()
+        .find_map(|(offset, ch)| (!(ch.is_ascii_digit() || ch == '.')).then_some(start + offset))
+        .unwrap_or(text.len());
+    let version = text[start..end].trim_end_matches('.');
+    (!version.is_empty()).then(|| version.to_string())
 }
 
 pub(crate) fn source_from_content(

@@ -150,6 +150,9 @@ fn text_from_html_fragment(fragment: &str) -> String {
 
 pub(crate) fn text_lines_from_html_fragment(fragment: &str) -> String {
     let with_breaks = fragment
+        .replace("<BR>", "\n")
+        .replace("<BR/>", "\n")
+        .replace("<BR />", "\n")
         .replace("<br>", "\n")
         .replace("<br/>", "\n")
         .replace("<br />", "\n")

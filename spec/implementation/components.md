@@ -140,7 +140,9 @@ Syntax Assistant section parsing is locale-aware for Russian and root/English bo
 recognizes root/English `Type:` and `Returned value:` type-reference sections and treats
 availability, examples, see-also, available-since and overload variant headings as section
 boundaries so descriptions, signatures and parameter descriptions do not absorb later sections.
-Structured fact fields for those non-description sections remain owned by T26/T27.
+T26 extracts structured availability/application contexts, examples, see-also relationships and
+available-since facts into the domain model. T27 remains responsible for structured overload and
+syntax-variant metadata.
 
 ### hbk-export
 
@@ -159,6 +161,10 @@ record-family JSON without retaining the full `PlatformContext`. The existing `P
 exporter remains available for in-memory model consumers and tests. Streaming export may use the
 lean sink detail mode to skip consumer-omitted navigation fields, but omission from JSON remains an
 `hbk-export` adapter concern rather than an internal model constraint.
+
+Schema version 2 record-family JSON exposes structured `availability`, `examples`, `see_also` and
+`available_since` fields from the domain model while still omitting source HBK paths, TOC paths,
+HTML paths, page titles and duplicate navigation-link catalogs from consumer records.
 
 ### v8-context-hbk-cli
 

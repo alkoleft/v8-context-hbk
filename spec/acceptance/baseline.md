@@ -574,8 +574,49 @@ fields no longer include the raw T25 boundary labels for availability, examples,
 available-since, returned-value or parameter sections in the UAT-SH-007 export checks. A repeated
 `shcntx_ru.hbk` export was compared with `diff -qr` to verify deterministic output.
 
-Structured `availability`, `examples`, `see_also`, `available_since` and overload variant metadata
-remain pending for T26/T27.
+Structured overload variant metadata remains pending for T27.
+
+## T26 Durable Conclusions
+
+Structured Syntax Assistant section facts were validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+T26 changed the consumer JSON shape and raised the canonical export schema to `schema_version: 2`.
+Consumer record-family files now expose structured `availability`, `examples`, `see_also` and
+`available_since` fields when the source page contains those facts. Consumer records still omit HBK
+provenance, TOC paths, HTML paths, page titles and duplicate navigation-link catalogs; `see_also`
+consumer targets expose names only.
+
+Post-T26 CLI export counts remained stable for both books:
+
+- 1 global context
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 `UNKNOWN_PAGE_CLASS` diagnostics
+
+Post-T26 structured fact counts from full CLI exports:
+
+| File | RU availability | RU examples | RU see_also | RU available_since | EN availability | EN examples | EN see_also | EN available_since |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `global-methods.json` | 499 | 185 | 180 | 500 | 499 | 193 | 180 | 500 |
+| `global-properties.json` | 101 | 0 | 21 | 101 | 101 | 0 | 21 | 101 |
+| `platform-types.json` | 2384 | 140 | 895 | 2532 | 2384 | 140 | 900 | 2532 |
+| `type-methods.json` | 6586 | 1103 | 690 | 6701 | 6587 | 1102 | 691 | 6701 |
+| `type-properties.json` | 9918 | 19 | 222 | 10731 | 9918 | 31 | 222 | 10731 |
+| `constructors.json` | 2 | 54 | 10 | 315 | 2 | 55 | 10 | 315 |
+| `enums.json` | 713 | 3 | 341 | 713 | 713 | 2 | 341 | 713 |
+| `enum-values.json` | 28 | 0 | 36 | 3109 | 28 | 3 | 36 | 3109 |
+
+UAT-SH-001, UAT-SH-002, UAT-SH-003 and UAT-SH-008 passed on schema version 2 exports. A repeated
+`shcntx_ru.hbk` export was compared with `diff -qr` to verify deterministic output.
 
 ## First Delivery Success Metrics
 

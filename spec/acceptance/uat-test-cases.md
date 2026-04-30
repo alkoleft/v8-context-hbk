@@ -370,6 +370,9 @@ Steps:
 ```bash
 jq -e '.records[] | select(.name.primary == "XMLСтрока" or .name.primary == "XMLString")' target/uat/shcntx-ru/global-methods.json target/uat/shcntx-en/global-methods.json
 jq -e '.records[] | select(.name.primary == "Массив" or .name.primary == "Array")' target/uat/shcntx-ru/platform-types.json target/uat/shcntx-en/platform-types.json
+jq -e '.records[] | select(.name.primary == "XMLСтрока") | (.availability.contexts | index("thin_client") != null and index("server") != null) and (.examples | length > 0) and (.see_also | any(.name.primary == "XMLЗначение")) and (.available_since.version == "8.0")' target/uat/shcntx-ru/global-methods.json
+jq -e '.records[] | select(.name.primary == "XMLString") | (.availability.contexts | index("thin_client") != null and index("server") != null) and (.examples | length > 0) and (.see_also | any(.name.primary == "XMLValue")) and (.available_since.version == "8.0")' target/uat/shcntx-en/global-methods.json
+jq -e '.records[] | select(.name.primary == "Массив" or .name.primary == "Array") | (.availability.contexts | index("web_client") != null and index("server") != null) and (.examples | length > 0) and (.available_since.version == "8.0")' target/uat/shcntx-ru/platform-types.json target/uat/shcntx-en/platform-types.json
 ```
 
 Expected result:
@@ -380,7 +383,7 @@ Expected result:
 - Syntax examples are preserved as dedicated example/code blocks when the source page contains an
   example.
 - See-also links or relationships are preserved separately from `description` when the source page
-  contains them.
+  contains them, without exposing target HTML paths in consumer record-family JSON.
 - Available-since/version information is preserved separately from `description` when the source
   page contains it.
 

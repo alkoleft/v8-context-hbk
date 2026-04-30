@@ -235,5 +235,23 @@ T25 verification used the existing real-source audit fixtures from
 `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
 `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`. `XMLСтрока` / `XMLString`,
 `Массив.Добавить` / `Array.Add` and `ОткрытьФорму` / `OpenForm` now retain the T25 type facts in
-both locales. Structured `availability`, `examples`, `see_also`, `available_since` and overload
-variant metadata remain intentionally pending for T26/T27.
+both locales.
+
+T26 follow-up on 2026-04-30 added schema version 2 structured section facts for
+`availability`, `examples`, `see_also` and `available_since` in consumer record-family files.
+Consumer records still omit HBK provenance, TOC paths, HTML paths and page titles; `see_also`
+consumer targets expose names only. Overload variant metadata remains intentionally pending for
+T27.
+
+Post-T26 structured fact counts from full CLI exports:
+
+| File | RU availability | RU examples | RU see_also | RU available_since | EN availability | EN examples | EN see_also | EN available_since |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `global-methods.json` | 499 | 185 | 180 | 500 | 499 | 193 | 180 | 500 |
+| `global-properties.json` | 101 | 0 | 21 | 101 | 101 | 0 | 21 | 101 |
+| `platform-types.json` | 2384 | 140 | 895 | 2532 | 2384 | 140 | 900 | 2532 |
+| `type-methods.json` | 6586 | 1103 | 690 | 6701 | 6587 | 1102 | 691 | 6701 |
+| `type-properties.json` | 9918 | 19 | 222 | 10731 | 9918 | 31 | 222 | 10731 |
+| `constructors.json` | 2 | 54 | 10 | 315 | 2 | 55 | 10 | 315 |
+| `enums.json` | 713 | 3 | 341 | 713 | 713 | 2 | 341 | 713 |
+| `enum-values.json` | 28 | 0 | 36 | 3109 | 28 | 3 | 36 | 3109 |

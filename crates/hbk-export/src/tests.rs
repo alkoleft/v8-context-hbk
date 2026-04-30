@@ -39,6 +39,28 @@ fn link(primary: &str) -> model::MemberLink {
     }
 }
 
+fn facts() -> model::SectionFacts {
+    model::SectionFacts {
+        availability: model::Availability {
+            contexts: vec![
+                model::AvailabilityContext::ThinClient,
+                model::AvailabilityContext::Server,
+            ],
+        },
+        examples: vec![model::ExampleBlock {
+            text: "XMLWriter.WriteText(XMLString(MaturityDate));".to_string(),
+        }],
+        see_also: vec![model::MemberLink {
+            name: name("XMLЗначение"),
+            html_path: "objects/Global context/methods/catalog1566/XMLValue1568.html".to_string(),
+        }],
+        available_since: Some(model::VersionFact {
+            version: Some("8.0".to_string()),
+            text: "Доступен, начиная с версии 8.0.".to_string(),
+        }),
+    }
+}
+
 fn read_json(path: impl AsRef<Path>) -> Value {
     let path = path.as_ref();
     let json = fs::read_to_string(path)
@@ -68,6 +90,7 @@ fn platform_context_serializes_with_source_provenance() {
             signatures: Vec::new(),
             return_types: Vec::new(),
             description: None,
+            facts: model::SectionFacts::default(),
             source,
         }],
         ..PlatformContext::default()
@@ -126,6 +149,7 @@ fn records_envelope_json_is_parseable_and_non_empty() {
     let json = fs::read_to_string(&path).expect("record envelope must be readable");
     assert!(!json.is_empty());
     let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
+    assert_eq!(parsed["schema_version"], 2);
     assert_eq!(parsed["locale"], "en");
     assert_eq!(parsed["source_locale"], "root");
     assert!(parsed.get("source_hbk").is_none());
@@ -158,6 +182,7 @@ fn exporter_writes_full_canonical_file_set() {
     }
 
     let metadata = read_json(dir.join("metadata.json"));
+    assert_eq!(metadata["schema_version"], 2);
     assert_eq!(metadata["locale"], "en");
     assert_eq!(metadata["source_locale"], "root");
     assert!(metadata.get("source_hbk").is_none());
@@ -194,6 +219,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 name: "Строка".to_string(),
             }],
             description: Some("Creates an XML string.".to_string()),
+            facts: facts(),
             source: source.clone(),
         }],
         platform_types: vec![model::PlatformType {
@@ -201,6 +227,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             method_links: vec![link("Добавить")],
             constructor_links: vec![link("Массив")],
             description: Some("Array type.".to_string()),
+            facts: model::SectionFacts::default(),
             source: source.clone(),
         }],
         type_methods: vec![model::PlatformMethod {
@@ -209,12 +236,14 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             signatures: Vec::new(),
             return_types: Vec::new(),
             description: None,
+            facts: model::SectionFacts::default(),
             source: source.clone(),
         }],
         enums: vec![model::EnumDefinition {
             name: name("ТипЗначенияJSON"),
             value_links: vec![link("КонецМассива")],
             description: None,
+            facts: model::SectionFacts::default(),
             source: source.clone(),
         }],
         diagnostics: vec![model::SyntaxHelperDiagnostic {
@@ -232,7 +261,9 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         .expect("lean export must be writable");
 
     assert!(!dir.join("global-contexts.json").exists());
-    assert_no_keys(&read_json(dir.join("metadata.json")), &["source_hbk"]);
+    let metadata = read_json(dir.join("metadata.json"));
+    assert_eq!(metadata["schema_version"], 2);
+    assert_no_keys(&metadata, &["source_hbk"]);
 
     let forbidden = [
         "source",
@@ -259,6 +290,20 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             assert_no_keys(record, &forbidden);
         }
     }
+    let global_methods = read_json(dir.join("global-methods.json"));
+    let method = &global_methods["records"][0];
+    assert_eq!(
+        method["availability"]["contexts"],
+        serde_json::json!(["thin_client", "server"])
+    );
+    assert_eq!(
+        method["examples"][0]["text"],
+        "XMLWriter.WriteText(XMLString(MaturityDate));"
+    );
+    assert_eq!(method["see_also"][0]["name"]["primary"], "XMLЗначение");
+    assert!(method["see_also"][0].get("html_path").is_none());
+    assert_eq!(method["available_since"]["version"], "8.0");
+    assert!(method.get("source").is_none());
 
     let diagnostics = read_json(dir.join("diagnostics.json"));
     assert_no_keys(&diagnostics, &["source_hbk"]);
@@ -304,6 +349,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
             signatures: Vec::new(),
             return_types: Vec::new(),
             description: Some("Creates an XML string.".to_string()),
+            facts: facts(),
             source: source.clone(),
         })
         .expect("global method must be writable");
@@ -327,6 +373,19 @@ fn streaming_export_writes_lean_records_without_full_context() {
     let global_methods = read_json(dir.join("global-methods.json"));
     assert_eq!(global_methods["records"].as_array().unwrap().len(), 1);
     assert_no_keys(&global_methods["records"][0], &["source", "method_links"]);
+    assert_eq!(
+        global_methods["records"][0]["availability"]["contexts"],
+        serde_json::json!(["thin_client", "server"])
+    );
+    assert_eq!(
+        global_methods["records"][0]["see_also"][0]["name"]["primary"],
+        "XMLЗначение"
+    );
+    assert!(
+        global_methods["records"][0]["see_also"][0]
+            .get("html_path")
+            .is_none()
+    );
 
     let platform_types = read_json(dir.join("platform-types.json"));
     assert!(platform_types["records"].as_array().unwrap().is_empty());
@@ -360,6 +419,7 @@ fn streaming_export_abort_removes_incomplete_json_files() {
             signatures: Vec::new(),
             return_types: Vec::new(),
             description: None,
+            facts: model::SectionFacts::default(),
             source,
         })
         .expect("global method must be writable before abort");

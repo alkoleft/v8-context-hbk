@@ -318,6 +318,7 @@ pub struct GlobalMethod {
     pub signatures: Vec<Signature>,
     pub return_types: Vec<TypeRef>,
     pub description: Option<String>,
+    pub facts: SectionFacts,
     pub source: SyntaxHelperSource,
 }
 
@@ -327,6 +328,7 @@ pub struct GlobalProperty {
     pub usage: Option<String>,
     pub type_refs: Vec<TypeRef>,
     pub description: Option<String>,
+    pub facts: SectionFacts,
     pub source: SyntaxHelperSource,
 }
 
@@ -336,6 +338,7 @@ pub struct PlatformType {
     pub method_links: Vec<MemberLink>,
     pub constructor_links: Vec<MemberLink>,
     pub description: Option<String>,
+    pub facts: SectionFacts,
     pub source: SyntaxHelperSource,
 }
 
@@ -346,6 +349,7 @@ pub struct PlatformMethod {
     pub signatures: Vec<Signature>,
     pub return_types: Vec<TypeRef>,
     pub description: Option<String>,
+    pub facts: SectionFacts,
     pub source: SyntaxHelperSource,
 }
 
@@ -356,6 +360,7 @@ pub struct PlatformProperty {
     pub usage: Option<String>,
     pub type_refs: Vec<TypeRef>,
     pub description: Option<String>,
+    pub facts: SectionFacts,
     pub source: SyntaxHelperSource,
 }
 
@@ -365,6 +370,7 @@ pub struct Constructor {
     pub name: LocalizedName,
     pub signatures: Vec<Signature>,
     pub description: Option<String>,
+    pub facts: SectionFacts,
     pub source: SyntaxHelperSource,
 }
 
@@ -373,6 +379,7 @@ pub struct EnumDefinition {
     pub name: LocalizedName,
     pub value_links: Vec<MemberLink>,
     pub description: Option<String>,
+    pub facts: SectionFacts,
     pub source: SyntaxHelperSource,
 }
 
@@ -381,7 +388,46 @@ pub struct EnumValue {
     pub owner: LocalizedName,
     pub name: LocalizedName,
     pub description: Option<String>,
+    pub facts: SectionFacts,
     pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct SectionFacts {
+    pub availability: Availability,
+    pub examples: Vec<ExampleBlock>,
+    pub see_also: Vec<MemberLink>,
+    pub available_since: Option<VersionFact>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct Availability {
+    pub contexts: Vec<AvailabilityContext>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AvailabilityContext {
+    ThinClient,
+    WebClient,
+    MobileClient,
+    Server,
+    ThickClient,
+    ExternalConnection,
+    MobileApplicationClient,
+    MobileApplicationServer,
+    MobileStandaloneServer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExampleBlock {
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct VersionFact {
+    pub version: Option<String>,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

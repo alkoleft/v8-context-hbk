@@ -27,6 +27,8 @@ pub(crate) struct ConsumerGlobalMethod<'a> {
     signatures: &'a [model::Signature],
     return_types: &'a [model::TypeRef],
     description: &'a Option<String>,
+    #[serde(flatten)]
+    facts: ConsumerSectionFacts<'a>,
 }
 
 impl<'a> From<&'a model::GlobalMethod> for ConsumerGlobalMethod<'a> {
@@ -36,6 +38,7 @@ impl<'a> From<&'a model::GlobalMethod> for ConsumerGlobalMethod<'a> {
             signatures: &method.signatures,
             return_types: &method.return_types,
             description: &method.description,
+            facts: ConsumerSectionFacts::from(&method.facts),
         }
     }
 }
@@ -46,6 +49,8 @@ pub(crate) struct ConsumerGlobalProperty<'a> {
     usage: &'a Option<String>,
     type_refs: &'a [model::TypeRef],
     description: &'a Option<String>,
+    #[serde(flatten)]
+    facts: ConsumerSectionFacts<'a>,
 }
 
 impl<'a> From<&'a model::GlobalProperty> for ConsumerGlobalProperty<'a> {
@@ -55,6 +60,7 @@ impl<'a> From<&'a model::GlobalProperty> for ConsumerGlobalProperty<'a> {
             usage: &property.usage,
             type_refs: &property.type_refs,
             description: &property.description,
+            facts: ConsumerSectionFacts::from(&property.facts),
         }
     }
 }
@@ -63,6 +69,8 @@ impl<'a> From<&'a model::GlobalProperty> for ConsumerGlobalProperty<'a> {
 pub(crate) struct ConsumerPlatformType<'a> {
     name: &'a model::LocalizedName,
     description: &'a Option<String>,
+    #[serde(flatten)]
+    facts: ConsumerSectionFacts<'a>,
 }
 
 impl<'a> From<&'a model::PlatformType> for ConsumerPlatformType<'a> {
@@ -70,6 +78,7 @@ impl<'a> From<&'a model::PlatformType> for ConsumerPlatformType<'a> {
         Self {
             name: &platform_type.name,
             description: &platform_type.description,
+            facts: ConsumerSectionFacts::from(&platform_type.facts),
         }
     }
 }
@@ -81,6 +90,8 @@ pub(crate) struct ConsumerPlatformMethod<'a> {
     signatures: &'a [model::Signature],
     return_types: &'a [model::TypeRef],
     description: &'a Option<String>,
+    #[serde(flatten)]
+    facts: ConsumerSectionFacts<'a>,
 }
 
 impl<'a> From<&'a model::PlatformMethod> for ConsumerPlatformMethod<'a> {
@@ -91,6 +102,7 @@ impl<'a> From<&'a model::PlatformMethod> for ConsumerPlatformMethod<'a> {
             signatures: &method.signatures,
             return_types: &method.return_types,
             description: &method.description,
+            facts: ConsumerSectionFacts::from(&method.facts),
         }
     }
 }
@@ -102,6 +114,8 @@ pub(crate) struct ConsumerPlatformProperty<'a> {
     usage: &'a Option<String>,
     type_refs: &'a [model::TypeRef],
     description: &'a Option<String>,
+    #[serde(flatten)]
+    facts: ConsumerSectionFacts<'a>,
 }
 
 impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
@@ -112,6 +126,7 @@ impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
             usage: &property.usage,
             type_refs: &property.type_refs,
             description: &property.description,
+            facts: ConsumerSectionFacts::from(&property.facts),
         }
     }
 }
@@ -122,6 +137,8 @@ pub(crate) struct ConsumerConstructor<'a> {
     name: &'a model::LocalizedName,
     signatures: &'a [model::Signature],
     description: &'a Option<String>,
+    #[serde(flatten)]
+    facts: ConsumerSectionFacts<'a>,
 }
 
 impl<'a> From<&'a model::Constructor> for ConsumerConstructor<'a> {
@@ -131,6 +148,7 @@ impl<'a> From<&'a model::Constructor> for ConsumerConstructor<'a> {
             name: &constructor.name,
             signatures: &constructor.signatures,
             description: &constructor.description,
+            facts: ConsumerSectionFacts::from(&constructor.facts),
         }
     }
 }
@@ -139,6 +157,8 @@ impl<'a> From<&'a model::Constructor> for ConsumerConstructor<'a> {
 pub(crate) struct ConsumerEnumDefinition<'a> {
     name: &'a model::LocalizedName,
     description: &'a Option<String>,
+    #[serde(flatten)]
+    facts: ConsumerSectionFacts<'a>,
 }
 
 impl<'a> From<&'a model::EnumDefinition> for ConsumerEnumDefinition<'a> {
@@ -146,6 +166,7 @@ impl<'a> From<&'a model::EnumDefinition> for ConsumerEnumDefinition<'a> {
         Self {
             name: &enum_definition.name,
             description: &enum_definition.description,
+            facts: ConsumerSectionFacts::from(&enum_definition.facts),
         }
     }
 }
@@ -155,6 +176,8 @@ pub(crate) struct ConsumerEnumValue<'a> {
     owner: &'a model::LocalizedName,
     name: &'a model::LocalizedName,
     description: &'a Option<String>,
+    #[serde(flatten)]
+    facts: ConsumerSectionFacts<'a>,
 }
 
 impl<'a> From<&'a model::EnumValue> for ConsumerEnumValue<'a> {
@@ -163,6 +186,41 @@ impl<'a> From<&'a model::EnumValue> for ConsumerEnumValue<'a> {
             owner: &enum_value.owner,
             name: &enum_value.name,
             description: &enum_value.description,
+            facts: ConsumerSectionFacts::from(&enum_value.facts),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerSectionFacts<'a> {
+    availability: &'a model::Availability,
+    examples: &'a [model::ExampleBlock],
+    see_also: Vec<ConsumerSeeAlsoRef<'a>>,
+    available_since: &'a Option<model::VersionFact>,
+}
+
+impl<'a> From<&'a model::SectionFacts> for ConsumerSectionFacts<'a> {
+    fn from(facts: &'a model::SectionFacts) -> Self {
+        Self {
+            availability: &facts.availability,
+            examples: &facts.examples,
+            see_also: facts
+                .see_also
+                .iter()
+                .map(ConsumerSeeAlsoRef::from)
+                .collect(),
+            available_since: &facts.available_since,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerSeeAlsoRef<'a> {
+    name: &'a model::LocalizedName,
+}
+
+impl<'a> From<&'a model::MemberLink> for ConsumerSeeAlsoRef<'a> {
+    fn from(link: &'a model::MemberLink) -> Self {
+        Self { name: &link.name }
     }
 }

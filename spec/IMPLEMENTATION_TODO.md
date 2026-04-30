@@ -149,7 +149,7 @@ Completion notes:
 - No consumer JSON schema/version change; consumer record-family files still omit HBK provenance,
   TOC paths, HTML paths and page titles.
 
-### [ ] T26. Extract structured availability, examples, see-also and version facts
+### [x] T26. Extract structured availability, examples, see-also and version facts
 
 Depends on: T25.
 
@@ -197,6 +197,19 @@ Verification:
 - Deterministic export comparison for at least one Syntax Assistant book after accepting the new
   schema shape
 - `git diff --check`
+
+Completion notes:
+
+- Completed on 2026-04-30.
+- Added schema version 2 structured section fields to consumer record-family JSON:
+  `availability`, `examples`, `see_also` and `available_since`.
+- Normalized availability contexts to stable snake_case values and kept `see_also` consumer targets
+  provenance-free by exposing target names without HBK/TOC/HTML paths or page titles.
+- Verified real-source audit fixtures and full CLI exports for `shcntx_ru.hbk` and
+  `shcntx_root.hbk`; record-family counts remained stable at the T25 baseline.
+- UAT-SH-001, UAT-SH-002, UAT-SH-003 and UAT-SH-008 passed on schema version 2 exports, and a
+  repeated `shcntx_ru.hbk` export was byte-identical by `diff -qr`.
+- T27 overload/syntax-variant structure remains intentionally pending.
 
 ### [ ] T27. Parse overload and syntax-variant pages structurally
 

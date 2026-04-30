@@ -180,6 +180,13 @@ fn parses_representative_specialized_fixture_pages() {
             .iter()
             .any(|type_ref| type_ref.name == "СправочникиМенеджер")
     );
+    assert!(
+        global_property
+            .facts
+            .see_also
+            .iter()
+            .any(|link| link.name.primary == "СправочникиМенеджер")
+    );
 
     let platform_type = parse_platform_type(
         &fixture_content(&toc, "objects/catalog234/Array.html"),
@@ -198,6 +205,7 @@ fn parses_representative_specialized_fixture_pages() {
             .iter()
             .any(|link| link.name.primary == "По количеству элементов")
     );
+    assert_available_since(&platform_type.facts, "8.0");
 
     let method = parse_platform_method(
         &fixture_content(&toc, "objects/catalog234/Array/methods/Add772.html"),
@@ -206,6 +214,7 @@ fn parses_representative_specialized_fixture_pages() {
     assert_eq!(method.owner.primary, "Массив");
     assert_eq!(method.name.primary, "Добавить");
     assert!(!method.signatures[0].parameters[0].required);
+    assert_available_since(&method.facts, "8.0");
 
     let property = parse_platform_property(
         &fixture_content(
@@ -222,6 +231,7 @@ fn parses_representative_specialized_fixture_pages() {
             .iter()
             .any(|type_ref| type_ref.name == "Булево")
     );
+    assert_available_since(&property.facts, "8.2");
 
     let constructor = parse_constructor(
         &fixture_content(&toc, "objects/catalog234/Array/ctors/ctor13.html"),
@@ -233,6 +243,7 @@ fn parses_representative_specialized_fixture_pages() {
         constructor.signatures[0].text,
         "Новый Массив(<КоличествоЭлементов1>,...,<КоличествоЭлементовN>)"
     );
+    assert_available_since(&constructor.facts, "8.0");
 
     let enum_definition = parse_enum(
         &fixture_content(&toc, "objects/catalog2/catalog2300/JSONValueType.html"),
@@ -245,6 +256,7 @@ fn parses_representative_specialized_fixture_pages() {
             .iter()
             .any(|link| link.name.alias.as_deref() == Some("ArrayEnd"))
     );
+    assert_available_since(&enum_definition.facts, "8.3.6");
 
     let enum_value = parse_enum_value(
         &fixture_content(
@@ -261,6 +273,7 @@ fn parses_representative_specialized_fixture_pages() {
             .as_deref()
             .is_some_and(|text| text.contains("JSON"))
     );
+    assert_available_since(&enum_value.facts, "8.3.6");
 }
 
 #[test]
@@ -303,6 +316,34 @@ fn parses_locale_complete_type_references_and_clean_section_boundaries() {
     );
     assert_clean_text(xml_string.description.as_deref().unwrap_or_default());
     assert_clean_text(value_parameter.description.as_deref().unwrap_or_default());
+    assert_eq!(
+        xml_string.facts.availability.contexts,
+        vec![
+            AvailabilityContext::ThinClient,
+            AvailabilityContext::MobileClient,
+            AvailabilityContext::Server,
+            AvailabilityContext::ThickClient,
+            AvailabilityContext::ExternalConnection,
+            AvailabilityContext::MobileApplicationClient,
+            AvailabilityContext::MobileApplicationServer,
+            AvailabilityContext::MobileStandaloneServer,
+        ]
+    );
+    assert!(
+        xml_string
+            .facts
+            .examples
+            .iter()
+            .any(|example| example.text.contains("XMLWriter.WriteText"))
+    );
+    assert!(
+        xml_string
+            .facts
+            .see_also
+            .iter()
+            .any(|link| link.name.primary == "XMLValue")
+    );
+    assert_available_since(&xml_string.facts, "8.0");
 
     let open_form_root = parse_global_method(
         &fixture_content_from_raw(
@@ -342,6 +383,24 @@ fn parses_locale_complete_type_references_and_clean_section_boundaries() {
     for parameter in root_parameters {
         assert_clean_text(parameter.description.as_deref().unwrap_or_default());
     }
+    assert_eq!(
+        open_form_root.facts.availability.contexts,
+        vec![
+            AvailabilityContext::ThinClient,
+            AvailabilityContext::WebClient,
+            AvailabilityContext::MobileClient,
+            AvailabilityContext::ThickClient,
+            AvailabilityContext::MobileApplicationClient,
+        ]
+    );
+    assert!(
+        open_form_root
+            .facts
+            .see_also
+            .iter()
+            .any(|link| link.name.primary == "GetForm")
+    );
+    assert_available_since(&open_form_root.facts, "8.2");
 
     let open_form_ru = parse_global_method(
         &fixture_content_from_raw(
@@ -371,6 +430,24 @@ fn parses_locale_complete_type_references_and_clean_section_boundaries() {
         "РежимОтображенияОкна",
         "РежимОтображенияОкнаФормы",
     );
+    assert_eq!(
+        open_form_ru.facts.availability.contexts,
+        vec![
+            AvailabilityContext::ThinClient,
+            AvailabilityContext::WebClient,
+            AvailabilityContext::MobileClient,
+            AvailabilityContext::ThickClient,
+            AvailabilityContext::MobileApplicationClient,
+        ]
+    );
+    assert!(
+        open_form_ru
+            .facts
+            .see_also
+            .iter()
+            .any(|link| link.name.primary == "ПолучитьФорму")
+    );
+    assert_available_since(&open_form_ru.facts, "8.2");
 
     let array_add = parse_platform_method(
         &fixture_content_from_raw(
@@ -396,6 +473,28 @@ fn parses_locale_complete_type_references_and_clean_section_boundaries() {
     );
     assert_clean_text(array_add.description.as_deref().unwrap_or_default());
     assert_clean_text(value_parameter.description.as_deref().unwrap_or_default());
+    assert_eq!(
+        array_add.facts.availability.contexts,
+        vec![
+            AvailabilityContext::ThinClient,
+            AvailabilityContext::WebClient,
+            AvailabilityContext::MobileClient,
+            AvailabilityContext::Server,
+            AvailabilityContext::ThickClient,
+            AvailabilityContext::ExternalConnection,
+            AvailabilityContext::MobileApplicationClient,
+            AvailabilityContext::MobileApplicationServer,
+            AvailabilityContext::MobileStandaloneServer,
+        ]
+    );
+    assert!(
+        array_add
+            .facts
+            .examples
+            .iter()
+            .any(|example| example.text.contains("Array.Add(\"First\")"))
+    );
+    assert_available_since(&array_add.facts, "8.0");
 
     let array_type = parse_platform_type(
         &fixture_content_from_raw(
@@ -408,6 +507,28 @@ fn parses_locale_complete_type_references_and_clean_section_boundaries() {
         source_for("shcntx_root.hbk", "en", "objects/catalog234/Array.html"),
     );
     assert_clean_text(array_type.description.as_deref().unwrap_or_default());
+    assert_eq!(
+        array_type.facts.availability.contexts,
+        vec![
+            AvailabilityContext::ThinClient,
+            AvailabilityContext::WebClient,
+            AvailabilityContext::MobileClient,
+            AvailabilityContext::Server,
+            AvailabilityContext::ThickClient,
+            AvailabilityContext::ExternalConnection,
+            AvailabilityContext::MobileApplicationClient,
+            AvailabilityContext::MobileApplicationServer,
+            AvailabilityContext::MobileStandaloneServer,
+        ]
+    );
+    assert!(
+        array_type
+            .facts
+            .examples
+            .iter()
+            .any(|example| example.text.contains("Array.Add(\"String added\")"))
+    );
+    assert_available_since(&array_type.facts, "8.0");
 }
 
 #[test]
@@ -560,6 +681,7 @@ fn constructor_lookup_distinguishes_type_without_constructors() {
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: None,
+            facts: SectionFacts::default(),
             source: source("objects/Test.html"),
         }],
         ..PlatformContext::default()
@@ -589,6 +711,7 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
                 method_links: Vec::new(),
                 constructor_links: Vec::new(),
                 description: None,
+                facts: SectionFacts::default(),
                 source: source("objects/AliasedTest.html"),
             },
             PlatformType {
@@ -596,6 +719,7 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
                 method_links: Vec::new(),
                 constructor_links: Vec::new(),
                 description: None,
+                facts: SectionFacts::default(),
                 source: source("objects/OtherTest.html"),
             },
         ],
@@ -608,6 +732,7 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
             signatures: Vec::new(),
             return_types: Vec::new(),
             description: None,
+            facts: SectionFacts::default(),
             source: source("objects/OtherTest/methods/Ping.html"),
         }],
         constructors: vec![Constructor {
@@ -618,6 +743,7 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
             },
             signatures: Vec::new(),
             description: None,
+            facts: SectionFacts::default(),
             source: source("objects/OtherTest/ctors/New.html"),
         }],
         ..PlatformContext::default()
@@ -649,6 +775,7 @@ fn lookup_helpers_report_ambiguous_exact_matches() {
         signatures: Vec::new(),
         return_types: Vec::new(),
         description: None,
+        facts: SectionFacts::default(),
         source: source("objects/duplicate-global.html"),
     };
     context.global_methods.push(duplicate_global);
@@ -675,6 +802,7 @@ fn lookup_helpers_report_ambiguous_exact_matches() {
         usage: None,
         type_refs: Vec::new(),
         description: None,
+        facts: SectionFacts::default(),
         source: source("objects/duplicate-member.html"),
     };
     context.type_properties.push(duplicate_member);
@@ -695,6 +823,7 @@ fn lookup_helpers_report_ambiguous_exact_matches() {
         method_links: Vec::new(),
         constructor_links: Vec::new(),
         description: None,
+        facts: SectionFacts::default(),
         source: source("objects/duplicate-type.html"),
     };
     context.platform_types.push(duplicate_type);
@@ -722,6 +851,7 @@ fn lookup_helpers_report_ambiguous_exact_matches() {
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: None,
+            facts: SectionFacts::default(),
             source: source("objects/duplicate-type.html"),
         });
 
@@ -1027,6 +1157,15 @@ fn assert_parameter_type(parameters: &[Parameter], parameter_name: &str, type_na
             .any(|type_ref| type_ref.name == type_name),
         "parameter {parameter_name} must include type reference {type_name}"
     );
+}
+
+fn assert_available_since(facts: &SectionFacts, version: &str) {
+    let available_since = facts
+        .available_since
+        .as_ref()
+        .expect("available-since fact must be parsed");
+    assert_eq!(available_since.version.as_deref(), Some(version));
+    assert!(available_since.text.contains(version));
 }
 
 fn assert_clean_text(text: &str) {
