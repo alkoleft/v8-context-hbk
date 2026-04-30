@@ -12,6 +12,9 @@ Current status:
   JSON.
 - Variant C was implemented in T17. It reduced the `shcntx_ru.hbk` debug export peak to
   `386304 KiB` while preserving deterministic canonical JSON output and the in-memory lookup model.
+- The first Variant E slice was implemented in T19. Byte-only entity reads removed the per-byte
+  `source_offsets` allocation from ordinary `FileStorage` and entity-body reads while keeping
+  descriptor offsets available for diagnostics.
 
 ## Selection Rules
 
@@ -153,5 +156,6 @@ T16 memory attribution selected Variant C from measured evidence:
 - container/FileStorage opening still has a measured temporary spike, but Variant E alone would not
   reduce the current `shcntx_ru.hbk` extraction peak.
 
-Variant E remains a later candidate if the open-time spike or retained `FileStorage` ownership
-remains limiting after Variant C.
+Variant E remains a later candidate only if new measurements show retained `FileStorage` ownership
+or ZIP access costs dominate after the T19 byte-only path. T19 did not justify a broader seekable
+direct `FileStorage` view.

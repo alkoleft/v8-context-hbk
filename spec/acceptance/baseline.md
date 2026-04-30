@@ -16,6 +16,10 @@ directories are service data unless promoted here.
   `20.46s / 386304 KiB` while preserving export shape, record counts and deterministic JSON output.
   `shcntx_root.hbk` measured `18.15s / 324096 KiB`, still effectively bounded by the lower-level
   open-time peak.
+- T19 byte-only container entity reads reduced the remaining `HbkBook::open` VmHWM from
+  `383232 KiB` to `131328 KiB` for `shcntx_ru.hbk` and from `321408 KiB` to `119168 KiB` for
+  `shcntx_root.hbk`. Full `syntax-helper --output` remained shape/count stable and measured
+  `21.19s / 168692 KiB` for `shcntx_ru.hbk` and `16.11s / 144500 KiB` for `shcntx_root.hbk`.
 
 ## Standard Verification Gates
 
@@ -191,6 +195,53 @@ The canonical export shape from FR-EXPORT-001 is preserved: consumer record-fami
 expose HBK navigation or per-record provenance, `global-contexts.json` is not produced, and
 `diagnostics.json` keeps parser source context. Two independent `shcntx_ru.hbk` exports were
 compared byte-for-byte across all JSON files to verify deterministic record and diagnostic order.
+
+## T19 Durable Conclusions
+
+The first Variant E byte-only entity read slice was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk`
+
+All source books were available and no fixture-backed T19 command was skipped.
+
+Open-only `HbkBook::open` probe results:
+
+| Source | Current RSS before, KiB | Current RSS after, KiB | VmHWM before, KiB | VmHWM after, KiB |
+| --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | 110868 | 108332 | 383232 | 131328 |
+| `shcntx_root.hbk` | 98412 | 95888 | 321408 | 119168 |
+
+Full debug CLI results:
+
+| Source | Phase | Exit | Elapsed, s | Peak RSS, KiB | Export bytes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | before | 0 | 28.40 | 386048 | 21946830 |
+| `shcntx_ru.hbk` | after | 0 | 21.19 | 168692 | 21946830 |
+| `shcntx_root.hbk` | before | 0 | 32.36 | 324352 | 12265898 |
+| `shcntx_root.hbk` | after | 0 | 16.11 | 144500 | 12265898 |
+
+Each post-T19 source book still produced:
+
+- 1 global context
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 `UNKNOWN_PAGE_CLASS` diagnostics
+
+Small-book smoke passed for `inspect` and `toc --format json` on `fmtdui_root.hbk` and
+`fmtdui_ru.hbk`; TOC output parsed as JSON and inspect output still included `PackBlock`,
+`FileStorage` and `Book`.
+
+The byte-only path removed the majority of the open-time high-water mark, so acceptance does not
+require a follow-up seekable direct `FileStorage` view from T19.
 
 ## First Delivery Success Metrics
 

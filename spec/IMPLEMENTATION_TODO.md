@@ -8,9 +8,8 @@ Completed task history: [archive/completed-tasks-t0-t12.md](archive/completed-ta
 
 Current status: T18 is the first active unchecked task. T17 implemented Variant C, streaming
 extraction into record-family sinks for the export command path, while preserving the in-memory
-lookup model. T18 records the new Syntax Assistant query CLI requirement and follows T17 unless the
-ledger is explicitly reprioritized. T19 records the post-T17 lower-level HBK open-time memory task
-and follows T18 unless memory footprint is explicitly reprioritized.
+lookup model. T19 was explicitly reprioritized ahead of T18 and completed the post-T17 lower-level
+HBK open-time memory slice. T18 remains the next active query-CLI task.
 
 ## Loop Rule
 
@@ -364,7 +363,7 @@ Verification:
 - NFR-QUERY-001 measurement notes for exact lookup, keyword search and relationship search
 - `git diff --check`
 
-### [ ] T19. Reduce HBK open-time FileStorage memory spike
+### [x] T19. Reduce HBK open-time FileStorage memory spike
 
 Depends on: T17. Scheduled after T18 unless memory footprint is explicitly reprioritized.
 
@@ -414,3 +413,30 @@ Verification:
 - Small-book smoke for `inspect` and `toc --format json` on `fmtdui_root.hbk` / `fmtdui_ru.hbk`
   when those fixtures exist
 - `git diff --check`
+
+Completion notes:
+
+- Implemented the narrow Variant E slice in `hbk-container`: ordinary entity-body reads now use a
+  byte-only block-content path, while descriptor parsing still uses the offset-aware path needed for
+  descriptor diagnostics.
+- No CLI contract, Syntax Helper export shape or deterministic record order changed.
+- Raw command outputs, generated exports and the temporary open probe were written under
+  `target/t19-measurements/` as service data.
+- Both `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+  `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` existed and were run; no T19 fixture-backed command
+  was skipped.
+- `HbkBook::open` probe results:
+  - `shcntx_ru.hbk`: current RSS `110868 -> 108332 KiB`, VmHWM `383232 -> 131328 KiB`.
+  - `shcntx_root.hbk`: current RSS `98412 -> 95888 KiB`, VmHWM `321408 -> 119168 KiB`.
+- T13-style full `syntax-helper --output` results:
+  - `shcntx_ru.hbk`: exit `0`, elapsed `28.40s -> 21.19s`, peak RSS
+    `386048 -> 168692 KiB`, export bytes `21946830 -> 21946830`.
+  - `shcntx_root.hbk`: exit `0`, elapsed `32.36s -> 16.11s`, peak RSS
+    `324352 -> 144500 KiB`, export bytes `12265898 -> 12265898`.
+- Each post-T19 source book still produced 1 global context, 500 global methods, 101 global
+  properties, 2533 platform types, 6702 type methods, 10732 type properties, 445 constructors,
+  713 enums, 3110 enum values and 703 diagnostics.
+- Small-book smoke passed for `inspect` and `toc --format json` on `fmtdui_root.hbk` and
+  `fmtdui_ru.hbk`.
+- The byte-only path removed the majority of the remaining open-time high-water mark, so no
+  follow-up task for a seekable direct `FileStorage` view is added from T19.

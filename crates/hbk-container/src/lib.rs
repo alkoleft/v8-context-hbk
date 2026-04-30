@@ -257,7 +257,11 @@ impl HbkContainer {
             let descriptor_payload_offset = index * FILE_DESCRIPTOR_SIZE;
             let descriptor_offset = descriptors_block
                 .source_offset(descriptor_payload_offset)
-                .unwrap_or(descriptor_payload_offset);
+                .ok_or_else(|| ContainerError::InvalidDescriptor {
+                    path: path.clone(),
+                    offset: descriptor_payload_offset,
+                    message: "descriptor source offset is unavailable".to_string(),
+                })?;
             let header_offset = read_u32_le(chunk, 0) as usize;
             let body_offset_raw = read_u32_le(chunk, 4);
             let reserved = read_u32_le(chunk, 8);
@@ -355,19 +359,25 @@ fn read_entity_name(
 }
 
 fn read_block_content(path: &Path, bytes: &[u8], offset: usize) -> Result<Vec<u8>, ContainerError> {
-    Ok(read_block_content_with_offsets(path, bytes, offset, Some(bytes.len()))?.bytes)
+    Ok(read_block_content_impl(path, bytes, offset, Some(bytes.len()), SourceOffsets::Omit)?.bytes)
 }
 
 #[derive(Debug)]
 struct BlockContent {
     bytes: Vec<u8>,
-    source_offsets: Vec<usize>,
+    source_offsets: Option<Vec<usize>>,
 }
 
 impl BlockContent {
     fn source_offset(&self, payload_offset: usize) -> Option<usize> {
-        self.source_offsets.get(payload_offset).copied()
+        self.source_offsets.as_ref()?.get(payload_offset).copied()
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum SourceOffsets {
+    Collect,
+    Omit,
 }
 
 fn read_block_content_with_offsets(
@@ -375,6 +385,22 @@ fn read_block_content_with_offsets(
     bytes: &[u8],
     offset: usize,
     max_payload_size: Option<usize>,
+) -> Result<BlockContent, ContainerError> {
+    read_block_content_impl(
+        path,
+        bytes,
+        offset,
+        max_payload_size,
+        SourceOffsets::Collect,
+    )
+}
+
+fn read_block_content_impl(
+    path: &Path,
+    bytes: &[u8],
+    offset: usize,
+    max_payload_size: Option<usize>,
+    source_offset_mode: SourceOffsets,
 ) -> Result<BlockContent, ContainerError> {
     let first_header = read_block_header(path, bytes, offset)?;
     if max_payload_size.is_some_and(|max| first_header.payload_size > max) {
@@ -390,7 +416,10 @@ fn read_block_content_with_offsets(
     }
 
     let mut output = Vec::with_capacity(first_header.payload_size);
-    let mut source_offsets = Vec::with_capacity(first_header.payload_size);
+    let mut source_offsets = match source_offset_mode {
+        SourceOffsets::Collect => Some(Vec::with_capacity(first_header.payload_size)),
+        SourceOffsets::Omit => None,
+    };
     let mut written = 0;
     let mut header = first_header;
     let mut visited_offsets = BTreeSet::new();
@@ -415,7 +444,9 @@ fn read_block_content_with_offsets(
             });
         }
         output.extend_from_slice(&bytes[body_offset..body_offset + chunk_len]);
-        source_offsets.extend(body_offset..body_offset + chunk_len);
+        if let Some(source_offsets) = &mut source_offsets {
+            source_offsets.extend(body_offset..body_offset + chunk_len);
+        }
         written += chunk_len;
 
         match header.next_block_offset {
@@ -607,13 +638,22 @@ mod tests {
 
     #[test]
     fn invalid_descriptor_splitter_is_typed_error() {
-        let mut bytes = fixture_container(vec![("Book", Some(b"metadata".to_vec()))]);
-        let descriptor_reserved_offset = CONTAINER_HEADER_SIZE + BLOCK_HEADER_SIZE + 8;
+        let mut bytes = fixture_container(vec![
+            ("Book", Some(b"metadata".to_vec())),
+            ("FileStorage", Some(b"storage".to_vec())),
+        ]);
+        let descriptor_index = 1;
+        let descriptor_reserved_offset =
+            CONTAINER_HEADER_SIZE + BLOCK_HEADER_SIZE + descriptor_index * FILE_DESCRIPTOR_SIZE + 8;
         bytes[descriptor_reserved_offset..descriptor_reserved_offset + 4]
             .copy_from_slice(&0_u32.to_le_bytes());
 
         let error = HbkContainer::from_bytes(PathBuf::from("fixture.hbk"), bytes).unwrap_err();
-        assert!(matches!(error, ContainerError::InvalidDescriptor { .. }));
+        assert!(matches!(
+            error,
+            ContainerError::InvalidDescriptor { offset, .. }
+                if offset == CONTAINER_HEADER_SIZE + BLOCK_HEADER_SIZE + descriptor_index * FILE_DESCRIPTOR_SIZE
+        ));
     }
 
     #[test]

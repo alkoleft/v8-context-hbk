@@ -317,6 +317,63 @@ Compared with T15:
 Variant E remains the next candidate only if the lower-level open-time `FileStorage`/container copy
 spike is worth addressing after query-CLI priorities are considered.
 
+## Post-T19 Update
+
+T19 implemented the first lower-level Variant E slice before T18 by explicit memory-footprint
+reprioritization. Ordinary `HbkContainer::read_entity` reads now use a byte-only block-content path;
+the offset-aware path remains for descriptor parsing and diagnostics.
+
+Raw command outputs, generated exports and the temporary open probe were written under
+`target/t19-measurements/`. That directory is service data and is not a durable source of truth.
+
+The T19 pass used the built debug CLI and a temporary open probe under GNU `time`:
+
+```bash
+cargo build -p v8-context-hbk-cli --bin v8-context-hbk
+cargo build --manifest-path target/t19-measurements/probe/Cargo.toml
+/usr/bin/time -o target/t19-measurements/logs/before-open-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t19-measurements/probe/target/debug/t19-open-probe /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t19-measurements/logs/before-open-shcntx-root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t19-measurements/probe/target/debug/t19-open-probe /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk
+/usr/bin/time -o target/t19-measurements/logs/after-open-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t19-measurements/probe/target/debug/t19-open-probe /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t19-measurements/logs/after-open-shcntx-root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t19-measurements/probe/target/debug/t19-open-probe /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk
+```
+
+The full export measurements used the same T13-style debug-binary command:
+
+```bash
+/usr/bin/time -o target/t19-measurements/logs/before-syntax-helper-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t19-measurements/exports/before/shcntx-ru
+/usr/bin/time -o target/t19-measurements/logs/before-syntax-helper-shcntx-root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/t19-measurements/exports/before/shcntx-root
+/usr/bin/time -o target/t19-measurements/logs/after-syntax-helper-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t19-measurements/exports/after/shcntx-ru
+/usr/bin/time -o target/t19-measurements/logs/after-syntax-helper-shcntx-root.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/t19-measurements/exports/after/shcntx-root
+```
+
+No fixture-backed T19 command was skipped on this host.
+
+Open-only probe results:
+
+| Source | Phase | Exit | Elapsed, s | Current RSS, KiB | VmHWM / peak RSS, KiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | before | 0 | 7.48 | 110868 | 383232 |
+| `shcntx_ru.hbk` | after | 0 | 10.27 | 108332 | 131328 |
+| `shcntx_root.hbk` | before | 0 | 7.10 | 98412 | 321408 |
+| `shcntx_root.hbk` | after | 0 | 6.50 | 95888 | 119168 |
+
+T13-style full `syntax-helper --output` results:
+
+| Source | Phase | Exit | Elapsed, s | Peak RSS, KiB | Export bytes | Records and diagnostics |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `shcntx_ru.hbk` | before | 0 | 28.40 | 386048 | 21946830 | 24836 records, 703 diagnostics |
+| `shcntx_ru.hbk` | after | 0 | 21.19 | 168692 | 21946830 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` | before | 0 | 32.36 | 324352 | 12265898 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` | after | 0 | 16.11 | 144500 | 12265898 | 24836 records, 703 diagnostics |
+
+The post-T19 record-family counts remained unchanged for each source book: 1 global context, 500
+global methods, 101 global properties, 2533 platform types, 6702 type methods, 10732 type
+properties, 445 constructors, 713 enums, 3110 enum values and 703 diagnostics. Export byte sizes
+also stayed unchanged, confirming that the change did not alter FR-EXPORT-001 output shape.
+
+The byte-only path removed the majority of the remaining open-time high-water mark. T19 therefore
+does not add a follow-up task for a seekable direct `FileStorage` view over mmap/chained blocks.
+
 ## Variant Evaluation
 
 Variant A, lean consumer export and streaming JSON writer, remains the first slice.

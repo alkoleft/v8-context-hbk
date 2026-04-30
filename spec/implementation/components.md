@@ -54,6 +54,10 @@ Expected public concepts:
 
 Owns FR-HBK-001.
 
+Implementation note: ordinary entity byte reads use a byte-only block path. Offset-aware block reads
+remain internal to descriptor parsing and validation/diagnostic paths that genuinely need source
+offsets.
+
 ### hbk-book
 
 Expected public concepts:
