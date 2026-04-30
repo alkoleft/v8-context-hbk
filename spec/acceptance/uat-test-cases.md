@@ -319,6 +319,98 @@ Expected result:
 - The command returns within the NFR-QUERY-001 provisional target when measured on the target
   workstation.
 
+## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
+
+Related use case: UC-SH-001.
+
+Related requirements: FR-SH-002, FR-EXPORT-001, NFR-DIAG-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` exists.
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shcntx-ru target/uat/shcntx-en
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
+```
+
+Expected result:
+
+- `XMLСтрока` / `XMLString` has non-empty return types in both locales.
+- `Массив.Добавить` / `Array.Add` has a parameter type reference in both locales.
+- `ОткрытьФорму` / `OpenForm` keeps parameter type references in both locales.
+- Descriptions do not contain raw section labels such as `Доступность:`, `Availability:`,
+  `Пример:`, `Example:`, `См. также:`, `See also:`, `Использование в версии:` or
+  `Available since:`.
+- Parameter descriptions and signature text do not contain raw `Returned value:`, `Return value:`,
+  `Возвращаемое значение:`, `Параметры:` or `Parameters:` section labels.
+
+Cleanup:
+
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` are service data and may be deleted after the
+  run.
+
+## UAT-SH-008: Structured Availability, Examples and See-Also Facts
+
+Related use case: UC-SH-001.
+
+Related requirements: FR-SH-002, FR-EXPORT-001.
+
+Preconditions:
+
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` exist from UAT-SH-007.
+
+Steps:
+
+```bash
+jq -e '.records[] | select(.name.primary == "XMLСтрока" or .name.primary == "XMLString")' target/uat/shcntx-ru/global-methods.json target/uat/shcntx-en/global-methods.json
+jq -e '.records[] | select(.name.primary == "Массив" or .name.primary == "Array")' target/uat/shcntx-ru/platform-types.json target/uat/shcntx-en/platform-types.json
+```
+
+Expected result:
+
+- The selected method/type records expose structured availability/application-context facts.
+- Availability includes normalized client/server modes instead of only localized free text embedded
+  in `description`.
+- Syntax examples are preserved as dedicated example/code blocks when the source page contains an
+  example.
+- See-also links or relationships are preserved separately from `description` when the source page
+  contains them.
+- Available-since/version information is preserved separately from `description` when the source
+  page contains it.
+
+## UAT-SH-009: Structured Syntax Variants and Overloads
+
+Related use case: UC-SH-001.
+
+Related requirements: FR-SH-002, FR-EXPORT-001.
+
+Preconditions:
+
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` exist from UAT-SH-007.
+
+Steps:
+
+```bash
+jq -e '.records[] | select(.owner.primary == "ДокументDOM" and .name.primary == "СоздатьРазыменовательПИ")' target/uat/shcntx-ru/type-methods.json
+jq -e '.records[] | select(.owner.primary == "DOMDocument" and .name.primary == "CreateNSResolver")' target/uat/shcntx-en/type-methods.json
+```
+
+Expected result:
+
+- The method exposes each source syntax variant as a structured overload/variant.
+- Signature text contains only callable syntax, not raw labels or prose such as
+  `Описание варианта метода`, `Description of method variant`, `Вариант синтаксиса`,
+  `Syntax variant` or `Syntax:`.
+- Variant titles and variant descriptions are preserved as variant metadata.
+- Parameters belong to the correct variant and do not absorb following variant descriptions.
+- Return type extraction works for this page in both locales.
+
 ## UAT-ERR-001: Missing File Produces Readable CLI Error
 
 Related use cases: UC-HBK-001, UC-HBK-002, UC-SH-001.

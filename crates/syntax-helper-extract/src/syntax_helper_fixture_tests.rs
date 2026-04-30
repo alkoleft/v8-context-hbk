@@ -8,6 +8,7 @@ const MANIFEST: &str = include_str!("../../../tests/fixtures/syntax-helper/manif
 struct ManifestEntry<'a> {
     parser_kind: &'a str,
     source_hbk: &'a str,
+    html_path: &'a str,
     page_title: &'a str,
     fixture_path: &'a str,
     reason: &'a str,
@@ -61,6 +62,54 @@ fn syntax_assistant_fixture_manifest_covers_required_parser_kinds() {
 }
 
 #[test]
+fn syntax_assistant_fixture_manifest_covers_export_audit_regressions() {
+    let entries = parse_manifest();
+    for required in [
+        "tests/fixtures/syntax-helper/global_method_xmlstring_root.html",
+        "tests/fixtures/syntax-helper/global_method_openform_ru.html",
+        "tests/fixtures/syntax-helper/global_method_openform_root.html",
+        "tests/fixtures/syntax-helper/object_method_array_add_root.html",
+        "tests/fixtures/syntax-helper/object_array_root.html",
+        "tests/fixtures/syntax-helper/object_method_domdocument_create_ns_resolver_ru.html",
+        "tests/fixtures/syntax-helper/object_method_domdocument_create_ns_resolver_root.html",
+    ] {
+        assert!(
+            entries.iter().any(|entry| entry.fixture_path == required),
+            "{required} must be registered as a Syntax Assistant audit fixture"
+        );
+    }
+    assert!(
+        entries.iter().any(|entry| {
+            entry.source_hbk.ends_with("shcntx_root.hbk")
+                && entry.html_path
+                    == "objects/Global context/methods/catalog1566/XMLString1567.html"
+                && entry.reason.contains("T25")
+                && entry.reason.contains("T26")
+        }),
+        "root XMLString fixture must pin the T25/T26 locale and section-boundary regression"
+    );
+    assert!(
+        entries.iter().any(|entry| {
+            entry.source_hbk.ends_with("shcntx_root.hbk")
+                && entry.html_path
+                    == "objects/catalog63/catalog1055/DOMDocument/methods/CreateNSResolver2613.html"
+                && entry.reason.contains("T27")
+        }),
+        "root CreateNSResolver fixture must pin the T27 overload regression"
+    );
+    assert!(
+        entries.iter().any(|entry| {
+            entry.source_hbk.ends_with("shcntx_root.hbk")
+                && entry.html_path == "objects/Global context/methods/catalog27/OpenForm3765.html"
+                && entry.reason.contains("UAT-SH-007")
+                && entry.reason.contains("T25")
+                && entry.reason.contains("T27")
+        }),
+        "root OpenForm fixture must pin the UAT-SH-007 type-reference and variant regression"
+    );
+}
+
+#[test]
 fn syntax_assistant_fixture_manifest_points_to_real_html_fragments() {
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for entry in parse_manifest() {
@@ -101,6 +150,7 @@ fn parse_manifest() -> Vec<ManifestEntry<'static>> {
             ManifestEntry {
                 parser_kind: fields[0],
                 source_hbk: fields[1],
+                html_path: fields[2],
                 page_title: fields[3],
                 fixture_path: fields[4],
                 reason: fields[5],

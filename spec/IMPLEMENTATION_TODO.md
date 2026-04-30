@@ -16,7 +16,8 @@ must be treated as pre-T22 evidence for the `HbkBook::open` path. T23 was re-ope
 direction as a production follow-up to the measurement-only conclusion and completed the
 path-backed `FileStorageReader` lifetime change. T24 was explicitly reprioritized by user request
 before T18 and completed targeted parser, lookup and lean streaming-export optimizations. T18
-remains the next active query-CLI task.
+remains the next active query-CLI task. T25-T28 record export-completeness gaps found by the
+2026-04-30 audit across Russian and root/English Syntax Assistant exports.
 
 ## Loop Rule
 
@@ -926,3 +927,191 @@ Completion notes:
   -p syntax-helper-model -p syntax-helper-extract -p hbk-export --all-targets` (exit 0 with
   existing `hbk-docs` `result_large_err` warnings), final T24 measurements, deterministic export
   comparisons and `git diff --check`.
+
+### [ ] T25. Fix locale-aware Syntax Assistant section parsing and type references
+
+Depends on: T24. Scheduled after T18 unless Syntax Assistant export completeness is explicitly
+reprioritized.
+
+Spec refs:
+
+- FR-SH-002
+- FR-EXPORT-001
+- UAT-SH-007
+- `spec/source-evidence.md`, Syntax Assistant Export Completeness Audit
+- `spec/implementation/components.md`
+
+Scope:
+
+- Fix root/English parsing parity for `Type:` and `Returned value:` sections so return types,
+  property type references and parameter type references are extracted from `shcntx_root.hbk`.
+- Extend section boundary detection for both locales so descriptions, signatures and parameter
+  descriptions stop swallowing later sections:
+  - `Доступность:` / `Availability:`;
+  - `Пример:` / `Example:`;
+  - `См. также:` / `See also:`;
+  - `Использование в версии:` / `Available since:`;
+  - overload variant labels.
+- Keep consumer record files free of HBK provenance and duplicate navigation-link catalogs.
+- Do not introduce a generic HTML pipeline, caches, parallelism, query CLI changes or downstream
+  compatibility DTOs in this task.
+- If removing swallowed sections would otherwise drop facts needed by T26, preserve them in an
+  internal section representation or implement the smallest shared extraction helper required by
+  T26.
+
+Expected artifacts:
+
+- Parser changes and fixture tests covering representative Russian and root/English pages.
+- Export regression checks showing `XMLСтрока` / `XMLString`, `Массив.Добавить` / `Array.Add` and
+  `ОткрытьФорму` / `OpenForm` retain type facts in both locales.
+- Completion notes with before/after counts for empty return/type reference arrays by
+  record-family and locale.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- UAT-SH-007
+- Deterministic export comparison for at least one Syntax Assistant book
+- `git diff --check`
+
+### [ ] T26. Extract structured availability, examples, see-also and version facts
+
+Depends on: T25.
+
+Spec refs:
+
+- FR-SH-002
+- FR-EXPORT-001
+- UAT-SH-008
+- `spec/source-evidence.md`, Syntax Assistant Export Completeness Audit
+- `spec/implementation/components.md`
+
+Scope:
+
+- Add typed domain/export representation for non-description Syntax Assistant facts that are
+  currently flattened into `description`:
+  - availability/application contexts;
+  - examples/code blocks;
+  - see-also relationships;
+  - available-since/version text.
+- Normalize availability contexts to stable values while preserving localized display text only
+  where needed for diagnostics or examples.
+- Cover at least global methods, global properties, platform types, type methods, type properties,
+  constructors, enums and enum values when the source page contains those sections.
+- Keep parser provenance in diagnostics and keep consumer record files free of HBK source paths,
+  TOC paths and page titles.
+- Update export schema version and README examples only if the consumer JSON shape changes.
+- Do not solve query indexing, semantic search, runtime 1C introspection or broad relationship graph
+  design in this task.
+
+Expected artifacts:
+
+- Model/export changes for structured section facts.
+- Fixture tests and export-level assertions proving examples and availability are no longer embedded
+  only in `description`.
+- Updated FR-EXPORT-001 details if field names or schema version change during implementation.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- UAT-SH-008
+- Deterministic export comparison for at least one Syntax Assistant book after accepting the new
+  schema shape
+- `git diff --check`
+
+### [ ] T27. Parse overload and syntax-variant pages structurally
+
+Depends on: T25. Prefer running after T26 if variant descriptions or examples need the structured
+section model introduced there.
+
+Spec refs:
+
+- FR-SH-002
+- FR-EXPORT-001
+- UAT-SH-009
+- `spec/source-evidence.md`, Syntax Assistant Export Completeness Audit
+
+Scope:
+
+- Represent Syntax Assistant overloads/syntax variants without mixing labels or prose into
+  `Signature.text`.
+- Preserve variant title and variant description as metadata when source HTML contains
+  `Вариант синтаксиса:` / `Syntax variant:` and `Описание варианта метода:` /
+  `Description of method variant:`.
+- Attach parameters to the correct variant instead of letting parameter descriptions absorb later
+  variant text.
+- Preserve return types for variant-heavy pages in both Russian and root/English exports.
+- Cover `ДокументDOM.СоздатьРазыменовательПИ` / `DOMDocument.CreateNSResolver` as a regression
+  fixture, plus at least one current English/root false multi-signature page where returned-value
+  prose is being parsed as signatures.
+- Do not change record-family counts or query CLI behavior unless the accepted export schema for
+  overloads requires it.
+
+Expected artifacts:
+
+- Parser/model/export changes for structured overloads or an ADR/spec update if the current
+  `Signature` model must be replaced.
+- Fixture tests for representative Russian and root/English overload pages.
+- Completion notes with before/after counts for signatures containing raw section labels.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-007
+- UAT-SH-009
+- Deterministic export comparison for at least one Syntax Assistant book after accepting the new
+  schema shape
+- `git diff --check`
+
+### [ ] T28. Classify remaining Syntax Assistant diagnostics and extraction completeness
+
+Depends on: T25.
+
+Spec refs:
+
+- FR-SH-001
+- FR-SH-002
+- NFR-DIAG-001
+- `spec/source-evidence.md`, Syntax Assistant Export Completeness Audit
+- `spec/acceptance/baseline.md`
+
+Scope:
+
+- Review the 703 `UNKNOWN_PAGE_CLASS` diagnostics in both locales and classify each source family as
+  in scope, explicitly out of scope or follow-up scope.
+- Pay special attention to:
+  - direct `objects/Global context/*.html` pages that look like global context methods;
+  - global-context event pages;
+  - table field and parameter pages.
+- Add extraction support or explicit diagnostics only for source families that FR-SH-002 makes
+  in-scope. Do not silently drop unclassified pages.
+- Update requirements/UAT if global events, table fields or other currently diagnostic families are
+  promoted into scope.
+- Preserve deterministic diagnostics and source provenance.
+
+Expected artifacts:
+
+- A checked-in completeness note or source-evidence update with diagnostic family counts and the
+  in-scope/out-of-scope decision.
+- Follow-up implementation tasks for any promoted source family that is too large to implement
+  safely in this task.
+- Updated acceptance baseline when diagnostic counts or meanings change.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- Export diagnostic summary for `shcntx_ru.hbk` and `shcntx_root.hbk`
+- `git diff --check`

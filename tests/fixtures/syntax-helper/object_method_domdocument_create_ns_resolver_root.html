@@ -1,0 +1,45 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="Content-Language" content="ru"></head><body>
+<h1 class="V8SH_pagetitle">DOMDocument.CreateNSResolver</h1>
+<p class="V8SH_title">DOMDocument</p>
+<p class="V8SH_heading">CreateNSResolver</p>
+<div class="__SINCE_SHOW_STYLE__"><p class="not_used">Available since version 8.1.</p></div>
+<p class="V8SH_chapter">Syntax variant: On the basis of DOM document</p>
+<p class="V8SH_chapter">Syntax:</p>CreateNSResolver()
+<p class="V8SH_chapter">Description of method variant:</p>
+Allowance is given for all namespaces defined in the document. If namespace prefixes match, the earliest defined namespace is used.
+<p class="V8SH_chapter">Syntax variant: On the basis of DOM node</p>
+<p class="V8SH_chapter">Syntax:</p>CreateNSResolver(&lt;ContextNode&gt;)
+<p class="V8SH_chapter">Parameters:</p>
+<div class="V8SH_rubric"><p style="margin-top: 2px; margin-bottom: 1px">&lt;ContextNode&gt; (required)</p></div>
+Type: <a href="v8help://SyntaxHelperContext/objects/catalog63/catalog1055/DOMAttribute.html">DOMAttribute</a>,
+<a href="v8help://SyntaxHelperContext/objects/catalog63/catalog1055/DOMDocument.html">DOMDocument</a>,
+<a href="v8help://SyntaxHelperContext/objects/catalog63/catalog1055/DOMElement.html">DOMElement</a>.<br>
+DOM document node to be used as context for allowing namespaces.
+<p class="V8SH_chapter">Description of method variant:</p>
+Namespaces are allowed in the context of this node, i.e. namespaces of this node and its parent nodes are used for allowance.
+<p class="V8SH_chapter">Syntax variant: On the basis of a Map</p>
+<p class="V8SH_chapter">Syntax:</p>CreateNSResolver(&lt;Map&gt;)
+<p class="V8SH_chapter">Parameters:</p>
+<div class="V8SH_rubric"><p style="margin-top: 2px; margin-bottom: 1px">&lt;Map&gt; (required)</p></div>
+Type: <a href="v8help://SyntaxHelperContext/objects/catalog234/Map.html">Map</a>.<br>
+Map key is the namespace prefix, and the value is namespace URI.
+<p class="V8SH_chapter">Description of method variant:</p>
+Creates an adapter for allowing namespaces on the basis of <a href="v8help://SyntaxHelperContext/objects/catalog234/Map.html">Map</a>.
+<p class="V8SH_chapter">Syntax variant: On the basis of specific prefix and namespace URI</p>
+<p class="V8SH_chapter">Syntax:</p>CreateNSResolver(&lt;Prefix&gt;, &lt;NamespaceURI&gt;)
+<p class="V8SH_chapter">Parameters:</p>
+<div class="V8SH_rubric"><p style="margin-top: 2px; margin-bottom: 1px">&lt;Prefix&gt; (required)</p></div>
+Type: <a href="v8help://SyntaxHelperLanguage/def_String">String</a>.<br>
+Prefix.
+<div class="V8SH_rubric"><p style="margin-top: 2px; margin-bottom: 1px">&lt;NamespaceURI&gt; (required)</p></div>
+Type: <a href="v8help://SyntaxHelperLanguage/def_String">String</a>.<br>
+Namespace URI.
+<p class="V8SH_chapter">Returned value:</p>
+Type: <a href="v8help://SyntaxHelperContext/objects/catalog63/catalog1055/DOMNamespaceResolver.html">DOMNamespaceResolver</a>.<br>
+<p class="V8SH_chapter">Description:</p>
+<p>Creates an adapter for allowing namespaces.</p>
+<p class="V8SH_chapter">Availability: </p>
+<p>Server, thick client, external connection, mobile application (server), mobile standalone server.</p>
+<p class="V8SH_chapter">Available since:</p>
+<p class="V8SH_versionInfo">Available since version 8.1.</p>
+</body></html>

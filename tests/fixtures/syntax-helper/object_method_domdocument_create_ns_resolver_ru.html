@@ -1,0 +1,45 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="Content-Language" content="ru"></head><body>
+<h1 class="V8SH_pagetitle">ДокументDOM.СоздатьРазыменовательПИ (DOMDocument.CreateNSResolver)</h1>
+<p class="V8SH_title">ДокументDOM (DOMDocument)</p>
+<p class="V8SH_heading">СоздатьРазыменовательПИ (CreateNSResolver)</p>
+<div class="__SINCE_SHOW_STYLE__"><p class="not_used">Доступен, начиная с версии 8.1.</p></div>
+<p class="V8SH_chapter">Вариант синтаксиса: На основе документа DOM</p>
+<p class="V8SH_chapter">Синтаксис:</p>СоздатьРазыменовательПИ()
+<p class="V8SH_chapter">Описание варианта метода:</p>
+Разрешение пространств имен выполняется по всем пространствам имен, определенным в документе. В случае совпадения префиксов пространств имен используется то пространство имен, которое определено раньше.
+<p class="V8SH_chapter">Вариант синтаксиса: На основании узла DOM</p>
+<p class="V8SH_chapter">Синтаксис:</p>СоздатьРазыменовательПИ(&lt;УзелКонтекста&gt;)
+<p class="V8SH_chapter">Параметры:</p>
+<div class="V8SH_rubric"><p style="margin-top: 2px; margin-bottom: 1px">&lt;УзелКонтекста&gt; (обязательный)</p></div>
+Тип: <a href="v8help://SyntaxHelperContext/objects/catalog63/catalog1055/DOMAttribute.html">АтрибутDOM</a>,
+<a href="v8help://SyntaxHelperContext/objects/catalog63/catalog1055/DOMDocument.html">ДокументDOM</a>,
+<a href="v8help://SyntaxHelperContext/objects/catalog63/catalog1055/DOMElement.html">ЭлементDOM</a>.<br>
+Узел документа DOM, который будет использоваться в качестве контекста, для разрешения пространств имен.
+<p class="V8SH_chapter">Описание варианта метода:</p>
+Разрешение пространств имен выполняется в контексте данного узла, т.е. в разрешении используются пространства имен данного узла и его родительских узлов.
+<p class="V8SH_chapter">Вариант синтаксиса: На основании Соответствия</p>
+<p class="V8SH_chapter">Синтаксис:</p>СоздатьРазыменовательПИ(&lt;Соответствие&gt;)
+<p class="V8SH_chapter">Параметры:</p>
+<div class="V8SH_rubric"><p style="margin-top: 2px; margin-bottom: 1px">&lt;Соответствие&gt; (обязательный)</p></div>
+Тип: <a href="v8help://SyntaxHelperContext/objects/catalog234/Map.html">Соответствие</a>.<br>
+Ключом соответствия выступает префикс пространства имен, а значением - URI пространства имен.
+<p class="V8SH_chapter">Описание варианта метода:</p>
+Создает адаптер для разрешения пространств имен на основании <a href="v8help://SyntaxHelperContext/objects/catalog234/Map.html">Соответствие</a>.
+<p class="V8SH_chapter">Вариант синтаксиса: На основании конкретного префикса и URI пространства имен</p>
+<p class="V8SH_chapter">Синтаксис:</p>СоздатьРазыменовательПИ(&lt;Префикс&gt;, &lt;URIПространстваИмен&gt;)
+<p class="V8SH_chapter">Параметры:</p>
+<div class="V8SH_rubric"><p style="margin-top: 2px; margin-bottom: 1px">&lt;Префикс&gt; (обязательный)</p></div>
+Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>.<br>
+Префикс.
+<div class="V8SH_rubric"><p style="margin-top: 2px; margin-bottom: 1px">&lt;URIПространстваИмен&gt; (обязательный)</p></div>
+Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>.<br>
+URI пространства имен.
+<p class="V8SH_chapter">Возвращаемое значение:</p>
+Тип: <a href="v8help://SyntaxHelperContext/objects/catalog63/catalog1055/DOMNamespaceResolver.html">РазыменовательПространствИменDOM</a>.<br>
+<p class="V8SH_chapter">Описание:</p>
+<p>Создает адаптер для разрешения пространств имен.</p>
+<p class="V8SH_chapter">Доступность: </p>
+<p>Сервер, толстый клиент, внешнее соединение, мобильное приложение (сервер), мобильный автономный сервер.</p>
+<p class="V8SH_chapter">Использование в версии:</p>
+<p class="V8SH_versionInfo">Доступен, начиная с версии 8.1.</p>
+</body></html>

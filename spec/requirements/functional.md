@@ -112,17 +112,34 @@ The system must extract:
 - signatures, parameters, required flags and return types when present
 - localized names/aliases when present
 - normalized descriptions
+- structured availability/application contexts when present, such as thin client, web client,
+  mobile client, server, thick client, external connection and mobile application modes
+- syntax examples when present, preserving them separately from descriptions
+- "see also" relationships when present, preserving them separately from descriptions
+- availability/version-introduced text when present
 - source provenance for every extracted item
 
 Multiple signatures are overloads. If real pages expose multiple return types for one overload while
 the model assumes one return type per overload, report it as a parser/data-contract gap instead of
 silently truncating.
 
+Syntax Assistant HTML section parsing must be locale-aware for both Russian and root/English source
+books. Section boundaries must prevent description, parameter and signature fields from swallowing
+later sections such as availability, examples, see-also links, version information or overload
+variant descriptions. English labels used by root books, including `Type:` and `Returned value:`,
+must be parsed with the same semantic completeness as Russian labels.
+
 Acceptance:
 
 - Reading `shcntx_ru.hbk` returns non-empty global methods, global properties, platform types and
   enums when the fixture exists.
 - Fixture tests cover at least one known global method, global property, type and enum.
+- Russian and root/English exports preserve return types and property/parameter type references for
+  representative pages that contain them.
+- Descriptions do not contain raw section labels for availability, examples, see-also links,
+  available-since text or overload variant text.
+- Overload/syntax-variant pages produce only real callable signatures as signatures, with variant
+  metadata attached separately when present.
 
 ## FR-EXPORT-001: Canonical JSON Export
 
@@ -138,6 +155,8 @@ needed by downstream context/indexing tools:
 - parameters and required flags
 - return types and property types
 - owner relationships for type members, constructors and enum values
+- structured availability/application contexts, examples, see-also relationships, available-since
+  text and overload variant metadata when extracted
 
 Consumer record files must not expose book hierarchy or per-record parser provenance:
 

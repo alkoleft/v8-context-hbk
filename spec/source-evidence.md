@@ -162,3 +162,55 @@ Therefore the first search CLI can be built from the current canonical export fo
 keyword/fuzzy search and owner/type-reference relationships. A richer relationship graph requires
 either a search-specific indexed artifact built during extraction or an enriched maintenance/search
 export that preserves structured section and "see also" links outside the lean consumer files.
+
+## Syntax Assistant Export Completeness Audit
+
+On 2026-04-30 the current release CLI export was rechecked against both Syntax Assistant source
+locales:
+
+```bash
+target/release/v8-context-hbk syntax-helper \
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/analysis/export-audit-20260430/shcntx-ru
+target/release/v8-context-hbk syntax-helper \
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk \
+  --output target/analysis/export-audit-20260430/shcntx-en
+```
+
+Both commands exited successfully and produced the same record-family counts:
+
+| File | RU records | EN/root records |
+| --- | ---: | ---: |
+| `global-methods.json` | 500 | 500 |
+| `global-properties.json` | 101 | 101 |
+| `platform-types.json` | 2533 | 2533 |
+| `type-methods.json` | 6702 | 6702 |
+| `type-properties.json` | 10732 | 10732 |
+| `constructors.json` | 445 | 445 |
+| `enums.json` | 713 | 713 |
+| `enum-values.json` | 3110 | 3110 |
+| `diagnostics.json` | 703 | 703 |
+
+Audit findings promoted to follow-up tasks:
+
+- Root/English type extraction is incomplete. `global-methods.json`, `type-methods.json`,
+  `global-properties.json` and `type-properties.json` contain zero return/type references in the
+  root export even when source HTML contains English `Type:` and `Returned value:` sections.
+- Russian type extraction is materially better but still incomplete on some records: 143 global
+  methods, 2494 type methods, 1 global property and 169 type properties have empty return/type
+  reference arrays in the current export.
+- Description fields currently swallow later HTML sections. For example `XMLString` / `XMLСтрока`
+  and `Array` / `Массив` descriptions include availability, examples and see-also/version text
+  instead of preserving those facts separately.
+- No consumer record-family file currently exposes structured `availability`, `examples`,
+  `see_also`, `available_since` or overload/variant metadata fields.
+- Overload/syntax-variant parsing is not structurally correct on variant-heavy pages. For
+  `ДокументDOM.СоздатьРазыменовательПИ` / `DOMDocument.CreateNSResolver`, signature text contains
+  raw labels/prose such as variant descriptions and `Syntax:`, and parameter descriptions absorb
+  following variant text. The current export reports 9 Russian type methods and 1690 English/root
+  type methods with signature lines that contain raw section labels or returned-value prose.
+- Diagnostics remain deterministic and provenance-rich, but all 703 diagnostics in each locale are
+  currently `UNKNOWN_PAGE_CLASS`. They include 4 direct `objects/Global context/*.html` pages that
+  look like global context methods and 33 global-context event pages; table field/parameter pages
+  dominate the remaining diagnostics. These pages need an explicit in-scope/out-of-scope
+  classification pass before the extraction can be called complete.
