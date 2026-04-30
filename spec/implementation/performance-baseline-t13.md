@@ -569,6 +569,71 @@ T22 conclusion:
   current evidence. A direct or shorter-lived `FileStorage` design requires a post-T22
   remeasurement before any production refactor.
 
+## Post-T23 Update
+
+T23 re-evaluated retained `FileStorage` ownership after the T22 baseline shift. Raw command outputs,
+generated exports and the temporary probe were written under `target/t23-measurements/`. That
+directory is service data and is not a durable source of truth.
+
+The probe measured exact `FileStorage` bytes, fresh-process `HbkBook::open`, repeated page reads
+through one `FileStorageReader` and extractor access through `SyntaxHelperReader::extract_into`
+with a counting sink. The T23 pass used the built debug CLI and temporary probe under GNU `time`:
+
+```bash
+cargo build -p v8-context-hbk-cli --bin v8-context-hbk
+cargo build --manifest-path target/t23-measurements/probe/Cargo.toml
+/usr/bin/time -o target/t23-measurements/logs/book-open-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t23-measurements/probe/target/debug/t23-file-storage-probe book-open /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t23-measurements/logs/page-read-all-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t23-measurements/probe/target/debug/t23-file-storage-probe page-read-all /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t23-measurements/logs/extract-counts-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/t23-measurements/probe/target/debug/t23-file-storage-probe extract-counts /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+/usr/bin/time -o target/t23-measurements/logs/syntax-helper-shcntx-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/debug/v8-context-hbk syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t23-measurements/exports/shcntx-ru
+```
+
+Equivalent commands were run for `shcntx_root.hbk`, and both source books were available.
+
+Fresh-process open-path attribution:
+
+| Source | Mode | Exit | Elapsed, s | Current RSS, KiB | VmHWM / peak RSS, KiB | Exact `FileStorage` bytes |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` | `file-storage-len` | 0 | 0.02 | 80056 | 80056 | 38960718 |
+| `shcntx_ru.hbk` | `book-open` | 0 | 5.55 | 71068 | 133376 | 38960718 |
+| `shcntx_root.hbk` | `file-storage-len` | 0 | 0.02 | 67600 | 67600 | 32620458 |
+| `shcntx_root.hbk` | `book-open` | 0 | 5.48 | 64820 | 120832 | 32620458 |
+
+Repeated page-read and extractor-access results:
+
+| Source | Mode | Exit | Elapsed, s | Current RSS, KiB | VmHWM / peak RSS, KiB | Counts |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `shcntx_ru.hbk` | `page-read-all` | 0 | 9.08 | 98028 | 133248 | 25878 pages, 4 missing entries |
+| `shcntx_root.hbk` | `page-read-all` | 0 | 8.27 | 91852 | 120960 | 25878 pages, 4 missing entries |
+| `shcntx_ru.hbk` | `extract-counts` | 0 | 17.24 | 169864 | 169864 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
+| `shcntx_root.hbk` | `extract-counts` | 0 | 13.43 | 110512 | 120704 | 1 global context, 24836 consumer records, 703 diagnostics, 25540 total items |
+
+The page-read probe traversed `28736` flat TOC pages per book, skipped `2851` empty TOC paths,
+read `25878` available unique pages and counted `4` missing entries. It measured repeated access to
+available ZIP entries rather than promoting known missing source pages to a storage refactor driver.
+
+T13-style full `syntax-helper --output` results:
+
+| Source | Exit | Elapsed, s | Peak RSS, KiB | Export bytes | Records and diagnostics |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `shcntx_ru.hbk` | 0 | 18.60 | 148096 | 21950926 | 24836 records, 703 diagnostics |
+| `shcntx_root.hbk` | 0 | 14.01 | 122240 | 12269994 | 24836 records, 703 diagnostics |
+
+T23 conclusion:
+
+- The exact retained `FileStorage` vector is unchanged from T20: about `38048 KiB` for
+  `shcntx_ru.hbk` and about `31856 KiB` for `shcntx_root.hbk`.
+- After T22, that vector is about `53.5%` and `49.1%` of current `HbkBook::open` RSS. This confirms
+  the open-path attribution shift that made the T20 percentage stale.
+- The same vector is only about `28.5%` and `26.4%` of open-path VmHWM, and about `25.7%` and
+  `26.1%` of the measured full export peak.
+- Repeated page reads stay in the same peak-RSS class as `book-open`; they do not reveal a separate
+  repeated ZIP setup or access-cost bottleneck.
+- A direct or shorter-lived `FileStorage` design would require broader low-level ZIP/storage work
+  inside `hbk-container` / `hbk-book`, while the measured full export and page-access paths do not
+  show a material benefit beyond the open-path percentage shift. No runtime refactor is justified by
+  T23 evidence.
+
 ## Variant Evaluation
 
 Variant A, lean consumer export and streaming JSON writer, remains the first slice.
@@ -635,8 +700,10 @@ T22 released the avoidable lower-level `HbkContainer` mmap retained by `HbkBook`
 changed the current retained-memory split: the T20 FileStorage no-go conclusion remains useful
 pre-T22 evidence for the full export peak, but it is stale for current `HbkBook::open` attribution.
 The remaining TOC/root-discovery and parser traversal lifetimes are bounded enough that no further
-production refactor is justified by the current measurements; FileStorage needs a post-T22
-remeasurement before any broader storage design is accepted or rejected.
+production refactor is justified by the current measurements. T23 remeasured `FileStorage` after the
+baseline shift and confirmed that it is about half of current open-path RSS, but only about a
+quarter of open-path high-water RSS and full export peak. Repeated page reads and extractor access
+do not justify a direct or shorter-lived storage design.
 
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
 by the current evidence.

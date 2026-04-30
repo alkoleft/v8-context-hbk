@@ -25,6 +25,9 @@ Current status:
   `HbkContainer` mmap retention from `HbkBook`. The public book API and export shape stayed stable.
   This makes the T20 FileStorage percentage stale for current `HbkBook::open` attribution, although
   the T20 result remains pre-T22 evidence for the broader full-export peak.
+- T23 remeasured retained `FileStorage` ownership on the post-T22 baseline. The vector is now about
+  half of current `HbkBook::open` RSS, but repeated page reads and full `syntax-helper --output`
+  did not show a material benefit that justifies a direct or shorter-lived storage design.
 
 ## Selection Rules
 
@@ -189,3 +192,12 @@ That change makes the T20 `HbkBook::open` percentage stale: after T22, the same 
 discovery or parser traversal is not justified by the current measurements, while a direct or
 shorter-lived `FileStorage` design needs a post-T22 measurement pass before it is accepted or
 rejected again.
+
+T23 performed that post-T22 measurement pass. The exact retained `FileStorage` vector stayed about
+`38048 KiB` for `shcntx_ru.hbk` and about `31856 KiB` for `shcntx_root.hbk`, which is about
+`53.5%` and `49.1%` of current `HbkBook::open` RSS. Against open-path high-water RSS and full
+`syntax-helper --output` peak, however, it is only about one quarter. Repeated page reads through one
+`FileStorageReader` stayed in the `book-open` peak-RSS class, and the full export path kept stable
+record counts and output sizes. Variant E therefore remains limited to the T19 byte-only entity
+path; no direct/seekable or shorter-lived `FileStorage` runtime refactor is justified by current
+evidence.

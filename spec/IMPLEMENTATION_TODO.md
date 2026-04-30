@@ -725,7 +725,7 @@ Completion notes:
   --all-targets`, UAT-SH-001, UAT-SH-002, UAT-SH-003, T22 probes, T13-style full measurements,
   deterministic export comparisons and `git diff --check`.
 
-### [ ] T23. Re-evaluate FileStorage lifetime after T22 baseline shift
+### [x] T23. Re-evaluate FileStorage lifetime after T22 baseline shift
 
 Depends on: T22. Scheduled after T18 unless memory footprint is explicitly reprioritized.
 
@@ -776,3 +776,33 @@ Verification:
 - Small-book `inspect`, `toc --format json` and `page` smoke if `hbk-book` access behavior changes
 - Deterministic export comparison for at least one Syntax Assistant book if storage access changes
 - `git diff --check`
+
+Completion notes:
+
+- Measured T23 with a temporary fresh-process probe under `target/t23-measurements/` plus full
+  `syntax-helper --output` runs for both Syntax Assistant books. The probe modes covered exact
+  `FileStorage` bytes, `HbkBook::open`, repeated page reads through one `FileStorageReader` and
+  extractor access through `SyntaxHelperReader::extract_into` with a counting sink.
+- Exact retained `FileStorage` vector capacity remained `38960718` bytes for `shcntx_ru.hbk` and
+  `32620458` bytes for `shcntx_root.hbk`. Current `book-open` RSS/VmHWM measured
+  `71068 / 133376 KiB` and `64820 / 120832 KiB`; the vector is therefore about `53.5%` and `49.1%`
+  of retained open-path RSS, but only about `28.5%` and `26.4%` of open-path VmHWM.
+- Repeated page-read access stayed in the same memory class as `book-open`: `shcntx_ru.hbk`
+  measured `9.08s / 133248 KiB`, and `shcntx_root.hbk` measured `8.27s / 120960 KiB`. Each run
+  read `25878` available unique pages, skipped `2851` empty TOC paths and observed `4` missing
+  entries that match existing diagnostic-like source data.
+- Extractor access with a counting sink measured `17.24s / 169864 KiB` for `shcntx_ru.hbk` and
+  `13.43s / 120704 KiB` for `shcntx_root.hbk`, with stable counts: `1` global context,
+  `24836` consumer records, `703` diagnostics and `25540` total probe-emitted items for each book.
+- Full `syntax-helper --output` measured `18.60s / 148096 KiB / 21950926 bytes` for
+  `shcntx_ru.hbk` and `14.01s / 122240 KiB / 12269994 bytes` for `shcntx_root.hbk`, with stable
+  record-family counts and `703` diagnostics for each book.
+- T23 confirms the post-T22 percentage shift for `HbkBook::open`, but does not show a material
+  repeated page-read or full-export benefit that justifies a direct/shorter-lived `FileStorage`
+  design. No runtime code change was made; `spec/implementation/components.md` did not change.
+- Durable conclusions were promoted to `spec/implementation/performance-baseline-t13.md`,
+  `spec/implementation/performance-variants.md` and `spec/acceptance/baseline.md`.
+- Verification passed: `cargo fmt`, `cargo test --workspace`, T23 fresh-process measurements,
+  subagent measurement-decision review (`APPROVED`), subagent docs review with findings resolved and
+  `git diff --check`. Crate-specific `cargo clippy` was not run because T23 made no runtime crate
+  changes.
