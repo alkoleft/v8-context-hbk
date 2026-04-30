@@ -444,7 +444,7 @@ Completion notes:
 - The byte-only path removed the majority of the remaining open-time high-water mark, so no
   follow-up task for a seekable direct `FileStorage` view is added from T19.
 
-### [ ] T20-prep. Split large modules before memory optimization
+### [x] T20-prep. Split large modules before memory optimization
 
 Depends on: T19. Run before T20 if memory work is explicitly reprioritized before T18; otherwise
 leave it behind the active T18 query-CLI task.
@@ -489,6 +489,17 @@ Verification:
 - T13-style `syntax-helper --output` smoke on at least one Syntax Assistant book if
   `syntax-helper-extract` or `hbk-export` wiring changes
 - `git diff --check`
+
+Completion notes:
+
+- Split the targeted oversized crate roots into focused modules while preserving public re-exports,
+  CLI behavior, JSON export shape, diagnostics and deterministic traversal/export order.
+- Verification passed: `cargo fmt`, `cargo test --workspace`,
+  `cargo clippy -p hbk-container -p syntax-helper-extract -p hbk-export --all-targets`, small-book
+  `inspect`/`toc --format json` smoke for `fmtdui_root.hbk` and `fmtdui_ru.hbk`, one T13-style
+  `syntax-helper --output` smoke for `shcntx_ru.hbk`, and `git diff --check`.
+- No performance or acceptance baseline update was needed because the task made no measured
+  behavior or contract change.
 
 ### [ ] T20. Evaluate direct seekable FileStorage view
 
