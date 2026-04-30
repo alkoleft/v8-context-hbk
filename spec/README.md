@@ -37,7 +37,8 @@ Otherwise reconcile the specification files before implementing.
 - `decisions/`: ADRs and accepted decision records.
 - `IMPLEMENTATION_TODO.md`: first-unchecked-task ledger for implementation work.
 - `archive/`: completed milestones and task history moved out of the active ledger
-  (`completed-tasks-t0-t12.md`, `completed-tasks-t13-t17-t19-t24.md`).
+  (`completed-tasks-t0-t12.md`, `completed-tasks-t13-t17-t19-t24.md`,
+  `completed-tasks-t25-t34.md`).
 
 ## External Files
 
