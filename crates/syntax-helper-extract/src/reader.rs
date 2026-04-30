@@ -7,11 +7,13 @@ use syntax_helper_model::*;
 
 use crate::discovery::discover_roots_with_loader;
 use crate::error::{SyntaxHelperError, SyntaxHelperStreamError, infallible_stream_error};
+use crate::html::name_from_text;
 use crate::page_parser::{
-    parse_constructor, parse_enum_for_mode, parse_enum_value, parse_global_context_for_mode,
-    parse_global_method, parse_global_property, parse_platform_method, parse_platform_property,
-    parse_platform_type_for_mode, parse_syntax_page_content_with_index_owned, source_from_content,
-    syntax_toc_index,
+    parse_constructor, parse_enum_for_mode, parse_enum_value, parse_global_context_event,
+    parse_global_context_for_mode, parse_global_method, parse_global_property,
+    parse_platform_method, parse_platform_property, parse_platform_type_for_mode,
+    parse_query_table_field, parse_query_table_parameter,
+    parse_syntax_page_content_with_index_owned, source_from_content, syntax_toc_index,
 };
 
 #[derive(Debug)]
@@ -120,8 +122,8 @@ fn extraction_discovery(mut discovery: RootDiscovery) -> RootDiscovery {
 
 fn parse_extraction_pages_into<S>(
     _hbk_path: &Path,
-    _locale: &str,
-    _toc: &Toc,
+    locale: &str,
+    toc: &Toc,
     discovery: RootDiscovery,
     mut load_page: impl FnMut(&str) -> Result<PageContent, SyntaxHelperError>,
     sink: &mut S,
@@ -162,6 +164,9 @@ where
                 PageClass::GlobalProperty => sink
                     .global_property(parse_global_property(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::GlobalContextEvent => sink
+                    .global_context_event(parse_global_context_event(&content, source))
+                    .map_err(SyntaxHelperStreamError::Sink)?,
                 PageClass::ObjectType => sink
                     .platform_type(parse_platform_type_for_mode(
                         &content,
@@ -175,6 +180,16 @@ where
                 PageClass::ObjectProperty => sink
                     .type_property(parse_platform_property(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::QueryTableField => {
+                    let owner = query_table_owner(toc, locale, &catalog_page.source.html_path);
+                    sink.table_field(parse_query_table_field(&content, owner, source))
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
+                PageClass::QueryTableParameter => {
+                    let owner = query_table_owner(toc, locale, &catalog_page.source.html_path);
+                    sink.table_parameter(parse_query_table_parameter(&content, owner, source))
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
                 PageClass::Constructor => sink
                     .constructor(parse_constructor(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
@@ -200,4 +215,31 @@ where
     }
 
     Ok(())
+}
+
+fn query_table_owner(toc: &Toc, locale: &str, member_html_path: &str) -> LocalizedName {
+    query_table_html_path(member_html_path)
+        .and_then(|table_html_path| toc.find_by_html_path(&table_html_path))
+        .map(|page| {
+            let title = if matches!(locale, "root" | "en") && !page.title.en.is_empty() {
+                &page.title.en
+            } else if locale == "ru" && !page.title.ru.is_empty() {
+                &page.title.ru
+            } else {
+                page.title.display()
+            };
+            name_from_text(title)
+        })
+        .unwrap_or_else(|| LocalizedName {
+            primary: query_table_html_path(member_html_path)
+                .unwrap_or_else(|| member_html_path.to_string()),
+            alias: None,
+        })
+}
+
+fn query_table_html_path(member_html_path: &str) -> Option<String> {
+    member_html_path
+        .split_once("/fields/")
+        .or_else(|| member_html_path.split_once("/params/"))
+        .map(|(table_path, _)| format!("{table_path}.html"))
 }

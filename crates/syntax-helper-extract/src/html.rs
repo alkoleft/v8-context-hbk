@@ -23,7 +23,7 @@ pub(crate) fn heading_name(content: &PageContent) -> LocalizedName {
     )
 }
 
-fn name_from_text(value: &str) -> LocalizedName {
+pub(crate) fn name_from_text(value: &str) -> LocalizedName {
     let value = value.trim();
     if let Some((primary, alias)) = split_parenthesized_alias(value) {
         LocalizedName {
@@ -238,16 +238,7 @@ pub(crate) fn section_text(content: &PageContent, labels: &[&str]) -> Option<Str
     let body = &content.body_text;
     let (label, start) = find_label(body, labels)?;
     let section_start = start + label.len();
-    let section_end = ALL_SECTION_LABELS
-        .iter()
-        .filter(|candidate| **candidate != label)
-        .filter_map(|candidate| {
-            body[section_start..]
-                .find(candidate)
-                .map(|index| section_start + index)
-        })
-        .min()
-        .unwrap_or(body.len());
+    let section_end = text_section_end(body, section_start, label);
     let value = body[section_start..section_end].trim();
     (!value.is_empty()).then(|| value.to_string())
 }
@@ -257,17 +248,40 @@ pub(crate) fn section_html<'a>(raw_html: &'a str, labels: &[&str]) -> Option<&'a
     let chapter_end = raw_html[start..]
         .find("</p>")
         .map(|index| start + index + 4)?;
-    let section_end = ALL_SECTION_LABELS
-        .iter()
-        .filter(|candidate| **candidate != label)
+    let section_end = html_section_end(raw_html, chapter_end, label);
+    Some(&raw_html[chapter_end..section_end])
+}
+
+fn text_section_end(value: &str, section_start: usize, current_label: &str) -> usize {
+    text_section_boundaries()
+        .filter(|candidate| *candidate != current_label)
         .filter_map(|candidate| {
-            raw_html[chapter_end..]
+            value[section_start..]
                 .find(candidate)
-                .map(|index| chapter_end + index)
+                .map(|index| section_start + index)
         })
         .min()
-        .unwrap_or(raw_html.len());
-    Some(&raw_html[chapter_end..section_end])
+        .unwrap_or(value.len())
+}
+
+fn html_section_end(value: &str, section_start: usize, current_label: &str) -> usize {
+    text_section_boundaries()
+        .chain(HTML_SECTION_BOUNDARIES.iter().copied())
+        .filter(|candidate| *candidate != current_label)
+        .filter_map(|candidate| {
+            value[section_start..]
+                .find(candidate)
+                .map(|index| section_start + index)
+        })
+        .min()
+        .unwrap_or(value.len())
+}
+
+fn text_section_boundaries() -> impl Iterator<Item = &'static str> {
+    ALL_SECTION_LABELS
+        .iter()
+        .chain(SERVICE_FOOTER_LABELS.iter())
+        .copied()
 }
 
 fn find_label<'a>(value: &str, labels: &'a [&str]) -> Option<(&'a str, usize)> {
@@ -359,3 +373,7 @@ const ALL_SECTION_LABELS: &[&str] = &[
     "Описание варианта метода:",
     "Description of method variant:",
 ];
+
+const SERVICE_FOOTER_LABELS: &[&str] = &["Методическая информация", "Methodical information"];
+
+const HTML_SECTION_BOUNDARIES: &[&str] = &["<HR", "<hr"];

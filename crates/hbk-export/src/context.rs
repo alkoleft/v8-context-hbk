@@ -7,9 +7,10 @@ use hbk_book::HbkBook;
 use syntax_helper_model::PlatformContext;
 
 use crate::consumer::{
-    ConsumerConstructor, ConsumerEnumDefinition, ConsumerEnumValue, ConsumerGlobalMethod,
-    ConsumerGlobalProperty, ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType,
-    ExportMetadata, RecordsEnvelope,
+    ConsumerConstructor, ConsumerEnumDefinition, ConsumerEnumValue, ConsumerGlobalContextEvent,
+    ConsumerGlobalMethod, ConsumerGlobalProperty, ConsumerPlatformMethod, ConsumerPlatformProperty,
+    ConsumerPlatformType, ConsumerQueryTableField, ConsumerQueryTableParameter, ExportMetadata,
+    RecordsEnvelope,
 };
 use crate::error::ExportError;
 use crate::manifest::{EXPORT_FILES, SCHEMA_VERSION};
@@ -103,6 +104,18 @@ impl JsonExporter {
             "global_property",
             &global_properties,
         )?);
+        let global_context_events = context
+            .global_context_events
+            .iter()
+            .map(ConsumerGlobalContextEvent::from)
+            .collect::<Vec<_>>();
+        files.push(self.write_records(
+            "global-context-events.json",
+            locale,
+            source_locale,
+            "global_context_event",
+            &global_context_events,
+        )?);
         let platform_types = context
             .platform_types
             .iter()
@@ -138,6 +151,30 @@ impl JsonExporter {
             source_locale,
             "type_property",
             &type_properties,
+        )?);
+        let table_fields = context
+            .table_fields
+            .iter()
+            .map(ConsumerQueryTableField::from)
+            .collect::<Vec<_>>();
+        files.push(self.write_records(
+            "table-fields.json",
+            locale,
+            source_locale,
+            "table_field",
+            &table_fields,
+        )?);
+        let table_parameters = context
+            .table_parameters
+            .iter()
+            .map(ConsumerQueryTableParameter::from)
+            .collect::<Vec<_>>();
+        files.push(self.write_records(
+            "table-parameters.json",
+            locale,
+            source_locale,
+            "table_parameter",
+            &table_parameters,
         )?);
         let constructors = context
             .constructors
@@ -227,9 +264,12 @@ pub struct JsonExportCounts {
     pub global_contexts: usize,
     pub global_methods: usize,
     pub global_properties: usize,
+    pub global_context_events: usize,
     pub platform_types: usize,
     pub type_methods: usize,
     pub type_properties: usize,
+    pub table_fields: usize,
+    pub table_parameters: usize,
     pub constructors: usize,
     pub enums: usize,
     pub enum_values: usize,
@@ -242,9 +282,12 @@ impl From<&PlatformContext> for JsonExportCounts {
             global_contexts: context.global_contexts.len(),
             global_methods: context.global_methods.len(),
             global_properties: context.global_properties.len(),
+            global_context_events: context.global_context_events.len(),
             platform_types: context.platform_types.len(),
             type_methods: context.type_methods.len(),
             type_properties: context.type_properties.len(),
+            table_fields: context.table_fields.len(),
+            table_parameters: context.table_parameters.len(),
             constructors: context.constructors.len(),
             enums: context.enums.len(),
             enum_values: context.enum_values.len(),

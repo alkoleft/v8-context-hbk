@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use syntax_helper_model::{self as model, SyntaxHelperSink};
 
 use crate::consumer::{
-    ConsumerConstructor, ConsumerEnumDefinition, ConsumerEnumValue, ConsumerGlobalMethod,
-    ConsumerGlobalProperty, ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType,
-    ExportMetadata,
+    ConsumerConstructor, ConsumerEnumDefinition, ConsumerEnumValue, ConsumerGlobalContextEvent,
+    ConsumerGlobalMethod, ConsumerGlobalProperty, ConsumerPlatformMethod, ConsumerPlatformProperty,
+    ConsumerPlatformType, ConsumerQueryTableField, ConsumerQueryTableParameter, ExportMetadata,
 };
 use crate::context::{JsonExportCounts, JsonExportSummary};
 use crate::error::ExportError;
@@ -21,9 +21,12 @@ pub struct StreamingSyntaxHelperExport {
     counts: JsonExportCounts,
     global_methods: RecordFileWriter,
     global_properties: RecordFileWriter,
+    global_context_events: RecordFileWriter,
     platform_types: RecordFileWriter,
     type_methods: RecordFileWriter,
     type_properties: RecordFileWriter,
+    table_fields: RecordFileWriter,
+    table_parameters: RecordFileWriter,
     constructors: RecordFileWriter,
     enums: RecordFileWriter,
     enum_values: RecordFileWriter,
@@ -66,6 +69,14 @@ impl StreamingSyntaxHelperExport {
             source_locale,
             "global_property",
         )?;
+        let global_context_events = open_record_file(
+            &output_dir,
+            &mut files,
+            "global-context-events.json",
+            locale,
+            source_locale,
+            "global_context_event",
+        )?;
         let platform_types = open_record_file(
             &output_dir,
             &mut files,
@@ -89,6 +100,22 @@ impl StreamingSyntaxHelperExport {
             locale,
             source_locale,
             "type_property",
+        )?;
+        let table_fields = open_record_file(
+            &output_dir,
+            &mut files,
+            "table-fields.json",
+            locale,
+            source_locale,
+            "table_field",
+        )?;
+        let table_parameters = open_record_file(
+            &output_dir,
+            &mut files,
+            "table-parameters.json",
+            locale,
+            source_locale,
+            "table_parameter",
         )?;
         let constructors = open_record_file(
             &output_dir,
@@ -131,9 +158,12 @@ impl StreamingSyntaxHelperExport {
             counts: JsonExportCounts::default(),
             global_methods,
             global_properties,
+            global_context_events,
             platform_types,
             type_methods,
             type_properties,
+            table_fields,
+            table_parameters,
             constructors,
             enums,
             enum_values,
@@ -144,9 +174,12 @@ impl StreamingSyntaxHelperExport {
     pub fn finish(mut self) -> Result<JsonExportSummary, ExportError> {
         self.global_methods.finish()?;
         self.global_properties.finish()?;
+        self.global_context_events.finish()?;
         self.platform_types.finish()?;
         self.type_methods.finish()?;
         self.type_properties.finish()?;
+        self.table_fields.finish()?;
+        self.table_parameters.finish()?;
         self.constructors.finish()?;
         self.enums.finish()?;
         self.enum_values.finish()?;
@@ -166,9 +199,12 @@ impl StreamingSyntaxHelperExport {
             files,
             global_methods,
             global_properties,
+            global_context_events,
             platform_types,
             type_methods,
             type_properties,
+            table_fields,
+            table_parameters,
             constructors,
             enums,
             enum_values,
@@ -178,9 +214,12 @@ impl StreamingSyntaxHelperExport {
 
         global_methods.close_unfinished();
         global_properties.close_unfinished();
+        global_context_events.close_unfinished();
         platform_types.close_unfinished();
         type_methods.close_unfinished();
         type_properties.close_unfinished();
+        table_fields.close_unfinished();
+        table_parameters.close_unfinished();
         constructors.close_unfinished();
         enums.close_unfinished();
         enum_values.close_unfinished();
@@ -216,6 +255,16 @@ impl SyntaxHelperSink for StreamingSyntaxHelperExport {
         Ok(())
     }
 
+    fn global_context_event(
+        &mut self,
+        record: model::GlobalContextEvent,
+    ) -> Result<(), Self::Error> {
+        self.global_context_events
+            .write_record(&ConsumerGlobalContextEvent::from(&record))?;
+        self.counts.global_context_events += 1;
+        Ok(())
+    }
+
     fn platform_type(&mut self, record: model::PlatformType) -> Result<(), Self::Error> {
         self.platform_types
             .write_record(&ConsumerPlatformType::from(&record))?;
@@ -234,6 +283,20 @@ impl SyntaxHelperSink for StreamingSyntaxHelperExport {
         self.type_properties
             .write_record(&ConsumerPlatformProperty::from(&record))?;
         self.counts.type_properties += 1;
+        Ok(())
+    }
+
+    fn table_field(&mut self, record: model::QueryTableField) -> Result<(), Self::Error> {
+        self.table_fields
+            .write_record(&ConsumerQueryTableField::from(&record))?;
+        self.counts.table_fields += 1;
+        Ok(())
+    }
+
+    fn table_parameter(&mut self, record: model::QueryTableParameter) -> Result<(), Self::Error> {
+        self.table_parameters
+            .write_record(&ConsumerQueryTableParameter::from(&record))?;
+        self.counts.table_parameters += 1;
         Ok(())
     }
 

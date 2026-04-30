@@ -36,6 +36,11 @@ impl SyntaxHelperSink for RecordingSink {
         Ok(())
     }
 
+    fn global_context_event(&mut self, record: GlobalContextEvent) -> Result<(), Self::Error> {
+        self.push_name("global_context_event", &record.name);
+        Ok(())
+    }
+
     fn platform_type(&mut self, record: PlatformType) -> Result<(), Self::Error> {
         self.push_name("platform_type", &record.name);
         Ok(())
@@ -48,6 +53,16 @@ impl SyntaxHelperSink for RecordingSink {
 
     fn type_property(&mut self, record: PlatformProperty) -> Result<(), Self::Error> {
         self.push_name("type_property", &record.name);
+        Ok(())
+    }
+
+    fn table_field(&mut self, record: QueryTableField) -> Result<(), Self::Error> {
+        self.push_name("table_field", &record.name);
+        Ok(())
+    }
+
+    fn table_parameter(&mut self, record: QueryTableParameter) -> Result<(), Self::Error> {
+        self.push_name("table_parameter", &record.name);
         Ok(())
     }
 
@@ -127,7 +142,7 @@ fn discovers_roots_and_traverses_catalogs_from_fixture_toc() {
 }
 
 #[test]
-fn classifies_remaining_audit_diagnostic_families_explicitly() {
+fn supports_event_and_table_audit_families_and_keeps_toc_only_gap_diagnostic() {
     let toc = Toc::parse(
         r#"{
                 8
@@ -160,21 +175,166 @@ fn classifies_remaining_audit_diagnostic_families_explicitly() {
         .iter()
         .map(|diagnostic| diagnostic.code)
         .collect::<Vec<_>>();
-    assert_eq!(
-        codes,
-        vec![
-            "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE",
-            "OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT",
-            "OUT_OF_SCOPE_TABLE_FIELD",
-            "OUT_OF_SCOPE_TABLE_PARAMETER",
-        ]
-    );
+    assert_eq!(codes, vec!["UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE"]);
     assert!(discovery.diagnostics.iter().all(|diagnostic| {
         diagnostic.severity == DiagnosticSeverity::Warning
             && diagnostic.parser_stage == "root_discovery"
             && diagnostic.source.toc_path.is_some()
             && !diagnostic.message.is_empty()
     }));
+
+    let classes = discovery
+        .roots
+        .iter()
+        .flat_map(|root| root.pages.iter().map(|page| page.class))
+        .collect::<BTreeSet<_>>();
+    assert!(classes.contains(&PageClass::GlobalContextEvent));
+    assert!(classes.contains(&PageClass::QueryTableField));
+    assert!(classes.contains(&PageClass::QueryTableParameter));
+}
+
+#[test]
+fn parses_global_context_event_page() {
+    let toc = Toc::parse(
+        r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","ПередЗавершениемРаботыСистемы"}},"/objects/Global context/events/catalog375/BeforeExit378.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "objects/Global context/events/catalog375/BeforeExit378.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">Глобальный контекст.ПередЗавершениемРаботыСистемы (Global context.BeforeExit)</h1><p class="V8SH_title">Глобальный контекст (Global context)</p><p class="V8SH_heading">ПередЗавершениемРаботыСистемы (BeforeExit)</p><p class="V8SH_chapter">Синтаксис:</p>ПередЗавершениемРаботыСистемы(&lt;Отказ&gt;)<p class="V8SH_chapter">Параметры:</p><div class="V8SH_rubric">&lt;Отказ&gt;</div>Тип: <a href="v8help://SyntaxHelperLanguage/def_Boolean">Булево</a>. Признак отказа.<p class="V8SH_chapter">Описание:</p><p>Возникает перед завершением работы.</p><p class="V8SH_chapter">Доступность:</p><p>Тонкий клиент, сервер.</p></body></html>"#,
+    );
+
+    let event = parse_global_context_event(
+        &content,
+        source("objects/Global context/events/catalog375/BeforeExit378.html"),
+    );
+
+    assert_eq!(event.name.primary, "ПередЗавершениемРаботыСистемы");
+    assert_eq!(event.name.alias.as_deref(), Some("BeforeExit"));
+    assert_eq!(
+        event.signatures[0].text,
+        "ПередЗавершениемРаботыСистемы(<Отказ>)"
+    );
+    assert_eq!(event.signatures[0].parameters.len(), 1);
+    assert_eq!(event.signatures[0].parameters[0].name, "Отказ");
+    assert!(event.signatures[0].parameters[0].required);
+    assert_eq!(
+        event.signatures[0].parameters[0].type_refs[0].name,
+        "Булево"
+    );
+    assert_eq!(
+        event.description.as_deref(),
+        Some("Возникает перед завершением работы.")
+    );
+    assert_eq!(
+        event.facts.availability.contexts,
+        vec![AvailabilityContext::ThinClient, AvailabilityContext::Server]
+    );
+}
+
+#[test]
+fn parses_query_table_field_and_parameter_pages() {
+    let toc = Toc::parse(
+        r#"{
+                2
+                {1,0,0,{0,0,{0,0,{"ru","Представление"}},"/tables/table58/fields/Presentation464.html"}}
+                {2,0,0,{0,0,{0,0,{"ru","Первые"}},"/tables/catalog36/table42/params/param82.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let field_content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "tables/table58/fields/Presentation464.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">Представление (Presentation)</h1><p class="V8SH_heading">Представление (Presentation)</p>Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>. <br>Содержит строку-представление бизнес-процесса.<br></body></html>"#,
+    );
+    let parameter_content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "tables/catalog36/table42/params/param82.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">Первые</h1><p class="V8SH_chapter">Первые (необязательный)</p>Тип параметра: <a href="v8help://SyntaxHelperLanguage/def_Number">Число</a>. <br>Ограничение максимального количества записей.<br>Значение по умолчанию: 0.<br></body></html>"#,
+    );
+
+    let owner = LocalizedName {
+        primary: "Таблица движений с субконто".to_string(),
+        alias: None,
+    };
+    let field = parse_query_table_field(
+        &field_content,
+        owner.clone(),
+        source("tables/table58/fields/Presentation464.html"),
+    );
+    let parameter = parse_query_table_parameter(
+        &parameter_content,
+        owner,
+        source("tables/catalog36/table42/params/param82.html"),
+    );
+
+    assert_eq!(field.name.primary, "Представление");
+    assert_eq!(field.name.alias.as_deref(), Some("Presentation"));
+    assert_eq!(field.type_refs[0].name, "Строка");
+    assert_eq!(
+        field.description.as_deref(),
+        Some("Содержит строку-представление бизнес-процесса")
+    );
+    assert_eq!(parameter.name.primary, "Первые");
+    assert!(!parameter.required);
+    assert_eq!(parameter.type_refs[0].name, "Число");
+    assert_eq!(
+        parameter.description.as_deref(),
+        Some("Ограничение максимального количества записей")
+    );
+    assert_eq!(parameter.default_value.as_deref(), Some("0"));
+}
+
+#[test]
+fn strips_methodical_footer_from_section_text_and_html() {
+    let toc = Toc::parse(
+        r#"{
+                2
+                {1,0,0,{0,0,{0,0,{"ru","Поле"}},"/tables/table58/fields/Field1.html"}}
+                {2,0,0,{0,0,{0,0,{"ru","Конструктор"}},"/objects/catalog234/Array/ctors/Constructor1.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let owner = LocalizedName {
+        primary: "Таблица".to_string(),
+        alias: None,
+    };
+    let field_content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "tables/table58/fields/Field1.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">Поле</h1><p class="V8SH_heading">Поле</p>Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>. Описание поля.<p class="V8SH_chapter">Примечание:</p><p>Только для отдельных таблиц.</p><HR><a href="methodical.html">Методическая информация</a></body></html>"#,
+    );
+    let field = parse_query_table_field(
+        &field_content,
+        owner,
+        source("tables/table58/fields/Field1.html"),
+    );
+    assert_eq!(field.note.as_deref(), Some("Только для отдельных таблиц."));
+
+    let constructor_content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "objects/catalog234/Array/ctors/Constructor1.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">Массив.Конструктор</h1><p class="V8SH_title">Массив (Array)</p><p class="V8SH_heading">По умолчанию</p><p class="V8SH_chapter">Синтаксис:</p>Новый Массив<HR><a href="methodical.html">Методическая информация</a></body></html>"#,
+    );
+    let constructor = parse_constructor(
+        &constructor_content,
+        source("objects/catalog234/Array/ctors/Constructor1.html"),
+    );
+    assert_eq!(constructor.signatures[0].text, "Новый Массив");
 }
 
 #[test]
@@ -1432,6 +1592,8 @@ fn assert_clean_text(text: &str) {
         "Syntax variant:",
         "Описание варианта метода:",
         "Description of method variant:",
+        "Методическая информация",
+        "Methodical information",
     ] {
         assert!(
             !text.contains(forbidden),

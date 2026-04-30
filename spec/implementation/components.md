@@ -106,9 +106,12 @@ Expected public concepts:
 - `SyntaxHelperRecordDetailMode`
 - `GlobalMethod`
 - `GlobalProperty`
+- `GlobalContextEvent`
 - `PlatformType`
 - `PlatformMethod`
 - `PlatformProperty`
+- `QueryTableField`
+- `QueryTableParameter`
 - `Constructor`
 - `EnumDefinition`
 - `EnumValue`
@@ -144,7 +147,9 @@ T26 extracts structured availability/application contexts, examples, see-also re
 available-since facts into the domain model. T27 extracts structured syntax-variant metadata and
 binds parameters to the variant signature that owns them. T28 classifies the remaining known
 diagnostic-only Syntax Assistant source families with stable family-specific diagnostic codes while
-leaving consumer record-family JSON unchanged.
+leaving consumer record-family JSON unchanged. T29 promotes global context events, query/table
+fields and query/table parameters into typed extraction records while keeping direct TOC-only
+global-context method-like pages as recoverable diagnostics.
 
 ### hbk-export
 
@@ -164,10 +169,11 @@ exporter remains available for in-memory model consumers and tests. Streaming ex
 lean sink detail mode to skip consumer-omitted navigation fields, but omission from JSON remains an
 `hbk-export` adapter concern rather than an internal model constraint.
 
-Schema version 3 record-family JSON exposes structured `availability`, `examples`, `see_also`,
+Schema version 4 record-family JSON exposes structured `availability`, `examples`, `see_also`,
 `available_since` and `signatures[].variant` fields from the domain model while still omitting
 source HBK paths, TOC paths, HTML paths, page titles and duplicate navigation-link catalogs from
-consumer records.
+consumer records. It also includes `global-context-events.json`, `table-fields.json` and
+`table-parameters.json` for Syntax Assistant event and query/table metadata families.
 
 ### v8-context-hbk-cli
 

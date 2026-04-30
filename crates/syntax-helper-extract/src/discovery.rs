@@ -142,24 +142,6 @@ fn classified_page_gap(html_path: &str) -> (&'static str, &'static str) {
             "Direct global context method-like TOC page is in FR-SH-002 scope but is outside the supported Syntax Assistant method catalog layout",
         );
     }
-    if html_path.starts_with("objects/Global context/events/") {
-        return (
-            "OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT",
-            "Global context event pages are not part of the current FR-SH-002 extraction scope",
-        );
-    }
-    if html_path.contains("/fields/") {
-        return (
-            "OUT_OF_SCOPE_TABLE_FIELD",
-            "Syntax Assistant table field pages are not part of the current FR-SH-002 extraction scope",
-        );
-    }
-    if html_path.contains("/params/") {
-        return (
-            "OUT_OF_SCOPE_TABLE_PARAMETER",
-            "Syntax Assistant table parameter pages are not part of the current FR-SH-002 extraction scope",
-        );
-    }
     (
         "UNKNOWN_PAGE_CLASS",
         "Syntax Assistant page could not be classified for traversal",

@@ -44,6 +44,9 @@ directories are service data unless promoted here.
   byte-identical to the local T23 production exports. Full `syntax-helper --output` measured
   `18.40s / 134528 KiB` for `shcntx_ru.hbk` and `14.09s / 122108 KiB` for `shcntx_root.hbk`; a
   repeated `shcntx_root.hbk` run measured `14.34s / 122112 KiB` and matched byte-for-byte.
+- T29 promoted global context events, query/table fields and query/table parameters into consumer
+  export record families. Schema version is now 4, each source book exports 33 global context
+  events, 588 table fields, 78 table parameters and 4 remaining diagnostics.
 
 ## T24 Durable Conclusions
 
@@ -690,8 +693,38 @@ The 703 diagnostics in each locale are now classified with family-specific codes
 The previous audited `UNKNOWN_PAGE_CLASS` count is now zero for both locales. Direct
 `objects/Global context/*.html` method-like TOC entries remain visible as in-scope unsupported
 diagnostics rather than incomplete synthesized records because the audited HBK FileStorage archives
-do not contain their page HTML. Global-context events, table fields and table parameters are
-explicitly out of current FR-SH-002 scope until a future requirement promotes them.
+do not contain their page HTML. At T28 completion, global-context events, table fields and table
+parameters were explicitly out of scope; T29 later promoted those three families into typed export
+records.
+
+## T29 Durable Conclusions
+
+Syntax Assistant event/table metadata support was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+T29 changed the consumer JSON file inventory and raised the canonical export schema to
+`schema_version: 4`. Existing record-family counts remained stable for both source books, and each
+source book now additionally produced:
+
+- 33 global context events
+- 588 query/table fields
+- 78 query/table parameters
+- 4 diagnostics
+
+The remaining diagnostics in each locale are all `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE`.
+`UNKNOWN_PAGE_CLASS`, `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`, `OUT_OF_SCOPE_TABLE_FIELD` and
+`OUT_OF_SCOPE_TABLE_PARAMETER` are absent from the T29 exports.
+
+New required files:
+
+- `global-context-events.json`
+- `table-fields.json`
+- `table-parameters.json`
+
+The new consumer records omit source HBK paths, TOC paths, HTML paths and page titles. Parser
+provenance remains internal and in `diagnostics.json`.
 
 ## First Delivery Success Metrics
 

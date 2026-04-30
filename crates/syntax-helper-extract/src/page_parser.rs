@@ -66,6 +66,19 @@ pub fn parse_global_property(content: &PageContent, source: SyntaxHelperSource) 
     }
 }
 
+pub fn parse_global_context_event(
+    content: &PageContent,
+    source: SyntaxHelperSource,
+) -> GlobalContextEvent {
+    GlobalContextEvent {
+        name: heading_name(content),
+        signatures: parse_signatures(content),
+        description: section_text(content, &["Описание:", "Description:"]),
+        facts: section_facts(content),
+        source,
+    }
+}
+
 pub fn parse_platform_type(content: &PageContent, source: SyntaxHelperSource) -> PlatformType {
     parse_platform_type_for_mode(content, source, SyntaxHelperRecordDetailMode::Full)
 }
@@ -120,6 +133,39 @@ pub fn parse_platform_property(
         type_refs: type_refs_from_section(content, &["Описание:", "Description:"]),
         description: section_text(content, &["Описание:", "Description:"]),
         facts: section_facts(content),
+        source,
+    }
+}
+
+pub fn parse_query_table_field(
+    content: &PageContent,
+    owner: LocalizedName,
+    source: SyntaxHelperSource,
+) -> QueryTableField {
+    let body = detail_body_after_heading(content);
+    QueryTableField {
+        owner,
+        name: page_title_name(content),
+        type_refs: parse_type_refs(&body),
+        description: description_after_type(&body),
+        note: section_text(content, &["Примечание:", "Note:"]),
+        source,
+    }
+}
+
+pub fn parse_query_table_parameter(
+    content: &PageContent,
+    owner: LocalizedName,
+    source: SyntaxHelperSource,
+) -> QueryTableParameter {
+    let body = first_chapter_body(content).unwrap_or_else(|| detail_body_after_heading(content));
+    QueryTableParameter {
+        owner,
+        name: page_title_name(content),
+        required: table_parameter_required(content),
+        type_refs: parse_type_refs(&body),
+        description: table_parameter_description(&body),
+        default_value: default_value(&body),
         source,
     }
 }
@@ -516,17 +562,99 @@ fn signatures_from_section(
 }
 
 fn parse_parameters(content: &PageContent) -> Vec<Parameter> {
-    let Some(section) = section_text(content, PARAMETER_LABELS) else {
-        return Vec::new();
-    };
-    parse_parameters_from_text(&section)
+    parse_parameters_from_html(&content.raw_html)
 }
 
 fn parse_parameters_from_html(raw_html: &str) -> Vec<Parameter> {
-    section_html(raw_html, PARAMETER_LABELS)
-        .map(text_lines_from_html_fragment)
-        .map(|section| parse_parameters_from_text(&section))
-        .unwrap_or_default()
+    let Some(section) = section_html(raw_html, PARAMETER_LABELS) else {
+        return Vec::new();
+    };
+    let rubric_parameters = parse_rubric_parameters(section);
+    if rubric_parameters.is_empty() {
+        parse_parameters_from_text(&text_lines_from_html_fragment(section))
+    } else {
+        rubric_parameters
+    }
+}
+
+fn parse_rubric_parameters(section_html: &str) -> Vec<Parameter> {
+    let rubrics = rubric_ranges(section_html);
+    rubrics
+        .iter()
+        .enumerate()
+        .filter_map(|(index, rubric)| {
+            let name = parameter_name_from_rubric(&rubric.title)?;
+            let next_start = rubrics
+                .get(index + 1)
+                .map(|next| next.tag_start)
+                .unwrap_or(section_html.len());
+            let body = text_lines_from_html_fragment(&section_html[rubric.body_start..next_start]);
+            let lower = rubric.title.to_lowercase();
+            Some(Parameter {
+                name,
+                required: !(lower.contains("необязательный") || lower.contains("optional")),
+                type_refs: parse_type_refs(&body),
+                description: description_after_type(&body),
+            })
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RubricRange {
+    tag_start: usize,
+    body_start: usize,
+    title: String,
+}
+
+fn rubric_ranges(section_html: &str) -> Vec<RubricRange> {
+    let mut output = Vec::new();
+    let mut offset = 0;
+    while let Some(class_start) = section_html[offset..]
+        .find("class=\"V8SH_rubric\"")
+        .map(|index| offset + index)
+    {
+        let Some(tag_start) = section_html[..class_start].rfind('<') else {
+            break;
+        };
+        let Some(content_start) = section_html[class_start..]
+            .find('>')
+            .map(|index| class_start + index + 1)
+        else {
+            break;
+        };
+        let Some(content_end) = section_html[content_start..]
+            .find("</div>")
+            .map(|index| content_start + index)
+        else {
+            break;
+        };
+        let title = text_lines_from_html_fragment(&section_html[content_start..content_end])
+            .trim()
+            .to_string();
+        output.push(RubricRange {
+            tag_start,
+            body_start: content_end + "</div>".len(),
+            title,
+        });
+        offset = content_end + "</div>".len();
+    }
+    output
+}
+
+fn parameter_name_from_rubric(value: &str) -> Option<String> {
+    bracketed_name_ranges(value)
+        .into_iter()
+        .next()
+        .map(|(_, _, name)| name.trim().to_string())
+        .or_else(|| {
+            let name = value
+                .split_once('(')
+                .map(|(name, _)| name)
+                .unwrap_or(value)
+                .trim();
+            (!name.is_empty()).then(|| name.to_string())
+        })
 }
 
 fn parse_parameters_from_text(section: &str) -> Vec<Parameter> {
@@ -592,10 +720,15 @@ fn type_refs_from_section(content: &PageContent, labels: &[&str]) -> Vec<TypeRef
 }
 
 fn parse_type_refs(section: &str) -> Vec<TypeRef> {
-    let Some(after_type) = ["Тип:", "Type:"]
-        .iter()
-        .find_map(|label| section.split_once(label).map(|(_, after_type)| after_type))
-    else {
+    let Some(after_type) = [
+        "Тип параметра:",
+        "Parameter type:",
+        "Type of parameter:",
+        "Тип:",
+        "Type:",
+    ]
+    .iter()
+    .find_map(|label| section.split_once(label).map(|(_, after_type)| after_type)) else {
         return Vec::new();
     };
     let type_part = after_type
@@ -610,4 +743,101 @@ fn parse_type_refs(section: &str) -> Vec<TypeRef> {
             name: value.to_string(),
         })
         .collect()
+}
+
+fn detail_body_after_heading(content: &PageContent) -> String {
+    html_after_first_class(&content.raw_html, "V8SH_heading")
+        .or_else(|| html_after_first_class(&content.raw_html, "V8SH_pagetitle"))
+        .map(text_lines_from_html_fragment)
+        .unwrap_or_else(|| content.body_text.clone())
+}
+
+fn first_chapter_body(content: &PageContent) -> Option<String> {
+    html_after_first_class(&content.raw_html, "V8SH_chapter").map(text_lines_from_html_fragment)
+}
+
+fn html_after_first_class<'a>(raw_html: &'a str, class_name: &str) -> Option<&'a str> {
+    let class_marker = format!("class=\"{class_name}\"");
+    let start = raw_html.find(&class_marker)?;
+    let content_start = raw_html[start..]
+        .find('>')
+        .map(|offset| start + offset + 1)?;
+    let tag_name = raw_html[..start]
+        .rfind('<')
+        .map(|tag_start| {
+            raw_html[tag_start + 1..start]
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .trim_start_matches('/')
+        })
+        .unwrap_or_default();
+    let end_tag = format!("</{tag_name}>");
+    let body_start = raw_html[content_start..]
+        .find(&end_tag)
+        .map(|offset| content_start + offset + end_tag.len())?;
+    let body_end = raw_html[body_start..]
+        .find("<HR")
+        .map(|offset| body_start + offset)
+        .unwrap_or(raw_html.len());
+    Some(&raw_html[body_start..body_end])
+}
+
+fn description_after_type(text: &str) -> Option<String> {
+    let description = [
+        "Тип параметра:",
+        "Parameter type:",
+        "Type of parameter:",
+        "Тип:",
+        "Type:",
+    ]
+    .iter()
+    .find_map(|label| text.split_once(label).map(|(_, after_type)| after_type))
+    .and_then(|after_type| after_type.split_once('.').map(|(_, tail)| tail))
+    .unwrap_or(text);
+    clean_free_text(before_any_label(
+        description,
+        &[
+            "Примечание:",
+            "Note:",
+            "Значение по умолчанию:",
+            "Default value:",
+        ],
+    ))
+}
+
+fn table_parameter_description(text: &str) -> Option<String> {
+    clean_free_text(before_any_label(
+        description_after_type(text).as_deref().unwrap_or(text),
+        &["Значение по умолчанию:", "Default value:"],
+    ))
+}
+
+fn default_value(text: &str) -> Option<String> {
+    let value = ["Значение по умолчанию:", "Default value:"]
+        .iter()
+        .find_map(|label| text.split_once(label).map(|(_, value)| value))?;
+    clean_free_text(value).map(|value| value.trim_end_matches('.').to_string())
+}
+
+fn before_any_label<'a>(text: &'a str, labels: &[&str]) -> &'a str {
+    labels
+        .iter()
+        .filter_map(|label| text.find(label))
+        .min()
+        .map(|index| &text[..index])
+        .unwrap_or(text)
+}
+
+fn clean_free_text(text: &str) -> Option<String> {
+    let text = before_any_label(text, &["Методическая информация", "Methodical information"]);
+    let text = text.trim().trim_matches('.').trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
+fn table_parameter_required(content: &PageContent) -> bool {
+    let marker = select_first_html_text(&content.raw_html, ".V8SH_chapter")
+        .unwrap_or_else(|| content.title.clone())
+        .to_lowercase();
+    !(marker.contains("необязательный") || marker.contains("optional"))
 }

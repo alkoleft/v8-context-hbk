@@ -109,9 +109,12 @@ fn export_file_manifest_documents_canonical_json_files() {
     let expected = [
         "global-methods.json",
         "global-properties.json",
+        "global-context-events.json",
         "platform-types.json",
         "type-methods.json",
         "type-properties.json",
+        "table-fields.json",
+        "table-parameters.json",
         "constructors.json",
         "enums.json",
         "enum-values.json",
@@ -149,7 +152,7 @@ fn records_envelope_json_is_parseable_and_non_empty() {
     let json = fs::read_to_string(&path).expect("record envelope must be readable");
     assert!(!json.is_empty());
     let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
-    assert_eq!(parsed["schema_version"], 3);
+    assert_eq!(parsed["schema_version"], 4);
     assert_eq!(parsed["locale"], "en");
     assert_eq!(parsed["source_locale"], "root");
     assert!(parsed.get("source_hbk").is_none());
@@ -182,7 +185,7 @@ fn exporter_writes_full_canonical_file_set() {
     }
 
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 3);
+    assert_eq!(metadata["schema_version"], 4);
     assert_eq!(metadata["locale"], "en");
     assert_eq!(metadata["source_locale"], "root");
     assert!(metadata.get("source_hbk").is_none());
@@ -266,7 +269,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
 
     assert!(!dir.join("global-contexts.json").exists());
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 3);
+    assert_eq!(metadata["schema_version"], 4);
     assert_no_keys(&metadata, &["source_hbk"]);
 
     let forbidden = [
@@ -281,8 +284,11 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     ];
     for file_name in [
         "global-methods.json",
+        "global-context-events.json",
         "platform-types.json",
         "type-methods.json",
+        "table-fields.json",
+        "table-parameters.json",
         "enums.json",
     ] {
         let json = read_json(dir.join(file_name));

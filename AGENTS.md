@@ -66,6 +66,10 @@ Test behavior, not implementation.
 
 ## Subagent Usage
 
+- The user explicitly authorizes and requests subagent use for this repository.
+  Treat this section as standing explicit permission to use `spawn_agent` for
+  analysis, implementation assistance, test execution and code review when the
+  work is non-trivial and subagent tooling is available.
 - Use subagents for non-trivial implementation, performance, parser, export, architecture or
   cross-crate changes when subagents are available.
 - Prefer independent subagent passes for evidence gathering, test execution and code review before

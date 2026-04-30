@@ -43,9 +43,12 @@ pub enum PageClass {
     Catalog,
     GlobalMethod,
     GlobalProperty,
+    GlobalContextEvent,
     ObjectType,
     ObjectMethod,
     ObjectProperty,
+    QueryTableField,
+    QueryTableParameter,
     Constructor,
     Enum,
     EnumValue,
@@ -81,9 +84,12 @@ pub struct PlatformContext {
     pub global_contexts: Vec<GlobalContext>,
     pub global_methods: Vec<GlobalMethod>,
     pub global_properties: Vec<GlobalProperty>,
+    pub global_context_events: Vec<GlobalContextEvent>,
     pub platform_types: Vec<PlatformType>,
     pub type_methods: Vec<PlatformMethod>,
     pub type_properties: Vec<PlatformProperty>,
+    pub table_fields: Vec<QueryTableField>,
+    pub table_parameters: Vec<QueryTableParameter>,
     pub constructors: Vec<Constructor>,
     pub enums: Vec<EnumDefinition>,
     pub enum_values: Vec<EnumValue>,
@@ -167,9 +173,12 @@ pub trait SyntaxHelperSink {
     fn global_context(&mut self, record: GlobalContext) -> Result<(), Self::Error>;
     fn global_method(&mut self, record: GlobalMethod) -> Result<(), Self::Error>;
     fn global_property(&mut self, record: GlobalProperty) -> Result<(), Self::Error>;
+    fn global_context_event(&mut self, record: GlobalContextEvent) -> Result<(), Self::Error>;
     fn platform_type(&mut self, record: PlatformType) -> Result<(), Self::Error>;
     fn type_method(&mut self, record: PlatformMethod) -> Result<(), Self::Error>;
     fn type_property(&mut self, record: PlatformProperty) -> Result<(), Self::Error>;
+    fn table_field(&mut self, record: QueryTableField) -> Result<(), Self::Error>;
+    fn table_parameter(&mut self, record: QueryTableParameter) -> Result<(), Self::Error>;
     fn constructor(&mut self, record: Constructor) -> Result<(), Self::Error>;
     fn enum_definition(&mut self, record: EnumDefinition) -> Result<(), Self::Error>;
     fn enum_value(&mut self, record: EnumValue) -> Result<(), Self::Error>;
@@ -200,6 +209,11 @@ impl SyntaxHelperSink for PlatformContext {
         Ok(())
     }
 
+    fn global_context_event(&mut self, record: GlobalContextEvent) -> Result<(), Self::Error> {
+        self.global_context_events.push(record);
+        Ok(())
+    }
+
     fn platform_type(&mut self, record: PlatformType) -> Result<(), Self::Error> {
         self.platform_types.push(record);
         Ok(())
@@ -212,6 +226,16 @@ impl SyntaxHelperSink for PlatformContext {
 
     fn type_property(&mut self, record: PlatformProperty) -> Result<(), Self::Error> {
         self.type_properties.push(record);
+        Ok(())
+    }
+
+    fn table_field(&mut self, record: QueryTableField) -> Result<(), Self::Error> {
+        self.table_fields.push(record);
+        Ok(())
+    }
+
+    fn table_parameter(&mut self, record: QueryTableParameter) -> Result<(), Self::Error> {
+        self.table_parameters.push(record);
         Ok(())
     }
 
@@ -333,6 +357,15 @@ pub struct GlobalProperty {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GlobalContextEvent {
+    pub name: LocalizedName,
+    pub signatures: Vec<Signature>,
+    pub description: Option<String>,
+    pub facts: SectionFacts,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlatformType {
     pub name: LocalizedName,
     pub method_links: Vec<MemberLink>,
@@ -361,6 +394,27 @@ pub struct PlatformProperty {
     pub type_refs: Vec<TypeRef>,
     pub description: Option<String>,
     pub facts: SectionFacts,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct QueryTableField {
+    pub owner: LocalizedName,
+    pub name: LocalizedName,
+    pub type_refs: Vec<TypeRef>,
+    pub description: Option<String>,
+    pub note: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct QueryTableParameter {
+    pub owner: LocalizedName,
+    pub name: LocalizedName,
+    pub required: bool,
+    pub type_refs: Vec<TypeRef>,
+    pub description: Option<String>,
+    pub default_value: Option<String>,
     pub source: SyntaxHelperSource,
 }
 

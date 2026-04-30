@@ -108,8 +108,10 @@ Acceptance:
 The system must extract:
 
 - global methods and properties
+- global context events
 - platform types/objects
 - type methods, properties and constructors
+- query/table fields and query/table parameters
 - enum definitions and enum values
 - signatures, parameters, required flags and return types when present
 - localized names/aliases when present
@@ -139,6 +141,8 @@ Acceptance:
 
 - Reading `shcntx_ru.hbk` returns non-empty global methods, global properties, platform types and
   enums when the fixture exists.
+- Reading `shcntx_ru.hbk` returns non-empty global context events, query/table fields and
+  query/table parameters when the fixture exists.
 - Fixture tests cover at least one known global method, global property, type and enum.
 - Russian and root/English exports preserve return types and property/parameter type references for
   representative pages that contain them.
@@ -161,6 +165,7 @@ needed by downstream context/indexing tools:
 - parameters and required flags
 - return types and property types
 - owner relationships for type members, constructors and enum values
+- owner relationships for query/table fields and query/table parameters
 - structured availability/application contexts, examples, see-also relationships, available-since
   text and overload variant metadata when extracted
 
@@ -183,22 +188,25 @@ Required files:
 - `metadata.json`
 - `global-methods.json`
 - `global-properties.json`
+- `global-context-events.json`
 - `platform-types.json`
 - `type-methods.json`
 - `type-properties.json`
+- `table-fields.json`
+- `table-parameters.json`
 - `constructors.json`
 - `enums.json`
 - `enum-values.json`
 - `diagnostics.json`
 
-The current consumer export schema is `schema_version: 3`. Each consumer record-family file is a
+The current consumer export schema is `schema_version: 4`. Each consumer record-family file is a
 JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and `records`.
 `metadata.json` contains export-level metadata and file inventory; it must not expose source HBK
 paths or book hierarchy. `diagnostics.json` may keep parser source context because its audience is
 parser maintenance, not downstream platform API consumption.
 
-Schema version 3 consumer records include these structured section and overload fields. When a
-source page does not contain a fact, array fields are empty, `available_since` is `null` and
+Schema version 3 and later consumer records include these structured section and overload fields.
+When a source page does not contain a fact, array fields are empty, `available_since` is `null` and
 signature `variant` is `null`:
 
 - `signatures`: array of callable signatures; each signature has `text`, `parameters` and
@@ -214,6 +222,19 @@ signature `variant` is `null`:
   paths
 - `available_since`: `null` or an object with normalized `version` when it can be recognized and
   the source version `text`
+
+Schema version 4 adds Syntax Assistant source families that were previously diagnostic-only:
+
+- `global-context-events.json`: global context event handler facts with `name`, `signatures`,
+  `description`, structured section facts and no return types.
+- `table-fields.json`: query/table metadata fields with `owner`, `name`, `type_refs`,
+  `description` and `note`.
+- `table-parameters.json`: query/table metadata parameters with `owner`, `name`, `required`,
+  `type_refs`, `description` and `default_value`.
+
+Global context events, table fields and table parameters are first-class consumer record families.
+They must no longer be reported as `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`,
+`OUT_OF_SCOPE_TABLE_FIELD` or `OUT_OF_SCOPE_TABLE_PARAMETER` for the target platform source books.
 
 Acceptance:
 

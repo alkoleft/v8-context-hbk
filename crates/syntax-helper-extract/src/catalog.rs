@@ -52,10 +52,16 @@ fn classify_catalog_page(page: &TocPage) -> PageClass {
     let path = page.html_path.as_str();
     if is_catalog_path(path) {
         PageClass::Catalog
+    } else if path.starts_with("objects/Global context/events/") {
+        PageClass::GlobalContextEvent
     } else if path.starts_with("objects/Global context/methods/") {
         PageClass::GlobalMethod
     } else if path.starts_with("objects/Global context/properties/") {
         PageClass::GlobalProperty
+    } else if path.contains("/fields/") {
+        PageClass::QueryTableField
+    } else if path.contains("/params/") {
+        PageClass::QueryTableParameter
     } else if path.contains("/methods/") {
         PageClass::ObjectMethod
     } else if path.contains("/properties/") && path.contains("/catalog2/") {

@@ -97,6 +97,7 @@ Expected result:
 
 - Exit code is `0`.
 - Required JSON files from FR-EXPORT-001 exist.
+- The command summary reports parser-maintenance warning count as `parser_warnings`.
 - `metadata.json` records locale `ru`.
 - Core record-family files parse as JSON and contain non-empty `records`.
 - `diagnostics.json` is present and parser gaps are visible if any remain.
@@ -182,6 +183,45 @@ jq -e '
   all(.records[]; forbidden | not)
 ' target/uat/shcntx-ru/type-methods.json
 jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/type-methods.json
+jq -e '
+  def forbidden:
+    has("source") or
+    has("source_hbk") or
+    has("toc_path") or
+    has("html_path") or
+    has("page_title") or
+    has("method_links") or
+    has("constructor_links") or
+    has("value_links");
+  all(.records[]; forbidden | not)
+' target/uat/shcntx-ru/global-context-events.json
+jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/global-context-events.json
+jq -e '
+  def forbidden:
+    has("source") or
+    has("source_hbk") or
+    has("toc_path") or
+    has("html_path") or
+    has("page_title") or
+    has("method_links") or
+    has("constructor_links") or
+    has("value_links");
+  all(.records[]; forbidden | not)
+' target/uat/shcntx-ru/table-fields.json
+jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/table-fields.json
+jq -e '
+  def forbidden:
+    has("source") or
+    has("source_hbk") or
+    has("toc_path") or
+    has("html_path") or
+    has("page_title") or
+    has("method_links") or
+    has("constructor_links") or
+    has("value_links");
+  all(.records[]; forbidden | not)
+' target/uat/shcntx-ru/table-parameters.json
+jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/table-parameters.json
 jq -e '
   def forbidden:
     has("source") or
@@ -432,18 +472,12 @@ Steps:
 jq -e '
   def counts: reduce .records[].code as $code ({}; .[$code] = (.[$code] // 0) + 1);
   counts == {
-    "OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT": 33,
-    "OUT_OF_SCOPE_TABLE_FIELD": 588,
-    "OUT_OF_SCOPE_TABLE_PARAMETER": 78,
     "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE": 4
   }
 ' target/uat/shcntx-ru/diagnostics.json
 jq -e '
   def counts: reduce .records[].code as $code ({}; .[$code] = (.[$code] // 0) + 1);
   counts == {
-    "OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT": 33,
-    "OUT_OF_SCOPE_TABLE_FIELD": 588,
-    "OUT_OF_SCOPE_TABLE_PARAMETER": 78,
     "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE": 4
   }
 ' target/uat/shcntx-en/diagnostics.json
@@ -452,9 +486,56 @@ jq -e '
 Expected result:
 
 - The export keeps deterministic diagnostic counts for both locales.
-- Known T28 source families are classified with family-specific diagnostic codes.
-- `UNKNOWN_PAGE_CLASS` is absent for the classified T28 families.
+- Direct global-context method-like TOC-only pages remain classified with a family-specific
+  diagnostic code.
+- `UNKNOWN_PAGE_CLASS`, `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`, `OUT_OF_SCOPE_TABLE_FIELD` and
+  `OUT_OF_SCOPE_TABLE_PARAMETER` are absent.
 - Diagnostic records keep source provenance needed by NFR-DIAG-001.
+
+Cleanup:
+
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` are service data and may be deleted after the
+  run.
+
+## UAT-SH-011: Event and Query/Table Metadata Export
+
+Related use case: UC-SH-001.
+
+Related requirements: FR-SH-002, FR-EXPORT-001, NFR-DIAG-001.
+
+Preconditions:
+
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` exist from UAT-SH-007.
+
+Steps:
+
+```bash
+jq -e '.schema_version == 4 and (.records | length) == 33' target/uat/shcntx-ru/global-context-events.json
+jq -e '.schema_version == 4 and (.records | length) == 588' target/uat/shcntx-ru/table-fields.json
+jq -e '.schema_version == 4 and (.records | length) == 78' target/uat/shcntx-ru/table-parameters.json
+jq -e '.schema_version == 4 and (.records | length) == 33' target/uat/shcntx-en/global-context-events.json
+jq -e '.schema_version == 4 and (.records | length) == 588' target/uat/shcntx-en/table-fields.json
+jq -e '.schema_version == 4 and (.records | length) == 78' target/uat/shcntx-en/table-parameters.json
+
+jq -e '.records[] | select(.name.primary == "ПередЗавершениемРаботыСистемы" and .available_since.version == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0].text == "ПередЗавершениемРаботыСистемы(<Отказ>, <ТекстПредупреждения>)") and any(.signatures[0].parameters[]; .name == "Отказ" and .required == true and any(.type_refs[]; .name == "Булево"))' target/uat/shcntx-ru/global-context-events.json
+jq -e '.records[] | select(.name.primary == "BeforeExit" and .available_since.version == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0].text == "BeforeExit(<Cancel>, <WarningText>)") and any(.signatures[0].parameters[]; .name == "Cancel" and .required == true and any(.type_refs[]; .name == "Boolean"))' target/uat/shcntx-en/global-context-events.json
+
+jq -e '.records[] | select(.owner.primary == "Таблица бизнес-процессов" and .name.primary == "Представление") | any(.type_refs[]; .name == "Строка") and (.description | test("строку-представление"))' target/uat/shcntx-ru/table-fields.json
+jq -e '.records[] | select(.owner.primary == "Business Process Table" and .name.primary == "Presentation") | any(.type_refs[]; .name == "String") and (.description | test("presentation"))' target/uat/shcntx-en/table-fields.json
+
+jq -e '.records[] | select(.owner.primary == "Таблица критерия отбора" and .name.primary == "Значение") | .required == true and (.description | test("отбор"))' target/uat/shcntx-ru/table-parameters.json
+jq -e '.records[] | select(.owner.primary == "Filter Criterion Table" and .name.primary == "Value") | .required == true and (.description | test("filtering"))' target/uat/shcntx-en/table-parameters.json
+```
+
+Expected result:
+
+- Global context events, query/table fields and query/table parameters are exported as typed
+  consumer record families in both locales.
+- Event signatures and parameters are parsed structurally.
+- Table field records preserve owner table, field name, type references and descriptions.
+- Table parameter records preserve owner table, parameter name, required flag, type references when
+  present, descriptions and default values when present.
+- These records do not appear only as parser diagnostics.
 
 Cleanup:
 

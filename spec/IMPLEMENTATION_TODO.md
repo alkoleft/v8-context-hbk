@@ -9,7 +9,9 @@ Completed task history:
 - [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md)
 - [archive/completed-tasks-t13-t17-t19-t24.md](archive/completed-tasks-t13-t17-t19-t24.md)
 
-Current status: T18 is the first active unchecked task. T13-T17 and T19-T24 are archived historical
+Current status: T18 is the first active unchecked task. T29 was explicitly reprioritized before T18
+by the 2026-04-30 request to support previously out-of-scope Syntax Assistant event/table source
+families and is now complete. T13-T17 and T19-T24 are archived historical
 tasks; their durable performance conclusions live in `acceptance/baseline.md`,
 `implementation/performance-baseline-t13.md` and `implementation/performance-variants.md`.
 T25-T28 record export-completeness gaps found by the 2026-04-30 audit across Russian and
@@ -30,6 +32,69 @@ reprioritization.
 - Before committing, stage only files changed for the current task and verify
   `git diff --cached --name-only`.
 - Do not create empty commits.
+
+### [x] T29. Support Syntax Assistant global events and query/table metadata records
+
+Depends on: T28.
+
+Spec refs:
+
+- FR-SH-001
+- FR-SH-002
+- FR-EXPORT-001
+- NFR-DIAG-001
+- UAT-SH-010
+- UAT-SH-011
+- `spec/source-evidence.md`, T28 diagnostic family classification
+- `spec/implementation/components.md`
+
+Scope:
+
+- Promote `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`, `OUT_OF_SCOPE_TABLE_FIELD` and
+  `OUT_OF_SCOPE_TABLE_PARAMETER` source families into typed extraction/export support.
+- Add consumer record families for global context events, query/table fields and query/table
+  parameters without mixing them into existing method/property record files.
+- Bump the canonical consumer export schema version because the export file inventory changes.
+- Preserve `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE` diagnostics for direct global-context method-like
+  TOC entries whose HTML is absent from `FileStorage`.
+- Keep consumer records free of source HBK paths, TOC paths, HTML paths and page titles; parser
+  provenance remains internal and in diagnostics.
+- Do not implement the separate query CLI, semantic search, runtime 1C introspection or downstream
+  compatibility DTOs in this task.
+
+Expected artifacts:
+
+- Model/extractor/export changes for `global-context-events.json`, `table-fields.json` and
+  `table-parameters.json`.
+- Fixture or unit tests covering at least one event, one table field and one table parameter.
+- Updated README and acceptance baseline for schema version, file inventory, counts and remaining
+  diagnostics.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-001
+- UAT-SH-002
+- UAT-SH-003
+- UAT-SH-010
+- UAT-SH-011
+- `git diff --check`
+
+Completion notes:
+
+- Completed on 2026-04-30.
+- Added schema version 4 consumer record families:
+  `global-context-events.json`, `table-fields.json` and `table-parameters.json`.
+- Full CLI exports for `shcntx_ru.hbk` and `shcntx_root.hbk` now produce 33 global context events,
+  588 query/table fields and 78 query/table parameters in each locale.
+- Remaining diagnostics dropped from 703 to 4 in each locale. The remaining diagnostics are all
+  `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE`; `UNKNOWN_PAGE_CLASS`,
+  `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`, `OUT_OF_SCOPE_TABLE_FIELD` and
+  `OUT_OF_SCOPE_TABLE_PARAMETER` are absent.
+- Consumer records still omit HBK provenance, TOC paths, HTML paths and page titles.
+- Verified with `cargo fmt`, `cargo test --workspace`, UAT-SH-001, UAT-SH-002, UAT-SH-003,
+  UAT-SH-010, UAT-SH-011 and `git diff --check`.
 
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
@@ -331,10 +396,10 @@ Done notes:
   for both source locales:
   - `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE`: 4 RU / 4 EN-root, in FR-SH-002 scope but not safely
     extractable from the current TOC-only direct `objects/Global context/*.html` entries.
-  - `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`: 33 RU / 33 EN-root, explicitly out of current scope.
-  - `OUT_OF_SCOPE_TABLE_FIELD`: 588 RU / 588 EN-root, explicitly out of current scope.
-  - `OUT_OF_SCOPE_TABLE_PARAMETER`: 78 RU / 78 EN-root, explicitly out of current scope.
-- No global events, table fields or table parameters were promoted into scope, so no follow-up
-  implementation task was added for those families.
-- Consumer record-family JSON remains schema version 3 and still omits HBK provenance, TOC paths,
-  HTML paths and page titles.
+  - `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`: 33 RU / 33 EN-root, explicitly out of T28 scope.
+  - `OUT_OF_SCOPE_TABLE_FIELD`: 588 RU / 588 EN-root, explicitly out of T28 scope.
+  - `OUT_OF_SCOPE_TABLE_PARAMETER`: 78 RU / 78 EN-root, explicitly out of T28 scope.
+- T28 did not promote global events, table fields or table parameters into scope. T29 later promoted
+  those families into typed export records.
+- Consumer record-family JSON remained schema version 3 at T28 completion and still omitted HBK
+  provenance, TOC paths, HTML paths and page titles.

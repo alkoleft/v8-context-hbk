@@ -61,19 +61,27 @@ The output directory contains JSON files by record family:
 - `metadata.json`
 - `global-methods.json`
 - `global-properties.json`
+- `global-context-events.json`
 - `platform-types.json`
 - `type-methods.json`
 - `type-properties.json`
+- `table-fields.json`
+- `table-parameters.json`
 - `constructors.json`
 - `enums.json`
 - `enum-values.json`
 - `diagnostics.json`
 
-The current provisional export schema is `schema_version: 3`. Consumer record-family files include
+The current provisional export schema is `schema_version: 4`. Consumer record-family files include
 structured `availability`, `examples`, `see_also`, `available_since` and syntax-variant metadata
-when the source page contains those facts; absent facts are represented as empty arrays or `null`.
+when the source page contains those facts. The export also includes global context events and
+query/table field and parameter metadata. Absent facts are represented as empty arrays or `null`.
 Consumer records omit HBK file paths, TOC paths, HTML paths and page titles; `diagnostics.json`
 keeps parser provenance for maintenance.
+
+The `syntax-helper` command summary reports the `diagnostics.json` record count as
+`parser_warnings` because those records are parser-maintenance warnings, not exported platform API
+facts.
 
 ## Current Limitations
 

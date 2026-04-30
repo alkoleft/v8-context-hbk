@@ -116,13 +116,19 @@ fn syntax_helper(book_path: PathBuf, output: PathBuf) -> Result<(), Box<dyn std:
     println!("global_contexts: {}", summary.counts.global_contexts);
     println!("global_methods: {}", summary.counts.global_methods);
     println!("global_properties: {}", summary.counts.global_properties);
+    println!(
+        "global_context_events: {}",
+        summary.counts.global_context_events
+    );
     println!("platform_types: {}", summary.counts.platform_types);
     println!("type_methods: {}", summary.counts.type_methods);
     println!("type_properties: {}", summary.counts.type_properties);
+    println!("table_fields: {}", summary.counts.table_fields);
+    println!("table_parameters: {}", summary.counts.table_parameters);
     println!("constructors: {}", summary.counts.constructors);
     println!("enums: {}", summary.counts.enums);
     println!("enum_values: {}", summary.counts.enum_values);
-    println!("diagnostics: {}", summary.counts.diagnostics);
+    println!("parser_warnings: {}", summary.counts.diagnostics);
 
     Ok(())
 }

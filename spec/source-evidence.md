@@ -282,11 +282,27 @@ diagnostics are no longer generic `UNKNOWN_PAGE_CLASS` records for the audited f
 | Diagnostic code | RU count | EN/root count | T28 decision |
 | --- | ---: | ---: | --- |
 | `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE` | 4 | 4 | In FR-SH-002 scope, but current source TOC entries are direct `objects/Global context/*.html` method-like pages outside the supported method catalog layout. The audited HBK FileStorage does not contain these page HTML entries, so the extractor reports an explicit recoverable gap instead of synthesizing incomplete method records from TOC only. |
-| `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT` | 33 | 33 | Explicitly out of current FR-SH-002 scope; global events are not exported until a requirement promotes event records. |
-| `OUT_OF_SCOPE_TABLE_FIELD` | 588 | 588 | Explicitly out of current FR-SH-002 scope; table fields are documentation/table metadata, not current platform API record families. |
-| `OUT_OF_SCOPE_TABLE_PARAMETER` | 78 | 78 | Explicitly out of current FR-SH-002 scope; table parameters are documentation/table metadata, not current platform API record families. |
+| `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT` | 33 | 33 | T28 classified this family as out of scope; T29 later promoted it into `global-context-events.json`. |
+| `OUT_OF_SCOPE_TABLE_FIELD` | 588 | 588 | T28 classified this family as out of scope; T29 later promoted it into `table-fields.json`. |
+| `OUT_OF_SCOPE_TABLE_PARAMETER` | 78 | 78 | T28 classified this family as out of scope; T29 later promoted it into `table-parameters.json`. |
 
 The T28 classification used the existing Syntax Assistant export audit fixture set in
 `tests/fixtures/syntax-helper/manifest.tsv`. No new parser HTML fixture was added because the only
 new in-scope family found in diagnostics is represented by TOC entries whose corresponding page
 HTML is absent from both audited FileStorage archives.
+
+T29 follow-up on 2026-04-30 promoted global context events, query/table fields and query/table
+parameters into typed extraction/export records. Full CLI exports for
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` now produce:
+
+| Record family | RU count | EN/root count |
+| --- | ---: | ---: |
+| `global-context-events.json` | 33 | 33 |
+| `table-fields.json` | 588 | 588 |
+| `table-parameters.json` | 78 | 78 |
+
+The remaining diagnostic count is 4 in each locale, all
+`UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE`. `UNKNOWN_PAGE_CLASS`,
+`OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`, `OUT_OF_SCOPE_TABLE_FIELD` and
+`OUT_OF_SCOPE_TABLE_PARAMETER` are absent from the T29 exports.

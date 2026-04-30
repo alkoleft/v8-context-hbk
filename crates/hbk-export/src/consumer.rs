@@ -66,6 +66,26 @@ impl<'a> From<&'a model::GlobalProperty> for ConsumerGlobalProperty<'a> {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub(crate) struct ConsumerGlobalContextEvent<'a> {
+    name: &'a model::LocalizedName,
+    signatures: &'a [model::Signature],
+    description: &'a Option<String>,
+    #[serde(flatten)]
+    facts: ConsumerSectionFacts<'a>,
+}
+
+impl<'a> From<&'a model::GlobalContextEvent> for ConsumerGlobalContextEvent<'a> {
+    fn from(event: &'a model::GlobalContextEvent) -> Self {
+        Self {
+            name: &event.name,
+            signatures: &event.signatures,
+            description: &event.description,
+            facts: ConsumerSectionFacts::from(&event.facts),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct ConsumerPlatformType<'a> {
     name: &'a model::LocalizedName,
     description: &'a Option<String>,
@@ -127,6 +147,50 @@ impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
             type_refs: &property.type_refs,
             description: &property.description,
             facts: ConsumerSectionFacts::from(&property.facts),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ConsumerQueryTableField<'a> {
+    owner: &'a model::LocalizedName,
+    name: &'a model::LocalizedName,
+    type_refs: &'a [model::TypeRef],
+    description: &'a Option<String>,
+    note: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::QueryTableField> for ConsumerQueryTableField<'a> {
+    fn from(field: &'a model::QueryTableField) -> Self {
+        Self {
+            owner: &field.owner,
+            name: &field.name,
+            type_refs: &field.type_refs,
+            description: &field.description,
+            note: &field.note,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ConsumerQueryTableParameter<'a> {
+    owner: &'a model::LocalizedName,
+    name: &'a model::LocalizedName,
+    required: bool,
+    type_refs: &'a [model::TypeRef],
+    description: &'a Option<String>,
+    default_value: &'a Option<String>,
+}
+
+impl<'a> From<&'a model::QueryTableParameter> for ConsumerQueryTableParameter<'a> {
+    fn from(parameter: &'a model::QueryTableParameter) -> Self {
+        Self {
+            owner: &parameter.owner,
+            name: &parameter.name,
+            required: parameter.required,
+            type_refs: &parameter.type_refs,
+            description: &parameter.description,
+            default_value: &parameter.default_value,
         }
     }
 }
