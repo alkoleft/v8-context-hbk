@@ -38,6 +38,10 @@ Current status:
 - T30 removed the post-T29 table-owner lookup regression with a narrow extraction-scope
   HTML-path-to-TOC-page index. The fix keeps traversal/export order unchanged and avoids broad
   caches, generic pipeline abstractions or parallel parsing.
+- T31 remeasured the residual post-T30 parser/export path and did not accept another
+  micro-optimization. Release-profile `schema_version: 5` exports stayed in the T28/T30 class, so
+  the candidate parser-helper rewrites remain unimplemented until a new measurement shows a concrete
+  bottleneck.
 
 ## Selection Rules
 

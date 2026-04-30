@@ -57,10 +57,10 @@ directories are service data unless promoted here.
   `schema_version: 5` exports measured `4.76s / 167452 KiB` for `shcntx_ru.hbk` and
   `3.62s / 131748 KiB` for `shcntx_root.hbk`; both outputs were byte-identical to the pre-change
   T32 exports.
-- A 2026-04-30 post-T29 release-profile review found a `syntax-helper` runtime regression without
-  RSS growth. The main suspected cause is the T29 table-owner lookup path repeatedly calling
-  `Toc::find_by_html_path`, which rebuilds `flat_pages()` on each lookup. T30 owns the primary fix;
-  T31 owns residual parser-overhead attribution only after T30 is measured.
+- T31 remeasured the residual post-T30 release-profile path and did not justify another parser or
+  export code change. Current `schema_version: 5` exports measured `4.96s / 151644 KiB` for
+  `shcntx_ru.hbk`, `3.68s / 128828 KiB` for `shcntx_root.hbk`, and `3.90s / 127780 KiB` for a
+  deterministic root repeat. The root repeat was byte-identical to the first root export.
 
 ## Post-T29 Runtime Regression To Fix
 
@@ -79,6 +79,9 @@ durable artifacts.
 | `shcntx_root.hbk` / T32 HEAD before T30 | 0 | 7.71 | 126064 | schema v5 pre-fix baseline |
 | `shcntx_ru.hbk` / T30 fixed | 0 | 4.76 | 167452 | one extraction-scope TOC owner index |
 | `shcntx_root.hbk` / T30 fixed | 0 | 3.62 | 131748 | one extraction-scope TOC owner index |
+| `shcntx_ru.hbk` / T31 remeasured | 0 | 4.96 | 151644 | no additional parser change justified |
+| `shcntx_root.hbk` / T31 remeasured | 0 | 3.68 | 128828 | no additional parser change justified |
+| `shcntx_root.hbk` / T31 repeat | 0 | 3.90 | 127780 | byte-identical repeat export |
 
 Primary suspected hot path:
 
@@ -98,6 +101,9 @@ Secondary candidate areas after T30:
 - `section_facts` extraction for availability, examples, see-also and version facts;
 - `parse_variant_signatures` probing before ordinary signature parsing;
 - rubric-parameter parsing before plain text fallback.
+
+T31 remeasured these candidate areas as residual risk rather than changing them speculatively. The
+post-T30 path already returned to the T28/T30 class, so no parser-helper rewrite was accepted.
 
 ## T24 Durable Conclusions
 

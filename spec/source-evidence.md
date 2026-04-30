@@ -339,3 +339,9 @@ consumer JSON output. The pre-fix T32 release-profile exports measured `8.00s / 
 release-profile commands measured `4.76s / 167452 KiB` and `3.62s / 131748 KiB`. The post-fix
 exports were byte-identical to the pre-fix T32 exports, including 588 table fields, 78 table
 parameters and 4 remaining `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE` diagnostics per locale.
+
+T31 follow-up on 2026-04-30 remeasured the residual post-T30 parser/export path before changing
+parser code. Release-profile exports measured `4.96s / 151644 KiB` for `shcntx_ru.hbk` and
+`3.68s / 128828 KiB` for `shcntx_root.hbk`; a root repeat measured `3.90s / 127780 KiB` and was
+byte-identical to the first root export. The residual path stayed in the T28/T30 performance class,
+so no additional parser/export optimization was accepted in T31.

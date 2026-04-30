@@ -151,7 +151,8 @@ leaving consumer record-family JSON unchanged. T29 promotes global context event
 fields and query/table parameters into typed extraction records while keeping direct TOC-only
 global-context method-like pages as recoverable diagnostics. T30 resolves query/table owner names
 through one extraction-scope TOC HTML-path index per run instead of repeatedly flattening the TOC for
-each table field and table parameter.
+each table field and table parameter. T31 remeasured residual parser overhead after T30 and did not
+justify changing parser-helper behavior.
 
 ### hbk-export
 

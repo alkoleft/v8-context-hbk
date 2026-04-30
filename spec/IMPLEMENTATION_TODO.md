@@ -9,14 +9,15 @@ Completed task history:
 - [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md)
 - [archive/completed-tasks-t13-t17-t19-t24.md](archive/completed-tasks-t13-t17-t19-t24.md)
 
-Current status: T31 is the first active unchecked task. T29 was explicitly reprioritized before T18
-by the 2026-04-30 request to support previously out-of-scope Syntax Assistant event/table source
-families and is now complete. T32 was explicitly reprioritized before the performance follow-up by
-the 2026-04-30 request to make the consumer JSON output leaner and easier for downstream agents to
-consume and is now complete. Post-T29 measurements also found a release-profile `syntax-helper`
-runtime regression; T30 removed the primary table-owner lookup regression. T31 remains
-reprioritized before T18 to measure and address any residual parser overhead. T13-T17 and T19-T24 are
-archived historical tasks; their durable performance conclusions live in `acceptance/baseline.md`,
+Current status: T32, T30 and T31 closed the explicitly reprioritized Syntax Assistant
+export/schema/performance pool. T29 was explicitly reprioritized before T18 by the 2026-04-30
+request to support previously out-of-scope Syntax Assistant event/table source families and is now
+complete. T32 was explicitly reprioritized before the performance follow-up by the 2026-04-30
+request to make the consumer JSON output leaner and easier for downstream agents to consume and is
+now complete. Post-T29 measurements also found a release-profile `syntax-helper` runtime regression;
+T30 removed the primary table-owner lookup regression. T31 remeasured the residual post-T30 path and
+did not justify another parser/export code change. T13-T17 and T19-T24 are archived historical
+tasks; their durable performance conclusions live in `acceptance/baseline.md`,
 `implementation/performance-baseline-t13.md` and `implementation/performance-variants.md`.
 T25-T28 record export-completeness gaps found by the 2026-04-30 audit across Russian and
 root/English Syntax Assistant exports. T25-T28 are closed after explicit export-completeness
@@ -265,7 +266,7 @@ Completion notes:
   UAT-SH-001, UAT-SH-002, UAT-SH-003, UAT-SH-010, UAT-SH-011, release-profile measurements for
   `shcntx_ru.hbk` and `shcntx_root.hbk`, deterministic export comparison and `git diff --check`.
 
-### [ ] T31. Re-measure and optimize residual Syntax Assistant parser overhead after T30
+### [x] T31. Re-measure and optimize residual Syntax Assistant parser overhead after T30
 
 Depends on: T30.
 
@@ -309,6 +310,22 @@ Verification:
 - Deterministic export comparison for at least one Syntax Assistant book when parser output is
   expected to stay semantically unchanged
 - `git diff --check`
+
+Completion notes:
+
+- Rebuilt the release binary and re-ran release-profile `syntax-helper --output` measurements after
+  T30 without changing parser code first.
+- Current measurements are in the T28/T30 performance class and do not show a material residual
+  parser/export regression that justifies touching `section_text` / `section_html`,
+  `section_facts`, `parse_variant_signatures` or rubric-parameter parsing in this task.
+- Measured `4.96s / 151644 KiB` for `shcntx_ru.hbk`, `3.68s / 128828 KiB` for
+  `shcntx_root.hbk`, and a deterministic root repeat at `3.90s / 127780 KiB`.
+- Record counts stayed stable at 588 table fields, 78 table parameters and 4 diagnostics per
+  locale. Schema version stayed `5`, each export kept the 12-file T32 inventory, and the root repeat
+  export was byte-identical.
+- Verified with `cargo fmt`, `cargo test --workspace`, UAT-SH-011/UAT-SH-012 jq checks against the
+  T31 exports, release-profile RU/root measurements, root deterministic export comparison and
+  `git diff --check`.
 
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
