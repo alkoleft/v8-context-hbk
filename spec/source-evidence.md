@@ -214,3 +214,26 @@ Audit findings promoted to follow-up tasks:
   look like global context methods and 33 global-context event pages; table field/parameter pages
   dominate the remaining diagnostics. These pages need an explicit in-scope/out-of-scope
   classification pass before the extraction can be called complete.
+
+T25 follow-up on 2026-04-30 fixed the locale-aware section parser for root/English `Type:` and
+`Returned value:` labels and extended shared section boundaries for availability, examples,
+see-also, available-since and overload variant labels. The consumer JSON schema remains
+`schema_version: 1`; no HBK provenance, TOC paths, HTML paths or page titles were added to consumer
+record-family files.
+
+Post-T25 empty type-reference counts:
+
+| File / field | RU before | RU after | EN/root before | EN/root after |
+| --- | ---: | ---: | ---: | ---: |
+| `global-methods.json` / empty `return_types` | 143 | 143 | 500 | 147 |
+| `type-methods.json` / empty `return_types` | 2494 | 2494 | 6702 | 2520 |
+| `global-properties.json` / empty `type_refs` | 1 | 1 | 101 | 1 |
+| `type-properties.json` / empty `type_refs` | 169 | 169 | 10732 | 165 |
+
+T25 verification used the existing real-source audit fixtures from
+`tests/fixtures/syntax-helper/manifest.tsv` and full CLI exports for both
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`. `XMLСтрока` / `XMLString`,
+`Массив.Добавить` / `Array.Add` and `ОткрытьФорму` / `OpenForm` now retain the T25 type facts in
+both locales. Structured `availability`, `examples`, `see_also`, `available_since` and overload
+variant metadata remain intentionally pending for T26/T27.

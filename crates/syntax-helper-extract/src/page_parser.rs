@@ -45,7 +45,10 @@ pub fn parse_global_method(content: &PageContent, source: SyntaxHelperSource) ->
     GlobalMethod {
         name: heading_name(content),
         signatures: parse_signatures(content),
-        return_types: type_refs_from_section(content, &["Возвращаемое значение:", "Return value:"]),
+        return_types: type_refs_from_section(
+            content,
+            &["Возвращаемое значение:", "Return value:", "Returned value:"],
+        ),
         description: section_text(content, &["Описание:", "Description:"]),
         source,
     }
@@ -93,7 +96,10 @@ pub fn parse_platform_method(content: &PageContent, source: SyntaxHelperSource) 
         owner: title_name(content),
         name: heading_name(content),
         signatures: parse_signatures(content),
-        return_types: type_refs_from_section(content, &["Возвращаемое значение:", "Return value:"]),
+        return_types: type_refs_from_section(
+            content,
+            &["Возвращаемое значение:", "Return value:", "Returned value:"],
+        ),
         description: section_text(content, &["Описание:", "Description:"]),
         source,
     }
@@ -343,7 +349,10 @@ fn type_refs_from_section(content: &PageContent, labels: &[&str]) -> Vec<TypeRef
 }
 
 fn parse_type_refs(section: &str) -> Vec<TypeRef> {
-    let Some((_, after_type)) = section.split_once("Тип:") else {
+    let Some(after_type) = ["Тип:", "Type:"]
+        .iter()
+        .find_map(|label| section.split_once(label).map(|(_, after_type)| after_type))
+    else {
         return Vec::new();
     };
     let type_part = after_type

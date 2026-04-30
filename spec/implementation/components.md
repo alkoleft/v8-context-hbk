@@ -136,6 +136,12 @@ Expected public concept:
 
 Owns FR-SH-001 and FR-SH-002.
 
+Syntax Assistant section parsing is locale-aware for Russian and root/English books. The extractor
+recognizes root/English `Type:` and `Returned value:` type-reference sections and treats
+availability, examples, see-also, available-since and overload variant headings as section
+boundaries so descriptions, signatures and parameter descriptions do not absorb later sections.
+Structured fact fields for those non-description sections remain owned by T26/T27.
+
 ### hbk-export
 
 Expected public concepts:

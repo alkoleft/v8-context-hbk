@@ -534,6 +534,49 @@ material win: `shcntx_root.hbk` stayed at `122240 KiB`, while `shcntx_ru.hbk` me
 the accepted T23 production effect is limited to removing retained `FileStorage` bytes from
 `HbkBook` and using path-backed reader lifetimes.
 
+## T25 Durable Conclusions
+
+Locale-aware Syntax Assistant section parsing was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+Both source books were available. T25 kept the canonical FR-EXPORT-001 consumer shape unchanged:
+consumer record-family files still omit HBK provenance, TOC paths, HTML paths, page titles and
+duplicate navigation-link catalogs, and the JSON `schema_version` remains `1`.
+
+Post-T25 CLI export counts remained stable for both books:
+
+- 1 global context
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 `UNKNOWN_PAGE_CLASS` diagnostics
+
+The parser now recognizes root/English `Type:` and `Returned value:` sections. Root/English empty
+type-reference counts dropped from complete misses to parity with the remaining source-data gaps:
+
+| File / field | RU before | RU after | EN/root before | EN/root after |
+| --- | ---: | ---: | ---: | ---: |
+| `global-methods.json` / empty `return_types` | 143 | 143 | 500 | 147 |
+| `type-methods.json` / empty `return_types` | 2494 | 2494 | 6702 | 2520 |
+| `global-properties.json` / empty `type_refs` | 1 | 1 | 101 | 1 |
+| `type-properties.json` / empty `type_refs` | 169 | 169 | 10732 | 165 |
+
+`XMLСтрока` / `XMLString`, `Массив.Добавить` / `Array.Add` and `ОткрытьФорму` / `OpenForm` retain
+the T25 return/property/parameter type facts in both locales. Description and parameter-description
+fields no longer include the raw T25 boundary labels for availability, examples, see-also,
+available-since, returned-value or parameter sections in the UAT-SH-007 export checks. A repeated
+`shcntx_ru.hbk` export was compared with `diff -qr` to verify deterministic output.
+
+Structured `availability`, `examples`, `see_also`, `available_since` and overload variant metadata
+remain pending for T26/T27.
+
 ## First Delivery Success Metrics
 
 The project is successful for the first delivery when:

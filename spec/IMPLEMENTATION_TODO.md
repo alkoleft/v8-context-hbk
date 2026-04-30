@@ -87,7 +87,7 @@ Verification:
 - NFR-QUERY-001 measurement notes for exact lookup, keyword search and relationship search
 - `git diff --check`
 
-### [ ] T25. Fix locale-aware Syntax Assistant section parsing and type references
+### [x] T25. Fix locale-aware Syntax Assistant section parsing and type references
 
 Depends on: T24. Scheduled after T18 unless Syntax Assistant export completeness is explicitly
 reprioritized.
@@ -136,6 +136,18 @@ Verification:
 - UAT-SH-007
 - Deterministic export comparison for at least one Syntax Assistant book
 - `git diff --check`
+
+Completion notes:
+
+- Completed on 2026-04-30.
+- Implemented root/English `Type:` and `Returned value:` parsing plus RU/root section boundaries for
+  availability, examples, see-also, available-since and overload variant labels.
+- Verified with existing real-source audit fixtures and full CLI exports for `shcntx_ru.hbk` and
+  `shcntx_root.hbk`; repeated `shcntx_ru.hbk` export was byte-identical by `diff -qr`.
+- Empty type-reference counts are recorded in `spec/source-evidence.md` and
+  `spec/acceptance/baseline.md`.
+- No consumer JSON schema/version change; consumer record-family files still omit HBK provenance,
+  TOC paths, HTML paths and page titles.
 
 ### [ ] T26. Extract structured availability, examples, see-also and version facts
 

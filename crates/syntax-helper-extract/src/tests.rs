@@ -264,6 +264,153 @@ fn parses_representative_specialized_fixture_pages() {
 }
 
 #[test]
+fn parses_locale_complete_type_references_and_clean_section_boundaries() {
+    let toc = fixture_toc();
+
+    let xml_string = parse_global_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_root.hbk",
+            "en",
+            "objects/Global context/methods/catalog1566/XMLString1567.html",
+            include_str!("../../../tests/fixtures/syntax-helper/global_method_xmlstring_root.html"),
+        ),
+        source_for(
+            "shcntx_root.hbk",
+            "en",
+            "objects/Global context/methods/catalog1566/XMLString1567.html",
+        ),
+    );
+    assert!(
+        xml_string
+            .return_types
+            .iter()
+            .any(|type_ref| type_ref.name == "String")
+    );
+    let value_parameter = &xml_string.signatures[0].parameters[0];
+    assert!(value_parameter.required);
+    assert!(
+        value_parameter
+            .type_refs
+            .iter()
+            .any(|type_ref| type_ref.name == "Undefined")
+    );
+    assert!(
+        value_parameter
+            .type_refs
+            .iter()
+            .any(|type_ref| type_ref.name == "ValueStorage")
+    );
+    assert_clean_text(xml_string.description.as_deref().unwrap_or_default());
+    assert_clean_text(value_parameter.description.as_deref().unwrap_or_default());
+
+    let open_form_root = parse_global_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_root.hbk",
+            "en",
+            "objects/Global context/methods/catalog27/OpenForm3765.html",
+            include_str!("../../../tests/fixtures/syntax-helper/global_method_openform_root.html"),
+        ),
+        source_for(
+            "shcntx_root.hbk",
+            "en",
+            "objects/Global context/methods/catalog27/OpenForm3765.html",
+        ),
+    );
+    assert!(
+        open_form_root
+            .return_types
+            .iter()
+            .any(|type_ref| type_ref.name == "Form")
+    );
+    assert!(
+        open_form_root
+            .return_types
+            .iter()
+            .any(|type_ref| type_ref.name == "ClientApplicationForm")
+    );
+    let root_parameters = &open_form_root.signatures[0].parameters;
+    assert_parameter_type(root_parameters, "FormName", "String");
+    assert_parameter_type(root_parameters, "Parameters", "Structure");
+    assert_parameter_type(
+        root_parameters,
+        "WindowRepresentationMode",
+        "FormWindowViewMode",
+    );
+    assert_clean_text(open_form_root.description.as_deref().unwrap_or_default());
+    for parameter in root_parameters {
+        assert_clean_text(parameter.description.as_deref().unwrap_or_default());
+    }
+
+    let open_form_ru = parse_global_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_ru.hbk",
+            "ru",
+            "objects/Global context/methods/catalog27/OpenForm3765.html",
+            include_str!("../../../tests/fixtures/syntax-helper/global_method_openform_ru.html"),
+        ),
+        source_for(
+            "shcntx_ru.hbk",
+            "ru",
+            "objects/Global context/methods/catalog27/OpenForm3765.html",
+        ),
+    );
+    assert!(
+        open_form_ru
+            .return_types
+            .iter()
+            .any(|type_ref| type_ref.name == "Форма")
+    );
+    let ru_parameters = &open_form_ru.signatures[0].parameters;
+    assert_parameter_type(ru_parameters, "ИмяФормы", "Строка");
+    assert_parameter_type(ru_parameters, "Параметры", "Структура");
+    assert_parameter_type(
+        ru_parameters,
+        "РежимОтображенияОкна",
+        "РежимОтображенияОкнаФормы",
+    );
+
+    let array_add = parse_platform_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_root.hbk",
+            "en",
+            "objects/catalog234/Array/methods/Add772.html",
+            include_str!("../../../tests/fixtures/syntax-helper/object_method_array_add_root.html"),
+        ),
+        source_for(
+            "shcntx_root.hbk",
+            "en",
+            "objects/catalog234/Array/methods/Add772.html",
+        ),
+    );
+    let value_parameter = &array_add.signatures[0].parameters[0];
+    assert!(!value_parameter.required);
+    assert!(
+        value_parameter
+            .type_refs
+            .iter()
+            .any(|type_ref| type_ref.name == "Arbitrary")
+    );
+    assert_clean_text(array_add.description.as_deref().unwrap_or_default());
+    assert_clean_text(value_parameter.description.as_deref().unwrap_or_default());
+
+    let array_type = parse_platform_type(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_root.hbk",
+            "en",
+            "objects/catalog234/Array.html",
+            include_str!("../../../tests/fixtures/syntax-helper/object_array_root.html"),
+        ),
+        source_for("shcntx_root.hbk", "en", "objects/catalog234/Array.html"),
+    );
+    assert_clean_text(array_type.description.as_deref().unwrap_or_default());
+}
+
+#[test]
 fn extracts_platform_context_from_fixture_toc() {
     let toc = fixture_toc();
     let context = extract_with_loader(Path::new("shcntx_ru.hbk"), "ru", &toc, |html_path| {
@@ -844,12 +991,67 @@ fn fixture_content(toc: &Toc, html_path: &str) -> PageContent {
     )
 }
 
+fn fixture_content_from_raw(
+    toc: &Toc,
+    hbk_path: &str,
+    locale: &str,
+    html_path: &str,
+    html: &str,
+) -> PageContent {
+    parse_syntax_page_content(Path::new(hbk_path), locale, toc, html_path, html)
+}
+
 fn source(html_path: &str) -> SyntaxHelperSource {
+    source_for("shcntx_ru.hbk", "ru", html_path)
+}
+
+fn source_for(hbk_path: &str, locale: &str, html_path: &str) -> SyntaxHelperSource {
     SyntaxHelperSource {
-        hbk_path: PathBuf::from("shcntx_ru.hbk"),
-        locale: "ru".to_string(),
+        hbk_path: PathBuf::from(hbk_path),
+        locale: locale.to_string(),
         toc_path: None,
         html_path: html_path.to_string(),
         page_title: String::new(),
+    }
+}
+
+fn assert_parameter_type(parameters: &[Parameter], parameter_name: &str, type_name: &str) {
+    let parameter = parameters
+        .iter()
+        .find(|parameter| parameter.name == parameter_name)
+        .unwrap_or_else(|| panic!("parameter {parameter_name} must be parsed"));
+    assert!(
+        parameter
+            .type_refs
+            .iter()
+            .any(|type_ref| type_ref.name == type_name),
+        "parameter {parameter_name} must include type reference {type_name}"
+    );
+}
+
+fn assert_clean_text(text: &str) {
+    for forbidden in [
+        "Доступность:",
+        "Availability:",
+        "Пример:",
+        "Example:",
+        "См. также:",
+        "See also:",
+        "Использование в версии:",
+        "Available since:",
+        "Возвращаемое значение:",
+        "Return value:",
+        "Returned value:",
+        "Параметры:",
+        "Parameters:",
+        "Вариант синтаксиса:",
+        "Syntax variant:",
+        "Описание варианта метода:",
+        "Description of method variant:",
+    ] {
+        assert!(
+            !text.contains(forbidden),
+            "text must not contain raw section label {forbidden:?}: {text}"
+        );
     }
 }
