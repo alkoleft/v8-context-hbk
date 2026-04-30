@@ -17,12 +17,15 @@ request to make the consumer JSON output leaner and easier for downstream agents
 now complete. Post-T29 measurements also found a release-profile `syntax-helper` runtime regression;
 T30 removed the primary table-owner lookup regression. T31 remeasured the residual post-T30 path and
 did not justify another parser/export code change. T33 fixed the follow-up schema field names and
-reported data-quality defects in examples and see-also links. T13-T17 and T19-T24 are archived
-historical tasks; their durable performance conclusions live in `acceptance/baseline.md`,
-`implementation/performance-baseline-t13.md` and `implementation/performance-variants.md`.
-T25-T28 record export-completeness gaps found by the 2026-04-30 audit across Russian and
-root/English Syntax Assistant exports. T25-T28 are closed after explicit export-completeness
-reprioritization.
+reported data-quality defects in examples and see-also links. T34 fixed the follow-up multiline
+example punctuation issue. T35 is explicitly reprioritized before T18 by the 2026-05-01 review of
+TOC-aware Syntax Assistant reading gaps: duplicate-looking consumer facts are symptoms of
+insufficient TOC-derived reading context, not a request to restore raw provenance to consumer JSON.
+T13-T17 and T19-T24 are archived historical tasks; their durable performance conclusions live in
+`acceptance/baseline.md`, `implementation/performance-baseline-t13.md` and
+`implementation/performance-variants.md`. T25-T28 record export-completeness gaps found by the
+2026-04-30 audit across Russian and root/English Syntax Assistant exports. T25-T28 are closed after
+explicit export-completeness reprioritization.
 
 ## Loop Rule
 
@@ -458,9 +461,84 @@ Completion notes:
   a fresh release export for `shcntx_ru.hbk`, the reported `jq` check for
   `ЗадачаОбъект.<Имя задачи>.Записать`, and `git diff --check`.
 
+### [ ] T35. Make Syntax Assistant reading TOC-aware for ambiguous source families
+
+Depends on: T34. Explicitly reprioritized before T18 by the 2026-05-01 `/tmp/shcntx/` review.
+
+Spec refs:
+
+- FR-SH-003
+- FR-SH-002
+- FR-EXPORT-001
+- NFR-COMPAT-001
+- NFR-DIAG-001
+- UAT-SH-011
+- UAT-SH-013
+- ADR-0005
+- `spec/source-evidence.md`, Syntax Assistant TOC-aware reading findings
+- `spec/implementation/components.md`
+
+Scope:
+
+- Treat duplicate-looking consumer facts as a Syntax Assistant reading/classification defect first.
+- Derive source family, semantic owner and branch context from the TOC ancestor chain before page
+  parsing emits typed domain records.
+- Implement TOC classification as two layers: branch kind and record family. Branch categories such
+  as Automation/external API guide context but do not become record families by themselves.
+- Replace query table field/parameter ownership that relies only on stripped HTML paths with
+  TOC-aware query table context, including nested `Работа с запросами.Таблицы запросов` branches.
+- Classify module-event groups as `module_event` facts, including events currently found under
+  global context event groups and metadata/form/service module branches.
+- Add platform type classification for at least `regular`, `extension`, `primitive` and
+  `metadata_template`.
+- Derive extension base relationships only when TOC/HTML/link evidence proves the base type or
+  role.
+- Treat `Примитивные типы` as a shallow branch: direct children are primitive types; nested literal
+  pages such as `Булево > Истина` and `Булево > Ложь` are not platform types.
+- Preserve distinct semantic contexts for same-name module events and event-like platform
+  type/object pages unless an explicit source-family merge rule is documented and tested.
+- Keep placeholder-like records distinguishable by semantic owner/context.
+- Add fixture coverage from real Syntax Assistant TOC/page structures for the reported ambiguous
+  families.
+- Keep raw HBK provenance (`source_hbk`, `toc_path`, `html_path`, `page_title`) out of consumer
+  records unless a separate export-contract task changes FR-EXPORT-001. If a consumer-visible
+  semantic discriminator is needed for exact lookup, define it as a platform fact derived from
+  reading context, not as parser provenance.
+- Preserve deterministic record order, diagnostics order and current parser-maintenance diagnostic
+  provenance.
+- Do not implement the query CLI, semantic search, runtime 1C introspection or broad parser
+  rewrites in this task.
+
+Expected artifacts:
+
+- Model/extractor changes for TOC-aware semantic reading context.
+- Domain model changes for branch kind, module events and platform type kind.
+- Narrow export/index adapter changes only if needed to expose the derived semantic fact identity
+  required by UAT-SH-013.
+- Unit or fixture tests covering the reported duplicate event/table/platform-type/placeholder
+  families, primitive shallow traversal, extension types and metadata-template types.
+- Updated UAT-SH-013 with deterministic `jq` checks for the accepted semantic identity fields.
+- Updated acceptance baseline and source evidence with the resolved reading behavior and any
+  remaining ambiguous diagnostics.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-001
+- UAT-SH-003
+- UAT-SH-011
+- UAT-SH-013
+- Full CLI export for `shcntx_ru.hbk`
+- Targeted checks for `Метод дополнения периодов`, repeated global context event names,
+  `ПередЗаписью` / `BeforeWrite` and placeholder-like records
+- Targeted checks for module-event classification, primitive shallow traversal, one extension type
+  and one metadata-template type
+- `git diff --check`
+
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
-Depends on: T17 and T33 unless this task is explicitly reprioritized.
+Depends on: T17 and T35 unless this task is explicitly reprioritized.
 
 Spec refs:
 

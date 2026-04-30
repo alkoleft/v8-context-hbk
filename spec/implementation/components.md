@@ -137,7 +137,7 @@ Expected public concept:
 
 - `SyntaxHelperReader`
 
-Owns FR-SH-001 and FR-SH-002.
+Owns FR-SH-001, FR-SH-002 and FR-SH-003.
 
 Syntax Assistant section parsing is locale-aware for Russian and root/English books. The extractor
 recognizes root/English `Type:` and `Returned value:` type-reference sections and treats
@@ -153,6 +153,22 @@ global-context method-like pages as recoverable diagnostics. T30 resolves query/
 through one extraction-scope TOC HTML-path index per run instead of repeatedly flattening the TOC for
 each table field and table parameter. T31 remeasured residual parser overhead after T30 and did not
 justify changing parser-helper behavior.
+
+Syntax Assistant reading must derive source family and semantic ownership from the TOC ancestor
+chain before parsing a page into a domain record. HTML path patterns remain evidence, but
+`syntax-helper-extract` must not classify or own records solely by suffix checks when the same path
+shape appears under multiple Syntax Assistant branches. Query-language/SDBL table fields and
+parameters are owned by TOC-derived query table context, not by a path-stripped table title alone.
+Same-name global context events, event-like platform type/object pages and placeholder-like records
+remain distinct until an explicit source-family merge rule says otherwise. ADR-0005 owns this
+reading boundary.
+
+The extractor must model TOC classification in two layers: branch kind and record family. Branches
+such as Automation/external API are category context for ordinary platform types, while module
+event groups produce `module_event` records. Platform type records must be able to distinguish at
+least regular, extension, primitive and metadata-template types. Primitive type traversal is
+shallow: direct children of `Примитивные типы` are primitive platform types, but nested literal
+pages are not ordinary platform types.
 
 ### hbk-export
 

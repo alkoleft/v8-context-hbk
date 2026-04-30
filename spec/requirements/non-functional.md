@@ -84,6 +84,9 @@ Verification tiers:
 - First supported platform baseline is `8.5.1.1150`.
 - Parser logic should avoid assumptions that are only true for one HTML filename when TOC carries a
   more reliable relationship.
+- Syntax Assistant reading must remain TOC-aware for classification, semantic ownership and
+  disambiguation. Filename conventions may be used as hints, but not as the sole compatibility
+  contract for source families that appear under multiple TOC branches.
 - Root section detection should be data-driven and tested against Russian/root books.
 - Do not preserve backward compatibility for its own sake.
 - Contract stability is intentionally deferred until parser evidence, consumer feedback and model

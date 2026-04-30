@@ -354,3 +354,51 @@ without absorbing later availability sections, syntax-colored code examples no l
 extra spaces around BSL punctuation, and see-also owner/member source links are composed as
 `Owner.Member` target strings. Full RU/root CLI exports kept the T32/T31 record-family counts and
 4 remaining diagnostics per locale.
+
+## Syntax Assistant TOC-Aware Reading Findings
+
+On 2026-05-01 the `schema_version: 6` Russian consumer export under `/tmp/shcntx/` was reviewed
+against FR-EXPORT-001 and the T33/T34 baseline. The basic file/count invariants still matched the
+accepted export contract: 11 record-family files plus `metadata.json`, `locale=ru`, record counts
+matching the baseline and 4 `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE` diagnostics.
+
+The review found reading-level ambiguity that the lean export only makes visible:
+
+- `table-parameters.json` records `21`, `45` and `66` all expose
+  `owner="Таблица остатков и оборотов"` and `name.primary="Метод дополнения периодов"`. They are
+  not distinguishable as consumer facts, which points to insufficient TOC-derived query table
+  ownership.
+- `global-context-events.json` repeats event names and aliases such as
+  `ПриНачалеРаботыСистемы` / `OnStart`, `ПриЗавершенииРаботыСистемы` / `OnExit`,
+  `ОбработкаВнешнегоСобытия` / `ExternEventProcessing` and
+  `ПередНачаломРаботыСистемы` / `BeforeStart` with different descriptions and availability facts.
+  The reader currently does not preserve the TOC branch distinction as a semantic context.
+- `platform-types.json` contains same-name entries such as `ПередЗаписью` / `BeforeWrite`,
+  `ПослеЗаписи` / `AfterWrite`, `ПриЧтенииНаСервере` / `OnReadAtServer` and
+  `Расширение элементов управления, расположенных в форме.<Имя события>` where the source pages are
+  under different TOC branches but the extracted fact identity is name-only.
+- Placeholder-like records in query tables, form elements and external data source constructors are
+  only safe if the reader carries their semantic owner path. Examples include repeated
+  `owner="Основная таблица", name.primary="<Имя измерения>"` table fields and repeated
+  `ЭлементыФормы.<Имя элемента управления>` type properties.
+
+The durable conclusion is FR-SH-003: fix Syntax Assistant reading/classification first. Raw
+`toc_path`, `html_path`, page title and source HBK path are parser provenance, not semantic
+disambiguators for consumer records. The reader must derive source family, semantic owner and
+branch context from the TOC hierarchy before an export or index adapter sees the record.
+
+The accepted classification direction for T35 is:
+
+- classify TOC in two layers: branch kind and record family;
+- model events under session/application/object/form/service module branches as `module_event`,
+  not as global context members;
+- treat Automation/external API as a branch category containing ordinary platform types and
+  members, not as its own record family;
+- distinguish platform type kinds at least as `regular`, `extension`, `primitive` and
+  `metadata_template`;
+- treat `Расширение...` / `Extension...` pages as extension types and derive `extends` only from
+  reliable TOC/HTML/link evidence;
+- treat application/metadata placeholder types such as `ДокументОбъект.<Имя документа>` as
+  metadata-template types, optionally with metadata kind and template parameters when derivable;
+- read `Примитивные типы` shallowly: direct children are primitive types, nested literals such as
+  `Булево > Истина` and `Булево > Ложь` are not ordinary platform types.

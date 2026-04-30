@@ -363,7 +363,7 @@ Expected result:
 
 Related use case: UC-SH-001.
 
-Related requirements: FR-SH-002, FR-EXPORT-001, NFR-DIAG-001.
+Related requirements: FR-SH-002, FR-SH-003, FR-EXPORT-001, NFR-DIAG-001.
 
 Preconditions:
 
@@ -502,7 +502,7 @@ Cleanup:
 
 Related use case: UC-SH-001.
 
-Related requirements: FR-SH-002, FR-EXPORT-001, NFR-DIAG-001.
+Related requirements: FR-SH-002, FR-SH-003, FR-EXPORT-001, NFR-DIAG-001.
 
 Preconditions:
 
@@ -627,6 +627,68 @@ Cleanup:
 
 - `target/uat/shcntx-ru` and `target/uat/shcntx-en` are service data and may be deleted after the
   run.
+
+## UAT-SH-013: TOC-Aware Syntax Assistant Reading Disambiguation
+
+Related use case: UC-SH-001.
+
+Related requirements: FR-SH-003, FR-SH-002, NFR-COMPAT-001, NFR-DIAG-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- `target/uat/shcntx-ru` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+```
+
+Then inspect the exported records as the black-box observable result of Syntax Assistant reading.
+The implementation task that closes this UAT must provide deterministic `jq` checks for the
+accepted semantic identity fields.
+
+Required checks:
+
+- `table-parameters.json` must not contain semantically indistinguishable records for
+  `owner="Таблица остатков и оборотов"` and `name.primary="Метод дополнения периодов"`. If those
+  source pages are distinct, their distinction must come from TOC-derived query table context, not
+  raw `toc_path`, `html_path` or page title provenance.
+- `global-context-events.json` must preserve the TOC branch distinction for repeated event names
+  such as `ПриНачалеРаботыСистемы` / `OnStart`, `ПриЗавершенииРаботыСистемы` / `OnExit`,
+  `ОбработкаВнешнегоСобытия` / `ExternEventProcessing` and
+  `ПередНачаломРаботыСистемы` / `BeforeStart` as module events or as the accepted replacement
+  event family.
+- `platform-types.json` must not expose same-name pages such as `ПередЗаписью` / `BeforeWrite`,
+  `ПослеЗаписи` / `AfterWrite`, `ПриЧтенииНаСервере` / `OnReadAtServer` or
+  `Расширение элементов управления, расположенных в форме.<Имя события>` as name-only ambiguous
+  platform facts. They must be distinct by semantic context or merged by an explicit source-family
+  rule.
+- Placeholder-like records in `table-fields.json`, `type-properties.json` and `constructors.json`
+  must remain distinguishable by semantic owner/context when their visible source title is generic.
+- The `Примитивные типы` branch must export direct primitive type children, but nested literal pages
+  such as `Булево > Истина` and `Булево > Ложь` must not appear as platform type records.
+- At least one `Расширение...` page must be distinguishable as an extension type.
+- At least one metadata/application placeholder type such as `ДокументОбъект.<Имя документа>` must
+  be distinguishable as a metadata-template type.
+
+Expected result:
+
+- Exit code is `0`.
+- The reader uses TOC-derived semantic context for classification and ownership before records are
+  exported.
+- The reader distinguishes branch kind from record family; branch categories such as
+  Automation/external API do not become separate record families by themselves.
+- The observed record families do not contain exact-lookup collisions caused by name/title-only
+  reading.
+- Any remaining ambiguous source pages are reported as recoverable diagnostics with provenance
+  rather than silently collapsed or emitted as indistinguishable facts.
+
+Cleanup:
+
+- `target/uat/shcntx-ru` is service data and may be deleted after the run.
 
 ## UAT-ERR-001: Missing File Produces Readable CLI Error
 

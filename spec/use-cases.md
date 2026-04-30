@@ -52,7 +52,7 @@ Primary user: platform-context consumer.
 Outcome: a user can export `shcntx_ru.hbk` or `shcntx_root.hbk` into canonical JSON record-family
 files for downstream experiments.
 
-Related requirements: FR-SH-001, FR-SH-002, FR-EXPORT-001, NFR-DIAG-001.
+Related requirements: FR-SH-001, FR-SH-002, FR-SH-003, FR-EXPORT-001, NFR-DIAG-001.
 
 ## UC-SH-002: Diagnose Parser Gaps
 
@@ -61,7 +61,7 @@ Primary user: parser maintainer.
 Outcome: a maintainer can identify unknown page classes, unresolved links or unsupported HTML blocks
 with enough HBK/page provenance to create follow-up parser tasks.
 
-Related requirements: FR-DOC-001, FR-SH-001, FR-SH-002, NFR-DIAG-001.
+Related requirements: FR-DOC-001, FR-SH-001, FR-SH-002, FR-SH-003, NFR-DIAG-001.
 
 ## UC-SH-003: Find Syntax Assistant API Facts Quickly
 

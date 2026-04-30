@@ -65,6 +65,13 @@ directories are service data unless promoted here.
   fields are now named `types`, callable return fields are named `return`, inline example sections
   no longer absorb availability text, code examples no longer contain syntax-coloring spaces around
   BSL punctuation, and see-also owner/member links are composed as `Owner.Member`.
+- A 2026-05-01 review of `/tmp/shcntx/` found open TOC-aware Syntax Assistant reading gaps:
+  repeated query table parameters, global context events, platform type/object pages and
+  placeholder-like records can still become name/owner ambiguous facts. ADR-0005, FR-SH-003 and
+  UAT-SH-013 now own this as a reading/classification issue, not an export-provenance issue.
+  The accepted T35 classification direction separates TOC branch kind from record family, models
+  module events explicitly, distinguishes regular/extension/primitive/metadata-template platform
+  types and treats primitive type traversal as shallow.
 
 ## Post-T29 Runtime Regression To Fix
 

@@ -15,6 +15,8 @@ the file-level export decided in ADR-0001.
   content.
 - Expose documentation navigation and page content from compatible `.hbk` files.
 - Extract structured Syntax Assistant data from `shcntx_*.hbk`.
+- Read Syntax Assistant pages with TOC-aware classification and ownership so the internal platform
+  facts represent the book hierarchy, not only local HTML path/title patterns.
 - Provide a separate Syntax Assistant query CLI for fast retrieval of extracted platform API facts,
   including exact lookup, description/keyword search and relationship exploration.
 - Preserve provenance for diagnostics: HBK file path, entity name, TOC path, HTML path and page
@@ -150,6 +152,98 @@ Acceptance:
   available-since text or overload variant text.
 - Overload/syntax-variant pages produce only real callable signatures as signatures, with variant
   metadata attached separately when present.
+
+## FR-SH-003: TOC-Aware Syntax Assistant Reading
+
+Decision record: ADR-0005.
+
+The Syntax Assistant reader must treat the help-book TOC as the authoritative structural context for
+classification and ownership. HTML paths, page headings and localized titles are useful evidence,
+but they must not be the only source of truth when the TOC hierarchy distinguishes otherwise
+identical page names.
+
+For every Syntax Assistant page that becomes a typed platform fact, the reader must derive an
+internal semantic reading context from the TOC ancestor chain before exporting or indexing the fact.
+The context must include, where applicable:
+
+- root section kind, such as global context, type/object catalog, enum catalog or query-language
+  table catalog;
+- source family, such as global context event, platform type/object, type member, constructor,
+  enum/value, query table field or query table parameter;
+- semantic owner or owner path for owned facts;
+- TOC branch labels needed to distinguish same-title pages under different Syntax Assistant
+  branches;
+- semantic branch kind, such as managed forms, metadata/application objects, primitive types,
+  query/SDBL tables, ordinary platform objects or Automation/external API;
+- the original parser provenance already required for diagnostics: HBK path, locale, TOC path,
+  HTML path and page title.
+
+Classification rules:
+
+- Page classification must prefer TOC branch context over suffix-only HTML path checks when a path
+  segment such as `/fields/`, `/params/`, `/events/`, `/methods/`, `/properties/` or `/ctors/`
+  appears under more than one semantic branch.
+- Query-language/SDBL table pages under the `Работа с запросами.Таблицы запросов` branch must be
+  read as query table metadata, not as ordinary platform object members. Field and parameter owners
+  must be derived from the nearest semantic table ancestor plus any required parent table family
+  context, not only by stripping `/fields/` or `/params/` from the HTML path.
+- Events under module-event groups, including global context module-event groups, session module
+  events, ordinary/managed application module events, metadata object module events, form module
+  events and web/HTTP service module events, must be read as `module_event` facts with module kind
+  and semantic owner context. They must not be modeled as global context members solely because
+  some groups are placed under the global context TOC root.
+- Automation/external API TOC branches are category context for ordinary platform types and
+  members. They must not become a separate record family unless a later requirement defines one.
+- `Расширение...` / `Extension...` pages must be classified as extension platform types when the
+  TOC/HTML/link evidence shows that they extend or mix into a base type or base role. The reader may
+  record the proven base as an `extends` relationship, but must not synthesize an unproven base.
+- Metadata/application-object template types such as `ДокументОбъект.<Имя документа>`,
+  `СправочникСсылка.<Имя справочника>` and external-data-source table types must be classified
+  separately from regular platform types. Their semantic context may include metadata kind and
+  template parameters derived from TOC/name evidence.
+- Primitive types are shallow. Direct children of the `Примитивные типы` branch are primitive
+  platform types; nested pages under a primitive type, such as `Булево > Истина` and
+  `Булево > Ложь`, must not be traversed as platform types by ordinary object-catalog recursion.
+- Placeholder-like names such as `<Имя измерения>`, `<Имя элемента управления>` and generic table
+  branch labels such as `Основная таблица` are valid source titles only when their semantic owner
+  path disambiguates them. The reader must not collapse such records into a single owner/name fact.
+- Global context event pages with the same primary name and alias under different TOC branches are
+  distinct event variants unless a later requirement defines a typed merge rule. Their reading
+  context must preserve the branch-level distinction before any consumer adapter sees the record.
+- Platform type/object pages with the same localized name under different TOC branches are distinct
+  source facts unless the reader can prove they represent the same semantic type. Differences in
+  branch, owner context, availability or section facts must not be silently lost by name-only
+  merging.
+- If two source pages still map to the same semantic fact identity after TOC-aware classification,
+  the reader may merge them only when the merge rule is explicit for that source family and the
+  merged facts are deterministic. Otherwise it must keep them distinct or emit a recoverable
+  diagnostic for an ambiguous reading context.
+
+Non-solutions:
+
+- Adding raw `toc_path`, `html_path`, `page_title` or source HBK paths back to consumer record files
+  is not a reading fix. Those fields are parser provenance. The reader must derive semantic
+  ownership/classification from them inside the domain model.
+- Consumer export adapters may change later to expose semantic disambiguators, but they must not be
+  used as a substitute for correct Syntax Assistant reading.
+
+Acceptance:
+
+- The reader preserves distinct semantic contexts for duplicate global context event names such as
+  `ПриНачалеРаботыСистемы` / `OnStart` that appear under different module-event TOC branches.
+- Module event records expose module kind and semantic owner context when applicable.
+- Query table fields and parameters from `Работа с запросами.Таблицы запросов` use TOC-derived
+  query table ownership that remains unambiguous for exact lookup.
+- Placeholder-like query table fields, form-element properties and external data source
+  constructors remain distinguishable by semantic owner/context.
+- Same-name platform type/object pages such as event-like `ПередЗаписью` / `BeforeWrite` entries
+  are either distinct semantic facts with explicit context or explicitly merged by a documented
+  source-family rule.
+- Primitive type extraction does not turn nested primitive literal pages such as
+  `Булево > Истина` and `Булево > Ложь` into platform type records.
+- Extension and metadata-template platform types are distinguishable from regular platform types.
+- Reading diagnostics remain provenance-rich when the reader cannot classify or disambiguate a
+  source page safely.
 
 ## FR-EXPORT-001: Canonical JSON Export
 
