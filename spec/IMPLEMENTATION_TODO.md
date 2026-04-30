@@ -209,9 +209,10 @@ Completion notes:
   `shcntx_root.hbk`; record-family counts remained stable at the T25 baseline.
 - UAT-SH-001, UAT-SH-002, UAT-SH-003 and UAT-SH-008 passed on schema version 2 exports, and a
   repeated `shcntx_ru.hbk` export was byte-identical by `diff -qr`.
-- T27 overload/syntax-variant structure remains intentionally pending.
+- T27 overload/syntax-variant structure was intentionally pending at T26 completion; see completed
+  T27 below for closure.
 
-### [ ] T27. Parse overload and syntax-variant pages structurally
+### [x] T27. Parse overload and syntax-variant pages structurally
 
 Depends on: T25. Prefer running after T26 if variant descriptions or examples need the structured
 section model introduced there.
@@ -255,6 +256,28 @@ Verification:
 - Deterministic export comparison for at least one Syntax Assistant book after accepting the new
   schema shape
 - `git diff --check`
+
+Completion notes:
+
+- Completed on 2026-04-30.
+- Added schema version 3 `signatures[].variant` metadata with `title` and `description` for
+  Syntax Assistant syntax-variant pages. Consumer record-family JSON still omits HBK provenance,
+  TOC paths, HTML paths and page titles.
+- Implemented locale-aware variant block parsing for Russian and root/English pages so
+  `ДокументDOM.СоздатьРазыменовательПИ` / `DOMDocument.CreateNSResolver` exports four callable
+  signatures in both locales, with parameters attached to the owning variant and return types
+  preserved.
+- Covered existing real-source audit fixtures for `DOMDocument.CreateNSResolver` and root
+  `OpenForm`; no new HTML case was required because the manifest already registered the T27
+  fixtures.
+- Full RU/root CLI export record-family counts remained stable. Structured variant metadata is
+  present on 266 records and 604 signatures in each locale; `global-methods.json` accounts for
+  23 records / 60 signatures and `type-methods.json` for 243 records / 544 signatures.
+- Signature text containing raw overload section labels or returned-value labels was zero in the
+  post-T26 baseline and remained zero after T27 for both locales.
+- Verified with `cargo fmt`, `cargo test --workspace`, UAT-SH-007, UAT-SH-009, repeated
+  `shcntx_ru.hbk` export compared by `diff -qr`, `git diff --check` and an independent reviewer
+  pass.
 
 ### [ ] T28. Classify remaining Syntax Assistant diagnostics and extraction completeness
 

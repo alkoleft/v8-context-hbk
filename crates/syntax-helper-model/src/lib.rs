@@ -434,6 +434,13 @@ pub struct VersionFact {
 pub struct Signature {
     pub text: String,
     pub parameters: Vec<Parameter>,
+    pub variant: Option<SyntaxVariant>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SyntaxVariant {
+    pub title: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

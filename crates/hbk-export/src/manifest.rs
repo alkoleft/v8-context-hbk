@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-pub(crate) const SCHEMA_VERSION: u32 = 2;
+pub(crate) const SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ExportFile {

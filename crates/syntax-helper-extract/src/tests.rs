@@ -532,6 +532,149 @@ fn parses_locale_complete_type_references_and_clean_section_boundaries() {
 }
 
 #[test]
+fn parses_syntax_variants_as_structured_overloads() {
+    let toc = fixture_toc();
+
+    let method_ru = parse_platform_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_ru.hbk",
+            "ru",
+            "objects/catalog63/catalog1055/DOMDocument/methods/CreateNSResolver2613.html",
+            include_str!(
+                "../../../tests/fixtures/syntax-helper/object_method_domdocument_create_ns_resolver_ru.html"
+            ),
+        ),
+        source_for(
+            "shcntx_ru.hbk",
+            "ru",
+            "objects/catalog63/catalog1055/DOMDocument/methods/CreateNSResolver2613.html",
+        ),
+    );
+    assert_eq!(method_ru.signatures.len(), 4);
+    assert!(
+        method_ru
+            .return_types
+            .iter()
+            .any(|type_ref| type_ref.name == "РазыменовательПространствИменDOM")
+    );
+    let document_ru = assert_signature_variant(
+        &method_ru.signatures,
+        "На основе документа DOM",
+        "СоздатьРазыменовательПИ()",
+    );
+    assert_variant_description_contains(document_ru, "пространств имен");
+    let node_ru = assert_signature_variant(
+        &method_ru.signatures,
+        "На основании узла DOM",
+        "СоздатьРазыменовательПИ(<УзелКонтекста>)",
+    );
+    assert_parameter_type(&node_ru.parameters, "УзелКонтекста", "АтрибутDOM");
+    assert_parameter_type(&node_ru.parameters, "УзелКонтекста", "ДокументDOM");
+    assert_parameter_type(&node_ru.parameters, "УзелКонтекста", "ЭлементDOM");
+    let map_ru = assert_signature_variant(
+        &method_ru.signatures,
+        "На основании Соответствия",
+        "СоздатьРазыменовательПИ(<Соответствие>)",
+    );
+    assert_parameter_type(&map_ru.parameters, "Соответствие", "Соответствие");
+    let prefix_ru = assert_signature_variant(
+        &method_ru.signatures,
+        "На основании конкретного префикса и URI пространства имен",
+        "СоздатьРазыменовательПИ(<Префикс>, <URIПространстваИмен>)",
+    );
+    assert_parameter_type(&prefix_ru.parameters, "Префикс", "Строка");
+    assert_parameter_type(&prefix_ru.parameters, "URIПространстваИмен", "Строка");
+    assert_variant_signatures_are_clean(&method_ru.signatures);
+
+    let method_root = parse_platform_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_root.hbk",
+            "en",
+            "objects/catalog63/catalog1055/DOMDocument/methods/CreateNSResolver2613.html",
+            include_str!(
+                "../../../tests/fixtures/syntax-helper/object_method_domdocument_create_ns_resolver_root.html"
+            ),
+        ),
+        source_for(
+            "shcntx_root.hbk",
+            "en",
+            "objects/catalog63/catalog1055/DOMDocument/methods/CreateNSResolver2613.html",
+        ),
+    );
+    assert_eq!(method_root.signatures.len(), 4);
+    assert!(
+        method_root
+            .return_types
+            .iter()
+            .any(|type_ref| type_ref.name == "DOMNamespaceResolver")
+    );
+    let document_root = assert_signature_variant(
+        &method_root.signatures,
+        "On the basis of DOM document",
+        "CreateNSResolver()",
+    );
+    assert_variant_description_contains(document_root, "namespaces defined in the document");
+    let node_root = assert_signature_variant(
+        &method_root.signatures,
+        "On the basis of DOM node",
+        "CreateNSResolver(<ContextNode>)",
+    );
+    assert_parameter_type(&node_root.parameters, "ContextNode", "DOMAttribute");
+    assert_parameter_type(&node_root.parameters, "ContextNode", "DOMDocument");
+    assert_parameter_type(&node_root.parameters, "ContextNode", "DOMElement");
+    let map_root = assert_signature_variant(
+        &method_root.signatures,
+        "On the basis of a Map",
+        "CreateNSResolver(<Map>)",
+    );
+    assert_parameter_type(&map_root.parameters, "Map", "Map");
+    let prefix_root = assert_signature_variant(
+        &method_root.signatures,
+        "On the basis of specific prefix and namespace URI",
+        "CreateNSResolver(<Prefix>, <NamespaceURI>)",
+    );
+    assert_parameter_type(&prefix_root.parameters, "Prefix", "String");
+    assert_parameter_type(&prefix_root.parameters, "NamespaceURI", "String");
+    assert_variant_signatures_are_clean(&method_root.signatures);
+
+    let open_form_root = parse_global_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_root.hbk",
+            "en",
+            "objects/Global context/methods/catalog27/OpenForm3765.html",
+            include_str!("../../../tests/fixtures/syntax-helper/global_method_openform_root.html"),
+        ),
+        source_for(
+            "shcntx_root.hbk",
+            "en",
+            "objects/Global context/methods/catalog27/OpenForm3765.html",
+        ),
+    );
+    assert_eq!(open_form_root.signatures.len(), 2);
+    assert_signature_variant(
+        &open_form_root.signatures,
+        "By name",
+        "OpenForm(<FormName>, <Parameters>, <Owner>, <Unique>, <Window>, <NavigationLink>, <NotifyOnCloseDescription>, <WindowOpeningMode>, <WindowRepresentationMode>)",
+    );
+    let by_form = assert_signature_variant(
+        &open_form_root.signatures,
+        "By form",
+        "OpenForm(<Form>, <Window>)",
+    );
+    assert_parameter_type(&by_form.parameters, "Form", "Form");
+    assert!(
+        open_form_root
+            .return_types
+            .iter()
+            .any(|type_ref| type_ref.name == "ClientApplicationForm")
+    );
+    assert_variant_signatures_are_clean(&open_form_root.signatures);
+}
+
+#[test]
 fn extracts_platform_context_from_fixture_toc() {
     let toc = fixture_toc();
     let context = extract_with_loader(Path::new("shcntx_ru.hbk"), "ru", &toc, |html_path| {
@@ -1157,6 +1300,57 @@ fn assert_parameter_type(parameters: &[Parameter], parameter_name: &str, type_na
             .any(|type_ref| type_ref.name == type_name),
         "parameter {parameter_name} must include type reference {type_name}"
     );
+}
+
+fn assert_signature_variant<'a>(
+    signatures: &'a [Signature],
+    title: &str,
+    text: &str,
+) -> &'a Signature {
+    let signature = signatures
+        .iter()
+        .find(|signature| signature.text == text)
+        .unwrap_or_else(|| panic!("signature {text} must be parsed"));
+    let variant = signature
+        .variant
+        .as_ref()
+        .unwrap_or_else(|| panic!("signature {text} must expose variant metadata"));
+    assert_eq!(variant.title, title);
+    signature
+}
+
+fn assert_variant_description_contains(signature: &Signature, expected: &str) {
+    let variant = signature
+        .variant
+        .as_ref()
+        .expect("signature must expose variant metadata");
+    let description = variant
+        .description
+        .as_deref()
+        .expect("variant description must be parsed");
+    assert!(
+        description.contains(expected),
+        "variant description must contain {expected:?}: {description}"
+    );
+}
+
+fn assert_variant_signatures_are_clean(signatures: &[Signature]) {
+    for signature in signatures {
+        assert_clean_text(&signature.text);
+        let variant = signature
+            .variant
+            .as_ref()
+            .expect("variant signature must expose variant metadata");
+        assert_clean_text(&variant.title);
+        if let Some(description) = variant.description.as_deref() {
+            assert_clean_text(description);
+        }
+        for parameter in &signature.parameters {
+            if let Some(description) = parameter.description.as_deref() {
+                assert_clean_text(description);
+            }
+        }
+    }
 }
 
 fn assert_available_since(facts: &SectionFacts, version: &str) {

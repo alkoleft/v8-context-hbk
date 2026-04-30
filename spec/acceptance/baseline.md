@@ -618,6 +618,45 @@ Post-T26 structured fact counts from full CLI exports:
 UAT-SH-001, UAT-SH-002, UAT-SH-003 and UAT-SH-008 passed on schema version 2 exports. A repeated
 `shcntx_ru.hbk` export was compared with `diff -qr` to verify deterministic output.
 
+## T27 Durable Conclusions
+
+Structured Syntax Assistant syntax variants were validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+T27 changed the consumer JSON shape and raised the canonical export schema to `schema_version: 3`.
+Consumer signatures now expose `variant` metadata with `title` and `description` when the source
+page contains `Вариант синтаксиса:` / `Syntax variant:` sections. Consumer records still omit HBK
+provenance, TOC paths, HTML paths, page titles and duplicate navigation-link catalogs.
+
+Post-T27 CLI export counts remained stable for both books:
+
+- 1 global context
+- 500 global methods
+- 101 global properties
+- 2533 platform types
+- 6702 type methods
+- 10732 type properties
+- 445 constructors
+- 713 enums
+- 3110 enum values
+- 703 `UNKNOWN_PAGE_CLASS` diagnostics
+
+Post-T27 structured variant counts from full CLI exports:
+
+| File | RU records with variants | RU variant signatures | EN/root records with variants | EN/root variant signatures |
+| --- | ---: | ---: | ---: | ---: |
+| `global-methods.json` | 23 | 60 | 23 | 60 |
+| `type-methods.json` | 243 | 544 | 243 | 544 |
+| `constructors.json` | 0 | 0 | 0 | 0 |
+
+`ДокументDOM.СоздатьРазыменовательПИ` / `DOMDocument.CreateNSResolver` exports four structured
+variant signatures in both locales with parameters attached to the owning variant and return types
+preserved. `ОткрытьФорму` / `OpenForm` exports both source syntax variants. Signature text
+containing raw overload labels or returned-value labels stayed at zero before and after T27. A
+repeated `shcntx_ru.hbk` export was compared with `diff -qr` to verify deterministic output.
+
 ## First Delivery Success Metrics
 
 The project is successful for the first delivery when:

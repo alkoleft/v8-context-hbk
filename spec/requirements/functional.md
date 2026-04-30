@@ -185,15 +185,20 @@ Required files:
 - `enum-values.json`
 - `diagnostics.json`
 
-The current consumer export schema is `schema_version: 2`. Each consumer record-family file is a
+The current consumer export schema is `schema_version: 3`. Each consumer record-family file is a
 JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and `records`.
 `metadata.json` contains export-level metadata and file inventory; it must not expose source HBK
 paths or book hierarchy. `diagnostics.json` may keep parser source context because its audience is
 parser maintenance, not downstream platform API consumption.
 
-Schema version 2 consumer records include these structured section fields. When a source page does
-not contain a fact, array fields are empty and `available_since` is `null`:
+Schema version 3 consumer records include these structured section and overload fields. When a
+source page does not contain a fact, array fields are empty, `available_since` is `null` and
+signature `variant` is `null`:
 
+- `signatures`: array of callable signatures; each signature has `text`, `parameters` and
+  `variant`. `variant` is an object with `title` and `description` when the source page contains a
+  Syntax Assistant syntax-variant heading, otherwise `null`. Variant metadata must not expose HBK,
+  TOC or HTML provenance.
 - `availability`: object with `contexts`, a deterministic array of normalized snake_case execution
   context values such as `thin_client`, `web_client`, `mobile_client`, `server`, `thick_client`,
   `external_connection`, `mobile_application_client`, `mobile_application_server` and

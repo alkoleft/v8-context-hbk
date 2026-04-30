@@ -255,3 +255,22 @@ Post-T26 structured fact counts from full CLI exports:
 | `constructors.json` | 2 | 54 | 10 | 315 | 2 | 55 | 10 | 315 |
 | `enums.json` | 713 | 3 | 341 | 713 | 713 | 2 | 341 | 713 |
 | `enum-values.json` | 28 | 0 | 36 | 3109 | 28 | 3 | 36 | 3109 |
+
+T27 follow-up on 2026-04-30 added schema version 3 structured syntax-variant metadata as
+`signatures[].variant` with `title` and `description`. Consumer records still omit HBK provenance,
+TOC paths, HTML paths and page titles. `ДокументDOM.СоздатьРазыменовательПИ` /
+`DOMDocument.CreateNSResolver` now exports four callable variant signatures in both locales, with
+parameters bound to the owning variant and return types preserved. `ОткрытьФорму` / `OpenForm`
+now exports both current syntax variants.
+
+Post-T27 CLI export counts remained stable for both books. Full RU/root exports expose structured
+variant metadata on 266 records and 604 signatures in each locale:
+
+| File | RU records with variants | RU variant signatures | EN/root records with variants | EN/root variant signatures |
+| --- | ---: | ---: | ---: | ---: |
+| `global-methods.json` | 23 | 60 | 23 | 60 |
+| `type-methods.json` | 243 | 544 | 243 | 544 |
+| `constructors.json` | 0 | 0 | 0 | 0 |
+
+Signature text containing raw overload section labels or returned-value labels stayed at zero in
+the post-T26 baseline and remains zero after T27 for both locales.

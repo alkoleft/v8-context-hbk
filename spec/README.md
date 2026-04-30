@@ -60,3 +60,9 @@ Otherwise reconcile the specification files before implementing.
 Intermediate command reports, generated exports and one-off acceptance logs are service data. Do not
 keep them as durable documentation unless their conclusions are promoted into a requirement,
 acceptance baseline, task ledger entry or ADR.
+
+## Current Export Contract
+
+The current provisional Syntax Assistant consumer JSON contract is `schema_version: 3`.
+`FR-EXPORT-001` owns the exact record-family shape; `acceptance/baseline.md` records the latest
+validated counts and schema-changing task conclusions.

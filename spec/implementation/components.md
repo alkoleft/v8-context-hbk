@@ -141,8 +141,8 @@ recognizes root/English `Type:` and `Returned value:` type-reference sections an
 availability, examples, see-also, available-since and overload variant headings as section
 boundaries so descriptions, signatures and parameter descriptions do not absorb later sections.
 T26 extracts structured availability/application contexts, examples, see-also relationships and
-available-since facts into the domain model. T27 remains responsible for structured overload and
-syntax-variant metadata.
+available-since facts into the domain model. T27 extracts structured syntax-variant metadata and
+binds parameters to the variant signature that owns them.
 
 ### hbk-export
 
@@ -162,9 +162,10 @@ exporter remains available for in-memory model consumers and tests. Streaming ex
 lean sink detail mode to skip consumer-omitted navigation fields, but omission from JSON remains an
 `hbk-export` adapter concern rather than an internal model constraint.
 
-Schema version 2 record-family JSON exposes structured `availability`, `examples`, `see_also` and
-`available_since` fields from the domain model while still omitting source HBK paths, TOC paths,
-HTML paths, page titles and duplicate navigation-link catalogs from consumer records.
+Schema version 3 record-family JSON exposes structured `availability`, `examples`, `see_also`,
+`available_since` and `signatures[].variant` fields from the domain model while still omitting
+source HBK paths, TOC paths, HTML paths, page titles and duplicate navigation-link catalogs from
+consumer records.
 
 ### v8-context-hbk-cli
 

@@ -149,7 +149,7 @@ fn records_envelope_json_is_parseable_and_non_empty() {
     let json = fs::read_to_string(&path).expect("record envelope must be readable");
     assert!(!json.is_empty());
     let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
-    assert_eq!(parsed["schema_version"], 2);
+    assert_eq!(parsed["schema_version"], 3);
     assert_eq!(parsed["locale"], "en");
     assert_eq!(parsed["source_locale"], "root");
     assert!(parsed.get("source_hbk").is_none());
@@ -182,7 +182,7 @@ fn exporter_writes_full_canonical_file_set() {
     }
 
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 2);
+    assert_eq!(metadata["schema_version"], 3);
     assert_eq!(metadata["locale"], "en");
     assert_eq!(metadata["source_locale"], "root");
     assert!(metadata.get("source_hbk").is_none());
@@ -214,6 +214,10 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             signatures: vec![model::Signature {
                 text: "XMLСтрока(Значение)".to_string(),
                 parameters: Vec::new(),
+                variant: Some(model::SyntaxVariant {
+                    title: "По значению".to_string(),
+                    description: Some("Creates an XML string from a value.".to_string()),
+                }),
             }],
             return_types: vec![model::TypeRef {
                 name: "Строка".to_string(),
@@ -262,7 +266,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
 
     assert!(!dir.join("global-contexts.json").exists());
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 2);
+    assert_eq!(metadata["schema_version"], 3);
     assert_no_keys(&metadata, &["source_hbk"]);
 
     let forbidden = [
@@ -303,6 +307,16 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     assert_eq!(method["see_also"][0]["name"]["primary"], "XMLЗначение");
     assert!(method["see_also"][0].get("html_path").is_none());
     assert_eq!(method["available_since"]["version"], "8.0");
+    assert_eq!(method["signatures"][0]["variant"]["title"], "По значению");
+    assert_eq!(
+        method["signatures"][0]["variant"]["description"],
+        "Creates an XML string from a value."
+    );
+    assert!(
+        method["signatures"][0]["variant"]
+            .get("html_path")
+            .is_none()
+    );
     assert!(method.get("source").is_none());
 
     let diagnostics = read_json(dir.join("diagnostics.json"));

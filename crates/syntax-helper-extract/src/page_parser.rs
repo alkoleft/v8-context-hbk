@@ -397,27 +397,139 @@ pub(crate) fn syntax_toc_index(toc: &Toc) -> SyntaxTocIndex {
         .collect()
 }
 
+const SYNTAX_LABELS: &[&str] = &["Синтаксис:", "Syntax:"];
+const PARAMETER_LABELS: &[&str] = &["Параметры:", "Parameters:"];
+const VARIANT_LABELS: &[&str] = &["Вариант синтаксиса:", "Syntax variant:"];
+const VARIANT_DESCRIPTION_LABELS: &[&str] = &[
+    "Описание варианта метода:",
+    "Description of method variant:",
+];
+
 pub(crate) fn parse_signatures(content: &PageContent) -> Vec<Signature> {
-    let Some(section_html) = section_html(&content.raw_html, &["Синтаксис:", "Syntax:"])
-    else {
+    let variant_signatures = parse_variant_signatures(&content.raw_html);
+    if !variant_signatures.is_empty() {
+        return variant_signatures;
+    }
+
+    let Some(section_html) = section_html(&content.raw_html, SYNTAX_LABELS) else {
         return Vec::new();
     };
     let parameters = parse_parameters(content);
+    signatures_from_section(section_html, &parameters, None)
+}
+
+fn parse_variant_signatures(raw_html: &str) -> Vec<Signature> {
+    variant_blocks(raw_html)
+        .into_iter()
+        .flat_map(|block| {
+            let block_html = &raw_html[block.body_start..block.body_end];
+            let Some(syntax_html) = section_html(block_html, SYNTAX_LABELS) else {
+                return Vec::new();
+            };
+            let variant = SyntaxVariant {
+                title: block.title,
+                description: variant_description(block_html),
+            };
+            let parameters = parse_parameters_from_html(block_html);
+            signatures_from_section(syntax_html, &parameters, Some(&variant))
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VariantBlock {
+    title: String,
+    body_start: usize,
+    body_end: usize,
+}
+
+fn variant_blocks(raw_html: &str) -> Vec<VariantBlock> {
+    let labels = label_positions(raw_html, VARIANT_LABELS);
+    labels
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (start, label))| {
+            let (title, body_start) = variant_title_and_body_start(raw_html, *start, label)?;
+            let body_end = labels
+                .get(index + 1)
+                .map(|(next_start, _)| *next_start)
+                .unwrap_or(raw_html.len());
+            Some(VariantBlock {
+                title,
+                body_start,
+                body_end,
+            })
+        })
+        .collect()
+}
+
+fn label_positions<'a>(raw_html: &str, labels: &'a [&'a str]) -> Vec<(usize, &'a str)> {
+    let mut positions = labels
+        .iter()
+        .flat_map(|label| {
+            raw_html
+                .match_indices(label)
+                .map(move |(index, _)| (index, *label))
+        })
+        .collect::<Vec<_>>();
+    positions.sort_by_key(|(index, _)| *index);
+    positions
+}
+
+fn variant_title_and_body_start(
+    raw_html: &str,
+    label_start: usize,
+    label: &str,
+) -> Option<(String, usize)> {
+    let title_start = label_start + label.len();
+    let chapter_end = raw_html[title_start..]
+        .find("</p>")
+        .map(|offset| title_start + offset)?;
+    let title = text_lines_from_html_fragment(&raw_html[title_start..chapter_end])
+        .trim()
+        .to_string();
+    Some((title, chapter_end + "</p>".len()))
+}
+
+fn variant_description(raw_html: &str) -> Option<String> {
+    section_html(raw_html, VARIANT_DESCRIPTION_LABELS)
+        .map(text_lines_from_html_fragment)
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+}
+
+fn signatures_from_section(
+    section_html: &str,
+    parameters: &[Parameter],
+    variant: Option<&SyntaxVariant>,
+) -> Vec<Signature> {
     text_lines_from_html_fragment(section_html)
         .split('\n')
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(|line| Signature {
             text: line.to_string(),
-            parameters: parameters_for_signature(line, &parameters),
+            parameters: parameters_for_signature(line, parameters),
+            variant: variant.cloned(),
         })
         .collect()
 }
 
 fn parse_parameters(content: &PageContent) -> Vec<Parameter> {
-    let Some(section) = section_text(content, &["Параметры:", "Parameters:"]) else {
+    let Some(section) = section_text(content, PARAMETER_LABELS) else {
         return Vec::new();
     };
+    parse_parameters_from_text(&section)
+}
+
+fn parse_parameters_from_html(raw_html: &str) -> Vec<Parameter> {
+    section_html(raw_html, PARAMETER_LABELS)
+        .map(text_lines_from_html_fragment)
+        .map(|section| parse_parameters_from_text(&section))
+        .unwrap_or_default()
+}
+
+fn parse_parameters_from_text(section: &str) -> Vec<Parameter> {
     let ranges = bracketed_name_ranges(&section);
     ranges
         .iter()
