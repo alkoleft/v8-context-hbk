@@ -130,8 +130,8 @@ Current consumer record fields are enough for a first local search index:
 
 - `name.primary` and `name.alias` support exact and fuzzy name search;
 - `owner` on type members, constructors and enum values supports owner/member lookup;
-- `signatures`, parameter names and parameter `type_refs` support signature search;
-- `return_types` and property `type_refs` support type-reference relationships;
+- `signatures`, parameter names and parameter `types` support signature search;
+- callable `return` and property `types` support type-reference relationships;
 - `description` supports keyword and purpose-oriented lexical search.
 
 Observed data-composition filter facts for relationship-search design:
@@ -327,7 +327,7 @@ in `enums.json` for both locales.
 | `diagnostics.json` | 4 | 4 |
 
 The current lean consumer records omit `null` fields and empty arrays, expose `owner` as a
-primary-name string, expose `type_refs` and `return_types` as arrays of type-name strings, emit
+primary-name string, expose type references as `types` and callable returns as `return`, emit
 recognized version facts as `availability.since`, flatten `see_also` to target primary-name
 strings, normalize property `usage`, remove callable `signatures[].text`, flatten syntax-variant
 metadata onto signatures and keep parser provenance only in `diagnostics.json`.
@@ -345,3 +345,12 @@ parser code. Release-profile exports measured `4.96s / 151644 KiB` for `shcntx_r
 `3.68s / 128828 KiB` for `shcntx_root.hbk`; a root repeat measured `3.90s / 127780 KiB` and was
 byte-identical to the first root export. The residual path stayed in the T28/T30 performance class,
 so no additional parser/export optimization was accepted in T31.
+
+T33 follow-up on 2026-04-30 changed the consumer export to schema version 6 and fixed data-quality
+issues found in real `shcntx_ru.hbk` JSON exports. Type-reference facts are now serialized as
+`types`; callable return facts are serialized as `return`; legacy `type_refs` and `return_types`
+are absent from consumer JSON. Inline example sections embedded in descriptions are extracted
+without absorbing later availability sections, syntax-colored code examples no longer contain
+extra spaces around BSL punctuation, and see-also owner/member source links are composed as
+`Owner.Member` target strings. Full RU/root CLI exports kept the T32/T31 record-family counts and
+4 remaining diagnostics per locale.

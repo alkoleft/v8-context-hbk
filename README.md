@@ -71,7 +71,7 @@ The output directory contains JSON files by record family:
 - `enums.json`
 - `diagnostics.json`
 
-The current provisional export schema is `schema_version: 5`. Consumer record-family files include
+The current provisional export schema is `schema_version: 6`. Consumer record-family files include
 structured `availability`, `examples`, `see_also`, signature variant metadata, type references and
 return types when the source page contains those facts. Absent facts are omitted from platform API
 consumer records. Enum values are nested in `enums.json`; `enum-values.json` is not emitted.

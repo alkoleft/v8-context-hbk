@@ -172,7 +172,7 @@ fn records_envelope_json_is_parseable_and_non_empty() {
     let json = fs::read_to_string(&path).expect("record envelope must be readable");
     assert!(!json.is_empty());
     let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
-    assert_eq!(parsed["schema_version"], 5);
+    assert_eq!(parsed["schema_version"], 6);
     assert_eq!(parsed["locale"], "en");
     assert_eq!(parsed["source_locale"], "root");
     assert!(parsed.get("source_hbk").is_none());
@@ -208,7 +208,7 @@ fn exporter_writes_full_canonical_file_set() {
     }
 
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 5);
+    assert_eq!(metadata["schema_version"], 6);
     assert_eq!(metadata["locale"], "en");
     assert_eq!(metadata["source_locale"], "root");
     assert!(metadata.get("source_hbk").is_none());
@@ -439,7 +439,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
 
     assert!(!dir.join("global-contexts.json").exists());
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 5);
+    assert_eq!(metadata["schema_version"], 6);
     assert_no_keys(&metadata, &["source_hbk"]);
 
     let forbidden = [
@@ -478,7 +478,8 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
 
     let global_methods = read_json(dir.join("global-methods.json"));
     let method = &global_methods["records"][0];
-    assert_eq!(method["return_types"], serde_json::json!(["Строка"]));
+    assert_eq!(method["return"], serde_json::json!(["Строка"]));
+    assert!(method.get("return_types").is_none());
     assert_eq!(
         method["availability"]["contexts"],
         serde_json::json!(["thin_client", "server"])
@@ -498,8 +499,13 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         "Creates an XML string from a value."
     );
     assert_eq!(
-        method["signatures"][0]["parameters"][0]["type_refs"],
+        method["signatures"][0]["parameters"][0]["types"],
         serde_json::json!(["Произвольный"])
+    );
+    assert!(
+        method["signatures"][0]["parameters"][0]
+            .get("type_refs")
+            .is_none()
     );
     assert!(method.get("source").is_none());
 
@@ -512,9 +518,10 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         .expect("Catalogs property must be exported");
     assert_eq!(property["usage"], "Read");
     assert_eq!(
-        property["type_refs"],
+        property["types"],
         serde_json::json!(["СправочникиМенеджер"])
     );
+    assert!(property.get("type_refs").is_none());
     assert_eq!(
         property["description"],
         "Используется для доступа к справочникам."
@@ -531,7 +538,8 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     let type_methods = read_json(dir.join("type-methods.json"));
     let type_method = &type_methods["records"][0];
     assert_eq!(type_method["owner"], "Массив");
-    assert_eq!(type_method["return_types"], serde_json::json!(["Число"]));
+    assert_eq!(type_method["return"], serde_json::json!(["Число"]));
+    assert!(type_method.get("return_types").is_none());
 
     let type_properties = read_json(dir.join("type-properties.json"));
     let type_property = &type_properties["records"][0];
@@ -540,6 +548,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     assert_eq!(type_property["description"], "Определяет видимость группы.");
 
     let table_parameters = read_json(dir.join("table-parameters.json"));
+    assert!(table_parameters["records"][0].get("types").is_none());
     assert!(table_parameters["records"][0].get("type_refs").is_none());
 
     let enums = read_json(dir.join("enums.json"));

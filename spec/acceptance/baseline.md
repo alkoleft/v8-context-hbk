@@ -61,6 +61,10 @@ directories are service data unless promoted here.
   export code change. Current `schema_version: 5` exports measured `4.96s / 151644 KiB` for
   `shcntx_ru.hbk`, `3.68s / 128828 KiB` for `shcntx_root.hbk`, and `3.90s / 127780 KiB` for a
   deterministic root repeat. The root repeat was byte-identical to the first root export.
+- T33 changed the canonical consumer JSON export to `schema_version: 6`. Consumer type-reference
+  fields are now named `types`, callable return fields are named `return`, inline example sections
+  no longer absorb availability text, code examples no longer contain syntax-coloring spaces around
+  BSL punctuation, and see-also owner/member links are composed as `Owner.Member`.
 
 ## Post-T29 Runtime Regression To Fix
 
@@ -838,6 +842,51 @@ Generated export byte totals by `wc -c` were `18555205` bytes for the Russian ex
 `11911554` bytes for the root/English export. The remaining diagnostics in each locale are all
 `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE`. T32 did not change parser behavior or the post-T29
 runtime-regression attribution owned by T30.
+
+## T33 Durable Conclusions
+
+Schema version 6 was validated against:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+
+T33 changed the consumer JSON shape and raised the canonical export schema to
+`schema_version: 6`. Record-family counts remained stable for both source books:
+
+| File | RU records | EN/root records |
+| --- | ---: | ---: |
+| `global-methods.json` | 500 | 500 |
+| `global-properties.json` | 101 | 101 |
+| `global-context-events.json` | 33 | 33 |
+| `platform-types.json` | 2533 | 2533 |
+| `type-methods.json` | 6702 | 6702 |
+| `type-properties.json` | 10732 | 10732 |
+| `table-fields.json` | 588 | 588 |
+| `table-parameters.json` | 78 | 78 |
+| `constructors.json` | 445 | 445 |
+| `enums.json` | 713 | 713 |
+| `diagnostics.json` | 4 | 4 |
+
+Consumer shape and data-quality checks verified by UAT:
+
+- type-reference facts are emitted as `types`; legacy `type_refs` is absent from consumer records;
+- callable return facts are emitted as `return`; legacy `return_types` is absent from consumer
+  records;
+- platform API consumer records still omit `null` fields and empty arrays across every record
+  family;
+- inline `Пример:` / `Example:` source sections embedded in descriptions are extracted as examples
+  and do not absorb later availability/context text;
+- code examples generated from syntax-colored HTML no longer contain extra spaces around dots,
+  commas, semicolons, brackets or parentheses;
+- see-also source pairs such as owner link plus method/property link are exported as composed
+  `Owner.Member` strings, for example `ИзбранноеРаботыПользователя.Вставить` and
+  `Глобальный контекст.ИсторияРаботыПользователя`;
+- consumer records still omit HBK provenance, TOC paths, HTML paths and page titles; diagnostics
+  remain provenance-rich for parser maintenance.
+
+Generated export byte totals by `wc -c` were `18460442` bytes for the Russian export and
+`11809759` bytes for the root/English export. The remaining diagnostics in each locale are all
+`UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE`.
 
 ## First Delivery Success Metrics
 

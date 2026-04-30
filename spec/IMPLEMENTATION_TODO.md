@@ -9,15 +9,16 @@ Completed task history:
 - [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md)
 - [archive/completed-tasks-t13-t17-t19-t24.md](archive/completed-tasks-t13-t17-t19-t24.md)
 
-Current status: T32, T30 and T31 closed the explicitly reprioritized Syntax Assistant
-export/schema/performance pool. T29 was explicitly reprioritized before T18 by the 2026-04-30
-request to support previously out-of-scope Syntax Assistant event/table source families and is now
+Current status: T33, T32, T30 and T31 closed the explicitly reprioritized Syntax Assistant consumer
+JSON/schema/performance pool. T29 was explicitly reprioritized before T18 by the 2026-04-30 request
+to support previously out-of-scope Syntax Assistant event/table source families and is now
 complete. T32 was explicitly reprioritized before the performance follow-up by the 2026-04-30
 request to make the consumer JSON output leaner and easier for downstream agents to consume and is
 now complete. Post-T29 measurements also found a release-profile `syntax-helper` runtime regression;
 T30 removed the primary table-owner lookup regression. T31 remeasured the residual post-T30 path and
-did not justify another parser/export code change. T13-T17 and T19-T24 are archived historical
-tasks; their durable performance conclusions live in `acceptance/baseline.md`,
+did not justify another parser/export code change. T33 fixed the follow-up schema field names and
+reported data-quality defects in examples and see-also links. T13-T17 and T19-T24 are archived
+historical tasks; their durable performance conclusions live in `acceptance/baseline.md`,
 `implementation/performance-baseline-t13.md` and `implementation/performance-variants.md`.
 T25-T28 record export-completeness gaps found by the 2026-04-30 audit across Russian and
 root/English Syntax Assistant exports. T25-T28 are closed after explicit export-completeness
@@ -327,9 +328,93 @@ Completion notes:
   T31 exports, release-profile RU/root measurements, root deterministic export comparison and
   `git diff --check`.
 
+### [x] T33. Fix consumer JSON field names and Syntax Assistant extracted data quality
+
+Depends on: T31.
+
+Spec refs:
+
+- FR-SH-002
+- FR-EXPORT-001
+- UAT-SH-008
+- UAT-SH-009
+- UAT-SH-011
+- UAT-SH-012
+- `spec/implementation/components.md`
+
+Scope:
+
+- Bump the canonical consumer export schema to `schema_version: 6`.
+- Rename consumer JSON type-reference fields from `type_refs` to `types` wherever they are exposed,
+  including properties, table fields, table parameters and signature parameters.
+- Rename consumer JSON method return fields from `return_types` to `return`.
+- Keep the internal Rust domain model names unchanged unless a domain-level rename is separately
+  justified; this task changes the consumer export adapter contract.
+- Fix Syntax Assistant example extraction so inline `Пример:` / `Example:` sections embedded in a
+  description are extracted as examples and do not accidentally capture later availability/context
+  sections.
+- Normalize extracted code examples so HTML syntax-coloring tags do not introduce extra spaces
+  before dots, commas, semicolons, brackets or parentheses.
+- Fix see-also extraction for source HTML that expresses a target as owner link plus member link;
+  export such targets as composed `Owner.Member` primary-name strings.
+- Preserve record-family counts, deterministic output order, provenance omission from consumer
+  records and the remaining diagnostic contract.
+- Do not implement query CLI, semantic search, runtime 1C introspection or search-only provenance
+  fields in consumer JSON.
+
+Expected artifacts:
+
+- Export adapter changes for schema version 6 field names.
+- Parser changes and fixture tests for inline examples, code example punctuation and composed
+  see-also links.
+- Updated README, FR-EXPORT-001, UAT-SH-012 and acceptance baseline for schema version and fixed
+  data-shape expectations.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-008
+- UAT-SH-009
+- UAT-SH-011
+- UAT-SH-012
+- Full CLI export for `shcntx_ru.hbk`
+- Targeted `jq` checks for `ТабличноеПоле.СоздатьКолонки`,
+  `Расширение поля формы для поля ввода.ПараметрыВыбора`,
+  `ЭлементИзбранногоРаботыПользователя` and `МенеджерИсторииРаботыПользователя`
+- `git diff --check`
+
+Completion notes:
+
+- Completed on 2026-04-30.
+- Raised canonical consumer export schema to `schema_version: 6`.
+- Renamed consumer JSON type-reference fields from `type_refs` to `types` across properties,
+  table fields, table parameters and signature parameters.
+- Renamed consumer JSON callable return fields from `return_types` to `return`.
+- Kept internal Rust domain model field names unchanged; the rename is isolated to the consumer
+  export adapter contract.
+- Fixed inline example-section extraction so `Расширение поля формы для поля ввода.ПараметрыВыбора`
+  exports its code example instead of the following availability context list.
+- Normalized syntax-colored code examples so `ТабличноеПоле.СоздатьКолонки` exports
+  `ЭлементыФормы.ТабличноеПоле1.Значение = ТаблицаДанных;` without extra spaces around BSL
+  punctuation.
+- Composed see-also owner/member links as `Owner.Member`, including
+  `ИзбранноеРаботыПользователя.Вставить` and
+  `Глобальный контекст.ИсторияРаботыПользователя`.
+- Full CLI exports for `shcntx_ru.hbk` and `shcntx_root.hbk` kept record-family counts stable:
+  500 global methods, 101 global properties, 33 global context events, 2533 platform types,
+  6702 type methods, 10732 type properties, 588 table fields, 78 table parameters,
+  445 constructors, 713 enums and 4 diagnostics in each locale.
+- Consumer records still omit HBK provenance, TOC paths, HTML paths and page titles; diagnostics
+  remain provenance-rich for parser maintenance.
+- Verified with `cargo fmt`, `cargo test -p hbk-export`, targeted `syntax-helper-extract` parser
+  tests, `cargo test --workspace`, UAT-SH-008, UAT-SH-009, UAT-SH-011, UAT-SH-012, full CLI
+  exports for `shcntx_ru.hbk` and `shcntx_root.hbk`, targeted `jq` checks for the reported
+  examples/see-also cases and `git diff --check`.
+
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
-Depends on: T17 and T31 unless this task is explicitly reprioritized.
+Depends on: T17 and T33 unless this task is explicitly reprioritized.
 
 Spec refs:
 

@@ -627,7 +627,7 @@ fn parses_locale_complete_type_references_and_clean_section_boundaries() {
             .facts
             .see_also
             .iter()
-            .any(|link| link.name.primary == "XMLValue")
+            .any(|link| link.name.primary == "Global context.XMLValue")
     );
     assert_available_since(&xml_string.facts, "8.0");
 
@@ -1337,6 +1337,133 @@ fn binds_parameters_to_the_signature_that_mentions_them() {
     assert!(!signatures[1].parameters[1].required);
     assert_eq!(signatures[1].parameters[0].type_refs[0].name, "Строка");
     assert_eq!(signatures[1].parameters[1].type_refs[0].name, "Число");
+}
+
+#[test]
+fn parses_inline_example_section_before_availability() {
+    let toc = fixture_toc();
+    let html = r##"
+            <html><body>
+            <h1 class="V8SH_pagetitle">Расширение поля формы для поля ввода.ПараметрыВыбора</h1>
+            <p class="V8SH_title">Расширение поля формы для поля ввода</p>
+            <p class="V8SH_heading">ПараметрыВыбора</p>
+            <p class="V8SH_chapter">Описание:</p>
+            Тип: <a href="objects/catalog234/FixedArray.html">ФиксированныйМассив</a>. <br>
+            Определяет параметры выбора.<br><br>
+            Пример:<br>
+            <TABLE><TBODY><TR><TD><font face="Courier New">
+            <font color="#0000ff">Элементы<font color="#ff0000">.</font>Реквизит1<font color="#ff0000">.</font>ПараметрыВыбора&nbsp;<font color="#ff0000">=</font>&nbsp;НовыеПараметры<font color="#ff0000">;</font></font>
+            </font></TD></TR></TBODY></TABLE>
+            <p class="V8SH_chapter">Доступность: </p>
+            <p>Тонкий клиент, веб-клиент, сервер.</p>
+            </body></html>
+        "##;
+    let property = parse_platform_property(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_ru.hbk",
+            "ru",
+            "objects/catalog1649/catalog1676/Form field extension for a text box/properties/ChoiceParameters8537.html",
+            html,
+        ),
+        source(
+            "objects/catalog1649/catalog1676/Form field extension for a text box/properties/ChoiceParameters8537.html",
+        ),
+    );
+
+    assert_eq!(property.facts.examples.len(), 1);
+    assert_eq!(
+        property.facts.examples[0].text,
+        "Элементы.Реквизит1.ПараметрыВыбора = НовыеПараметры;"
+    );
+    assert_ne!(
+        property.facts.examples[0].text,
+        "Тонкий клиент, веб-клиент, сервер."
+    );
+}
+
+#[test]
+fn parses_root_inline_example_section_and_normalizes_code_punctuation() {
+    let toc = fixture_toc();
+    let html = r##"
+            <html><body>
+            <h1 class="V8SH_pagetitle">TestType.TestMethod</h1>
+            <p class="V8SH_title">TestType</p>
+            <p class="V8SH_heading">TestMethod</p>
+            <p class="V8SH_chapter">Syntax:</p>
+            TestMethod()
+            <p class="V8SH_chapter">Description:</p>
+            Performs a test.<br><br>
+            Example:<br>
+            <TABLE><TBODY><TR><TD><font face="Courier New">
+            <font color="#0000ff">Items<font color="#ff0000">.</font>Item1<font color="#ff0000">.</font>Value&nbsp;<font color="#ff0000">=</font>&nbsp;Data<font color="#ff0000">;</font><BR>Items<font color="#ff0000">.</font>Item1<font color="#ff0000">.</font>CreateColumns<font color="#ff0000">(</font><font color="#ff0000">)</font><font color="#ff0000">;</font></font>
+            </font></TD></TR></TBODY></TABLE>
+            <p class="V8SH_chapter">Availability: </p>
+            <p>Thin client, server.</p>
+            </body></html>
+        "##;
+    let method = parse_platform_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_root.hbk",
+            "en",
+            "objects/catalog234/TestType/methods/TestMethod.html",
+            html,
+        ),
+        source_for(
+            "shcntx_root.hbk",
+            "en",
+            "objects/catalog234/TestType/methods/TestMethod.html",
+        ),
+    );
+
+    assert_eq!(method.facts.examples.len(), 1);
+    assert_eq!(
+        method.facts.examples[0].text,
+        "Items.Item1.Value = Data;\nItems.Item1.CreateColumns();"
+    );
+    assert!(!method.facts.examples[0].text.contains("Thin client"));
+}
+
+#[test]
+fn see_also_composes_owner_member_links() {
+    let toc = fixture_toc();
+    let html = r#"
+            <html><body>
+            <h1 class="V8SH_pagetitle">ЭлементИзбранногоРаботыПользователя</h1>
+            <p class="V8SH_title">ЭлементИзбранногоРаботыПользователя</p>
+            <p class="V8SH_chapter">Описание:</p><p>Элемент избранного.</p>
+            <p class="V8SH_chapter">См. также:</p>
+            <a href="v8help://SyntaxHelperContext/objects/catalog1649/catalog1620/UserWorkFavorites.html">ИзбранноеРаботыПользователя</a>, метод
+            <a href="v8help://SyntaxHelperContext/objects/catalog1649/catalog1620/UserWorkFavorites/methods/Insert3711.html">Вставить</a><br>
+            <a href="v8help://SyntaxHelperContext/objects/Global context.html">Глобальный контекст</a>, свойство
+            <a href="v8help://SyntaxHelperContext/objects/Global context/properties/UserWorkHistory7232.html">ИсторияРаботыПользователя</a><br>
+            </body></html>
+        "#;
+    let platform_type = parse_platform_type(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_ru.hbk",
+            "ru",
+            "objects/catalog1649/catalog1620/UserWorkFavoritesItem.html",
+            html,
+        ),
+        source("objects/catalog1649/catalog1620/UserWorkFavoritesItem.html"),
+    );
+    let see_also = platform_type
+        .facts
+        .see_also
+        .iter()
+        .map(|link| link.name.primary.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        see_also,
+        vec![
+            "ИзбранноеРаботыПользователя.Вставить",
+            "Глобальный контекст.ИсторияРаботыПользователя",
+        ]
+    );
 }
 
 #[test]

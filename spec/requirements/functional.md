@@ -198,24 +198,24 @@ Required files:
 - `enums.json`
 - `diagnostics.json`
 
-The current accepted consumer export schema is `schema_version: 5`. Each consumer record-family
+The current accepted consumer export schema is `schema_version: 6`. Each consumer record-family
 file is a JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and
 `records`.
 `metadata.json` contains export-level metadata and file inventory; it must not expose source HBK
 paths or book hierarchy. `diagnostics.json` may keep parser source context because its audience is
 parser maintenance, not downstream platform API consumption.
 
-Schema version 5 keeps consumer records lean. Consumer records must omit `null` fields and empty
-arrays. This omission rule applies to platform API consumer records; it does not remove the
-top-level `records` array from record-family envelopes and does not weaken the parser-maintenance
-diagnostics contract.
+Schema version 5 introduced the lean consumer-record rule, and schema version 6 preserves it.
+Consumer records must omit `null` fields and empty arrays. This omission rule applies to platform
+API consumer records; it does not remove the top-level `records` array from record-family envelopes
+and does not weaken the parser-maintenance diagnostics contract.
 
 - `owner`: string with the owner's primary name, such as `"ГруппаФормы"`, for type members,
   constructors, table fields, table parameters and other owned consumer records.
-- `type_refs`: deterministic array of type-name strings, such as `["Строка", "Массив"]`, wherever
+- `types`: deterministic array of type-name strings, such as `["Строка", "Массив"]`, wherever
   type references are exposed, including properties, table fields, table parameters and signature
   parameters.
-- `return_types`: deterministic array of type-name strings, such as `["Строка"]`.
+- `return`: deterministic array of type-name strings, such as `["Строка"]`.
 - `signatures`: array of callable signatures with `parameters` and optional variant metadata.
   `signatures[].text` is not part of the consumer JSON contract for methods, global context events
   or constructors. Syntax-variant `title` and `description` are written directly on the signature
@@ -226,20 +226,27 @@ diagnostics contract.
   `external_connection`, `mobile_application_client`, `mobile_application_server` and
   `mobile_standalone_server`, and optional `since`, a normalized version string such as `"8.3.6"`.
   If neither `contexts` nor `since` is present, the whole `availability` field is omitted.
-- `examples`: array of objects with `text` containing extracted Syntax Assistant example/code text
+- `examples`: array of objects with `text` containing extracted Syntax Assistant example/code text.
+  Inline example sections inside source descriptions are still examples; they must not absorb later
+  sections such as availability/application-context lists. Code examples must not contain
+  HTML-coloring artifacts such as extra spaces before dots, commas, semicolons, brackets or
+  parentheses.
 - `see_also`: deterministic array of target primary-name strings, such as `["Форма",
-  "ОбработкаПроверкиЗаполнения"]`; consumer records still omit target HTML paths.
+  "ОбработкаПроверкиЗаполнения"]`. When source see-also HTML expresses a target as an owner link
+  followed by a member link, the consumer target is composed as `Owner.Member`, such as
+  `ИзбранноеРаботыПользователя.Вставить` or
+  `Глобальный контекст.ИсторияРаботыПользователя`; consumer records still omit target HTML paths.
 - `available_since`: not emitted as a top-level consumer record field. Recognized version facts are
   serialized as `availability.since`.
 
 Property records in `global-properties.json` and `type-properties.json` share the same semantic
-shape: `name`, optional `owner` for type properties, `usage`, `type_refs`, `description` and shared
+shape: `name`, optional `owner` for type properties, `usage`, `types`, `description` and shared
 section facts. `usage` is a stable enum string with values `Read`, `Write`, `ReadWrite` or
 `Unknown`, not localized free text. Property descriptions must not retain leading type-reference
-prose such as `Тип: ВидГруппыФормы . ` / `Type: ... .`; that fact belongs to `type_refs`.
+prose such as `Тип: ВидГруппыФормы . ` / `Type: ... .`; that fact belongs to `types`.
 
 Method records in `global-methods.json` and `type-methods.json` share the same semantic shape:
-`name`, optional `owner` for type methods, `signatures`, `return_types`, `description` and shared
+`name`, optional `owner` for type methods, `signatures`, `return`, `description` and shared
 section facts.
 
 Constructors use the same signature shape as methods: `signatures[].text` is not emitted, and
@@ -249,10 +256,10 @@ Schema version 4 adds Syntax Assistant source families that were previously diag
 
 - `global-context-events.json`: global context event handler facts with `name`, `signatures`,
   `description`, structured section facts and no return types.
-- `table-fields.json`: query/table metadata fields with `owner`, `name`, `type_refs`,
+- `table-fields.json`: query/table metadata fields with `owner`, `name`, `types`,
   `description` and `note`.
 - `table-parameters.json`: query/table metadata parameters with `owner`, `name`, `required`,
-  `type_refs`, `description` and `default_value`.
+  `types`, `description` and `default_value`.
 
 Global context events, table fields and table parameters are first-class consumer record families.
 They must no longer be reported as `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`,

@@ -7,7 +7,8 @@ use syntax_helper_model::*;
 
 use crate::html::{
     body_text, bracketed_name_ranges, heading_name, links_in_section, page_title_name,
-    section_html, section_text, select_first_html_text, text_lines_from_html_fragment, title_name,
+    section_html, section_text, see_also_links_in_section, select_first_html_text,
+    text_lines_from_html_fragment, title_name,
 };
 
 pub fn parse_global_context(content: &PageContent, source: SyntaxHelperSource) -> GlobalContext {
@@ -217,7 +218,7 @@ fn section_facts(content: &PageContent) -> SectionFacts {
     SectionFacts {
         availability: availability(content),
         examples: examples(content),
-        see_also: links_in_section(content, &["См. также:", "See also:"]),
+        see_also: see_also_links_in_section(content, &["См. также:", "See also:"]),
         available_since: available_since(content),
     }
 }
@@ -303,11 +304,67 @@ fn examples(content: &PageContent) -> Vec<ExampleBlock> {
     let text = text_lines_from_html_fragment(section_html)
         .trim()
         .to_string();
+    let text = normalize_example_text(&text);
     if text.is_empty() {
         Vec::new()
     } else {
         vec![ExampleBlock { text }]
     }
+}
+
+fn normalize_example_text(text: &str) -> String {
+    text.lines()
+        .map(normalize_example_line)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn normalize_example_line(line: &str) -> String {
+    let mut output = String::with_capacity(line.len());
+    let mut pending_space = false;
+    let mut in_string = false;
+    let mut chars = line.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            if pending_space && should_keep_space_before(ch, output.chars().last(), in_string) {
+                output.push(' ');
+            }
+            pending_space = false;
+            output.push(ch);
+            if in_string && chars.peek().is_some_and(|next| *next == '"') {
+                if let Some(escaped) = chars.next() {
+                    output.push(escaped);
+                }
+            } else {
+                in_string = !in_string;
+            }
+            continue;
+        }
+        if ch.is_whitespace() {
+            pending_space = !output.is_empty();
+            continue;
+        }
+        if pending_space && should_keep_space_before(ch, output.chars().last(), in_string) {
+            output.push(' ');
+        }
+        pending_space = false;
+        output.push(ch);
+    }
+    output.trim().to_string()
+}
+
+fn should_keep_space_before(ch: char, previous: Option<char>, in_string: bool) -> bool {
+    if in_string {
+        return true;
+    }
+    if matches!(ch, '.' | ',' | ';' | ')' | ']' | ':') {
+        return false;
+    }
+    if matches!(ch, '(' | '[') {
+        return false;
+    }
+    !matches!(previous, Some('.' | '(' | '['))
 }
 
 fn available_since(content: &PageContent) -> Option<VersionFact> {

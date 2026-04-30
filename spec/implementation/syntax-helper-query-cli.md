@@ -139,8 +139,8 @@ One row per searchable API fact:
 - `owner_primary`;
 - `owner_alias`;
 - `signature_text`;
-- `type_refs`;
-- `return_types`;
+- `type_names`;
+- `return_names`;
 - `description`;
 - `preview`;
 - optional source fields when the index was built from a provenance-rich artifact.
@@ -176,8 +176,8 @@ FTS5 virtual table over:
 - `owner`;
 - `signatures`;
 - `parameters`;
-- `type_refs`;
-- `return_types`;
+- `type_names`;
+- `return_names`;
 - `description`.
 
 The first ranking may use FTS5 `bm25()` plus deterministic tie breakers:

@@ -410,8 +410,8 @@ Steps:
 ```bash
 jq -e '.records[] | select(.name.primary == "XMLСтрока" or .name.primary == "XMLString")' target/uat/shcntx-ru/global-methods.json target/uat/shcntx-en/global-methods.json
 jq -e '.records[] | select(.name.primary == "Массив" or .name.primary == "Array")' target/uat/shcntx-ru/platform-types.json target/uat/shcntx-en/platform-types.json
-jq -e '.records[] | select(.name.primary == "XMLСтрока") | (.availability.contexts | index("thin_client") != null and index("server") != null) and (.examples | length > 0) and (.see_also | index("XMLЗначение") != null) and (.availability.since == "8.0") and (has("available_since") | not)' target/uat/shcntx-ru/global-methods.json
-jq -e '.records[] | select(.name.primary == "XMLString") | (.availability.contexts | index("thin_client") != null and index("server") != null) and (.examples | length > 0) and (.see_also | index("XMLValue") != null) and (.availability.since == "8.0") and (has("available_since") | not)' target/uat/shcntx-en/global-methods.json
+jq -e '.records[] | select(.name.primary == "XMLСтрока") | (.availability.contexts | index("thin_client") != null and index("server") != null) and (.examples | length > 0) and (.see_also | index("Глобальный контекст.XMLЗначение") != null) and (.availability.since == "8.0") and (has("available_since") | not)' target/uat/shcntx-ru/global-methods.json
+jq -e '.records[] | select(.name.primary == "XMLString") | (.availability.contexts | index("thin_client") != null and index("server") != null) and (.examples | length > 0) and (.see_also | index("Global context.XMLValue") != null) and (.availability.since == "8.0") and (has("available_since") | not)' target/uat/shcntx-en/global-methods.json
 jq -e '.records[] | select(.name.primary == "Массив" or .name.primary == "Array") | (.availability.contexts | index("web_client") != null and index("server") != null) and (.examples | length > 0) and (.availability.since == "8.0") and (has("available_since") | not)' target/uat/shcntx-ru/platform-types.json target/uat/shcntx-en/platform-types.json
 ```
 
@@ -443,8 +443,8 @@ Steps:
 ```bash
 jq -e '.records[] | select(.owner == "ДокументDOM" and .name.primary == "СоздатьРазыменовательПИ")' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "DOMDocument" and .name.primary == "CreateNSResolver")' target/uat/shcntx-en/type-methods.json
-jq -e '.records[] | select(.owner == "ДокументDOM" and .name.primary == "СоздатьРазыменовательПИ") | (.signatures | length == 4) and all(.signatures[]; (.title | length > 0) and (has("variant") | not) and (has("text") | not)) and any(.signatures[]; .title == "На основании узла DOM" and any(.parameters[]; .name == "УзелКонтекста" and (.type_refs | index("ДокументDOM") != null))) and any(.signatures[]; .title == "На основании конкретного префикса и URI пространства имен" and (.parameters | length == 2)) and (.return_types | index("РазыменовательПространствИменDOM") != null)' target/uat/shcntx-ru/type-methods.json
-jq -e '.records[] | select(.owner == "DOMDocument" and .name.primary == "CreateNSResolver") | (.signatures | length == 4) and all(.signatures[]; (.title | length > 0) and (has("variant") | not) and (has("text") | not)) and any(.signatures[]; .title == "On the basis of DOM node" and any(.parameters[]; .name == "ContextNode" and (.type_refs | index("DOMDocument") != null))) and any(.signatures[]; .title == "On the basis of specific prefix and namespace URI" and (.parameters | length == 2)) and (.return_types | index("DOMNamespaceResolver") != null)' target/uat/shcntx-en/type-methods.json
+jq -e '.records[] | select(.owner == "ДокументDOM" and .name.primary == "СоздатьРазыменовательПИ") | (.signatures | length == 4) and all(.signatures[]; (.title | length > 0) and (has("variant") | not) and (has("text") | not)) and any(.signatures[]; .title == "На основании узла DOM" and any(.parameters[]; .name == "УзелКонтекста" and (.types | index("ДокументDOM") != null))) and any(.signatures[]; .title == "На основании конкретного префикса и URI пространства имен" and (.parameters | length == 2)) and (.return | index("РазыменовательПространствИменDOM") != null)' target/uat/shcntx-ru/type-methods.json
+jq -e '.records[] | select(.owner == "DOMDocument" and .name.primary == "CreateNSResolver") | (.signatures | length == 4) and all(.signatures[]; (.title | length > 0) and (has("variant") | not) and (has("text") | not)) and any(.signatures[]; .title == "On the basis of DOM node" and any(.parameters[]; .name == "ContextNode" and (.types | index("DOMDocument") != null))) and any(.signatures[]; .title == "On the basis of specific prefix and namespace URI" and (.parameters | length == 2)) and (.return | index("DOMNamespaceResolver") != null)' target/uat/shcntx-en/type-methods.json
 ```
 
 Expected result:
@@ -511,18 +511,18 @@ Preconditions:
 Steps:
 
 ```bash
-jq -e '.schema_version == 5 and (.records | length) == 33' target/uat/shcntx-ru/global-context-events.json
-jq -e '.schema_version == 5 and (.records | length) == 588' target/uat/shcntx-ru/table-fields.json
-jq -e '.schema_version == 5 and (.records | length) == 78' target/uat/shcntx-ru/table-parameters.json
-jq -e '.schema_version == 5 and (.records | length) == 33' target/uat/shcntx-en/global-context-events.json
-jq -e '.schema_version == 5 and (.records | length) == 588' target/uat/shcntx-en/table-fields.json
-jq -e '.schema_version == 5 and (.records | length) == 78' target/uat/shcntx-en/table-parameters.json
+jq -e '.schema_version == 6 and (.records | length) == 33' target/uat/shcntx-ru/global-context-events.json
+jq -e '.schema_version == 6 and (.records | length) == 588' target/uat/shcntx-ru/table-fields.json
+jq -e '.schema_version == 6 and (.records | length) == 78' target/uat/shcntx-ru/table-parameters.json
+jq -e '.schema_version == 6 and (.records | length) == 33' target/uat/shcntx-en/global-context-events.json
+jq -e '.schema_version == 6 and (.records | length) == 588' target/uat/shcntx-en/table-fields.json
+jq -e '.schema_version == 6 and (.records | length) == 78' target/uat/shcntx-en/table-parameters.json
 
-jq -e '.records[] | select(.name.primary == "ПередЗавершениемРаботыСистемы" and .availability.since == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0] | has("text") | not) and any(.signatures[0].parameters[]; .name == "Отказ" and .required == true and (.type_refs | index("Булево") != null))' target/uat/shcntx-ru/global-context-events.json
-jq -e '.records[] | select(.name.primary == "BeforeExit" and .availability.since == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0] | has("text") | not) and any(.signatures[0].parameters[]; .name == "Cancel" and .required == true and (.type_refs | index("Boolean") != null))' target/uat/shcntx-en/global-context-events.json
+jq -e '.records[] | select(.name.primary == "ПередЗавершениемРаботыСистемы" and .availability.since == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0] | has("text") | not) and any(.signatures[0].parameters[]; .name == "Отказ" and .required == true and (.types | index("Булево") != null))' target/uat/shcntx-ru/global-context-events.json
+jq -e '.records[] | select(.name.primary == "BeforeExit" and .availability.since == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0] | has("text") | not) and any(.signatures[0].parameters[]; .name == "Cancel" and .required == true and (.types | index("Boolean") != null))' target/uat/shcntx-en/global-context-events.json
 
-jq -e '.records[] | select(.owner == "Таблица бизнес-процессов" and .name.primary == "Представление") | (.type_refs | index("Строка") != null) and (.description | test("строку-представление"))' target/uat/shcntx-ru/table-fields.json
-jq -e '.records[] | select(.owner == "Business Process Table" and .name.primary == "Presentation") | (.type_refs | index("String") != null) and (.description | test("presentation"))' target/uat/shcntx-en/table-fields.json
+jq -e '.records[] | select(.owner == "Таблица бизнес-процессов" and .name.primary == "Представление") | (.types | index("Строка") != null) and (.description | test("строку-представление"))' target/uat/shcntx-ru/table-fields.json
+jq -e '.records[] | select(.owner == "Business Process Table" and .name.primary == "Presentation") | (.types | index("String") != null) and (.description | test("presentation"))' target/uat/shcntx-en/table-fields.json
 
 jq -e '.records[] | select(.owner == "Таблица критерия отбора" and .name.primary == "Значение") | .required == true and (.description | test("отбор"))' target/uat/shcntx-ru/table-parameters.json
 jq -e '.records[] | select(.owner == "Filter Criterion Table" and .name.primary == "Value") | .required == true and (.description | test("filtering"))' target/uat/shcntx-en/table-parameters.json
@@ -538,7 +538,7 @@ Expected result:
   present, descriptions and default values when present.
 - These records do not appear only as parser diagnostics.
 
-## UAT-SH-012: Lean Schema Version 5 Consumer JSON Shape
+## UAT-SH-012: Lean Schema Version 6 Consumer JSON Shape
 
 Related use case: UC-SH-001.
 
@@ -551,11 +551,13 @@ Preconditions:
 Steps:
 
 ```bash
-jq -e '.schema_version == 5 and (.files | all(.[]; .file_name != "enum-values.json"))' target/uat/shcntx-ru/metadata.json target/uat/shcntx-en/metadata.json
+for file in target/uat/shcntx-ru/metadata.json target/uat/shcntx-en/metadata.json; do
+  jq -e '.schema_version == 6 and (.files | all(.[]; .file_name != "enum-values.json"))' "$file"
+done
 test ! -e target/uat/shcntx-ru/enum-values.json
 test ! -e target/uat/shcntx-en/enum-values.json
 
-jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .value == [])] | length) == 0' \
+for file in \
   target/uat/shcntx-ru/global-methods.json \
   target/uat/shcntx-ru/global-properties.json \
   target/uat/shcntx-ru/global-context-events.json \
@@ -565,8 +567,7 @@ jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .va
   target/uat/shcntx-ru/table-fields.json \
   target/uat/shcntx-ru/table-parameters.json \
   target/uat/shcntx-ru/constructors.json \
-  target/uat/shcntx-ru/enums.json
-jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .value == [])] | length) == 0' \
+  target/uat/shcntx-ru/enums.json \
   target/uat/shcntx-en/global-methods.json \
   target/uat/shcntx-en/global-properties.json \
   target/uat/shcntx-en/global-context-events.json \
@@ -576,21 +577,50 @@ jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .va
   target/uat/shcntx-en/table-fields.json \
   target/uat/shcntx-en/table-parameters.json \
   target/uat/shcntx-en/constructors.json \
-  target/uat/shcntx-en/enums.json
+  target/uat/shcntx-en/enums.json; do
+  jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .value == [])] | length) == 0' "$file"
+done
 
 jq -e '.records[] | select(.name.primary == "ТипЗначенияJSON") | (.values | any(.name.primary == "КонецМассива")) and all(.values[]; (has("owner") | not) and (has("available_since") | not))' target/uat/shcntx-ru/enums.json
-jq -e '.records[] | select(.usage == "Read" and (.type_refs | index("СправочникиМенеджер") != null)) | (.description | startswith("Тип:") | not)' target/uat/shcntx-ru/global-properties.json
+jq -e '.records[] | select(.usage == "Read" and (.types | index("СправочникиМенеджер") != null)) | (.description | startswith("Тип:") | not)' target/uat/shcntx-ru/global-properties.json
+for file in \
+  target/uat/shcntx-ru/global-methods.json \
+  target/uat/shcntx-ru/global-properties.json \
+  target/uat/shcntx-ru/global-context-events.json \
+  target/uat/shcntx-ru/type-methods.json \
+  target/uat/shcntx-ru/type-properties.json \
+  target/uat/shcntx-ru/table-fields.json \
+  target/uat/shcntx-ru/table-parameters.json \
+  target/uat/shcntx-ru/constructors.json \
+  target/uat/shcntx-en/global-methods.json \
+  target/uat/shcntx-en/global-properties.json \
+  target/uat/shcntx-en/global-context-events.json \
+  target/uat/shcntx-en/type-methods.json \
+  target/uat/shcntx-en/type-properties.json \
+  target/uat/shcntx-en/table-fields.json \
+  target/uat/shcntx-en/table-parameters.json \
+  target/uat/shcntx-en/constructors.json; do
+  jq -e '([.records[] | .. | objects | keys[] | select(. == "type_refs" or . == "return_types")] | length) == 0' "$file"
+done
+jq -e '.records[] | select(.owner == "ТабличноеПоле" and .name.primary == "СоздатьКолонки") | .examples[0].text == "ЭлементыФормы.ТабличноеПоле1.Значение = ТаблицаДанных;\nЭлементыФормы.ТабличноеПоле1.СоздатьКолонки();"' target/uat/shcntx-ru/type-methods.json
+jq -e '.records[] | select(.owner == "Расширение поля формы для поля ввода" and .name.primary == "ПараметрыВыбора") | (.examples[0].text | startswith("НовыйПараметр = Новый ПараметрВыбора")) and (.examples[0].text | contains("Тонкий клиент") | not)' target/uat/shcntx-ru/type-properties.json
+jq -e '.records[] | select(.name.primary == "ЭлементИзбранногоРаботыПользователя") | (.see_also | index("ИзбранноеРаботыПользователя.Вставить") != null) and (.see_also | index("ИзбранноеРаботыПользователя.Добавить") != null) and (.see_also | index("ИзбранноеРаботыПользователя.Индекс") != null)' target/uat/shcntx-ru/platform-types.json
+jq -e '.records[] | select(.name.primary == "МенеджерИсторииРаботыПользователя") | (.see_also | index("Глобальный контекст.ИсторияРаботыПользователя") != null)' target/uat/shcntx-ru/platform-types.json
 ```
 
 Expected result:
 
-- Consumer record-family files use `schema_version: 5`.
+- Consumer record-family files use `schema_version: 6`.
 - `enum-values.json` is absent; enum values are nested under owning enum records as `values`.
 - Nested enum value names keep the localized-name object shape with `primary` and optional `alias`.
 - Platform API consumer records do not emit `null` fields or empty arrays in any record family.
 - `usage` is a stable enum string.
-- Property descriptions do not keep leading type-reference prose that already appears in
-  `type_refs`.
+- Property descriptions do not keep leading type-reference prose that already appears in `types`.
+- Type-reference facts are exposed as `types`; method return facts are exposed as `return`; legacy
+  `type_refs` and `return_types` are absent from consumer JSON.
+- Syntax examples are extracted from the example/code section, not from following availability
+  sections, and code examples do not contain HTML-coloring spaces around BSL punctuation.
+- See-also owner/member link pairs are exported as composed `Owner.Member` target strings.
 
 Cleanup:
 

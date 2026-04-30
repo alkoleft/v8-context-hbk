@@ -234,6 +234,13 @@ pub(crate) fn links_in_section(content: &PageContent, labels: &[&str]) -> Vec<Me
     anchor_links(section_html, &content.source.html_path)
 }
 
+pub(crate) fn see_also_links_in_section(content: &PageContent, labels: &[&str]) -> Vec<MemberLink> {
+    let Some(section_html) = section_html(&content.raw_html, labels) else {
+        return Vec::new();
+    };
+    compose_owner_member_links(anchor_links(section_html, &content.source.html_path))
+}
+
 pub(crate) fn section_text(content: &PageContent, labels: &[&str]) -> Option<String> {
     let body = &content.body_text;
     let (label, start) = find_label(body, labels)?;
@@ -245,11 +252,27 @@ pub(crate) fn section_text(content: &PageContent, labels: &[&str]) -> Option<Str
 
 pub(crate) fn section_html<'a>(raw_html: &'a str, labels: &[&str]) -> Option<&'a str> {
     let (label, start) = find_label(raw_html, labels)?;
-    let chapter_end = raw_html[start..]
-        .find("</p>")
-        .map(|index| start + index + 4)?;
-    let section_end = html_section_end(raw_html, chapter_end, label);
-    Some(&raw_html[chapter_end..section_end])
+    let section_start = html_section_body_start(raw_html, start, label);
+    let section_end = html_section_end(raw_html, section_start, label);
+    Some(&raw_html[section_start..section_end])
+}
+
+fn html_section_body_start(raw_html: &str, label_start: usize, label: &str) -> usize {
+    let tag_start = raw_html[..label_start].rfind('<');
+    let tag_end = raw_html[label_start..]
+        .find('>')
+        .map(|index| label_start + index);
+    let label_is_chapter = tag_start.zip(tag_end).is_some_and(|(tag_start, tag_end)| {
+        raw_html[tag_start..=tag_end].contains("class=\"V8SH_chapter\"")
+    });
+    if label_is_chapter {
+        raw_html[label_start..]
+            .find("</p>")
+            .map(|index| label_start + index + 4)
+            .unwrap_or(label_start + label.len())
+    } else {
+        label_start + label.len()
+    }
 }
 
 fn text_section_end(value: &str, section_start: usize, current_label: &str) -> usize {
@@ -308,6 +331,47 @@ fn normalize_member_href(current_html_path: &str, href: &str) -> String {
         path.to_string()
     } else {
         format!("{base}/{path}")
+    }
+}
+
+fn compose_owner_member_links(links: Vec<MemberLink>) -> Vec<MemberLink> {
+    let mut output = Vec::with_capacity(links.len());
+    let mut index = 0;
+    while let Some(link) = links.get(index) {
+        if let Some(next) = links.get(index + 1)
+            && is_member_path_of(&link.html_path, &next.html_path)
+        {
+            output.push(MemberLink {
+                name: compose_names(&link.name, &next.name),
+                html_path: next.html_path.clone(),
+            });
+            index += 2;
+        } else {
+            output.push(link.clone());
+            index += 1;
+        }
+    }
+    output
+}
+
+fn is_member_path_of(owner_path: &str, member_path: &str) -> bool {
+    let owner_base = owner_path
+        .strip_suffix(".html")
+        .unwrap_or(owner_path)
+        .trim_end_matches('/');
+    member_path
+        .strip_prefix(owner_base)
+        .is_some_and(|tail| tail.starts_with('/'))
+}
+
+fn compose_names(owner: &LocalizedName, member: &LocalizedName) -> LocalizedName {
+    LocalizedName {
+        primary: format!("{}.{}", owner.primary, member.primary),
+        alias: owner
+            .alias
+            .as_ref()
+            .zip(member.alias.as_ref())
+            .map(|(owner, member)| format!("{owner}.{member}")),
     }
 }
 

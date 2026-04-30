@@ -42,6 +42,7 @@ pub(crate) struct ConsumerGlobalMethod<'a> {
     name: ConsumerLocalizedName<'a>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     signatures: Vec<ConsumerSignature<'a>>,
+    #[serde(rename = "return")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     return_types: Vec<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -66,6 +67,7 @@ impl<'a> From<&'a model::GlobalMethod> for ConsumerGlobalMethod<'a> {
 pub(crate) struct ConsumerGlobalProperty<'a> {
     name: ConsumerLocalizedName<'a>,
     usage: &'static str,
+    #[serde(rename = "types")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     type_refs: Vec<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -133,6 +135,7 @@ pub(crate) struct ConsumerPlatformMethod<'a> {
     name: ConsumerLocalizedName<'a>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     signatures: Vec<ConsumerSignature<'a>>,
+    #[serde(rename = "return")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     return_types: Vec<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,6 +162,7 @@ pub(crate) struct ConsumerPlatformProperty<'a> {
     owner: &'a str,
     name: ConsumerLocalizedName<'a>,
     usage: &'static str,
+    #[serde(rename = "types")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     type_refs: Vec<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -184,6 +188,7 @@ impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
 pub(crate) struct ConsumerQueryTableField<'a> {
     owner: &'a str,
     name: ConsumerLocalizedName<'a>,
+    #[serde(rename = "types")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     type_refs: Vec<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -209,6 +214,7 @@ pub(crate) struct ConsumerQueryTableParameter<'a> {
     owner: &'a str,
     name: ConsumerLocalizedName<'a>,
     required: bool,
+    #[serde(rename = "types")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     type_refs: Vec<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -383,6 +389,7 @@ impl<'a> From<&'a model::Signature> for ConsumerSignature<'a> {
 struct ConsumerParameter<'a> {
     name: &'a str,
     required: bool,
+    #[serde(rename = "types")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     type_refs: Vec<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
