@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
-use hbk_book::{HbkBook, Toc};
+use hbk_book::{HbkBook, Toc, TocPage};
 use hbk_docs::{DocumentationReader, PageContent};
 use syntax_helper_model::*;
 
@@ -133,6 +133,7 @@ where
 {
     let mut visited = BTreeSet::new();
     let record_detail_mode = sink.record_detail_mode();
+    let query_table_owners = QueryTableOwnerIndex::new(toc, locale);
     let RootDiscovery { roots, diagnostics } = discovery;
 
     for diagnostic in diagnostics {
@@ -181,12 +182,12 @@ where
                     .type_property(parse_platform_property(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
                 PageClass::QueryTableField => {
-                    let owner = query_table_owner(toc, locale, &catalog_page.source.html_path);
+                    let owner = query_table_owners.owner(&catalog_page.source.html_path);
                     sink.table_field(parse_query_table_field(&content, owner, source))
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
                 PageClass::QueryTableParameter => {
-                    let owner = query_table_owner(toc, locale, &catalog_page.source.html_path);
+                    let owner = query_table_owners.owner(&catalog_page.source.html_path);
                     sink.table_parameter(parse_query_table_parameter(&content, owner, source))
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
@@ -217,24 +218,44 @@ where
     Ok(())
 }
 
-fn query_table_owner(toc: &Toc, locale: &str, member_html_path: &str) -> LocalizedName {
-    query_table_html_path(member_html_path)
-        .and_then(|table_html_path| toc.find_by_html_path(&table_html_path))
-        .map(|page| {
-            let title = if matches!(locale, "root" | "en") && !page.title.en.is_empty() {
-                &page.title.en
-            } else if locale == "ru" && !page.title.ru.is_empty() {
-                &page.title.ru
-            } else {
-                page.title.display()
-            };
-            name_from_text(title)
-        })
-        .unwrap_or_else(|| LocalizedName {
-            primary: query_table_html_path(member_html_path)
-                .unwrap_or_else(|| member_html_path.to_string()),
-            alias: None,
-        })
+pub(crate) struct QueryTableOwnerIndex<'a> {
+    locale: &'a str,
+    pages_by_html_path: HashMap<&'a str, &'a TocPage>,
+}
+
+impl<'a> QueryTableOwnerIndex<'a> {
+    pub(crate) fn new(toc: &'a Toc, locale: &'a str) -> Self {
+        let pages_by_html_path = toc
+            .flat_pages()
+            .map(|flat_page| (flat_page.page.html_path.as_str(), flat_page.page))
+            .collect();
+        Self {
+            locale,
+            pages_by_html_path,
+        }
+    }
+
+    pub(crate) fn owner(&self, member_html_path: &str) -> LocalizedName {
+        query_table_html_path(member_html_path)
+            .and_then(|table_html_path| self.pages_by_html_path.get(table_html_path.as_str()))
+            .map(|page| self.page_name(page))
+            .unwrap_or_else(|| LocalizedName {
+                primary: query_table_html_path(member_html_path)
+                    .unwrap_or_else(|| member_html_path.to_string()),
+                alias: None,
+            })
+    }
+
+    fn page_name(&self, page: &TocPage) -> LocalizedName {
+        let title = if matches!(self.locale, "root" | "en") && !page.title.en.is_empty() {
+            &page.title.en
+        } else if self.locale == "ru" && !page.title.ru.is_empty() {
+            &page.title.ru
+        } else {
+            page.title.display()
+        };
+        name_from_text(title)
+    }
 }
 
 fn query_table_html_path(member_html_path: &str) -> Option<String> {

@@ -3,6 +3,7 @@ use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 
 use super::*;
+use crate::reader::QueryTableOwnerIndex;
 use hbk_book::HbkBook;
 use hbk_book::Toc;
 use hbk_docs::{PageContent, parse_page_html};
@@ -57,12 +58,18 @@ impl SyntaxHelperSink for RecordingSink {
     }
 
     fn table_field(&mut self, record: QueryTableField) -> Result<(), Self::Error> {
-        self.push_name("table_field", &record.name);
+        self.seen.push(format!(
+            "table_field:{}:{}",
+            record.owner.primary, record.name.primary
+        ));
         Ok(())
     }
 
     fn table_parameter(&mut self, record: QueryTableParameter) -> Result<(), Self::Error> {
-        self.push_name("table_parameter", &record.name);
+        self.seen.push(format!(
+            "table_parameter:{}:{}",
+            record.owner.primary, record.name.primary
+        ));
         Ok(())
     }
 
@@ -145,15 +152,17 @@ fn discovers_roots_and_traverses_catalogs_from_fixture_toc() {
 fn supports_event_and_table_audit_families_and_keeps_toc_only_gap_diagnostic() {
     let toc = Toc::parse(
         r#"{
-                8
+                10
                 {1,0,3,2,3,4,{0,0,{0,0,{"ru","Глобальный контекст"}},"/objects/Global context.html"}}
                 {2,1,0,{0,0,{0,0,{"ru","ПолучитьОбщуюПалитруЦветовЗначковТаблицы"}},"/objects/Global context/GetCommonTableIconsColorPalette6560.html"}}
                 {3,1,1,5,{0,0,{0,0,{"ru","События"}},"/objects/Global context/events/catalog375.html"}}
-                {4,0,3,6,7,8,{0,0,{0,0,{"ru","Универсальные коллекции значений"}},"/objects/catalog234.html"}}
+                {4,0,3,6,7,9,{0,0,{0,0,{"ru","Универсальные коллекции значений"}},"/objects/catalog234.html"}}
                 {5,3,0,{0,0,{0,0,{"ru","ПередЗавершениемРаботыСистемы"}},"/objects/Global context/events/catalog375/BeforeExit378.html"}}
                 {6,4,0,{0,0,{0,0,{"ru","Массив"}},"/objects/catalog234/Array.html"}}
-                {7,4,0,{0,0,{0,0,{"ru","Активность"}},"/tables/catalog1/table2/fields/Active4.html"}}
-                {8,4,0,{0,0,{0,0,{"ru","Параметр"}},"/tables/catalog1/table3/params/param1.html"}}
+                {7,4,1,8,{0,0,{0,0,{"ru","Таблица активности"}},"/tables/catalog1/table2.html"}}
+                {8,7,0,{0,0,{0,0,{"ru","Активность"}},"/tables/catalog1/table2/fields/Active4.html"}}
+                {9,4,1,10,{0,0,{0,0,{"ru","Таблица параметров"}},"/tables/catalog1/table3.html"}}
+                {10,9,0,{0,0,{0,0,{"ru","Параметр"}},"/tables/catalog1/table3/params/param1.html"}}
             }"#,
     )
     .expect("fixture TOC must parse");
@@ -191,6 +200,32 @@ fn supports_event_and_table_audit_families_and_keeps_toc_only_gap_diagnostic() {
     assert!(classes.contains(&PageClass::GlobalContextEvent));
     assert!(classes.contains(&PageClass::QueryTableField));
     assert!(classes.contains(&PageClass::QueryTableParameter));
+
+    let mut sink = RecordingSink::default();
+    extract_with_loader_into(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc,
+        |html_path| {
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_ru.hbk",
+                "ru",
+                html_path,
+                r#"<html><body><h1 class="V8SH_pagetitle">Раздел</h1></body></html>"#,
+            ))
+        },
+        &mut sink,
+    )
+    .expect("fixture extraction must succeed");
+    assert!(
+        sink.seen
+            .contains(&"table_field:Таблица активности:Раздел".to_string())
+    );
+    assert!(
+        sink.seen
+            .contains(&"table_parameter:Таблица параметров:Раздел".to_string())
+    );
 }
 
 #[test]
@@ -293,6 +328,46 @@ fn parses_query_table_field_and_parameter_pages() {
         Some("Ограничение максимального количества записей")
     );
     assert_eq!(parameter.default_value.as_deref(), Some("0"));
+}
+
+#[test]
+fn resolves_query_table_owner_from_single_toc_index_for_ru_and_root_sources() {
+    let toc = Toc::parse(
+        r#"{
+                5
+                {1,0,2,2,3,{0,0,{0,0,{"ru","Таблица бизнес-процессов (Business Process Table)"}{"en","Business Process Table"}},"/tables/table58.html"}}
+                {2,1,0,{0,0,{0,0,{"ru","Представление"}{"en","Presentation"}},"/tables/table58/fields/Presentation464.html"}}
+                {3,1,0,{0,0,{0,0,{"ru","Номер"}{"en","Number"}},"/tables/table58/params/Number.html"}}
+                {4,0,1,5,{0,0,{0,0,{"ru","Таблица критерия отбора (Filter Criterion Table)"}{"en","Filter Criterion Table"}},"/tables/catalog36/table42.html"}}
+                {5,4,0,{0,0,{0,0,{"ru","Значение"}{"en","Value"}},"/tables/catalog36/table42/params/param82.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+
+    let ru_index = QueryTableOwnerIndex::new(&toc, "ru");
+    let root_index = QueryTableOwnerIndex::new(&toc, "root");
+
+    let ru_field_owner = ru_index.owner("tables/table58/fields/Presentation464.html");
+    assert_eq!(ru_field_owner.primary, "Таблица бизнес-процессов");
+    assert_eq!(
+        ru_field_owner.alias.as_deref(),
+        Some("Business Process Table")
+    );
+
+    let root_field_owner = root_index.owner("tables/table58/fields/Presentation464.html");
+    assert_eq!(root_field_owner.primary, "Business Process Table");
+    assert_eq!(root_field_owner.alias, None);
+
+    let ru_parameter_owner = ru_index.owner("tables/catalog36/table42/params/param82.html");
+    assert_eq!(ru_parameter_owner.primary, "Таблица критерия отбора");
+    assert_eq!(
+        ru_parameter_owner.alias.as_deref(),
+        Some("Filter Criterion Table")
+    );
+
+    let root_parameter_owner = root_index.owner("tables/catalog36/table42/params/param82.html");
+    assert_eq!(root_parameter_owner.primary, "Filter Criterion Table");
+    assert_eq!(root_parameter_owner.alias, None);
 }
 
 #[test]

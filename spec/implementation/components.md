@@ -149,7 +149,9 @@ binds parameters to the variant signature that owns them. T28 classifies the rem
 diagnostic-only Syntax Assistant source families with stable family-specific diagnostic codes while
 leaving consumer record-family JSON unchanged. T29 promotes global context events, query/table
 fields and query/table parameters into typed extraction records while keeping direct TOC-only
-global-context method-like pages as recoverable diagnostics.
+global-context method-like pages as recoverable diagnostics. T30 resolves query/table owner names
+through one extraction-scope TOC HTML-path index per run instead of repeatedly flattening the TOC for
+each table field and table parameter.
 
 ### hbk-export
 

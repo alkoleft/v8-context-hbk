@@ -35,6 +35,9 @@ Current status:
   Syntax Assistant TOC lookup and lean parsing of fields omitted by consumer JSON. Rejected measured
   candidates were `HashSet` for extraction visited pages, empty-source streaming records and a
   single-pass HTML text-normalization rewrite.
+- T30 removed the post-T29 table-owner lookup regression with a narrow extraction-scope
+  HTML-path-to-TOC-page index. The fix keeps traversal/export order unchanged and avoids broad
+  caches, generic pipeline abstractions or parallel parsing.
 
 ## Selection Rules
 

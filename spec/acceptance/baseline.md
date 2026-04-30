@@ -52,6 +52,11 @@ directories are service data unless promoted here.
   API records omit `null` fields and empty arrays, owner/type-reference fields are string-based,
   `available_since` is emitted as `availability.since`, enum values are nested in `enums.json` and
   `enum-values.json` is no longer emitted.
+- T30 removed the post-T29 table-owner lookup regression by replacing per-record
+  `Toc::find_by_html_path` calls with one extraction-scope TOC HTML-path index. Release-profile
+  `schema_version: 5` exports measured `4.76s / 167452 KiB` for `shcntx_ru.hbk` and
+  `3.62s / 131748 KiB` for `shcntx_root.hbk`; both outputs were byte-identical to the pre-change
+  T32 exports.
 - A 2026-04-30 post-T29 release-profile review found a `syntax-helper` runtime regression without
   RSS growth. The main suspected cause is the T29 table-owner lookup path repeatedly calling
   `Toc::find_by_html_path`, which rebuilds `flat_pages()` on each lookup. T30 owns the primary fix;
@@ -70,6 +75,10 @@ durable artifacts.
 | `shcntx_root.hbk` / T29 `8da6a7c` | 0 | 11.04 | 119808 | post-T29 regression |
 | `shcntx_ru.hbk` / T28 `c3ff0df` | 0 | 4.80 | 132352 | before T29 table/event metadata export |
 | `shcntx_ru.hbk` / T29 `8da6a7c` | 0 | 12.70 | 132352 | post-T29 regression |
+| `shcntx_ru.hbk` / T32 HEAD before T30 | 0 | 8.00 | 181124 | schema v5 pre-fix baseline |
+| `shcntx_root.hbk` / T32 HEAD before T30 | 0 | 7.71 | 126064 | schema v5 pre-fix baseline |
+| `shcntx_ru.hbk` / T30 fixed | 0 | 4.76 | 167452 | one extraction-scope TOC owner index |
+| `shcntx_root.hbk` / T30 fixed | 0 | 3.62 | 131748 | one extraction-scope TOC owner index |
 
 Primary suspected hot path:
 
@@ -79,6 +88,9 @@ Primary suspected hot path:
   each lookup.
 - T29 exports 588 table fields and 78 table parameters per Syntax Assistant source, so this creates
   hundreds of full TOC flattening passes per `syntax-helper` run.
+- T30 fixed this hot path in `syntax-helper-extract` without changing consumer JSON: both
+  post-fix exports were byte-identical to the pre-fix T32 exports and kept 588 table fields,
+  78 table parameters and 4 diagnostics per locale.
 
 Secondary candidate areas after T30:
 

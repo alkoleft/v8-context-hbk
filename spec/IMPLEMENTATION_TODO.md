@@ -9,13 +9,13 @@ Completed task history:
 - [archive/completed-tasks-t0-t12.md](archive/completed-tasks-t0-t12.md)
 - [archive/completed-tasks-t13-t17-t19-t24.md](archive/completed-tasks-t13-t17-t19-t24.md)
 
-Current status: T32 is the first active unchecked task. T29 was explicitly reprioritized before T18
+Current status: T31 is the first active unchecked task. T29 was explicitly reprioritized before T18
 by the 2026-04-30 request to support previously out-of-scope Syntax Assistant event/table source
 families and is now complete. T32 was explicitly reprioritized before the performance follow-up by
 the 2026-04-30 request to make the consumer JSON output leaner and easier for downstream agents to
-consume. Post-T29 measurements also found a release-profile `syntax-helper` runtime regression that
-must be corrected before the query CLI work resumes. T30-T31 are reprioritized before T18 by the
-2026-04-30 performance-regression review, after T32. T13-T17 and T19-T24 are
+consume and is now complete. Post-T29 measurements also found a release-profile `syntax-helper`
+runtime regression; T30 removed the primary table-owner lookup regression. T31 remains
+reprioritized before T18 to measure and address any residual parser overhead. T13-T17 and T19-T24 are
 archived historical tasks; their durable performance conclusions live in `acceptance/baseline.md`,
 `implementation/performance-baseline-t13.md` and `implementation/performance-variants.md`.
 T25-T28 record export-completeness gaps found by the 2026-04-30 audit across Russian and
@@ -184,7 +184,7 @@ Completion notes:
   UAT-SH-008, UAT-SH-009, UAT-SH-011, UAT-SH-012, full CLI exports for `shcntx_ru.hbk` and
   `shcntx_root.hbk`, and `git diff --check`.
 
-### [ ] T30. Remove post-T29 Syntax Assistant table-owner lookup regression
+### [x] T30. Remove post-T29 Syntax Assistant table-owner lookup regression
 
 Depends on: T29 and T32.
 
@@ -248,6 +248,22 @@ Regression evidence:
 - The main suspected cause is the post-T29 table-owner resolution path:
   `query_table_owner` calls `Toc::find_by_html_path`, and `find_by_html_path` rebuilds
   `flat_pages()` on every call.
+
+Completion notes:
+
+- Completed on 2026-04-30.
+- Replaced per-record `Toc::find_by_html_path` table-owner resolution with one
+  extraction-scope TOC HTML-path index in `syntax-helper-extract`.
+- Preserved locale-aware RU/root owner names for query/table fields and parameters.
+- Current HEAD/T32 pre-fix release-profile exports measured `8.00s / 181124 KiB` for
+  `shcntx_ru.hbk` and `7.71s / 126064 KiB` for `shcntx_root.hbk`.
+- Fixed release-profile exports measured `4.76s / 167452 KiB` for `shcntx_ru.hbk` and
+  `3.62s / 131748 KiB` for `shcntx_root.hbk`.
+- Record counts remained stable at 588 table fields, 78 table parameters and 4 diagnostics per
+  locale, and the fixed RU/root exports were byte-identical to the pre-fix T32 exports.
+- Verified with `cargo fmt`, `cargo test -p syntax-helper-extract`, `cargo test --workspace`,
+  UAT-SH-001, UAT-SH-002, UAT-SH-003, UAT-SH-010, UAT-SH-011, release-profile measurements for
+  `shcntx_ru.hbk` and `shcntx_root.hbk`, deterministic export comparison and `git diff --check`.
 
 ### [ ] T31. Re-measure and optimize residual Syntax Assistant parser overhead after T30
 

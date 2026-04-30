@@ -331,3 +331,11 @@ primary-name string, expose `type_refs` and `return_types` as arrays of type-nam
 recognized version facts as `availability.since`, flatten `see_also` to target primary-name
 strings, normalize property `usage`, remove callable `signatures[].text`, flatten syntax-variant
 metadata onto signatures and keep parser provenance only in `diagnostics.json`.
+
+T30 follow-up on 2026-04-30 removed the post-T29 table-owner lookup regression without changing the
+consumer JSON output. The pre-fix T32 release-profile exports measured `8.00s / 181124 KiB` for
+`shcntx_ru.hbk` and `7.71s / 126064 KiB` for `shcntx_root.hbk`. After replacing per-record
+`Toc::find_by_html_path` owner resolution with one extraction-scope TOC HTML-path index, the same
+release-profile commands measured `4.76s / 167452 KiB` and `3.62s / 131748 KiB`. The post-fix
+exports were byte-identical to the pre-fix T32 exports, including 588 table fields, 78 table
+parameters and 4 remaining `UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE` diagnostics per locale.
