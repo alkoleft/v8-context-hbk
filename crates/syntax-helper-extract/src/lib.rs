@@ -2,6 +2,7 @@ mod catalog;
 mod discovery;
 mod error;
 mod html;
+mod label_match;
 mod page_parser;
 mod reader;
 

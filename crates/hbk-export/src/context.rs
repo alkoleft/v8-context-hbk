@@ -114,7 +114,7 @@ impl JsonExporter {
             "global-context-events.json",
             locale,
             source_locale,
-            "global_context_event",
+            "module_event",
             &global_context_events,
         )?);
         let platform_types = context

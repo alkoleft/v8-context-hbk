@@ -3,6 +3,7 @@ use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 
 use super::*;
+use crate::catalog::collect_catalog_pages;
 use crate::reader::QueryTableOwnerIndex;
 use hbk_book::HbkBook;
 use hbk_book::Toc;
@@ -11,6 +12,7 @@ use hbk_docs::{PageContent, parse_page_html};
 #[derive(Default)]
 struct RecordingSink {
     seen: Vec<String>,
+    events: Vec<GlobalContextEvent>,
 }
 
 impl RecordingSink {
@@ -39,6 +41,7 @@ impl SyntaxHelperSink for RecordingSink {
 
     fn global_context_event(&mut self, record: GlobalContextEvent) -> Result<(), Self::Error> {
         self.push_name("global_context_event", &record.name);
+        self.events.push(record);
         Ok(())
     }
 
@@ -197,7 +200,7 @@ fn supports_event_and_table_audit_families_and_keeps_toc_only_gap_diagnostic() {
         .iter()
         .flat_map(|root| root.pages.iter().map(|page| page.class))
         .collect::<BTreeSet<_>>();
-    assert!(classes.contains(&PageClass::GlobalContextEvent));
+    assert!(classes.contains(&PageClass::ModuleEvent));
     assert!(classes.contains(&PageClass::QueryTableField));
     assert!(classes.contains(&PageClass::QueryTableParameter));
 
@@ -368,6 +371,133 @@ fn resolves_query_table_owner_from_single_toc_index_for_ru_and_root_sources() {
     let root_parameter_owner = root_index.owner("tables/catalog36/table42/params/param82.html");
     assert_eq!(root_parameter_owner.primary, "Filter Criterion Table");
     assert_eq!(root_parameter_owner.alias, None);
+}
+
+#[test]
+fn derives_toc_semantic_context_for_ambiguous_query_and_event_pages() {
+    let toc = Toc::parse(
+        r#"{
+                11
+                {1,0,2,2,8,{0,0,{0,0,{"ru","Работа с запросами"}},"/objects/catalog213.html"}}
+                {2,1,2,3,6,{0,0,{0,0,{"ru","Таблицы запросов"}},""}}
+                {3,2,1,4,{0,0,{0,0,{"ru","Таблицы регистра бухгалтерии (без поддержки корреспонденции)"}},""}}
+                {4,3,1,5,{0,0,{0,0,{"ru","Таблица остатков и оборотов"}},"/tables/catalog43/table49.html"}}
+                {5,4,0,{0,0,{0,0,{"ru","Метод дополнения периодов"}},"/tables/catalog43/table49/params/param70.html"}}
+                {6,2,1,7,{0,0,{0,0,{"ru","Таблицы регистра накопления"}},""}}
+                {7,6,0,{0,0,{0,0,{"ru","Таблица остатков и оборотов"}},"/tables/catalog8/table12/params/param14.html"}}
+                {8,1,1,9,{0,0,{0,0,{"ru","Формы"}},"/objects/catalog1649.html"}}
+                {9,8,1,10,{0,0,{0,0,{"ru","Расширение формы клиентского приложения для документов"}},"/objects/catalog1649/catalog1890/Client application form extension for documents.html"}}
+                {10,9,0,{0,0,{0,0,{"ru","ПередЗаписью"}{"en","BeforeWrite"}},"/objects/catalog1649/catalog1890/Client application form extension for documents/events/BeforeWrite335.html"}}
+                {11,0,0,{0,0,{0,0,{"ru","Глобальный контекст"}},"/objects/Global context.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let root = &toc.pages()[0];
+    let root_flat = toc
+        .flat_pages()
+        .next()
+        .expect("fixture root page must exist");
+
+    let pages = collect_catalog_pages(Path::new("shcntx_ru.hbk"), "ru", root, &root_flat);
+
+    let query_parameter_paths = pages
+        .iter()
+        .filter(|page| page.class == PageClass::QueryTableParameter)
+        .map(|page| {
+            assert_eq!(page.semantic.branch_kind, BranchKind::QueryTables);
+            assert_eq!(
+                page.semantic.record_family,
+                RecordFamily::QueryTableParameter
+            );
+            page.semantic
+                .owner_path
+                .iter()
+                .map(|name| name.primary.as_str())
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(query_parameter_paths.len(), 2);
+    assert_ne!(query_parameter_paths[0], query_parameter_paths[1]);
+
+    let event = pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("BeforeWrite335.html"))
+        .expect("event page must be collected");
+    assert_eq!(event.class, PageClass::ModuleEvent);
+    assert_eq!(event.semantic.branch_kind, BranchKind::ManagedForms);
+    assert_eq!(event.semantic.record_family, RecordFamily::ModuleEvent);
+    assert!(
+        event
+            .semantic
+            .owner_path
+            .iter()
+            .any(|name| name.primary.contains("Расширение формы"))
+    );
+}
+
+#[test]
+fn root_form_labels_do_not_match_information_and_form_events_stay_form_modules() {
+    let toc = Toc::parse(
+        r#"{
+                5
+                {1,0,2,2,5,{0,0,{0,0,{"en","Platform objects"}},"/objects/catalog.html"}}
+                {2,1,1,3,{0,0,{0,0,{"en","Client application form"}},"/objects/catalog1649.html"}}
+                {3,2,1,4,{0,0,{0,0,{"en","Client application form extension for documents"}},"/objects/catalog1649/catalog1890/Client application form extension for documents.html"}}
+                {4,3,0,{0,0,{0,0,{"en","BeforeWrite"}},"/objects/catalog1649/catalog1890/Client application form extension for documents/events/BeforeWrite335.html"}}
+                {5,1,0,{0,0,{0,0,{"en","BinaryDataStorageInformation"}},"/objects/catalog999/BinaryDataStorageInformation.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let root = &toc.pages()[0];
+    let root_flat = toc
+        .flat_pages()
+        .next()
+        .expect("fixture root page must exist");
+
+    let pages = collect_catalog_pages(Path::new("shcntx_root.hbk"), "root", root, &root_flat);
+
+    let information = pages
+        .iter()
+        .find(|page| {
+            page.source
+                .html_path
+                .ends_with("BinaryDataStorageInformation.html")
+        })
+        .expect("information page must be collected");
+    assert_eq!(information.class, PageClass::ObjectType);
+    assert_eq!(
+        information.semantic.branch_kind,
+        BranchKind::PlatformObjects
+    );
+
+    let mut sink = RecordingSink::default();
+    extract_with_loader_into(
+        Path::new("shcntx_root.hbk"),
+        "root",
+        &toc,
+        |html_path| {
+            let title = if html_path.ends_with("BeforeWrite335.html") {
+                "BeforeWrite"
+            } else {
+                "Platform objects"
+            };
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_root.hbk",
+                "root",
+                html_path,
+                &format!(
+                    r#"<html><body><h1 class="V8SH_pagetitle">{title}</h1><h2>{title}</h2></body></html>"#
+                ),
+            ))
+        },
+        &mut sink,
+    )
+    .expect("fixture extraction must stream");
+
+    let event = sink.events.first().expect("event must be extracted");
+    assert_eq!(event.name.primary, "BeforeWrite");
+    assert_eq!(event.module.kind, ModuleKind::Form);
 }
 
 #[test]
@@ -1107,6 +1237,11 @@ fn constructor_lookup_distinguishes_type_without_constructors() {
                 primary: "Тест".to_string(),
                 alias: Some("Test".to_string()),
             },
+            semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
+            type_kind: PlatformTypeKind::Regular,
+            extends: Vec::new(),
+            metadata_kind: None,
+            template_parameters: Vec::new(),
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: None,
@@ -1137,6 +1272,11 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
         platform_types: vec![
             PlatformType {
                 name: aliased_type,
+                semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
+                type_kind: PlatformTypeKind::Regular,
+                extends: Vec::new(),
+                metadata_kind: None,
+                template_parameters: Vec::new(),
                 method_links: Vec::new(),
                 constructor_links: Vec::new(),
                 description: None,
@@ -1145,6 +1285,11 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
             },
             PlatformType {
                 name: other_type.clone(),
+                semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
+                type_kind: PlatformTypeKind::Regular,
+                extends: Vec::new(),
+                metadata_kind: None,
+                template_parameters: Vec::new(),
                 method_links: Vec::new(),
                 constructor_links: Vec::new(),
                 description: None,
@@ -1158,6 +1303,7 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
                 primary: "Ping".to_string(),
                 alias: None,
             },
+            semantic: semantic(BranchKind::PlatformObjects, RecordFamily::TypeMethod),
             signatures: Vec::new(),
             return_types: Vec::new(),
             description: None,
@@ -1170,6 +1316,7 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
                 primary: "New".to_string(),
                 alias: None,
             },
+            semantic: semantic(BranchKind::PlatformObjects, RecordFamily::TypeConstructor),
             signatures: Vec::new(),
             description: None,
             facts: SectionFacts::default(),
@@ -1228,6 +1375,7 @@ fn lookup_helpers_report_ambiguous_exact_matches() {
             primary: "Add".to_string(),
             alias: None,
         },
+        semantic: semantic(BranchKind::PlatformObjects, RecordFamily::TypeProperty),
         usage: None,
         type_refs: Vec::new(),
         description: None,
@@ -1249,6 +1397,11 @@ fn lookup_helpers_report_ambiguous_exact_matches() {
             primary: "Array".to_string(),
             alias: None,
         },
+        semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
+        type_kind: PlatformTypeKind::Regular,
+        extends: Vec::new(),
+        metadata_kind: None,
+        template_parameters: Vec::new(),
         method_links: Vec::new(),
         constructor_links: Vec::new(),
         description: None,
@@ -1277,6 +1430,11 @@ fn lookup_helpers_report_ambiguous_exact_matches() {
                 primary: "Array".to_string(),
                 alias: None,
             },
+            semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
+            type_kind: PlatformTypeKind::Regular,
+            extends: Vec::new(),
+            metadata_kind: None,
+            template_parameters: Vec::new(),
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: None,
@@ -1740,6 +1898,10 @@ fn source_for(hbk_path: &str, locale: &str, html_path: &str) -> SyntaxHelperSour
         html_path: html_path.to_string(),
         page_title: String::new(),
     }
+}
+
+fn semantic(branch_kind: BranchKind, record_family: RecordFamily) -> SemanticContext {
+    SemanticContext::new(branch_kind, record_family)
 }
 
 fn assert_parameter_type(parameters: &[Parameter], parameter_name: &str, type_name: &str) {

@@ -71,12 +71,13 @@ The output directory contains JSON files by record family:
 - `enums.json`
 - `diagnostics.json`
 
-The current provisional export schema is `schema_version: 6`. Consumer record-family files include
+The current provisional export schema is `schema_version: 7`. Consumer record-family files include
 structured `availability`, `examples`, `see_also`, signature variant metadata, type references and
-return types when the source page contains those facts. Absent facts are omitted from platform API
-consumer records. Enum values are nested in `enums.json`; `enum-values.json` is not emitted.
-Consumer records omit HBK file paths, TOC paths, HTML paths and page titles; `diagnostics.json`
-keeps parser provenance for maintenance.
+return types when the source page contains those facts. TOC-derived semantic identity fields such as
+`record_family`, `module`, `owner_path` and `type_kind` are emitted where title-only lookup would be
+ambiguous. Absent facts are omitted from platform API consumer records. Enum values are nested in
+`enums.json`; `enum-values.json` is not emitted. Consumer records omit HBK file paths, TOC paths,
+HTML paths and page titles; `diagnostics.json` keeps parser provenance for maintenance.
 
 The `syntax-helper` command summary reports the `diagnostics.json` record count as
 `parser_warnings` because those records are parser-maintenance warnings, not exported platform API

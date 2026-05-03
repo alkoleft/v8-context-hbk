@@ -73,6 +73,8 @@ pub fn parse_global_context_event(
 ) -> GlobalContextEvent {
     GlobalContextEvent {
         name: heading_name(content),
+        semantic: SemanticContext::new(BranchKind::GlobalContext, RecordFamily::ModuleEvent),
+        module: ModuleEventContext::default(),
         signatures: parse_signatures(content),
         description: section_text(content, &["Описание:", "Description:"]),
         facts: section_facts(content),
@@ -92,6 +94,11 @@ pub(crate) fn parse_platform_type_for_mode(
     let parse_links = mode == SyntaxHelperRecordDetailMode::Full;
     PlatformType {
         name: page_title_name(content),
+        semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::PlatformType),
+        type_kind: PlatformTypeKind::Regular,
+        extends: Vec::new(),
+        metadata_kind: None,
+        template_parameters: Vec::new(),
         method_links: if parse_links {
             links_in_section(content, &["Методы:", "Methods:"])
         } else {
@@ -112,6 +119,7 @@ pub fn parse_platform_method(content: &PageContent, source: SyntaxHelperSource) 
     PlatformMethod {
         owner: title_name(content),
         name: heading_name(content),
+        semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::TypeMethod),
         signatures: parse_signatures(content),
         return_types: type_refs_from_section(
             content,
@@ -130,6 +138,7 @@ pub fn parse_platform_property(
     PlatformProperty {
         owner: title_name(content),
         name: heading_name(content),
+        semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::TypeProperty),
         usage: section_text(content, &["Использование:", "Use:"]),
         type_refs: type_refs_from_section(content, &["Описание:", "Description:"]),
         description: section_text(content, &["Описание:", "Description:"]),
@@ -147,6 +156,7 @@ pub fn parse_query_table_field(
     QueryTableField {
         owner,
         name: page_title_name(content),
+        semantic: SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTableField),
         type_refs: parse_type_refs(&body),
         description: description_after_type(&body),
         note: section_text(content, &["Примечание:", "Note:"]),
@@ -163,6 +173,7 @@ pub fn parse_query_table_parameter(
     QueryTableParameter {
         owner,
         name: page_title_name(content),
+        semantic: SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTableParameter),
         required: table_parameter_required(content),
         type_refs: parse_type_refs(&body),
         description: table_parameter_description(&body),
@@ -175,6 +186,7 @@ pub fn parse_constructor(content: &PageContent, source: SyntaxHelperSource) -> C
     Constructor {
         owner: title_name(content),
         name: heading_name(content),
+        semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::TypeConstructor),
         signatures: parse_signatures(content),
         description: section_text(content, &["Описание:", "Description:"]),
         facts: section_facts(content),

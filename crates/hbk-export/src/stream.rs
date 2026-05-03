@@ -82,7 +82,7 @@ impl StreamingSyntaxHelperExport {
             "global-context-events.json",
             locale,
             source_locale,
-            "global_context_event",
+            "module_event",
         )?;
         let platform_types = open_record_file(
             &output_dir,

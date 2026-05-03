@@ -8,6 +8,7 @@ use syntax_helper_model::*;
 use crate::discovery::discover_roots_with_loader;
 use crate::error::{SyntaxHelperError, SyntaxHelperStreamError, infallible_stream_error};
 use crate::html::name_from_text;
+use crate::label_match::has_token_prefix;
 use crate::page_parser::{
     parse_constructor, parse_enum_for_mode, parse_enum_value, parse_global_context_event,
     parse_global_context_for_mode, parse_global_method, parse_global_property,
@@ -165,35 +166,56 @@ where
                 PageClass::GlobalProperty => sink
                     .global_property(parse_global_property(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
-                PageClass::GlobalContextEvent => sink
-                    .global_context_event(parse_global_context_event(&content, source))
-                    .map_err(SyntaxHelperStreamError::Sink)?,
-                PageClass::ObjectType => sink
-                    .platform_type(parse_platform_type_for_mode(
-                        &content,
-                        source,
-                        record_detail_mode,
-                    ))
-                    .map_err(SyntaxHelperStreamError::Sink)?,
-                PageClass::ObjectMethod => sink
-                    .type_method(parse_platform_method(&content, source))
-                    .map_err(SyntaxHelperStreamError::Sink)?,
-                PageClass::ObjectProperty => sink
-                    .type_property(parse_platform_property(&content, source))
-                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::ModuleEvent => {
+                    let mut event = parse_global_context_event(&content, source);
+                    event.semantic = catalog_page.semantic.clone();
+                    event.module = module_context(&catalog_page.semantic);
+                    sink.global_context_event(event)
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
+                PageClass::ObjectType => {
+                    if is_skipped_primitive_literal(&catalog_page.semantic) {
+                        continue;
+                    }
+                    let mut platform_type =
+                        parse_platform_type_for_mode(&content, source, record_detail_mode);
+                    platform_type.semantic = catalog_page.semantic.clone();
+                    apply_platform_type_semantics(&mut platform_type);
+                    sink.platform_type(platform_type)
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
+                PageClass::ObjectMethod => {
+                    let mut method = parse_platform_method(&content, source);
+                    method.semantic = catalog_page.semantic.clone();
+                    sink.type_method(method)
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
+                PageClass::ObjectProperty => {
+                    let mut property = parse_platform_property(&content, source);
+                    property.semantic = catalog_page.semantic.clone();
+                    sink.type_property(property)
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
                 PageClass::QueryTableField => {
                     let owner = query_table_owners.owner(&catalog_page.source.html_path);
-                    sink.table_field(parse_query_table_field(&content, owner, source))
+                    let mut field = parse_query_table_field(&content, owner, source);
+                    field.semantic = catalog_page.semantic.clone();
+                    sink.table_field(field)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
                 PageClass::QueryTableParameter => {
                     let owner = query_table_owners.owner(&catalog_page.source.html_path);
-                    sink.table_parameter(parse_query_table_parameter(&content, owner, source))
+                    let mut parameter = parse_query_table_parameter(&content, owner, source);
+                    parameter.semantic = catalog_page.semantic.clone();
+                    sink.table_parameter(parameter)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
-                PageClass::Constructor => sink
-                    .constructor(parse_constructor(&content, source))
-                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::Constructor => {
+                    let mut constructor = parse_constructor(&content, source);
+                    constructor.semantic = catalog_page.semantic.clone();
+                    sink.constructor(constructor)
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
                 PageClass::Enum => sink
                     .enum_definition(parse_enum_for_mode(&content, source, record_detail_mode))
                     .map_err(SyntaxHelperStreamError::Sink)?,
@@ -216,6 +238,135 @@ where
     }
 
     Ok(())
+}
+
+fn module_context(semantic: &SemanticContext) -> ModuleEventContext {
+    ModuleEventContext {
+        kind: module_kind(&semantic.owner_path),
+        owner_path: semantic.owner_path.clone(),
+    }
+}
+
+fn module_kind(owner_path: &[LocalizedName]) -> ModuleKind {
+    let labels = owner_path
+        .iter()
+        .map(|name| {
+            format!(
+                "{} {}",
+                name.primary.to_lowercase(),
+                name.alias.as_deref().unwrap_or_default().to_lowercase()
+            )
+        })
+        .collect::<Vec<_>>();
+    if labels
+        .iter()
+        .any(|label| label.contains("внешнего соединения") || label.contains("external connection"))
+    {
+        ModuleKind::ExternalConnection
+    } else if labels.iter().any(|label| {
+        label.contains("обычного приложения") || label.contains("ordinary application")
+    }) {
+        ModuleKind::OrdinaryApplication
+    } else if labels
+        .iter()
+        .any(|label| has_token_prefix(label, &["форм", "form"]))
+    {
+        ModuleKind::Form
+    } else if labels.iter().any(|label| {
+        label.contains("события приложения")
+            || label.contains("managed application")
+            || label.contains("client application")
+            || label.contains("application events")
+    }) {
+        ModuleKind::ManagedApplication
+    } else if labels
+        .iter()
+        .any(|label| label.contains("сеанса") || label.contains("session"))
+    {
+        ModuleKind::Session
+    } else if labels
+        .iter()
+        .any(|label| label.contains("http") || label.contains("http-сервис"))
+    {
+        ModuleKind::HttpService
+    } else if labels.iter().any(|label| {
+        label.contains("web service")
+            || label.contains("web-сервис")
+            || label.contains("веб-сервис")
+    }) {
+        ModuleKind::WebService
+    } else if labels
+        .iter()
+        .any(|label| label.contains("менеджер") || label.contains("manager"))
+    {
+        ModuleKind::Manager
+    } else if labels
+        .iter()
+        .any(|label| label.contains("объект") || label.contains("object"))
+    {
+        ModuleKind::Object
+    } else {
+        ModuleKind::Unknown
+    }
+}
+
+fn is_skipped_primitive_literal(semantic: &SemanticContext) -> bool {
+    semantic.branch_kind == BranchKind::PrimitiveTypes && semantic.owner_path.len() > 2
+}
+
+fn apply_platform_type_semantics(platform_type: &mut PlatformType) {
+    platform_type.type_kind = platform_type_kind(platform_type);
+    if platform_type.type_kind == PlatformTypeKind::MetadataTemplate {
+        platform_type.metadata_kind = metadata_kind(&platform_type.name.primary);
+        platform_type.template_parameters = template_parameters(&platform_type.name.primary);
+    }
+}
+
+fn platform_type_kind(platform_type: &PlatformType) -> PlatformTypeKind {
+    if platform_type.semantic.branch_kind == BranchKind::PrimitiveTypes {
+        return PlatformTypeKind::Primitive;
+    }
+    if is_metadata_template_name(&platform_type.name.primary) {
+        return PlatformTypeKind::MetadataTemplate;
+    }
+    if is_extension_name(&platform_type.name.primary) {
+        return PlatformTypeKind::Extension;
+    }
+    PlatformTypeKind::Regular
+}
+
+fn is_extension_name(name: &str) -> bool {
+    let value = name.to_lowercase();
+    value.starts_with("расширение") || value.starts_with("extension")
+}
+
+fn is_metadata_template_name(name: &str) -> bool {
+    name.contains("<") && name.contains(">")
+}
+
+fn metadata_kind(name: &str) -> Option<String> {
+    name.split(['.', '<'])
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn template_parameters(name: &str) -> Vec<String> {
+    let mut parameters = Vec::new();
+    let mut rest = name;
+    while let Some(start) = rest.find('<') {
+        let after_start = &rest[start + 1..];
+        let Some(end) = after_start.find('>') else {
+            break;
+        };
+        let parameter = after_start[..end].trim();
+        if !parameter.is_empty() {
+            parameters.push(parameter.to_string());
+        }
+        rest = &after_start[end + 1..];
+    }
+    parameters
 }
 
 pub(crate) struct QueryTableOwnerIndex<'a> {

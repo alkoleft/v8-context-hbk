@@ -39,6 +39,20 @@ fn link(primary: &str) -> model::MemberLink {
     }
 }
 
+fn semantic(
+    branch_kind: model::BranchKind,
+    record_family: model::RecordFamily,
+) -> model::SemanticContext {
+    model::SemanticContext::new(branch_kind, record_family)
+}
+
+fn module() -> model::ModuleEventContext {
+    model::ModuleEventContext {
+        kind: model::ModuleKind::ManagedApplication,
+        owner_path: vec![name("События приложения")],
+    }
+}
+
 fn facts() -> model::SectionFacts {
     model::SectionFacts {
         availability: model::Availability {
@@ -172,7 +186,7 @@ fn records_envelope_json_is_parseable_and_non_empty() {
     let json = fs::read_to_string(&path).expect("record envelope must be readable");
     assert!(!json.is_empty());
     let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
-    assert_eq!(parsed["schema_version"], 6);
+    assert_eq!(parsed["schema_version"], 7);
     assert_eq!(parsed["locale"], "en");
     assert_eq!(parsed["source_locale"], "root");
     assert!(parsed.get("source_hbk").is_none());
@@ -208,7 +222,7 @@ fn exporter_writes_full_canonical_file_set() {
     }
 
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 6);
+    assert_eq!(metadata["schema_version"], 7);
     assert_eq!(metadata["locale"], "en");
     assert_eq!(metadata["source_locale"], "root");
     assert!(metadata.get("source_hbk").is_none());
@@ -293,6 +307,11 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         ],
         global_context_events: vec![model::GlobalContextEvent {
             name: name("ПередЗавершениемРаботыСистемы"),
+            semantic: semantic(
+                model::BranchKind::GlobalContext,
+                model::RecordFamily::ModuleEvent,
+            ),
+            module: module(),
             signatures: vec![model::Signature {
                 text: "ПередЗавершениемРаботыСистемы(Отказ)".to_string(),
                 parameters: vec![model::Parameter {
@@ -317,6 +336,14 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         }],
         platform_types: vec![model::PlatformType {
             name: name("Массив"),
+            semantic: semantic(
+                model::BranchKind::PlatformObjects,
+                model::RecordFamily::PlatformType,
+            ),
+            type_kind: model::PlatformTypeKind::Regular,
+            extends: Vec::new(),
+            metadata_kind: None,
+            template_parameters: Vec::new(),
             method_links: vec![link("Добавить")],
             constructor_links: vec![link("Массив")],
             description: Some("Array type.".to_string()),
@@ -326,6 +353,11 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         type_methods: vec![model::PlatformMethod {
             owner: name("Массив"),
             name: name("Добавить"),
+            semantic: semantic(
+                model::BranchKind::PlatformObjects,
+                model::RecordFamily::TypeMethod,
+            )
+            .with_owner_path(vec![name("Универсальные коллекции"), name("Массив")]),
             signatures: vec![model::Signature {
                 text: "Добавить(Значение)".to_string(),
                 parameters: vec![model::Parameter {
@@ -348,6 +380,11 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         type_properties: vec![model::PlatformProperty {
             owner: name("ГруппаФормы"),
             name: name("Видимость"),
+            semantic: semantic(
+                model::BranchKind::ManagedForms,
+                model::RecordFamily::TypeProperty,
+            )
+            .with_owner_path(vec![name("Форма"), name("ГруппаФормы")]),
             usage: Some("Чтение и запись.".to_string()),
             type_refs: vec![model::TypeRef {
                 name: "Булево".to_string(),
@@ -359,6 +396,14 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         table_fields: vec![model::QueryTableField {
             owner: name("Таблица бизнес-процессов"),
             name: name("Представление"),
+            semantic: semantic(
+                model::BranchKind::QueryTables,
+                model::RecordFamily::QueryTableField,
+            )
+            .with_owner_path(vec![
+                name("Таблицы запросов"),
+                name("Таблица бизнес-процессов"),
+            ]),
             type_refs: vec![model::TypeRef {
                 name: "Строка".to_string(),
             }],
@@ -369,6 +414,14 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         table_parameters: vec![model::QueryTableParameter {
             owner: name("Таблица критерия отбора"),
             name: name("Значение"),
+            semantic: semantic(
+                model::BranchKind::QueryTables,
+                model::RecordFamily::QueryTableParameter,
+            )
+            .with_owner_path(vec![
+                name("Таблицы запросов"),
+                name("Таблица критерия отбора"),
+            ]),
             required: true,
             type_refs: Vec::new(),
             description: Some("Значение отбора.".to_string()),
@@ -378,6 +431,10 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         constructors: vec![model::Constructor {
             owner: name("Массив"),
             name: name("По количеству элементов"),
+            semantic: semantic(
+                model::BranchKind::PlatformObjects,
+                model::RecordFamily::TypeConstructor,
+            ),
             signatures: vec![model::Signature {
                 text: "Массив(Количество)".to_string(),
                 parameters: vec![model::Parameter {
@@ -439,7 +496,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
 
     assert!(!dir.join("global-contexts.json").exists());
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 6);
+    assert_eq!(metadata["schema_version"], 7);
     assert_no_keys(&metadata, &["source_hbk"]);
 
     let forbidden = [
@@ -538,16 +595,50 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     let type_methods = read_json(dir.join("type-methods.json"));
     let type_method = &type_methods["records"][0];
     assert_eq!(type_method["owner"], "Массив");
+    assert_eq!(
+        type_method["owner_path"],
+        serde_json::json!(["Универсальные коллекции", "Массив"])
+    );
     assert_eq!(type_method["return"], serde_json::json!(["Число"]));
     assert!(type_method.get("return_types").is_none());
 
     let type_properties = read_json(dir.join("type-properties.json"));
     let type_property = &type_properties["records"][0];
     assert_eq!(type_property["owner"], "ГруппаФормы");
+    assert_eq!(
+        type_property["owner_path"],
+        serde_json::json!(["Форма", "ГруппаФормы"])
+    );
     assert_eq!(type_property["usage"], "ReadWrite");
     assert_eq!(type_property["description"], "Определяет видимость группы.");
 
+    let global_context_events = read_json(dir.join("global-context-events.json"));
+    let event = &global_context_events["records"][0];
+    assert_eq!(event["record_family"], "module_event");
+    assert_eq!(event["branch_kind"], "global_context");
+    assert_eq!(event["module"]["kind"], "managed_application");
+    assert_eq!(
+        event["module"]["owner_path"],
+        serde_json::json!(["События приложения"])
+    );
+
+    let platform_types = read_json(dir.join("platform-types.json"));
+    let platform_type = &platform_types["records"][0];
+    assert_eq!(platform_type["branch_kind"], "platform_objects");
+    assert_eq!(platform_type["type_kind"], "regular");
+    assert!(platform_type.get("owner_path").is_none());
+
+    let table_fields = read_json(dir.join("table-fields.json"));
+    assert_eq!(
+        table_fields["records"][0]["owner_path"],
+        serde_json::json!(["Таблицы запросов", "Таблица бизнес-процессов"])
+    );
+
     let table_parameters = read_json(dir.join("table-parameters.json"));
+    assert_eq!(
+        table_parameters["records"][0]["owner_path"],
+        serde_json::json!(["Таблицы запросов", "Таблица критерия отбора"])
+    );
     assert!(table_parameters["records"][0].get("types").is_none());
     assert!(table_parameters["records"][0].get("type_refs").is_none());
 

@@ -34,6 +34,7 @@ pub enum RootSectionKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CatalogPage {
     pub class: PageClass,
+    pub semantic: SemanticContext,
     pub source: SyntaxHelperSource,
 }
 
@@ -43,7 +44,7 @@ pub enum PageClass {
     Catalog,
     GlobalMethod,
     GlobalProperty,
-    GlobalContextEvent,
+    ModuleEvent,
     ObjectType,
     ObjectMethod,
     ObjectProperty,
@@ -53,6 +54,66 @@ pub enum PageClass {
     Enum,
     EnumValue,
     Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BranchKind {
+    GlobalContext,
+    SystemEnums,
+    PrimitiveTypes,
+    MetadataObjects,
+    ManagedForms,
+    QueryTables,
+    PlatformObjects,
+    AutomationExternalApi,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordFamily {
+    Catalog,
+    GlobalMethod,
+    GlobalProperty,
+    ModuleEvent,
+    PlatformType,
+    TypeMethod,
+    TypeProperty,
+    TypeConstructor,
+    SystemEnum,
+    SystemEnumValue,
+    QueryTableField,
+    QueryTableParameter,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SemanticContext {
+    pub branch_kind: BranchKind,
+    pub record_family: RecordFamily,
+    pub owner_path: Vec<LocalizedName>,
+}
+
+impl SemanticContext {
+    pub fn new(branch_kind: BranchKind, record_family: RecordFamily) -> Self {
+        Self {
+            branch_kind,
+            record_family,
+            owner_path: Vec::new(),
+        }
+    }
+
+    pub fn with_owner_path(mut self, owner_path: Vec<LocalizedName>) -> Self {
+        self.owner_path = owner_path;
+        self
+    }
+}
+
+impl Default for SemanticContext {
+    fn default() -> Self {
+        Self::new(BranchKind::Unknown, RecordFamily::Unknown)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -359,6 +420,8 @@ pub struct GlobalProperty {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GlobalContextEvent {
     pub name: LocalizedName,
+    pub semantic: SemanticContext,
+    pub module: ModuleEventContext,
     pub signatures: Vec<Signature>,
     pub description: Option<String>,
     pub facts: SectionFacts,
@@ -368,6 +431,11 @@ pub struct GlobalContextEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlatformType {
     pub name: LocalizedName,
+    pub semantic: SemanticContext,
+    pub type_kind: PlatformTypeKind,
+    pub extends: Vec<LocalizedName>,
+    pub metadata_kind: Option<String>,
+    pub template_parameters: Vec<String>,
     pub method_links: Vec<MemberLink>,
     pub constructor_links: Vec<MemberLink>,
     pub description: Option<String>,
@@ -379,6 +447,7 @@ pub struct PlatformType {
 pub struct PlatformMethod {
     pub owner: LocalizedName,
     pub name: LocalizedName,
+    pub semantic: SemanticContext,
     pub signatures: Vec<Signature>,
     pub return_types: Vec<TypeRef>,
     pub description: Option<String>,
@@ -390,6 +459,7 @@ pub struct PlatformMethod {
 pub struct PlatformProperty {
     pub owner: LocalizedName,
     pub name: LocalizedName,
+    pub semantic: SemanticContext,
     pub usage: Option<String>,
     pub type_refs: Vec<TypeRef>,
     pub description: Option<String>,
@@ -401,6 +471,7 @@ pub struct PlatformProperty {
 pub struct QueryTableField {
     pub owner: LocalizedName,
     pub name: LocalizedName,
+    pub semantic: SemanticContext,
     pub type_refs: Vec<TypeRef>,
     pub description: Option<String>,
     pub note: Option<String>,
@@ -411,6 +482,7 @@ pub struct QueryTableField {
 pub struct QueryTableParameter {
     pub owner: LocalizedName,
     pub name: LocalizedName,
+    pub semantic: SemanticContext,
     pub required: bool,
     pub type_refs: Vec<TypeRef>,
     pub description: Option<String>,
@@ -422,10 +494,50 @@ pub struct QueryTableParameter {
 pub struct Constructor {
     pub owner: LocalizedName,
     pub name: LocalizedName,
+    pub semantic: SemanticContext,
     pub signatures: Vec<Signature>,
     pub description: Option<String>,
     pub facts: SectionFacts,
     pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModuleEventContext {
+    pub kind: ModuleKind,
+    pub owner_path: Vec<LocalizedName>,
+}
+
+impl Default for ModuleEventContext {
+    fn default() -> Self {
+        Self {
+            kind: ModuleKind::Unknown,
+            owner_path: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleKind {
+    Session,
+    OrdinaryApplication,
+    ManagedApplication,
+    ExternalConnection,
+    Object,
+    Manager,
+    Form,
+    WebService,
+    HttpService,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlatformTypeKind {
+    Regular,
+    Extension,
+    Primitive,
+    MetadataTemplate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
