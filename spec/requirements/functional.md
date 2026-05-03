@@ -418,6 +418,30 @@ Module events, table fields and table parameters are first-class consumer facts.
 longer be reported as `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`,
 `OUT_OF_SCOPE_TABLE_FIELD` or `OUT_OF_SCOPE_TABLE_PARAMETER` for the target platform source books.
 
+The next event-export task after schema version 8 must replace the historical
+`global-context-events.json` adapter with event-specific record-family files. It must not introduce
+a cross-cutting semantic identifier; stable IDs and cross-file references are a separate future
+contract if a concrete consumer needs them. The planned event files are:
+
+- `module-events.json`: module-level events, including current global-context event groups and
+  object/manager module events when the TOC identifies them as module handlers.
+- `type-events.json`: event-like facts owned by platform types, forms, form extensions, form
+  elements, type extensions or other type/object branches that are not module-level handlers.
+- `unknown-events.json`: recoverable fallback records only when TOC/HTML evidence is insufficient
+  to classify an event as module-level or type-level. Unknown events must keep parser-maintenance
+  diagnostics provenance; consumer records must still omit raw HBK, TOC and HTML provenance.
+
+Event splitting must preserve the schema version 8 `owner_path` narrowing. It must not reintroduce
+`owner_path` on derivative type members, constructors or nested query table records. Event records
+may keep only the owner context that is explicitly defined for the event export contract; if exact
+event lookup later requires broader owner disambiguation, that requirement must be specified in the
+event task without weakening the schema version 8 derivative-record omission rule.
+
+Owner classification belongs to the owner object/type model, not to a local event-only
+`owner.kind` field. Platform type/object records should expose a source-backed owner/object
+classification field when the TOC proves it, and event records should reuse that owner semantics
+through their record family and owner context rather than inventing a parallel owner taxonomy.
+
 Schema version 5 merges enum values into `enums.json`. `enum-values.json` is no longer emitted.
 Each enum record has `values`, a deterministic array of enum value records. Nested enum value
 records include `name`, `description` when present and `availability.since` only when the value's

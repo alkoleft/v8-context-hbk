@@ -755,6 +755,85 @@ Cleanup:
 - `target/uat/shcntx-ru` and `target/uat/shcntx-en` are service data and may be deleted after the
   run.
 
+## UAT-SH-014: Event File Split and Owner Classification
+
+Related use case: UC-SH-001.
+
+Related requirements: FR-SH-003, FR-EXPORT-001, NFR-COMPAT-001, NFR-DIAG-001.
+
+Purpose:
+
+- Validate the planned post-schema-v8 event contract after T37/T38.
+- Keep this UAT independent from schema version 8 `owner_path` removal on derivative records.
+
+Preconditions:
+
+- T36 has completed and the schema version 8 `owner_path` narrowing is the baseline.
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shcntx-ru target/uat/shcntx-en
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
+```
+
+Then verify the event split and owner-classification boundaries:
+
+```bash
+for file in target/uat/shcntx-ru/metadata.json target/uat/shcntx-en/metadata.json; do
+  jq -e '
+    (.files | all(.[]; .file_name != "global-context-events.json"))
+    and (.files | any(.[]; .file_name == "module-events.json"))
+    and (.files | any(.[]; .file_name == "type-events.json"))
+    and (.files | any(.[]; .file_name == "unknown-events.json"))
+  ' "$file"
+done
+
+for file in \
+  target/uat/shcntx-ru/module-events.json \
+  target/uat/shcntx-ru/type-events.json \
+  target/uat/shcntx-ru/unknown-events.json \
+  target/uat/shcntx-en/module-events.json \
+  target/uat/shcntx-en/type-events.json \
+  target/uat/shcntx-en/unknown-events.json; do
+  jq -e '([.records[] | .. | objects | keys[] | select(. == "id" or . == "owner_ref" or . == "source_hbk" or . == "toc_path" or . == "html_path" or . == "page_title")] | length) == 0' "$file"
+done
+
+jq -e 'all(.records[]; .record_family == "module_event") and any(.records[]; .name.primary == "ПриНачалеРаботыСистемы")' target/uat/shcntx-ru/module-events.json
+jq -e 'all(.records[]; .record_family == "type_event") and any(.records[]; .name.primary == "ПередЗаписью")' target/uat/shcntx-ru/type-events.json
+jq -e 'all(.records[]; .record_family == "unknown_event")' target/uat/shcntx-ru/unknown-events.json
+
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-methods.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-properties.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/constructors.json
+
+jq -e '([.records[] | .. | objects | keys[] | select(. == "owner_kind")] | length) == 0' target/uat/shcntx-ru/module-events.json
+jq -e '([.records[] | .. | objects | keys[] | select(. == "owner_kind")] | length) == 0' target/uat/shcntx-ru/type-events.json
+```
+
+Expected result:
+
+- Exit code is `0`.
+- `metadata.json.files` contains the three event files and no longer lists
+  `global-context-events.json`.
+- Event files do not expose cross-cutting `id` or `owner_ref` fields.
+- Event files do not expose raw HBK, TOC, HTML or page-title provenance.
+- Module-level events are routed to `module-events.json`; type/form/object event-like facts are
+  routed to `type-events.json`.
+- `unknown-events.json` contains only diagnostic-backed fallback event records when classification
+  is not safe.
+- Owner/object classification, when implemented, belongs to the owner platform type/object record
+  and not to an event-only `owner.kind` or `owner_kind` field.
+- Derivative type methods, type properties and constructors still omit `owner_path`; the event split
+  does not weaken the schema version 8 omission rule.
+
+Cleanup:
+
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` are service data and may be deleted after the
+  run.
+
 ## UAT-ERR-001: Missing File Produces Readable CLI Error
 
 Related use cases: UC-HBK-001, UC-HBK-002, UC-SH-001.

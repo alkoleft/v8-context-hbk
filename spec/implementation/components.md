@@ -214,6 +214,14 @@ fields/parameters. `metadata.json.files` is the authoritative inventory for the 
 exporter writes current files but must not delete stale files from older schemas in a reused output
 directory.
 
+After schema version 8, event export should stop using the historical
+`global-context-events.json` filename for non-global facts. The planned split is
+`module-events.json`, `type-events.json` and `unknown-events.json`; `hbk-export` should route
+records by source-backed event classification without adding global semantic IDs. Any owner/object
+kind needed by events belongs on the owner type/object model, not as a duplicated event-only
+taxonomy. This follow-up must preserve the schema version 8 rule that derivative records do not
+emit `owner_path`.
+
 ### v8-context-hbk-cli
 
 Owns FR-CLI-001.
