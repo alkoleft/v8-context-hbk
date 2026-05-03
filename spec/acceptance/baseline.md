@@ -72,6 +72,15 @@ directories are service data unless promoted here.
   The accepted T35 classification direction separates TOC branch kind from record family, models
   module events explicitly, distinguishes regular/extension/primitive/metadata-template platform
   types and treats primitive type traversal as shallow.
+- T35 changed the canonical consumer JSON export to `schema_version: 7`. The required
+  `global-context-events.json` adapter now serializes `module_event` facts with semantic module
+  context, query/table records expose TOC-derived `owner_path`, platform types expose `type_kind`
+  and branch kind, and placeholder-like type properties/constructors expose semantic owner paths
+  without raw HBK/TOC/HTML/page-title provenance. Full debug CLI exports for both source books
+  produced 697 module events, 1869 platform types, 588 table fields, 78 table parameters and 4
+  diagnostics per locale. The root/English acceptance guard also checks that `Client application
+  form...` event branches stay `module.kind="form"` and that `Information` suffixes do not match
+  the managed-forms branch by substring alone.
 
 ## Post-T29 Runtime Regression To Fix
 

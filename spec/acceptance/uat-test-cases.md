@@ -207,21 +207,8 @@ jq -e '
     has("constructor_links") or
     has("value_links");
   all(.records[]; forbidden | not)
-' target/uat/shcntx-ru/table-fields.json
-jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/table-fields.json
-jq -e '
-  def forbidden:
-    has("source") or
-    has("source_hbk") or
-    has("toc_path") or
-    has("html_path") or
-    has("page_title") or
-    has("method_links") or
-    has("constructor_links") or
-    has("value_links");
-  all(.records[]; forbidden | not)
-' target/uat/shcntx-ru/table-parameters.json
-jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/table-parameters.json
+' target/uat/shcntx-ru/query-tables.json
+jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/query-tables.json
 jq -e '
   def forbidden:
     has("source") or
@@ -511,34 +498,38 @@ Preconditions:
 Steps:
 
 ```bash
-jq -e '.schema_version == 6 and (.records | length) == 33' target/uat/shcntx-ru/global-context-events.json
-jq -e '.schema_version == 6 and (.records | length) == 588' target/uat/shcntx-ru/table-fields.json
-jq -e '.schema_version == 6 and (.records | length) == 78' target/uat/shcntx-ru/table-parameters.json
-jq -e '.schema_version == 6 and (.records | length) == 33' target/uat/shcntx-en/global-context-events.json
-jq -e '.schema_version == 6 and (.records | length) == 588' target/uat/shcntx-en/table-fields.json
-jq -e '.schema_version == 6 and (.records | length) == 78' target/uat/shcntx-en/table-parameters.json
+jq -e '.schema_version == 8 and (.records | length) == 697' target/uat/shcntx-ru/global-context-events.json
+jq -e '.schema_version == 8 and (.records | length) > 0' target/uat/shcntx-ru/query-tables.json
+jq -e '.schema_version == 8 and (.records | length) == 697' target/uat/shcntx-en/global-context-events.json
+jq -e '.schema_version == 8 and (.records | length) > 0' target/uat/shcntx-en/query-tables.json
+
+jq -e 'all(.records[]; .record_family == "module_event" and has("module"))' target/uat/shcntx-ru/global-context-events.json
+jq -e 'all(.records[]; .record_family == "module_event" and has("module"))' target/uat/shcntx-en/global-context-events.json
 
 jq -e '.records[] | select(.name.primary == "ПередЗавершениемРаботыСистемы" and .availability.since == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0] | has("text") | not) and any(.signatures[0].parameters[]; .name == "Отказ" and .required == true and (.types | index("Булево") != null))' target/uat/shcntx-ru/global-context-events.json
 jq -e '.records[] | select(.name.primary == "BeforeExit" and .availability.since == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0] | has("text") | not) and any(.signatures[0].parameters[]; .name == "Cancel" and .required == true and (.types | index("Boolean") != null))' target/uat/shcntx-en/global-context-events.json
 
-jq -e '.records[] | select(.owner == "Таблица бизнес-процессов" and .name.primary == "Представление") | (.types | index("Строка") != null) and (.description | test("строку-представление"))' target/uat/shcntx-ru/table-fields.json
-jq -e '.records[] | select(.owner == "Business Process Table" and .name.primary == "Presentation") | (.types | index("String") != null) and (.description | test("presentation"))' target/uat/shcntx-en/table-fields.json
+jq -e '.records[] | select(.name == "Таблица бизнес-процессов") | any(.fields[]; .name == "Представление" and (.types | index("Строка") != null) and (.description | test("строку-представление")))' target/uat/shcntx-ru/query-tables.json
+jq -e '.records[] | select(.name == "Business Process Table") | any(.fields[]; .name == "Presentation" and (.types | index("String") != null) and (.description | test("presentation")))' target/uat/shcntx-en/query-tables.json
 
-jq -e '.records[] | select(.owner == "Таблица критерия отбора" and .name.primary == "Значение") | .required == true and (.description | test("отбор"))' target/uat/shcntx-ru/table-parameters.json
-jq -e '.records[] | select(.owner == "Filter Criterion Table" and .name.primary == "Value") | .required == true and (.description | test("filtering"))' target/uat/shcntx-en/table-parameters.json
+jq -e '.records[] | select(.name == "Таблица критерия отбора") | any(.parameters[]; .name == "Значение" and (has("required") | not) and (.description | test("отбор")))' target/uat/shcntx-ru/query-tables.json
+jq -e '.records[] | select(.name == "Filter Criterion Table") | any(.parameters[]; .name == "Value" and (has("required") | not) and (.description | test("filtering")))' target/uat/shcntx-en/query-tables.json
 ```
 
 Expected result:
 
-- Global context events, query/table fields and query/table parameters are exported as typed
-  consumer record families in both locales.
+- Module events and query tables are exported as typed consumer facts in both locales.
+  `global-context-events.json` remains the required FR-EXPORT-001 adapter filename for
+  `module_event` records.
 - Event signatures and parameters are parsed structurally.
-- Table field records preserve owner table, field name, type references and descriptions.
-- Table parameter records preserve owner table, parameter name, required flag, type references when
-  present, descriptions and default values when present.
+- Query table records preserve table name, semantic owner path, table role, field names, field type
+  references and field descriptions.
+- Query table parameter records are nested under their owning table, preserve parameter names, type
+  references when present, descriptions and default values when present, and do not expose
+  `required`.
 - These records do not appear only as parser diagnostics.
 
-## UAT-SH-012: Lean Schema Version 6 Consumer JSON Shape
+## UAT-SH-012: Lean Schema Version 8 Consumer JSON Shape
 
 Related use case: UC-SH-001.
 
@@ -552,10 +543,14 @@ Steps:
 
 ```bash
 for file in target/uat/shcntx-ru/metadata.json target/uat/shcntx-en/metadata.json; do
-  jq -e '.schema_version == 6 and (.files | all(.[]; .file_name != "enum-values.json"))' "$file"
+  jq -e '
+    .schema_version == 8
+    and (.files | any(.[]; .file_name == "query-tables.json"))
+    and (.files | all(.[]; .file_name != "enum-values.json"
+                         and .file_name != "table-fields.json"
+                         and .file_name != "table-parameters.json"))
+  ' "$file"
 done
-test ! -e target/uat/shcntx-ru/enum-values.json
-test ! -e target/uat/shcntx-en/enum-values.json
 
 for file in \
   target/uat/shcntx-ru/global-methods.json \
@@ -564,8 +559,7 @@ for file in \
   target/uat/shcntx-ru/platform-types.json \
   target/uat/shcntx-ru/type-methods.json \
   target/uat/shcntx-ru/type-properties.json \
-  target/uat/shcntx-ru/table-fields.json \
-  target/uat/shcntx-ru/table-parameters.json \
+  target/uat/shcntx-ru/query-tables.json \
   target/uat/shcntx-ru/constructors.json \
   target/uat/shcntx-ru/enums.json \
   target/uat/shcntx-en/global-methods.json \
@@ -574,8 +568,7 @@ for file in \
   target/uat/shcntx-en/platform-types.json \
   target/uat/shcntx-en/type-methods.json \
   target/uat/shcntx-en/type-properties.json \
-  target/uat/shcntx-en/table-fields.json \
-  target/uat/shcntx-en/table-parameters.json \
+  target/uat/shcntx-en/query-tables.json \
   target/uat/shcntx-en/constructors.json \
   target/uat/shcntx-en/enums.json; do
   jq -e '([.records[] | .. | objects | to_entries[] | select(.value == null or .value == [])] | length) == 0' "$file"
@@ -589,19 +582,21 @@ for file in \
   target/uat/shcntx-ru/global-context-events.json \
   target/uat/shcntx-ru/type-methods.json \
   target/uat/shcntx-ru/type-properties.json \
-  target/uat/shcntx-ru/table-fields.json \
-  target/uat/shcntx-ru/table-parameters.json \
+  target/uat/shcntx-ru/query-tables.json \
   target/uat/shcntx-ru/constructors.json \
   target/uat/shcntx-en/global-methods.json \
   target/uat/shcntx-en/global-properties.json \
   target/uat/shcntx-en/global-context-events.json \
   target/uat/shcntx-en/type-methods.json \
   target/uat/shcntx-en/type-properties.json \
-  target/uat/shcntx-en/table-fields.json \
-  target/uat/shcntx-en/table-parameters.json \
+  target/uat/shcntx-en/query-tables.json \
   target/uat/shcntx-en/constructors.json; do
   jq -e '([.records[] | .. | objects | keys[] | select(. == "type_refs" or . == "return_types")] | length) == 0' "$file"
 done
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-methods.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-properties.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/constructors.json
+jq -e 'all(.records[]; (.fields // [] | all(.[]; (has("owner_path") | not) and (.name | type == "string"))) and (.parameters // [] | all(.[]; (has("owner_path") | not) and (has("required") | not) and (.name | type == "string"))))' target/uat/shcntx-ru/query-tables.json
 jq -e '.records[] | select(.owner == "ТабличноеПоле" and .name.primary == "СоздатьКолонки") | .examples[0].text == "ЭлементыФормы.ТабличноеПоле1.Значение = ТаблицаДанных;\nЭлементыФормы.ТабличноеПоле1.СоздатьКолонки();"' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "ЗадачаОбъект.<Имя задачи>" and .name.primary == "Записать") | (.examples[0].text | contains("ОписаниеОшибки ( )") | not) and (.examples[0].text | contains("ОписаниеОшибки(), 60);"))' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "Расширение поля формы для поля ввода" and .name.primary == "ПараметрыВыбора") | (.examples[0].text | startswith("НовыйПараметр = Новый ПараметрВыбора")) and (.examples[0].text | contains("Тонкий клиент") | not)' target/uat/shcntx-ru/type-properties.json
@@ -611,10 +606,17 @@ jq -e '.records[] | select(.name.primary == "МенеджерИсторииРа�
 
 Expected result:
 
-- Consumer record-family files use `schema_version: 6`.
-- `enum-values.json` is absent; enum values are nested under owning enum records as `values`.
+- Consumer record-family files use `schema_version: 8`.
+- `metadata.json.files` contains `query-tables.json` and does not contain old schema files
+  `enum-values.json`, `table-fields.json` or `table-parameters.json`. Physical stale files from a
+  reused output directory are not part of the current export contract and are not deleted by the
+  exporter.
+- Enum values are nested under owning enum records as `values`.
 - Nested enum value names keep the localized-name object shape with `primary` and optional `alias`.
 - Platform API consumer records do not emit `null` fields or empty arrays in any record family.
+- Derivative type member and constructor records do not emit `owner_path`.
+- Query table fields and parameters are nested under `query-tables.json` table records, use string
+  `name` values, do not repeat `owner_path` and do not expose parameter `required`.
 - `usage` is a stable enum string.
 - Property descriptions do not keep leading type-reference prose that already appears in `types`.
 - Type-reference facts are exposed as `types`; method return facts are exposed as `return`; legacy
@@ -637,42 +639,104 @@ Related requirements: FR-SH-003, FR-SH-002, NFR-COMPAT-001, NFR-DIAG-001.
 Preconditions:
 
 - `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
-- `target/uat/shcntx-ru` can be created or removed.
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` exists.
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` can be created or removed.
 
 Steps:
 
 ```bash
-rm -rf target/uat/shcntx-ru
+rm -rf target/uat/shcntx-ru target/uat/shcntx-en
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
 ```
 
 Then inspect the exported records as the black-box observable result of Syntax Assistant reading.
-The implementation task that closes this UAT must provide deterministic `jq` checks for the
-accepted semantic identity fields.
+Run deterministic checks for the accepted semantic identity fields:
 
-Required checks:
+```bash
+jq -e '
+  [.records[]
+   | select(.name == "Таблица остатков и оборотов"
+            and any(.parameters[]; .name == "Метод дополнения периодов"))
+   | (.owner_path // []) | join(" > ")]
+  | length == 3 and (unique | length) == 3
+' target/uat/shcntx-ru/query-tables.json
 
-- `table-parameters.json` must not contain semantically indistinguishable records for
-  `owner="Таблица остатков и оборотов"` and `name.primary="Метод дополнения периодов"`. If those
-  source pages are distinct, their distinction must come from TOC-derived query table context, not
-  raw `toc_path`, `html_path` or page title provenance.
-- `global-context-events.json` must preserve the TOC branch distinction for repeated event names
-  such as `ПриНачалеРаботыСистемы` / `OnStart`, `ПриЗавершенииРаботыСистемы` / `OnExit`,
-  `ОбработкаВнешнегоСобытия` / `ExternEventProcessing` and
-  `ПередНачаломРаботыСистемы` / `BeforeStart` as module events or as the accepted replacement
-  event family.
-- `platform-types.json` must not expose same-name pages such as `ПередЗаписью` / `BeforeWrite`,
-  `ПослеЗаписи` / `AfterWrite`, `ПриЧтенииНаСервере` / `OnReadAtServer` or
-  `Расширение элементов управления, расположенных в форме.<Имя события>` as name-only ambiguous
-  platform facts. They must be distinct by semantic context or merged by an explicit source-family
-  rule.
-- Placeholder-like records in `table-fields.json`, `type-properties.json` and `constructors.json`
-  must remain distinguishable by semantic owner/context when their visible source title is generic.
-- The `Примитивные типы` branch must export direct primitive type children, but nested literal pages
-  such as `Булево > Истина` and `Булево > Ложь` must not appear as platform type records.
-- At least one `Расширение...` page must be distinguishable as an extension type.
-- At least one metadata/application placeholder type such as `ДокументОбъект.<Имя документа>` must
-  be distinguishable as a metadata-template type.
+jq -e '
+  [.records[]
+   | select(.name.primary == "ПриНачалеРаботыСистемы"
+            and .name.alias == "OnStart")
+   | .module.kind]
+  | length == 3 and (unique | length) == 3
+' target/uat/shcntx-ru/global-context-events.json
+
+jq -e '
+  [.records[]
+   | select(.name.primary == "ПередЗаписью"
+            and .name.alias == "BeforeWrite")
+   | (.module.owner_path // []) | join(" > ")]
+  | length > 1 and (unique | length) == length
+' target/uat/shcntx-ru/global-context-events.json
+
+jq -e '
+  [.records[]
+   | select(.name == "Основная таблица"
+            and any(.fields[]; .name == "<Имя измерения>"))
+   | (.owner_path // []) | join(" > ")]
+  | length > 1 and (unique | length) == length
+' target/uat/shcntx-ru/query-tables.json
+
+jq -e '
+  [.records[]
+   | select(.name.primary == "Ключ"
+            and .name.alias == "Key")
+   | (.owner_path // []) | join(" > ")]
+  | length > 1 and (unique | length) == length
+' target/uat/shcntx-ru/platform-types.json
+
+jq -e '
+  [.records[]
+   | select(.owner == "ЭлементыФормы"
+            and .name.primary == "Количество"
+            and .name.alias == "Count")
+   | .owner]
+  | length > 1 and (unique | length) == length
+' target/uat/shcntx-ru/type-methods.json
+
+jq -e '
+  [.records[]
+   | select(.owner | test("<Имя"; ""))
+   | select(has("owner_path") | not)]
+  | length > 0
+' target/uat/shcntx-ru/type-properties.json
+
+jq -e '
+  [.records[]
+   | select(.owner | test("<Имя"; ""))
+   | select(has("owner_path") | not)]
+  | length > 0
+' target/uat/shcntx-ru/constructors.json
+
+jq -e '
+  all(.records[]; .name.primary != "Истина" and .name.primary != "Ложь") and
+  all(.records[] | select(.branch_kind == "primitive_types"); .type_kind == "primitive")
+' target/uat/shcntx-ru/platform-types.json
+
+jq -e 'any(.records[]; .type_kind == "extension")' target/uat/shcntx-ru/platform-types.json
+jq -e 'any(.records[]; .type_kind == "metadata_template" and .name.primary == "ДокументОбъект.<Имя документа>")' target/uat/shcntx-ru/platform-types.json
+
+jq -e '
+  all(.records[]
+      | select(((.module.owner_path // []) | join(" > ") | test("Client application form")));
+      .module.kind == "form")
+' target/uat/shcntx-en/global-context-events.json
+
+jq -e '
+  any(.records[];
+      .name.primary == "BinaryDataStorageInformation"
+      and .branch_kind == "platform_objects")
+' target/uat/shcntx-en/platform-types.json
+```
 
 Expected result:
 
@@ -688,7 +752,8 @@ Expected result:
 
 Cleanup:
 
-- `target/uat/shcntx-ru` is service data and may be deleted after the run.
+- `target/uat/shcntx-ru` and `target/uat/shcntx-en` are service data and may be deleted after the
+  run.
 
 ## UAT-ERR-001: Missing File Produces Readable CLI Error
 

@@ -13,10 +13,11 @@ Completed task history:
 Current status: T25-T34 are archived historical tasks. Their durable export, schema,
 data-quality and performance conclusions live in `acceptance/baseline.md`,
 `source-evidence.md`, `requirements/functional.md` and `implementation/components.md`.
-T35 is explicitly reprioritized before T18 by the 2026-05-01 review of TOC-aware Syntax Assistant
-reading gaps: duplicate-looking consumer facts are symptoms of insufficient TOC-derived reading
-context, not a request to restore raw provenance to consumer JSON. T13-T17 and T19-T24 are archived
-historical tasks; their durable performance conclusions live in `acceptance/baseline.md`,
+T35 was explicitly reprioritized before T18 by the 2026-05-01 review of TOC-aware Syntax Assistant
+reading gaps. T36 is now the first unchecked task before T18 because the query/search CLI must build
+on the accepted schema v8 query-table export shape rather than the temporary schema v7
+`table-fields.json` / `table-parameters.json` split. T13-T17 and T19-T24 are archived historical
+tasks; their durable performance conclusions live in `acceptance/baseline.md`,
 `implementation/performance-baseline-t13.md` and `implementation/performance-variants.md`.
 
 ## Loop Rule
@@ -35,7 +36,7 @@ historical tasks; their durable performance conclusions live in `acceptance/base
 - Do not create empty commits.
 
 
-### [ ] T35. Make Syntax Assistant reading TOC-aware for ambiguous source families
+### [x] T35. Make Syntax Assistant reading TOC-aware for ambiguous source families
 
 Depends on: T34. Explicitly reprioritized before T18 by the 2026-05-01 `/tmp/shcntx/` review.
 
@@ -102,17 +103,100 @@ Verification:
 - UAT-SH-001
 - UAT-SH-003
 - UAT-SH-011
+- UAT-SH-012
 - UAT-SH-013
 - Full CLI export for `shcntx_ru.hbk`
+- Full CLI export for `shcntx_root.hbk`
 - Targeted checks for `Метод дополнения периодов`, repeated global context event names,
   `ПередЗаписью` / `BeforeWrite` and placeholder-like records
 - Targeted checks for module-event classification, primitive shallow traversal, one extension type
   and one metadata-template type
 - `git diff --check`
 
+Completion notes:
+
+- Implemented in schema version 7 without adding raw HBK/TOC/HTML/page-title provenance to
+  consumer records.
+- `global-context-events.json` remains the required FR-EXPORT-001 adapter filename and now carries
+  `record_kind=module_event` / `record_family=module_event` records.
+- Fresh RU/root exports produced 697 module events and 1869 platform types per locale, while table
+  field/parameter counts and parser diagnostics stayed at 588, 78 and 4 per locale.
+- The target source did not expose primitive type records in `platform-types.json`; the T35 guard
+  verifies that nested primitive literal pages are not emitted and any future `primitive_types`
+  branch records are typed as `primitive`.
+- Follow-up review tightened root/English guards for `Client application form...` module events and
+  `Information` suffix branch classification.
+
+### [ ] T36. Replace flat query table files with schema v8 `query-tables.json`
+
+Depends on: T35. Explicitly reprioritized before T18 by the schema v8 export-contract review.
+
+Spec refs:
+
+- FR-EXPORT-001
+- FR-SH-002
+- FR-SH-003
+- NFR-COMPAT-001
+- NFR-DIAG-001
+- UAT-SH-011
+- UAT-SH-012
+- UAT-SH-013
+- `spec/source-evidence.md`, Syntax Assistant TOC-aware reading findings
+- `spec/implementation/components.md`
+
+Scope:
+
+- Raise the canonical consumer JSON export to `schema_version: 8`.
+- Replace `table-fields.json` and `table-parameters.json` with `query-tables.json` in
+  `metadata.json.files`.
+- Do not delete stale files from older schema versions in reused output directories. Remove the
+  current exporter mechanism that deletes files such as `enum-values.json`; the file inventory in
+  `metadata.json` is the current export contract.
+- Add a typed `QueryTable` domain record and route query table field/parameter extraction through
+  table ownership derived from the TOC ancestor chain.
+- Emit one `query-tables.json` record per real query-language/SDBL table page, including generic
+  "Основная таблица" / "Main table" pages and additional table pages under the same owner family.
+- Preserve the table family context on `query_table.owner_path`; do not repeat `owner_path` on nested
+  fields or parameters.
+- Add `table_role` with at least `primary`, `additional` and `unknown`. Treat "Основная таблица" /
+  "Main table" as `primary`; treat other table pages under the same owner family as `additional`
+  unless source evidence proves a more precise role.
+- Use string names for query tables, nested fields and nested parameters. Do not use
+  `{ primary, alias }` for this source family unless real source evidence proves aliases.
+- Remove query table parameter `required` from the consumer JSON and from the internal query-table
+  parameter model unless a reliable source contract is found.
+- Keep `owner_path` out of derivative consumer records whose `owner` already identifies the owning
+  semantic type: `type-methods.json`, `type-properties.json` and `constructors.json`.
+- Preserve current module-event, platform-type, enum, availability, example and see-also behavior
+  except for the schema version bump and file inventory change.
+- Update README usage only after the implemented command output exists.
+
+Expected artifacts:
+
+- Model/extractor changes for `QueryTable`, table roles and string query table names.
+- Export adapter changes for `query-tables.json`, schema version 8 and no stale-file deletion.
+- Updated unit or fixture tests for query table grouping, primary/additional table roles, string
+  child names, missing parameter `required` and derivative-record `owner_path` omission.
+- Updated UAT-SH-011, UAT-SH-012 and UAT-SH-013 checks.
+- Updated acceptance baseline and source evidence with schema v8 counts and any durable source
+  findings about query table descriptions or aliases.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- UAT-SH-011
+- UAT-SH-012
+- UAT-SH-013
+- Full CLI export for `shcntx_ru.hbk`
+- Full CLI export for `shcntx_root.hbk`
+- Targeted checks for "Основная таблица", additional query tables, nested fields, nested parameters,
+  absence of `required` in query table parameters and absence of `owner_path` in derivative records
+- `git diff --check`
+
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
-Depends on: T17 and T35 unless this task is explicitly reprioritized.
+Depends on: T17, T35 and T36 unless this task is explicitly reprioritized.
 
 Spec refs:
 

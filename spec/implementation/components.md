@@ -110,6 +110,7 @@ Expected public concepts:
 - `PlatformType`
 - `PlatformMethod`
 - `PlatformProperty`
+- `QueryTable`
 - `QueryTableField`
 - `QueryTableParameter`
 - `Constructor`
@@ -188,15 +189,30 @@ exporter remains available for in-memory model consumers and tests. Streaming ex
 lean sink detail mode to skip consumer-omitted navigation fields, but omission from JSON remains an
 `hbk-export` adapter concern rather than an internal model constraint.
 
-Schema version 6 record-family JSON exposes structured `availability`, `examples`, `see_also`,
-signature variant metadata, enum values and type-reference facts from the domain model while still
-omitting source HBK paths, TOC paths, HTML paths, page titles and duplicate navigation-link catalogs
-from consumer records. The export adapter owns consumer-shape simplification: `owner`,
-`types`, `return`, `availability.since`, `see_also`, property `usage`, signature metadata
-and nested enum values are serialized in the lean FR-EXPORT-001 form without forcing the internal
-model to discard richer provenance or localized names. It also includes
-`global-context-events.json`, `table-fields.json` and `table-parameters.json` for Syntax Assistant
-event and query/table metadata families.
+Schema version 7 record-family JSON exposes structured `availability`, `examples`, `see_also`,
+signature variant metadata, enum values, type-reference facts and TOC-derived semantic identity
+fields from the domain model while still omitting source HBK paths, TOC paths, HTML paths, page
+titles and duplicate navigation-link catalogs from consumer records. The export adapter owns
+consumer-shape simplification: `owner`, `types`, `return`, `availability.since`, `see_also`,
+property `usage`, signature metadata, nested enum values, `record_family`, `module`, `owner_path`
+and `type_kind` are serialized in the lean FR-EXPORT-001 form without forcing the internal model to
+discard richer provenance or localized names. It also includes `global-context-events.json`,
+`table-fields.json` and `table-parameters.json`; the global-context-events adapter filename is kept
+for compatibility while its records represent the `module_event` family.
+
+Schema version 8 changes the query table export from separate field/parameter record families to
+`query-tables.json`. `syntax-helper-model` should represent query tables as typed owners with string
+names, `owner_path`, `table_role`, optional description, fields and parameters. Query table names,
+field names and parameter names should be strings instead of `LocalizedName` unless real source
+evidence later proves aliases for this family. Query table parameters should not carry a `required`
+flag unless a reliable source contract is found.
+
+For schema version 8, `hbk-export` must emit `owner_path` only on records that represent semantic
+owner context: platform types, module-event module context and query table records. It must not emit
+`owner_path` on derivative type methods, type properties, constructors or nested query table
+fields/parameters. `metadata.json.files` is the authoritative inventory for the current schema; the
+exporter writes current files but must not delete stale files from older schemas in a reused output
+directory.
 
 ### v8-context-hbk-cli
 

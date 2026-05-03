@@ -277,7 +277,7 @@ Parser provenance remains part of the internal model and diagnostics contract. `
 keeps enough source context for parser maintenance; consumer record files stay focused on platform
 facts.
 
-Required files:
+Required files for the schema v8 consumer export contract:
 
 - `metadata.json`
 - `global-methods.json`
@@ -286,15 +286,14 @@ Required files:
 - `platform-types.json`
 - `type-methods.json`
 - `type-properties.json`
-- `table-fields.json`
-- `table-parameters.json`
+- `query-tables.json`
 - `constructors.json`
 - `enums.json`
 - `diagnostics.json`
 
-The current accepted consumer export schema is `schema_version: 6`. Each consumer record-family
-file is a JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and
-`records`.
+The current accepted consumer export schema is `schema_version: 7`. The next accepted export-contract
+task must raise it to `schema_version: 8`. Each consumer record-family file is a JSON object with
+`schema_version`, `locale`, `source_locale`, `record_kind` and `records`.
 `metadata.json` contains export-level metadata and file inventory; it must not expose source HBK
 paths or book hierarchy. `diagnostics.json` may keep parser source context because its audience is
 parser maintenance, not downstream platform API consumption.
@@ -304,10 +303,69 @@ Consumer records must omit `null` fields and empty arrays. This omission rule ap
 API consumer records; it does not remove the top-level `records` array from record-family envelopes
 and does not weaken the parser-maintenance diagnostics contract.
 
+Schema version 7 adds TOC-derived semantic identity fields for source families that cannot be
+looked up safely by title alone. These fields are platform/documentation semantics derived by the
+Syntax Assistant reader before export, not raw parser provenance:
+
+- `record_family`: stable snake_case source-family value when the adapter filename is broader than
+  the domain fact, such as `module_event` records written to `global-context-events.json`.
+- `branch_kind`: stable snake_case TOC branch category used for classification, such as
+  `global_context`, `query_tables`, `primitive_types`, `metadata_objects`, `managed_forms`,
+  `platform_objects` or `automation_external_api`.
+- `owner_path`: deterministic array of localized semantic owner labels when a single `owner`
+  string is insufficient for exact lookup, such as nested query table groups or placeholder-like
+  metadata/form owners. It must not contain numeric TOC indexes, HBK paths or HTML paths.
+- `module`: module-event context object with `kind` and optional `owner_path`.
+- `type_kind`: platform type kind, one of `regular`, `extension`, `primitive` or
+  `metadata_template`.
+- `extends`: deterministic array of proven base type or base-role names for extension types. It is
+  omitted when the source does not prove a base.
+- `metadata_kind` and `template_parameters`: metadata-template type details when derivable from
+  TOC/name evidence.
+
+Schema version 8 keeps the TOC-derived semantic model but narrows where `owner_path` appears in
+consumer records:
+
+- `owner_path` is emitted on records that represent an owning semantic context, such as
+  `platform-types.json`, `global-context-events.json.records[].module.owner_path` and
+  `query-tables.json`.
+- `owner_path` is not emitted on derivative records whose owner is already represented by `owner`,
+  including `type-methods.json`, `type-properties.json` and `constructors.json`.
+- query table fields and parameters do not repeat `owner_path`; their table context is the enclosing
+  `query-tables.json` record.
+
+Schema version 8 replaces `table-fields.json` and `table-parameters.json` with
+`query-tables.json`. Query table records represent the real query-language/SDBL table pages from the
+Syntax Assistant TOC, including generic "Основная таблица" / "Main table" pages and additional table
+pages under the same owner family. The shape is:
+
+- `branch_kind`: `query_tables`.
+- `name`: a string table name. Query table names, field names and parameter names use strings, not
+  `{ primary, alias }`, unless future source evidence proves aliases for this source family.
+- `owner_path`: deterministic semantic owner labels for the table family, such as
+  `["Таблицы задач"]`, not raw TOC indexes, HBK paths or HTML paths.
+- `table_role`: `primary`, `additional` or `unknown`. "Основная таблица" / "Main table" maps to
+  `primary`; other table pages under the same owner family map to `additional` unless the source
+  provides a more precise role.
+- `description`: optional table description when parsed from the table page.
+- `fields`: array of table fields with string `name`, `types`, optional `description` and optional
+  `note`.
+- `parameters`: array of table parameters with string `name`, `types`, optional `description` and
+  optional `default_value`. Query table parameters do not expose a `required` field unless later
+  source evidence defines a reliable requiredness contract.
+
+If the table page can be identified from TOC but its HTML description cannot be parsed safely, the
+export must still emit the table record with `name`, `owner_path`, `table_role`, `fields` and
+`parameters`, and report parser gaps through diagnostics when appropriate.
+
+The export adapter writes the current contract files and `metadata.json.files` is the authoritative
+file inventory for that export. The exporter must not delete stale files from earlier schema versions
+that happen to exist in a reused output directory.
+
 - `owner`: string with the owner's primary name, such as `"ГруппаФормы"`, for type members,
-  constructors, table fields, table parameters and other owned consumer records.
+  constructors and other owned consumer records.
 - `types`: deterministic array of type-name strings, such as `["Строка", "Массив"]`, wherever
-  type references are exposed, including properties, table fields, table parameters and signature
+  type references are exposed, including properties, query table fields, query table parameters and signature
   parameters.
 - `return`: deterministic array of type-name strings, such as `["Строка"]`.
 - `signatures`: array of callable signatures with `parameters` and optional variant metadata.
@@ -348,15 +406,16 @@ variant metadata, if ever present, is direct signature metadata.
 
 Schema version 4 adds Syntax Assistant source families that were previously diagnostic-only:
 
-- `global-context-events.json`: global context event handler facts with `name`, `signatures`,
-  `description`, structured section facts and no return types.
-- `table-fields.json`: query/table metadata fields with `owner`, `name`, `types`,
-  `description` and `note`.
-- `table-parameters.json`: query/table metadata parameters with `owner`, `name`, `required`,
-  `types`, `description` and `default_value`.
+- `global-context-events.json`: required adapter file for module-event handler facts with
+  `record_family="module_event"`, `name`, semantic module context, `signatures`, `description`,
+  structured section facts and no return types.
+- `table-fields.json`: schema v4-v7 query/table metadata fields with `owner`, `name`, `types`,
+  `owner_path`, `description` and `note`.
+- `table-parameters.json`: schema v4-v7 query/table metadata parameters with `owner`, `name`,
+  `required`, `owner_path`, `types`, `description` and `default_value`.
 
-Global context events, table fields and table parameters are first-class consumer record families.
-They must no longer be reported as `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`,
+Module events, table fields and table parameters are first-class consumer facts. They must no
+longer be reported as `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`,
 `OUT_OF_SCOPE_TABLE_FIELD` or `OUT_OF_SCOPE_TABLE_PARAMETER` for the target platform source books.
 
 Schema version 5 merges enum values into `enums.json`. `enum-values.json` is no longer emitted.

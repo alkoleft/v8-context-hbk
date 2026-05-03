@@ -402,3 +402,58 @@ The accepted classification direction for T35 is:
   metadata-template types, optionally with metadata kind and template parameters when derivable;
 - read `Примитивные типы` shallowly: direct children are primitive types, nested literals such as
   `Булево > Истина` and `Булево > Ложь` are not ordinary platform types.
+
+T35 follow-up implemented the accepted TOC-aware reading direction and raised the lean consumer
+export to `schema_version: 7`. Fresh debug CLI exports for
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` produced:
+
+| File | RU records | EN/root records |
+| --- | ---: | ---: |
+| `global-context-events.json` (`record_kind=module_event`) | 697 | 697 |
+| `platform-types.json` | 1869 | 1869 |
+| `table-fields.json` | 588 | 588 |
+| `table-parameters.json` | 78 | 78 |
+| `diagnostics.json` | 4 | 4 |
+
+The Russian platform-type kind split was 1470 `regular`, 278 `extension` and 121
+`metadata_template`. The target source did not expose a primitive-type catalog as typed platform
+records in this pass; primitive traversal is still guarded so nested literal pages such as
+`Истина` and `Ложь` are not emitted as platform types.
+
+The T35 UAT checks confirmed that the three `Метод дополнения периодов` table parameters under
+`Таблица остатков и оборотов` now have distinct TOC-derived owner paths, repeated
+`ПриНачалеРаботыСистемы` records carry distinct module kinds, and `ПередЗаписью` / `BeforeWrite`
+records moved from name-only platform-type facts into module-event records with semantic owner
+paths. Consumer records still omit `source_hbk`, `toc_path`, `html_path` and `page_title`; parser
+diagnostics remain provenance-rich.
+
+The follow-up review found two root/English string-classification edge cases and the guard was
+extended accordingly. `Client application form...` owner paths must classify module events as
+`form`, not `managed_application`, and `Information` suffixes must not match the managed-forms
+branch by substring. After the fix, the root/English platform-type branch split was 1383
+`platform_objects`, 288 `managed_forms`, 101 `system_enums`, 96 `metadata_objects` and 1
+`automation_external_api`; `BinaryDataStorageInformation` classified as `platform_objects`.
+
+## Query Table Export Shape Findings
+
+A 2026-05-04 review of the Syntax Assistant query table TOC structure found that the flat
+`table-fields.json` / `table-parameters.json` shape is not the right consumer representation for
+schema v8. Query table owners are real table pages, and some owner families contain both a generic
+primary table and additional tables. Observed examples include:
+
+- `Таблицы задач > Основная таблица`
+- `Таблицы задач > Таблица задач по исполнителю`
+- `Таблицы последовательностей > Основная таблица`
+- `Таблицы последовательностей > Таблица границ`
+- `Таблицы внешнего источника данных > Таблица внешнего источника данных`
+
+The durable conclusion for T36 is that query tables should be exported as owning records in
+`query-tables.json`, with fields and parameters nested under the owning table. `owner_path` belongs
+on the table record, not on every nested field or parameter. Generic names such as `Основная таблица`
+remain safe because the table record carries the semantic owner path.
+
+The reviewed query table families did not show a need for localized-name alias objects on table,
+field or parameter names, so schema v8 should use string names for this source family unless future
+source evidence proves aliases. The existing query table parameter `required` field also lacks a
+clear source-backed contract and should be removed from schema v8 consumer JSON.
