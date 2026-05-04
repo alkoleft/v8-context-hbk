@@ -1264,3 +1264,13 @@ confirmed `schema_version=4`, non-empty normalized tables, no `documents.signatu
 normalized member facts for `НастройкиКомпоновкиДанных.Отбор`, and normalized property type refs to
 `ОтборКомпоновкиДанных`. Type references to duplicate platform type names keep `target_type_name`
 but leave `target_type_id` unset instead of choosing a hidden semantic variant.
+
+T57 defined analyzer query primitives as a spec-only contract over the existing CLI JSON provider
+boundary. The selected shape extends `syntax get`, `syntax constructors` and `syntax related` with
+analyzer-oriented query kinds for exact type identity resolution, member listing, owner/member
+resolution, callable overload retrieval and type-reference traversal. It does not add Rust public
+APIs, BSL parsing, analyzer diagnostics, a daemon/service boundary, storage selection knobs or a
+public SQLite table contract. UAT-SH-018 records the source-backed expression-chain scenario for
+future implementation: `НастройкиКомпоновкиДанных.Отбор` through `ОтборКомпоновкиДанных`,
+`Элементы`, collection `Добавить` and `ЭлементОтбораКомпоновкиДанных` fields, plus the
+`Новый HTTPСоединение(...)` constructor chain.

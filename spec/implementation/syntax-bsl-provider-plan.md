@@ -166,7 +166,10 @@ Resolution path:
    duplicates where possible.
 10. **T57: Define analyzer query primitives.** Specify provider operations for resolving type
     identities, listing members, resolving owner/member access, retrieving callable overloads and
-    following type-reference edges without exposing SQLite tables as the public contract.
+    following type-reference edges without exposing SQLite tables as the public contract. Completed
+    as a spec-only contract: the selected shape extends existing `syntax get`,
+    `syntax constructors` and `syntax related` JSON query kinds instead of adding new top-level
+    commands. Implementation remains T58.
 11. **T58: Implement analyzer provider primitives.** Add the selected primitives to the CLI JSON
     boundary over normalized storage while preserving existing `get`, `constructors`, `search` and
     `related` workflows.

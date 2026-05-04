@@ -718,6 +718,44 @@ Cleanup:
 - `target/uat/t53-sh-search-ru.sqlite` and `target/uat/t53-*.json` are service data and may be
   deleted after the run.
 
+## UAT-SH-018: Expression-Chain Provider Primitives
+
+Related use case: UC-SH-005A, UC-SH-005B, UC-SH-005D.
+
+Related requirements: FR-SH-PROVIDER-001, FR-SH-SEARCH-001, FR-SH-SEARCH-002.
+
+Status: target UAT for T58/T59. T57 defines the command contract only.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- A fresh schema-v4 or later provider index can be built under `target/uat/`.
+
+Source-backed scenario:
+
+- Model the BSL expression chain as explicit provider calls. This repository does not parse BSL
+  source in this UAT.
+- Resolve `НастройкиКомпоновкиДанных.Отбор` to a property fact and the type identity
+  `ОтборКомпоновкиДанных`.
+- List members for `ОтборКомпоновкиДанных` and verify the `Элементы` property.
+- Follow the `Элементы` type reference to the filter item collection type.
+- Resolve the collection `Добавить` method, retrieve its callable facts and verify the creation path
+  to `ЭлементОтбораКомпоновкиДанных`.
+- List members for `ЭлементОтбораКомпоновкиДанных` and verify fields needed by the accepted SKD
+  filter scenario: `ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and `Использование`.
+- Resolve `Новый HTTPСоединение(...)` through type identity and callable-overload provider queries,
+  verifying constructor result type plus ordered parameters such as `Таймаут`,
+  `ЗащищенноеСоединение` and `ИспользоватьАутентификациюОС`.
+
+Expected result:
+
+- All calls use provider commands and JSON only; no SQLite table names, rowids, HBK paths, TOC
+  paths, HTML paths or page titles are asserted.
+- Ambiguous, missing or unsupported primitive calls return provider `status` and diagnostics
+  instead of selecting hidden winners.
+- Raw command outputs remain service data under `target/uat`; only the commands, assertions and
+  conclusions are durable.
+
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 
 Related use case: UC-SH-001.

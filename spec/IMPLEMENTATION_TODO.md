@@ -18,7 +18,7 @@ export, schema, data-quality, performance, parser, provider, storage and query-s
 live in `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T57. The queued roadmap comes from
+Next active unchecked task is T58. The queued roadmap comes from
 `implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
 help during BSL development and code analysis, and toward a future typed local provider role for a
 BSL analyzer.
@@ -38,7 +38,7 @@ BSL analyzer.
   `git diff --cached --name-only`.
 - Do not create empty commits.
 
-### [ ] T57. Define analyzer query primitives over normalized storage
+### [x] T57. Define analyzer query primitives over normalized storage
 
 Spec refs:
 
@@ -84,6 +84,14 @@ Verification:
   the primitives must support.
 - No BSL parser, analyzer diagnostics, Rust public API or SQLite public table contract is added.
 
+Completion notes:
+
+- `syntax get`, `syntax constructors` and `syntax related` remain the selected CLI command surface;
+  analyzer primitives are represented as normalized provider `query.kind` shapes over the same
+  CLI JSON envelope.
+- UAT-SH-018 records the SKD expression-chain and `Новый HTTPСоединение(...)` constructor-chain
+  scenarios for T58/T59 implementation and verification.
+
 ### [ ] T58. Implement analyzer provider primitives in CLI JSON
 
 Spec refs:
@@ -123,6 +131,7 @@ Spec refs:
 - UC-SH-005C
 - UC-SH-005D
 - UAT-SH-017
+- UAT-SH-018
 - ADR-0006
 
 Scope:

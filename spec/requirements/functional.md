@@ -599,7 +599,7 @@ Provider-oriented outputs must:
 
 - be deterministic for the same index and query;
 - use a versioned provider response envelope for JSON output from `syntax get`, `syntax
-  constructors`, `syntax search` and `syntax related`;
+  constructors`, `syntax search`, `syntax related` and analyzer-oriented provider primitives;
 - include stable document identity and fact kind;
 - expose names, aliases and owner identity where applicable;
 - expose callable signatures as structured facts for methods, constructors and events where source
@@ -611,6 +611,18 @@ Provider-oriented outputs must:
   provider envelope;
 - keep FTS/ranking/search-only tokens internal unless a future task deliberately exposes them under
   an explicit debug field.
+
+Analyzer-oriented primitives must cover the direct operations needed for type inference and member
+completion over a prebuilt local index:
+
+- resolve a platform type by exact provider id, primary name or alias;
+- list members for one resolved type identity;
+- resolve one member by resolved owner type id or exact owner name plus member name;
+- retrieve callable overloads with ordered parameters and return or constructor result types;
+- expose type-reference edges needed to follow expression chains.
+
+These primitives are still CLI JSON provider commands. They must not make normalized SQLite table
+names, Rust structs, BSL parser internals or source provenance fields part of the public contract.
 
 The provider contract remains provisional until real BSL task scenarios are accepted. This
 repository must not implement BSL parsing, linting or diagnostics as part of this requirement.

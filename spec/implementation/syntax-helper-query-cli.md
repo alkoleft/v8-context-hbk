@@ -540,6 +540,125 @@ The first ranking may use FTS5 `bm25()` plus deterministic tie breakers:
 6. `kind` priority;
 7. stable `id`.
 
+## Analyzer Query Primitives
+
+Status: target contract for T57. Implementation is deferred to T58.
+
+ADR-0007 keeps CLI JSON over the existing `syntax` query command group as the provider boundary.
+The analyzer-oriented primitives below are therefore provider query kinds inside the same resolved
+prebuilt-index envelope, not a Rust API, SQLite table contract, daemon or analyzer implementation.
+They read the normalized schema-v4 facts added by T56, but table names and row shapes stay
+internal.
+
+Selected command shape:
+
+```bash
+v8-context-hbk syntax get --index <index.sqlite> --kind platform_type --id "platform_type:ОтборКомпоновкиДанных" --format json
+v8-context-hbk syntax get --index <index.sqlite> --kind platform_type --name "ОтборКомпоновкиДанных" --format json
+v8-context-hbk syntax get --index <index.sqlite> --kind platform_type --alias "DataCompositionFilter" --format json
+v8-context-hbk syntax get --index <index.sqlite> --members-of "platform_type:ОтборКомпоновкиДанных" --format json
+v8-context-hbk syntax get --index <index.sqlite> --owner-type-id "platform_type:НастройкиКомпоновкиДанных" --member "Отбор" --format json
+v8-context-hbk syntax get --index <index.sqlite> --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
+v8-context-hbk syntax constructors --index <index.sqlite> "HTTPСоединение" --format json
+v8-context-hbk syntax get --index <index.sqlite> --callable-id "type_method:platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных:Добавить" --format json
+v8-context-hbk syntax get --index <index.sqlite> --owner-type-id "platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных" --callable "Добавить" --format json
+v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --edge has_type --format json
+```
+
+The first implementation should extend `get`, `constructors` and `related` rather than add new
+top-level commands such as `syntax type`, `syntax members` or `syntax callable`. This keeps the
+public CLI surface aligned with ADR-0007 while allowing the normalized `query.kind` values to be
+more analyzer-specific.
+
+Primitive behavior:
+
+- type identity resolution uses `syntax get --kind platform_type` with exact `--id`, `--name` or
+  `--alias`. Unique matches return `status: "ok"` and exactly one `platform_type` fact. Duplicate
+  primary or alias matches return `status: "ambiguous"` with deterministic candidate summaries; no
+  source page order, FTS rank or first row may select a hidden winner. Missing matches return
+  `status: "not_found"`.
+- member listing uses `syntax get --members-of <TYPE_ID>`. It requires an exact type id in the first
+  implementation. The result is a deterministic array ordered by member kind priority, primary name
+  and stable id. Unsupported plain owner names use `status: "unsupported"` until type resolution is
+  explicitly chained by the caller.
+- member resolution uses `syntax get --owner-type-id --member` or the existing
+  `--owner --member`. The owner-type-id path is analyzer-preferred. The owner-name path first applies
+  the same exact type resolution rules as type identity resolution; if the owner name is ambiguous,
+  the whole command returns `status: "ambiguous"` for the owner. If multiple members with the same
+  name remain under one resolved owner, the command returns `status: "ambiguous"` with member
+  candidates.
+- callable overload retrieval uses `syntax constructors <TYPE>` for constructors and
+  `syntax get --callable-id <ID>` or owner identity plus callable name for methods and callable
+  events. It returns ordered
+  `signatures[]`, `signatures[].parameters[]` and `return` / constructor result `types` using the
+  export-compatible field names already used by the provider envelope.
+- type-reference traversal uses `syntax related --id <FACT_ID> --edge has_type|returns|constructs`
+  or the typed fields already present on exact `get` facts. Property and field facts return their
+  `types`; callable facts return parameter `types` and `return` facts; constructor callables return
+  constructor result `types`. When a reference name maps to exactly one known type identity, the
+  result may include the resolved type id in `meta.target_type_ids`; unresolved or duplicate targets
+  keep the source-backed type name and avoid hidden disambiguation.
+
+All primitive JSON responses use provider `schema_version: 1` until the envelope itself changes.
+The `command` field remains `get`, `constructors` or `related`. The `query.kind` field records the
+normalized primitive, for example `type_identity`, `member_list`, `owner_type_member`,
+`callable_overloads` or `type_references`. Example:
+
+```json
+{
+  "schema_version": 1,
+  "command": "get",
+  "status": "ok",
+  "query": {
+    "kind": "owner_type_member",
+    "owner_type_id": "platform_type:НастройкиКомпоновкиДанных",
+    "name": "Отбор"
+  },
+  "results": [
+    {
+      "fact": {
+        "id": "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор",
+        "kind": "type_property",
+        "name": { "primary": "Отбор" },
+        "owner": "НастройкиКомпоновкиДанных",
+        "types": ["ОтборКомпоновкиДанных"]
+      },
+      "meta": {
+        "owner_type_id": "platform_type:НастройкиКомпоновкиДанных",
+        "target_type_ids": ["platform_type:ОтборКомпоновкиДанных"]
+      }
+    }
+  ],
+  "diagnostics": []
+}
+```
+
+Fact shape rules:
+
+- Shared platform facts stay under `results[].fact` and reuse export-compatible names:
+  `id`, `kind`, `name`, `owner`, `signatures`, `signatures[].parameters[]`, `types`, `return` and
+  optional `description`.
+- Analyzer-only resolution aids belong in `results[].meta`, for example `owner_type_id`,
+  `target_type_ids`, `signature_ordinal` or an edge `source`.
+- Public JSON must not expose SQLite table names, rowids, FTS text fields, ranking tokens, HBK
+  paths, TOC paths, HTML paths or page titles.
+
+Diagnostics:
+
+- `NOT_FOUND`: no exact type, member, callable or type-reference root matches the normalized query.
+- `AMBIGUOUS`: exact input matches more than one type/member/callable. Diagnostics include stable
+  candidate summaries with id, kind, primary name, optional alias and owner when available.
+- `UNSUPPORTED_QUERY`: an input combination is outside the primitive contract, such as
+  `syntax get --members-of <NAME>` in the first implementation, or a command mixing mutually
+  exclusive roots.
+
+Non-goals:
+
+- no BSL parsing, expression parser, linter, diagnostics or code actions;
+- no Rust public analyzer API, daemon, MCP service, network search or storage selector;
+- no compatibility with older provisional query JSON when it conflicts with this provider shape;
+- no public SQLite table, column or index schema contract.
+
 ### `relations`
 
 Directed relationship edges:
