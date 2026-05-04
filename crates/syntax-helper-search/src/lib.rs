@@ -641,6 +641,11 @@ impl SearchIndex {
         self.get_by_key(&key)
     }
 
+    pub fn get_by_id(&self, id: &str) -> Result<Option<SearchHit>, SearchError> {
+        self.document(id)
+            .map(|document| document.map(|document| SearchHit { document, score: 0 }))
+    }
+
     pub fn get_by_owner_member(
         &self,
         owner: &str,
@@ -678,6 +683,38 @@ impl SearchIndex {
         let Some(root) = self.root_by_name(name)? else {
             return Ok(Vec::new());
         };
+        self.related(&root.document.id, max_depth.min(5), limit)
+    }
+
+    pub fn related_by_id(
+        &self,
+        id: &str,
+        max_depth: u32,
+        limit: usize,
+    ) -> Result<Vec<RelatedHit>, SearchError> {
+        if self.document(id)?.is_none() {
+            return Ok(Vec::new());
+        }
+        self.related(id, max_depth.min(5), limit)
+    }
+
+    pub fn related_by_owner_member(
+        &self,
+        owner: &str,
+        member: &str,
+        max_depth: u32,
+        limit: usize,
+    ) -> Result<Vec<RelatedHit>, SearchError> {
+        let roots = self.get_by_owner_member(owner, member)?;
+        let Some(root) = roots.first() else {
+            return Ok(Vec::new());
+        };
+        if roots.len() > 1 {
+            return Err(SearchError::AmbiguousLookup {
+                name: format!("{owner}.{member}"),
+                matches: roots.len(),
+            });
+        }
         self.related(&root.document.id, max_depth.min(5), limit)
     }
 
@@ -2658,6 +2695,12 @@ mod tests {
             .expect("owner/member lookup must work");
         assert_eq!(member[0].document.type_refs, ["ОтборКомпоновкиДанных"]);
 
+        let by_id = index
+            .get_by_id("type_property:platform_type:НастройкиКомпоновкиДанных:Отбор")
+            .expect("id lookup must work")
+            .expect("member document id must exist");
+        assert_eq!(by_id.document.name.primary, "Отбор");
+
         let keyword = index
             .search("отбор скд", SearchMode::Keywords, 10)
             .expect("keyword search must work");
@@ -2679,6 +2722,24 @@ mod tests {
         assert!(names.contains(&"Элементы"));
         assert!(names.contains(&"Добавить"));
         assert!(names.contains(&"ЛевоеЗначение"));
+
+        let related_by_owner_member = index
+            .related_by_owner_member("НастройкиКомпоновкиДанных", "Отбор", 5, 20)
+            .expect("owner/member related search must work");
+        assert!(
+            related_by_owner_member
+                .iter()
+                .any(|hit| hit.document.name.primary == "ОтборКомпоновкиДанных")
+        );
+
+        let related_by_id = index
+            .related_by_id(
+                "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор",
+                5,
+                20,
+            )
+            .expect("id-root related search must work");
+        assert_eq!(related_by_id, related_by_owner_member);
 
         let constructors = index
             .constructors_by_name("ОтборКомпоновкиДанных")

@@ -17,10 +17,10 @@ export, schema, data-quality, performance, parser and query-search conclusions l
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T52. T50 defines the provider response contract, and T51 was
-completed by the same schema-v3 structured callable fact mechanism as T48. T49 is intentionally
-parked until analyzer-safe identity roots and BSL task scenario UAT are fixed by T52/T53. The queued
-roadmap comes from
+Next active unchecked task is T53. T50 defines the provider response contract, T51 was completed by
+the same schema-v3 structured callable fact mechanism as T48, and T52 added analyzer-safe identity
+roots for query/provider traversal. T49 is intentionally parked until BSL task scenario UAT is fixed
+by T53. The queued roadmap comes from
 `implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
 help during BSL development and code analysis, and toward a future typed local provider role for a
 BSL analyzer.
@@ -169,7 +169,7 @@ Result:
 - Verified by the T48 focused SQLite round-trip test, full workspace tests and real RU constructor
   JSON assertions for `HTTPСоединение`.
 
-### [ ] T52. Add analyzer-safe identity query roots
+### [x] T52. Add analyzer-safe identity query roots
 
 Spec refs:
 
@@ -191,6 +191,25 @@ Verification:
 - `cargo test --workspace`
 - UAT covers relationship traversal from `НастройкиКомпоновкиДанных.Отбор` without relying on an
   ambiguous plain-name root.
+
+Result:
+
+- `syntax-helper-search` now exposes document-id lookup plus relationship traversal from document id
+  and owner/member roots.
+- `v8-context-hbk syntax related` accepts `--id`, `--name` or `--owner --member`; the existing
+  plain-name human UX remains, while analyzer workflows can use exact roots.
+- JSON output for `syntax get`, `syntax constructors`, `syntax search` and `syntax related` now uses
+  provider `schema_version: 1` with `command`, `status`, `query`, `results[]` and `diagnostics[]`,
+  including `UNSUPPORTED_QUERY` diagnostics for invalid JSON root combinations.
+- Shared platform facts are emitted under `results[].fact` with export-compatible names such as
+  `types`, `return`, `signatures` and owner string; rank, score, relationship depth and path are
+  emitted under `results[].meta`.
+- Missing and ambiguous lookups are represented by `status: "not_found"` / `"ambiguous"` and
+  diagnostics, not by empty bare arrays or hidden winner selection.
+- Verified with focused search crate tests, full workspace tests, real RU index rebuild from
+  `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`, and provider JSON `jq` assertions for constructor,
+  get-by-id, owner/member, search, related-by-name, related-by-id, related-by-owner-member,
+  missing, ambiguous and unsupported lookup paths.
 
 ### [ ] T53. Add BSL task scenario UAT
 

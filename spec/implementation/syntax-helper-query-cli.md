@@ -104,6 +104,7 @@ Initial command shape:
 ```bash
 v8-context-hbk syntax export <shcntx.hbk> --output <dir>
 v8-context-hbk syntax index <shcntx.hbk> --output <index.sqlite>
+v8-context-hbk syntax get --index <index.sqlite> --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --format json
 v8-context-hbk syntax get --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
 v8-context-hbk syntax get --index <index.sqlite> --owner "НастройкиКомпоновкиДанных" --member "Отбор"
 v8-context-hbk syntax constructors --index <index.sqlite> "HTTPСоединение"
@@ -111,6 +112,8 @@ v8-context-hbk syntax constructors --index <index.sqlite> "HTTPСоединен�
 v8-context-hbk syntax search --index <index.sqlite> --query "отбор скд" --mode keywords --format text
 v8-context-hbk syntax search --index <index.sqlite> --query "DataCompositionFilter" --mode fuzzy --format json
 v8-context-hbk syntax related --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
+v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --format json
+v8-context-hbk syntax related --index <index.sqlite> --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
 ```
 
 For repeated interactive use, query commands may omit `--index` and use the resolved default index
@@ -118,11 +121,13 @@ path:
 
 ```bash
 v8-context-hbk syntax index <shcntx.hbk>
+v8-context-hbk syntax get --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"
 v8-context-hbk syntax get --name "ОтборКомпоновкиДанных"
 v8-context-hbk syntax constructors "HTTPСоединение"
 v8-context-hbk syntax constructors "HTTPСоединение" --details
 v8-context-hbk syntax search --query "отбор скд"
 v8-context-hbk syntax related --name "ОтборКомпоновкиДанных"
+v8-context-hbk syntax related --owner "НастройкиКомпоновкиДанных" --member "Отбор"
 ```
 
 Later command shape after the deterministic graph proves useful:
@@ -402,8 +407,9 @@ Envelope fields:
 - `schema_version`: provider response schema version. It is separate from `syntax export` consumer
   `schema_version` and from SQLite index `schema_version`.
 - `command`: one of `get`, `constructors`, `search` or `related`.
-- `status`: `ok`, `not_found` or `ambiguous`.
-- `query`: normalized user query shape, such as `{ "kind": "exact_name", "name": "..." }`,
+- `status`: `ok`, `not_found`, `ambiguous` or `unsupported`.
+- `query`: normalized user query shape, such as `{ "kind": "document_id", "id": "..." }`,
+  `{ "kind": "exact_name", "name": "..." }`,
   `{ "kind": "owner_member", "owner": "...", "member": "..." }`,
   `{ "kind": "constructor", "name": "..." }`, `{ "kind": "search", "mode": "keywords",
   "text": "..." }` or `{ "kind": "related", "root": { "name": "..." }, "depth": 2 }`.
@@ -445,16 +451,20 @@ Query-only metadata rules:
 
 Command-specific mapping:
 
-- `syntax get --name` and `syntax get --owner --member` return exact lookup facts. Unique matches
-  use `status: "ok"`. Multiple exact matches use `status: "ambiguous"` and include candidate facts
-  or candidate summaries in deterministic order. Missing matches use `status: "not_found"`.
+- `syntax get --id`, `syntax get --name` and `syntax get --owner --member` return exact lookup
+  facts. Unique matches use `status: "ok"`. Multiple exact matches use `status: "ambiguous"` and
+  include candidate facts or candidate summaries in deterministic order. Missing matches use
+  `status: "not_found"`.
+- Unsupported root combinations, such as passing both `--id` and `--name`, use
+  `status: "unsupported"` with an `UNSUPPORTED_QUERY` diagnostic in JSON mode.
 - `syntax constructors <TYPE>` returns constructor facts owned by the resolved type. Constructor
   facts must expose structured `signatures` and must not expose mixed parameter/type token arrays.
 - `syntax search --query <TEXT>` returns ranked facts with `results[].meta.score` and
   `results[].meta.rank`. Ranking metadata is not part of the fact.
 - `syntax related` returns related facts with relationship traversal metadata in `results[].meta`.
-  T52 may add id and owner/member roots; until then the contract still requires ambiguity to be
-  explicit when a plain-name root is not unique.
+  Relationship roots may be a plain name for human use, a document id, or an owner/member pair.
+  Plain-name and owner/member roots must report `status: "ambiguous"` when they do not resolve to
+  exactly one root. Missing roots must report `status: "not_found"`.
 
 The first ranking may use FTS5 `bm25()` plus deterministic tie breakers:
 
@@ -555,3 +565,9 @@ useful.
 
 T18 implementation note: owner/member and type-reference edges were sufficient for UAT-SH-006 on
 `shcntx_ru.hbk`; no immediate structured "see also" extraction follow-up was required.
+
+T52 implementation note: query JSON now uses the provider envelope from this spec for `syntax get`,
+`syntax constructors`, `syntax search` and `syntax related`. The search library exposes document-id
+lookup plus relationship traversal from document id and owner/member roots. The human-friendly
+plain-name `syntax related --name` path remains, but analyzer workflows can avoid ambiguous
+same-name roots by using `--id` or `--owner --member`.

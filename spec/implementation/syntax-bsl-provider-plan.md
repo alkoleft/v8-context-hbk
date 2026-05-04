@@ -20,7 +20,8 @@ platform-API fact provider that another analyzer can call.
 - `syntax constructors` returns constructor signatures by type name, with compact text and optional
   details text.
 - `syntax search` supports deterministic keyword and fuzzy search over the prebuilt index.
-- `syntax related` performs bounded relationship traversal over owner/member/type-reference edges.
+- `syntax related` performs bounded relationship traversal over owner/member/type-reference edges
+  and accepts name, document-id and owner/member roots.
 - Query commands resolve a default local index path and do not parse HBK files per query.
 
 These capabilities are a useful first slice for BSL assistance, but the current JSON surface is
@@ -36,11 +37,11 @@ export-compatible typed facts.
 
 | Area | Current State | Gap for ADR-0006 Goal | Planned Resolution |
 | --- | --- | --- | --- |
-| Public query JSON | T48/T51 keep callable search terms internal and expose structured `signatures[].parameters[]` for callable facts. | Query output still lacks a provider response envelope and explicit query-metadata placement. | T50 defines the provider response contract around the now-structured callable facts. |
-| Callable details | T48/T51 preserve structured signatures in the query index through schema version `3` `signature_json`; signature text remains presentation/FTS data. | The provider contract still needs to state how structured callable facts are wrapped, versioned and combined with ambiguity/missing-result diagnostics. | T50 defines the envelope and metadata rules without duplicating the schema-v3 storage fix. |
-| Exact identity | JSON includes document ids, but command inputs mostly use names. `related` accepts only `--name`. | Analyzer workflows need stable disambiguation by id and owner/member, especially for same-name facts. | Add id-based and owner/member query entry points where ambiguity matters. |
+| Public query JSON | T52 implements the T50 provider response envelope for query commands. | The provider contract remains provisional until BSL task scenarios prove it useful. | T53 adds source-backed BSL task UAT before broad provider stabilization. |
+| Callable details | T48/T51 preserve structured signatures in the query index through schema version `3` `signature_json`; signature text remains presentation/FTS data. | Real BSL scenarios still need to validate that callable facts answer task-level questions. | T53 adds constructor-call and task-scenario UAT. |
+| Exact identity | T52 adds document-id lookup and relationship roots by document id and owner/member. | Additional analyzer-oriented batch APIs are not defined yet. | Keep CLI JSON as the first provider boundary until T55 decides whether a Rust API, file artifact or batch command is needed. |
 | Relationship traversal | Graph covers owner/member/type-reference/return/constructor edges and accepted SKD flow. | Code-facing workflows need reliable paths for creation/configuration tasks, not only nearby docs. | Add UAT scenarios and edge coverage for selected BSL development tasks before adding new graph features. |
-| Provider contract | No separate provider schema/envelope for query outputs. | Future analyzer cannot depend on response version, field semantics or field compatibility with export. | Define a provisional provider JSON contract anchored to `syntax export` shapes for shared facts. |
+| Provider contract | T50 defines and T52 implements a provisional provider schema/envelope for CLI JSON outputs. | Future analyzer-oriented batch/API boundaries are not selected yet. | T55 decides whether the provider boundary stays CLI JSON or adds a Rust/library/file contract. |
 | Evidence from real BSL | Utility has been manually tried on RAT modules, but no durable scenario set exists. | Development may optimize for isolated API lookups rather than real code-analysis questions. | Add a small real-BSL scenario corpus under service data or fixture policy and promote only conclusions to spec. |
 | Storage evaluation | T49 plans Tantivy comparison. | Storage speed alone does not prove analyzer usefulness. | Run T49 only against accepted provider workflows and deterministic JSON requirements. |
 
@@ -86,8 +87,8 @@ Expected provider answer:
 Resolution path:
 
 - Existing `syntax get --owner --member` covers the lookup.
-- Provider JSON needs a stable response envelope and typed fields for tools.
-- Relationship traversal should accept an exact document id or owner/member input to avoid ambiguous
+- Provider JSON uses the versioned response envelope with typed fields for tools.
+- Relationship traversal accepts an exact document id or owner/member input to avoid ambiguous
   same-name roots.
 
 ### UC-SH-005C: Find APIs for a BSL Task
@@ -143,8 +144,9 @@ Resolution path:
 3. **T51: Preserve structured callable facts in the query index.** Completed with the T48
    schema-v3 structured callable fact change; future work should continue with the provider
    envelope/identity/scenario tasks instead of duplicating this storage fix.
-4. **T52: Add analyzer-safe identity queries.** Allow document-id and owner/member relationship
-   roots where names are ambiguous; keep text UX simple but make JSON stable for tools.
+4. **T52: Add analyzer-safe identity queries.** Completed: document-id lookup and relationship
+   roots by document id and owner/member are available, plain-name UX remains, and provider JSON
+   reports missing or ambiguous roots through `status` and diagnostics.
 5. **T53: Add BSL task scenario UAT.** Use real or source-backed BSL examples to validate
    constructor lookup, owner/member lookup and task-oriented relationship discovery.
 6. **T49: Measure storage/search alternatives against provider workflows.** Tantivy is evaluated

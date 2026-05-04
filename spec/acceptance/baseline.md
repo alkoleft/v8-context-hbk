@@ -1124,3 +1124,18 @@ facts use the export-compatible `owner` string shape. Missing and ambiguous look
 through `status` and diagnostics. The reviewed current implementation sample remains the
 provisional pre-envelope `SearchHit<SearchDocument>` shape, so T50 is a contract definition task and
 not a CLI serialization implementation.
+
+T52 implemented the provider envelope and analyzer-safe identity roots. `syntax get`, `syntax
+constructors`, `syntax search` and `syntax related` JSON now use provider `schema_version: 1` with
+`command`, `status`, `query`, `results[]` and `diagnostics[]`. Platform facts are emitted under
+`results[].fact` with export-compatible `types`, `return`, `signatures` and owner string fields;
+query metadata is emitted under `results[].meta`. `syntax get --id` resolves exact document
+identity, and `syntax related` now accepts `--id`,
+`--owner --member` and `--name`, so analyzer workflows can traverse from an exact property root such
+as `type_property:platform_type:НастройкиКомпоновкиДанных:Отбор` without depending on a plain-name
+root. The accepted real Russian index rebuild from
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `25082` documents in `50621 ms`. Provider JSON
+assertions passed for `HTTPСоединение` constructor parameters, `НастройкиКомпоновкиДанных.Отбор`,
+keyword search, related-by-name, related-by-id, related-by-owner-member, missing lookup and
+ambiguous lookup paths. Invalid JSON root combinations return provider `status: "unsupported"` with
+an `UNSUPPORTED_QUERY` diagnostic.

@@ -397,6 +397,12 @@ V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
 cmp target/uat/related-filter-1.json target/uat/related-filter-2.json
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --format json > target/uat/related-filter-by-id.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json > target/uat/related-filter-by-owner-member.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax constructors "HTTPСоединение" > target/uat/constructors-httpconnection.txt
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
@@ -404,9 +410,12 @@ V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax constructors "HTTPСоединение" --format json > target/uat/constructors-httpconnection.json
-jq -e 'all(.[]; .document | has("parameters") | not)' target/uat/constructors-httpconnection.json
-jq -e 'any(.[].document.signatures[]?.parameters[]?; .name == "ИспользоватьАутентификациюОС" and .required == false and (.types | index("Булево") != null))' target/uat/constructors-httpconnection.json
-jq -e 'all(.[].document.signatures[]?; has("text") | not)' target/uat/constructors-httpconnection.json
+jq -e '.schema_version == 1 and .command == "constructors" and .status == "ok"' target/uat/constructors-httpconnection.json
+jq -e 'all(.results[]; .fact | has("parameters") | not)' target/uat/constructors-httpconnection.json
+jq -e 'any(.results[].fact.signatures[]?.parameters[]?; .name == "ИспользоватьАутентификациюОС" and .required == false and (.types | index("Булево") != null))' target/uat/constructors-httpconnection.json
+jq -e 'all(.results[].fact.signatures[]?; has("text") | not)' target/uat/constructors-httpconnection.json
+jq -e '.status == "ok" and any(.results[].fact; .kind == "platform_type" and .name.primary == "ОтборКомпоновкиДанных")' target/uat/related-filter-by-id.json
+jq -e '.status == "ok" and any(.results[].fact; .kind == "platform_type" and .name.primary == "ОтборКомпоновкиДанных")' target/uat/related-filter-by-owner-member.json
 ```
 
 Expected result:
@@ -431,6 +440,9 @@ Expected result:
   optional `description`, and signature text remains presentation data.
 - The command returns within the NFR-QUERY-001 provisional target when measured on the target
   workstation.
+- Relationship traversal can start from the exact property document id and from
+  `--owner "НастройкиКомпоновкиДанных" --member "Отбор"`, so analyzer workflows do not have to
+  rely on ambiguous plain-name roots.
 
 ## UAT-SH-015: Fuzzy Syntax Assistant Name Search
 
@@ -484,6 +496,9 @@ V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   syntax constructors "HTTPСоединение" --format json > target/uat/provider-constructors-httpconnection.json
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --format json > target/uat/provider-get-skd-filter-by-id.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax get --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json > target/uat/provider-get-skd-filter.json
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
@@ -493,25 +508,38 @@ V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   syntax related --name "ОтборКомпоновкиДанных" --format json > target/uat/provider-related-skd-filter.json
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --format json > target/uat/provider-related-skd-filter-by-id.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json > target/uat/provider-related-skd-filter-by-owner-member.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax get --name "НЕСУЩЕСТВУЮЩИЙ_API_ДЛЯ_UAT" --format json > target/uat/provider-get-missing.json
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
-  syntax get --name "Отбор" --format json > target/uat/provider-get-ambiguous.json
+  syntax get --name "Добавить" --format json > target/uat/provider-get-ambiguous.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --name "ОтборКомпоновкиДанных" --format json > target/uat/provider-related-unsupported-root.json
 
 jq -e '.schema_version == 1 and .status == "ok" and .command == "constructors" and (.results | length > 0)' target/uat/provider-constructors-httpconnection.json
 jq -e 'all(.results[]; has("fact") and (.fact | has("parameters") | not) and (.fact | has("type_refs") | not) and (.fact | has("return_types") | not))' target/uat/provider-constructors-httpconnection.json
 jq -e 'any(.results[].fact.signatures[]?.parameters[]?; .name == "ИспользоватьАутентификациюОС" and .required == false and (.types | index("Булево") != null))' target/uat/provider-constructors-httpconnection.json
+jq -e '.command == "get" and .query.id == "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" and any(.results[].fact; .kind == "type_property" and .owner == "НастройкиКомпоновкиДанных" and (.types | index("ОтборКомпоновкиДанных") != null))' target/uat/provider-get-skd-filter-by-id.json
 jq -e '.command == "get" and .status == "ok" and any(.results[].fact; .kind == "type_property" and .owner == "НастройкиКомпоновкиДанных" and (.types | index("ОтборКомпоновкиДанных") != null))' target/uat/provider-get-skd-filter.json
 jq -e '.command == "search" and all(.results[]; .meta.rank >= 1 and (.meta | has("score")))' target/uat/provider-search-skd-filter.json
 jq -e '.command == "related" and all(.results[]; (.meta.depth >= 0) and (.meta | has("path")))' target/uat/provider-related-skd-filter.json
+jq -e '.command == "related" and .query.root.id == "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" and any(.results[].fact; .name.primary == "ОтборКомпоновкиДанных")' target/uat/provider-related-skd-filter-by-id.json
+jq -e '.command == "related" and .query.root.owner == "НастройкиКомпоновкиДанных" and .query.root.member == "Отбор" and any(.results[].fact; .name.primary == "ОтборКомпоновкиДанных")' target/uat/provider-related-skd-filter-by-owner-member.json
 jq -e '.command == "get" and .status == "not_found" and (.results | length == 0) and any(.diagnostics[]; .code == "NOT_FOUND")' target/uat/provider-get-missing.json
 jq -e '.command == "get" and .status == "ambiguous" and (.results | length == 0) and any(.diagnostics[]; .code == "AMBIGUOUS" and (.candidates | length > 1))' target/uat/provider-get-ambiguous.json
+jq -e '.command == "related" and .status == "unsupported" and (.results | length == 0) and any(.diagnostics[]; .code == "UNSUPPORTED_QUERY")' target/uat/provider-related-unsupported-root.json
 jq -s -e 'def forbidden_internal:
   has("source") or has("source_hbk") or has("toc_path") or has("html_path") or has("page_title") or
   has("rowid") or has("parameter_text") or has("parameter_terms") or has("relation_keys") or
   has("type_refs") or has("return_types");
   all(.[]; all(.results[].fact; (has("parameters") | not) and ((.. | objects | forbidden_internal) | not)))
-' target/uat/provider-constructors-httpconnection.json target/uat/provider-get-skd-filter.json target/uat/provider-search-skd-filter.json target/uat/provider-related-skd-filter.json
+' target/uat/provider-constructors-httpconnection.json target/uat/provider-get-skd-filter-by-id.json target/uat/provider-get-skd-filter.json target/uat/provider-search-skd-filter.json target/uat/provider-related-skd-filter.json
 ```
 
 Expected result:

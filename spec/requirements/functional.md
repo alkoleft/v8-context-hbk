@@ -598,6 +598,8 @@ Provider-oriented outputs must:
 - expose parameter name, requiredness, type references and description as separate fields;
 - expose return/type references as typed arrays, not only prose;
 - report ambiguity or missing facts explicitly instead of silently choosing hidden matches;
+- report unsupported query-root combinations explicitly in JSON mode instead of falling out of the
+  provider envelope;
 - keep FTS/ranking/search-only tokens internal unless a future task deliberately exposes them under
   an explicit debug field.
 
@@ -608,8 +610,13 @@ Acceptance:
 
 - `syntax constructors "HTTPСоединение" --format json` can be consumed by a tool to identify the
   overload containing `ИспользоватьАутентификациюОС` and its `Булево` type reference.
+- `syntax get --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --format json`
+  exposes the same exact property fact as owner/member lookup.
 - `syntax get --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json` exposes the
   property kind, owner and `ОтборКомпоновкиДанных` type reference in deterministic JSON.
+- `syntax related --id <document-id> --format json` and `syntax related --owner
+  "НастройкиКомпоновкиДанных" --member "Отбор" --format json` can traverse relationships from an
+  analyzer-safe exact root without relying on a plain-name lookup.
 - Search-only token fields used to populate FTS are not exposed as misleading public fields in the
   provider JSON contract.
 - Query/provider JSON that returns constructor, method or event signatures uses field names
