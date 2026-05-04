@@ -162,6 +162,14 @@ tuning surface: a failed build can leave only a stale temp artifact, which the n
 before creating a new temp database, while readers continue using the previous complete index until
 validated atomic rename.
 
+T44 implementation note: the search index is still one SQLite artifact, but FTS population is no
+longer a row-by-row write into the virtual table. The writer stores searchable text in the ordinary
+`document_search` content table, then runs SQLite FTS5 external-content rebuild for `document_fts`.
+Exact lookup, fuzzy lookup and relationships remain in relational tables. The measured contentless
+FTS variant reduced file size but was slower on the accepted real Russian HBK benchmark, so the
+selected schema uses external-content FTS rather than a separate search artifact, contentless rowid
+mapping, Tantivy, cache reuse or parallel SQLite writers.
+
 ### Why SQLite First
 
 SQLite with FTS5 is the first storage choice because it keeps the query path local and zero-service
@@ -270,10 +278,13 @@ Index:
 
 The lookup layer must report ambiguous exact matches instead of picking a hidden winner.
 
-### `document_fts`
+### `document_search`
 
-FTS5 virtual table over:
+Ordinary FTS content table. It stores one searchable row per `documents` row and owns the stable
+`rowid` used by the external-content FTS table:
 
+- `rowid`;
+- `document_id`;
 - `name_primary`;
 - `name_alias`;
 - `owner`;
@@ -282,6 +293,23 @@ FTS5 virtual table over:
 - `type_names`;
 - `return_names`;
 - `description`.
+
+### `document_fts`
+
+FTS5 virtual table over:
+
+- `document_id` as an unindexed column;
+- `name_primary`;
+- `name_alias`;
+- `owner`;
+- `signatures`;
+- `parameters`;
+- `type_names`;
+- `return_names`;
+- `description`.
+
+Schema version `2` uses `document_search` as the external content table and populates
+`document_fts` with SQLite FTS5 rebuild semantics after content rows are loaded.
 
 The first ranking may use FTS5 `bm25()` plus deterministic tie breakers:
 

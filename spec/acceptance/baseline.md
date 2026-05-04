@@ -1056,3 +1056,28 @@ Read-only checks on the final T43 Russian index found all four expected ordinary
 zero relation endpoints missing from `documents`. A representative keyword query against the final
 Russian index measured `0.04 s` and returned `Отбор` as the first hit, matching the accepted query
 behavior class.
+
+T44 changed FTS population from direct row-by-row writes into `document_fts` to SQLite FTS5
+external-content rebuild. The replacement database now bulk-loads searchable text into the ordinary
+`document_search` table, runs `INSERT INTO document_fts(document_fts) VALUES ('rebuild')`, validates
+the completed database and then atomically replaces the target index. The query-index artifact
+remains one SQLite file produced by one `syntax index` command; the task explicitly did not split
+the index into mandatory and heavy/optional artifacts.
+
+Release-profile T44 measurements:
+
+| Source / slice | Exit | Elapsed, s | Peak RSS, KiB | Documents | `document_names` | `document_search` | FTS rows | Relations | SQLite size |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` / after T43 | 0 | 16.30 | 269632 | 25082 | 132646 | n/a | 25082 | 65455 | 139M |
+| `shcntx_ru.hbk` / T44 external-content rebuild | 0 | 15.93 | 269696 | 25082 | 132646 | 25082 | 25082 | 65455 | 139M |
+| `shcntx_ru.hbk` / T44 contentless measured variant | 0 | 15.94 | 269700 | 25082 | 132646 | n/a | 25082 | 65455 | 126M |
+| `shcntx_root.hbk` / after T43 | 0 | 12.79 | 243992 | 25062 | 47001 | n/a | 25062 | 68670 | 62M |
+| `shcntx_root.hbk` / T44 external-content rebuild | 0 | 12.52 | 243860 | 25062 | 47001 | 25062 | 25062 | 68670 | 62M |
+
+The selected T44 path is external-content FTS because it best preserved the existing query shape and
+was marginally faster than the measured contentless variant. Contentless FTS reduced Russian SQLite
+size from `139M` to `126M`, but was not selected because it was slower on the accepted benchmark and
+required extra rowid mapping on the query path. Read-only checks on the final T44 Russian and root
+indexes found search-index schema version `2`, matching `documents` / `document_search` /
+`document_fts` counts and zero broken relation endpoints. A representative release keyword query
+against the rebuilt Russian index measured `0.03 s`.

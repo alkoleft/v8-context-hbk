@@ -15,9 +15,10 @@ Current status: T35-T40 and the T18 first slice are archived historical tasks. T
 export, schema, data-quality, performance and query-search conclusions live in
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md` and `implementation/syntax-helper-query-cli.md`.
-There are no unchecked active tasks after T43. Further T18 continuation may add the next focused
-query/search task after reconciling it with the durable T41 identity findings, T42 build-path
-measurements and T43 SQLite-writer measurements below.
+There are no unchecked active implementation tasks after T44. T44 captured the measured
+query-index throughput slice for bulk FTS build after T43 showed that prepared statements,
+deferred ordinary indexes and temp rebuild pragmas help but do not close the gap with
+`syntax export`.
 
 ## Loop Rule
 
@@ -264,3 +265,80 @@ Verification:
 - measured release `syntax index` run for `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
 - read-only SQLite checks for document count, relation count and relation endpoint integrity on the
   rebuilt Russian index
+
+### [x] T44. Build Syntax Assistant FTS index in bulk mode
+
+Depends on: T43 SQLite writer optimization.
+
+Spec refs:
+
+- NFR-PERF-001
+- NFR-QUERY-001
+- FR-SH-SEARCH-001
+- FR-SH-SEARCH-002
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/acceptance/baseline.md`
+
+Problem:
+
+- After T43, release `syntax index` for `shcntx_ru.hbk` still measured `16.30 s / 269632 KiB`,
+  while release `syntax export` measured `5.74 s / 197768 KiB` on the same source and binary.
+- The index artifact remains much larger than the canonical JSON export (`139M` SQLite vs `19M`
+  JSON directory for Russian Syntax Assistant), and FTS construction/storage is the main remaining
+  suspect after ordinary SQLite insert overhead was reduced.
+- Continuing to tune per-row insertion is unlikely to produce a cardinal improvement. The next
+  measured slice should avoid treating the FTS virtual table as a row-by-row sink when a bulk FTS
+  rebuild can preserve the same query contract.
+
+Scope:
+
+- Change FTS population to a bulk-build path: load searchable rows into an ordinary content table,
+  then build the FTS index with SQLite FTS rebuild semantics.
+- Preserve query behavior: keyword search results, deterministic ordering, exact lookup, fuzzy
+  lookup and relationship traversal must stay in the accepted behavior class.
+- Preserve atomic rebuild behavior and writer serialization from T18/T42/T43.
+- Prefer SQLite-native FTS variants before introducing a separate search engine. Evaluate
+  external-content/contentless FTS only as measured variants inside the same query-index artifact
+  boundary; do not add Tantivy, parallel writers or cache/reuse behavior in this slice.
+- Do not split the index into mandatory and heavy/optional artifacts. T44 keeps one SQLite index
+  built by one `syntax index` command.
+- Bump or document the search-index schema metadata if the SQLite table layout changes.
+
+Expected artifacts:
+
+- `syntax-helper-search` schema/writer/query changes needed for the selected bulk FTS mode.
+- Focused tests covering keyword search and staged builder-to-SQLite behavior through the new FTS
+  layout.
+- Updated implementation notes and acceptance baseline with before/after timing, SQLite size and
+  query smoke results.
+
+Completion notes:
+
+- `syntax-helper-search` now writes searchable rows into the ordinary `document_search` content
+  table and builds `document_fts` with SQLite FTS5 external-content rebuild semantics instead of
+  inserting every row directly into the FTS virtual table.
+- The search index remains one SQLite artifact produced by one `syntax index` command. Exact lookup,
+  keyword search, fuzzy lookup, relationship traversal, writer locking and atomic replacement
+  behavior stay in the existing contract.
+- Search-index schema metadata is now version `2` because the SQLite layout gained
+  `document_search` and external-content FTS. The canonical consumer JSON export schema remains
+  unchanged.
+- The measured contentless FTS variant reduced the Russian SQLite file to `126M`, but was slower
+  than the selected external-content rebuild path (`15.94 s` vs `15.82-15.93 s`) and changed more
+  query plumbing. It was not selected.
+- Final release-profile external-content rebuild measurements: `shcntx_ru.hbk` `15.93 s /
+  269696 KiB / 139M`, `shcntx_root.hbk` `12.52 s / 243860 KiB / 62M`. Counts stayed stable:
+  Russian index `25082 documents / 132646 document_names / 25082 document_search / 25082 FTS rows /
+  65455 relations`; root index `25062 / 47001 / 25062 / 25062 / 68670`.
+- A representative release keyword search for `отбор скд` against the rebuilt Russian index
+  measured `0.03 s` and returned the accepted result class.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- measured release `syntax index` runs for `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+  `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
+- read-only SQLite checks for document count, FTS row count, relation count, schema metadata and
+  relation endpoint integrity on the rebuilt Russian index
+- measured release `syntax search --mode keywords` smoke against the rebuilt Russian index

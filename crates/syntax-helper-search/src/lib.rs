@@ -12,7 +12,7 @@ use serde::Serialize;
 use strsim::levenshtein;
 use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 1;
+pub const INDEX_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone)]
 pub struct IndexMetadata {
@@ -534,6 +534,7 @@ fn build_index_file(
             source,
         })?;
     insert_documents(&transaction, path, &documents)?;
+    rebuild_document_fts(&transaction, path)?;
     insert_relations_from_documents(&transaction, path, &documents)?;
     create_lookup_indexes(&transaction, path)?;
     transaction.commit().map_err(|source| SearchError::Sqlite {
@@ -1018,6 +1019,18 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  key_kind TEXT NOT NULL,
                  document_id TEXT NOT NULL REFERENCES documents(id)
              );
+             CREATE TABLE document_search (
+                 rowid INTEGER PRIMARY KEY,
+                 document_id TEXT NOT NULL REFERENCES documents(id),
+                 name_primary TEXT NOT NULL,
+                 name_alias TEXT,
+                 owner TEXT,
+                 signatures TEXT NOT NULL,
+                 parameters TEXT NOT NULL,
+                 type_names TEXT NOT NULL,
+                 return_names TEXT NOT NULL,
+                 description TEXT
+             );
              CREATE VIRTUAL TABLE document_fts USING fts5(
                  document_id UNINDEXED,
                  name_primary,
@@ -1028,6 +1041,8 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  type_names,
                  return_names,
                  description,
+                 content = 'document_search',
+                 content_rowid = 'rowid',
                  tokenize = 'unicode61 remove_diacritics 0'
              );
              CREATE TABLE relations (
@@ -1117,17 +1132,19 @@ fn insert_documents(
         })?;
     let mut fts_statement = connection
         .prepare(
-            "INSERT INTO document_fts(
+            "INSERT INTO document_search(
+                rowid,
                 document_id, name_primary, name_alias, owner, signatures, parameters,
                 type_names, return_names, description
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )
         .map_err(|source| SearchError::Sqlite {
             path: path.to_path_buf(),
             source,
         })?;
 
-    for document in documents {
+    for (index, document) in documents.iter().enumerate() {
+        let rowid = (index + 1) as i64;
         let signatures = document.signatures.join("\n");
         let parameters = document.parameters.join("\n");
         let type_names = document.type_refs.join("\n");
@@ -1160,6 +1177,7 @@ fn insert_documents(
         insert_name_keys(&mut name_statement, path, document)?;
         fts_statement
             .execute(params![
+                rowid,
                 document.id,
                 searchable_name(&document.name.primary),
                 document.name.alias.as_deref().map(searchable_name),
@@ -1179,6 +1197,19 @@ fn insert_documents(
             })?;
     }
     Ok(())
+}
+
+fn rebuild_document_fts(connection: &Connection, path: &Path) -> Result<(), SearchError> {
+    connection
+        .execute(
+            "INSERT INTO document_fts(document_fts) VALUES ('rebuild')",
+            [],
+        )
+        .map(|_| ())
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })
 }
 
 fn insert_name_keys(
@@ -2481,6 +2512,25 @@ mod tests {
             .expect("streaming builder must build SQLite index");
 
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let schema_version: String = index
+            .connection
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("schema version must be stored");
+        assert_eq!(schema_version, INDEX_SCHEMA_VERSION.to_string());
+        let search_rows: usize = index
+            .connection
+            .query_row("SELECT COUNT(*) FROM document_search", [], |row| row.get(0))
+            .expect("content rows must be stored");
+        let fts_rows: usize = index
+            .connection
+            .query_row("SELECT COUNT(*) FROM document_fts", [], |row| row.get(0))
+            .expect("fts rows must be rebuilt from content rows");
+        assert_eq!(search_rows, fts_rows);
+
         let exact = index
             .get_by_name("DataCompositionFilter")
             .expect("exact lookup must work");
