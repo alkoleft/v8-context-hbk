@@ -390,7 +390,8 @@ that happen to exist in a reused output directory.
   `signatures[].text` is not part of the consumer JSON contract for methods, global context events
   or constructors. Syntax-variant `title` and `description` are written directly on the signature
   object when present; the nested `variant` object is not emitted. Variant metadata must not expose
-  HBK, TOC or HTML provenance.
+  HBK, TOC or HTML provenance. Parser section boundaries must preserve all parameters in a callable
+  signature even when a parameter description contains label-like inline text such as `Примечание:`.
 - `availability`: object with `contexts`, a deterministic array of normalized snake_case execution
   context values such as `thin_client`, `web_client`, `mobile_client`, `server`, `thick_client`,
   `external_connection`, `mobile_application_client`, `mobile_application_server` and

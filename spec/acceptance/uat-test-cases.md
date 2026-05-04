@@ -868,6 +868,12 @@ jq -e '
 ' target/uat/shcntx-ru/constructors.json
 
 jq -e '
+  .records[]
+  | select(.owner == "HTTPСоединение"
+      and any(.signatures[]?; any(.parameters[]?; .name == "ИспользоватьАутентификациюОС")))
+' target/uat/shcntx-ru/constructors.json
+
+jq -e '
   all(.records[]; .name.primary != "Истина" and .name.primary != "Ложь") and
   all(.records[] | select(.branch_kind == "primitive_types"); .type_kind == "primitive")
 ' target/uat/shcntx-ru/platform-types.json
@@ -900,6 +906,7 @@ Expected result:
   reading.
 - Any remaining ambiguous source pages are reported as recoverable diagnostics with provenance
   rather than silently collapsed or emitted as indistinguishable facts.
+- Constructor parameter parsing is not truncated by inline label-like text in parameter bodies.
 
 Cleanup:
 

@@ -1094,3 +1094,11 @@ T46 added opt-in detailed text output for constructor lookup. `v8-context-hbk sy
 <TYPE> --details` keeps the same resolved read-only index path and prints each constructor signature
 with available owner and description context. Signature-only text output remains the default, and
 JSON output remains the full deterministic search-hit records.
+
+T47 fixed Syntax Assistant HTML chapter extraction for parser data quality. Sections headed by
+`V8SH_chapter` are now located from structural chapter markers and bounded by the next structural
+chapter marker or HTML footer instead of by plain label text inside the section body. This preserves
+constructor parameters when parameter descriptions contain inline labels such as `Примечание:`; the
+motivating `HTTPСоединение` constructor page should expose later parameters such as
+`ИспользоватьАутентификациюОС` after export or index rebuild. No consumer JSON or search-index
+schema change is required.

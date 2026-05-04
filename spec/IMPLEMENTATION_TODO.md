@@ -15,8 +15,104 @@ Current status: T35-T40 and the T18 first slice are archived historical tasks. T
 export, schema, data-quality, performance and query-search conclusions live in
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md` and `implementation/syntax-helper-query-cli.md`.
-There are no unchecked active implementation tasks after T46. T46 captured a narrow query-CLI
-usability slice for detailed constructor text output.
+Next active task is T48. T47 captured a narrow parser data-quality fix for Syntax Assistant HTML
+chapter boundaries.
+
+### [ ] T48. Separate structured parameters from search terms in query JSON
+
+Spec refs:
+
+- FR-SH-SEARCH-001
+- UAT-SH-006
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Prompt:
+
+```text
+Investigate and fix `syntax constructors <TYPE> --format json` output where
+`document.parameters` is a flat list that mixes parameter names with type names, for example:
+`["Сервер", "Строка", "Порт", "Число", ...]`.
+
+Start from `spec/README.md`, `spec/requirements/functional.md`,
+`spec/implementation/syntax-helper-query-cli.md`, `spec/acceptance/uat-test-cases.md` and the active
+task ledger. Keep the fix scoped to the search/query layer unless source evidence shows a parser
+problem.
+
+Current evidence:
+- The parser/domain model is structured: `Signature.parameters: Vec<Parameter>` and each
+  `Parameter` has `name`, `required`, `type_refs`, and `description`.
+- `syntax-helper-search::SearchDocument.parameters` is currently `Vec<String>`.
+- `syntax-helper-search::document()` builds that list by chaining each parameter name with all of
+  that parameter's type names. This is useful as internal searchable text, but misleading as public
+  JSON.
+
+Expected outcome:
+- Public JSON must not expose a field named `parameters` that mixes parameter names and type names.
+- Prefer one of these contract shapes after updating the spec/UAT first:
+  1. structured `parameters: [{ name, required, type_refs, description }]` when query JSON should
+     expose parsed parameter details; or
+  2. explicit search-oriented fields such as `parameter_names` and `parameter_type_refs`, while
+     keeping raw search terms internal and not serialized.
+- Preserve existing text output behavior for `syntax constructors <TYPE>`.
+- Preserve SQLite rebuild determinism. If the SQLite schema changes, document it in spec/baseline
+  and update tests.
+- Add focused tests that cover `HTTPСоединение` constructor JSON and assert names and types are not
+  interleaved in one ambiguous array.
+
+Verification:
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- rebuild a real index from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- `v8-context-hbk syntax constructors --index <rebuilt.sqlite> "HTTPСоединение" --format json`
+```
+
+Scope:
+
+- Fix the public query JSON contract for callable parameters in search documents.
+- Keep search-only tokenization internal to the index/search implementation.
+- Do not revisit the T47 HTML section-boundary parser fix unless a regression test proves it is
+  still involved.
+
+### [x] T47. Preserve constructor parameters when parameter bodies contain inline notes
+
+Spec refs:
+
+- FR-SH-002
+- FR-EXPORT-001
+- UAT-SH-013
+- `spec/implementation/components.md`
+
+Scope:
+
+- Fix Syntax Assistant HTML section extraction so `V8SH_chapter` section starts and ends are resolved
+  from structural chapter markers, not from plain text labels inside section bodies.
+- Preserve parameter parsing when a constructor parameter description contains inline text such as
+  `Примечание:`.
+- Keep text-section extraction unchanged unless a separate source-backed case requires changing it.
+- Do not change consumer export schema or search-index schema.
+
+Expected artifacts:
+
+- Focused parser regression for `HTTPСоединение`-shaped constructor HTML where `<Сервер>` contains
+  an inline `Примечание:` before later parameters.
+- Parser fix in `syntax-helper-extract` only.
+- Updated spec/UAT/baseline notes.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib constructor_parameters_keep_inline_notes_inside_parameter_section`
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- `section_html()` now treats sections headed by `<p class="V8SH_chapter">` structurally: it prefers
+  real chapter markers when locating the requested section and ends the HTML slice at the next
+  `V8SH_chapter` marker or HTML footer rather than at any label-like text in the section body.
+- The new regression covers `HTTPСоединение`-style constructor parameters where an inline
+  `Примечание:` appears inside the first parameter body before the remaining overload parameters.
+- Consumer JSON and search-index schemas remain unchanged; rebuilt data will expose the recovered
+  constructor parameters through the existing signature parameter shape.
 
 ### [x] T46. Add detailed text output for constructor lookup
 

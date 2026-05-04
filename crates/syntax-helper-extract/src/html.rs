@@ -251,11 +251,40 @@ pub(crate) fn section_text(content: &PageContent, labels: &[&str]) -> Option<Str
 }
 
 pub(crate) fn section_html<'a>(raw_html: &'a str, labels: &[&str]) -> Option<&'a str> {
-    let (label, start) = find_label(raw_html, labels)?;
+    let (label, start) = find_html_section_label(raw_html, labels)?;
     let heading = html_section_heading(raw_html, start);
     let section_start = html_section_body_start(raw_html, start, label, heading);
     let section_end = html_section_end(raw_html, section_start, label, heading);
     Some(&raw_html[section_start..section_end])
+}
+
+fn find_html_section_label<'a>(raw_html: &str, labels: &'a [&str]) -> Option<(&'a str, usize)> {
+    find_v8_chapter_label(raw_html, labels).or_else(|| find_label(raw_html, labels))
+}
+
+fn find_v8_chapter_label<'a>(raw_html: &str, labels: &'a [&str]) -> Option<(&'a str, usize)> {
+    let mut offset = 0;
+    while let Some(tag_start) = find_next_tag(raw_html, offset, "p") {
+        let Some(tag_end) = raw_html[tag_start..]
+            .find('>')
+            .map(|index| tag_start + index)
+        else {
+            break;
+        };
+        if tag_contains_v8_chapter_class(&raw_html[tag_start..=tag_end]) {
+            let body_start = tag_end + 1;
+            let body_end = find_closing_p(raw_html, body_start).unwrap_or(raw_html.len());
+            if let Some((label, index)) = labels.iter().find_map(|label| {
+                raw_html[body_start..body_end]
+                    .find(label)
+                    .map(|index| (*label, body_start + index))
+            }) {
+                return Some((label, index));
+            }
+        }
+        offset = tag_end + 1;
+    }
+    None
 }
 
 fn html_section_body_start(
@@ -265,9 +294,8 @@ fn html_section_body_start(
     heading: HtmlSectionHeading,
 ) -> usize {
     if heading == HtmlSectionHeading::V8Chapter {
-        return raw_html[label_start..]
-            .find("</p>")
-            .map(|index| label_start + index + 4)
+        return find_closing_p(raw_html, label_start)
+            .map(|index| index + 4)
             .unwrap_or(label_start + label.len());
     }
     label_start + label.len()
@@ -285,7 +313,7 @@ fn html_section_heading(raw_html: &str, label_start: usize) -> HtmlSectionHeadin
         .find('>')
         .map(|index| label_start + index);
     if tag_start.zip(tag_end).is_some_and(|(tag_start, tag_end)| {
-        raw_html[tag_start..=tag_end].contains("class=\"V8SH_chapter\"")
+        tag_contains_v8_chapter_class(&raw_html[tag_start..=tag_end])
     }) {
         HtmlSectionHeading::V8Chapter
     } else {
@@ -312,15 +340,14 @@ fn html_section_end(
     heading: HtmlSectionHeading,
 ) -> usize {
     if heading == HtmlSectionHeading::V8Chapter {
-        return HTML_CHAPTER_SECTION_BOUNDARIES
-            .iter()
-            .filter_map(|candidate| {
-                value[section_start..]
-                    .find(candidate)
-                    .map(|index| section_start + index)
-            })
-            .min()
-            .unwrap_or(value.len());
+        return [
+            next_v8_chapter_start(value, section_start),
+            next_html_footer_start(value, section_start),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(value.len());
     }
 
     text_section_boundaries()
@@ -347,6 +374,115 @@ fn find_label<'a>(value: &str, labels: &'a [&str]) -> Option<(&'a str, usize)> {
         .iter()
         .filter_map(|label| value.find(label).map(|index| (*label, index)))
         .min_by_key(|(_, index)| *index)
+}
+
+fn next_v8_chapter_start(value: &str, start: usize) -> Option<usize> {
+    let mut offset = start;
+    while let Some(tag_start) = find_next_tag(value, offset, "p") {
+        let Some(tag_end) = value[tag_start..].find('>').map(|index| tag_start + index) else {
+            break;
+        };
+        if tag_contains_v8_chapter_class(&value[tag_start..=tag_end]) {
+            return Some(tag_start);
+        }
+        offset = tag_end + 1;
+    }
+    None
+}
+
+fn find_next_tag(value: &str, start: usize, tag_name: &str) -> Option<usize> {
+    let lower_tag_name = tag_name.to_ascii_lowercase();
+    let mut offset = start;
+    while let Some(index) = value[offset..].find('<').map(|index| offset + index) {
+        let after_start = &value[index + 1..];
+        if after_start.starts_with('/') {
+            offset = index + 1;
+            continue;
+        }
+        let tag = after_start
+            .split([' ', '>', '\t', '\n', '\r'])
+            .next()
+            .unwrap_or_default();
+        if tag.to_ascii_lowercase() == lower_tag_name {
+            return Some(index);
+        }
+        offset = index + 1;
+    }
+    None
+}
+
+fn tag_contains_v8_chapter_class(tag: &str) -> bool {
+    let lower = tag.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut search_from = 0;
+
+    while let Some(relative_index) = lower[search_from..].find("class") {
+        let name_start = search_from + relative_index;
+        let name_end = name_start + "class".len();
+        let before_ok = name_start == 0 || !is_attr_name_byte(bytes[name_start - 1]);
+        let after_ok = name_end >= bytes.len() || !is_attr_name_byte(bytes[name_end]);
+        if !before_ok || !after_ok {
+            search_from = name_end;
+            continue;
+        }
+
+        let mut index = name_end;
+        while bytes
+            .get(index)
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+        {
+            index += 1;
+        }
+        if bytes.get(index) != Some(&b'=') {
+            search_from = name_end;
+            continue;
+        }
+        index += 1;
+        while bytes
+            .get(index)
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+        {
+            index += 1;
+        }
+        let Some(quote @ (b'"' | b'\'')) = bytes.get(index).copied() else {
+            search_from = name_end;
+            continue;
+        };
+        index += 1;
+        let value_start = index;
+        while bytes.get(index).is_some_and(|byte| *byte != quote) {
+            index += 1;
+        }
+
+        let class_value = &lower[value_start..index];
+        if class_value
+            .split_ascii_whitespace()
+            .any(|class| class == "v8sh_chapter")
+        {
+            return true;
+        }
+        search_from = index;
+    }
+
+    false
+}
+
+fn is_attr_name_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b':')
+}
+
+fn find_closing_p(value: &str, start: usize) -> Option<usize> {
+    value[start..]
+        .to_ascii_lowercase()
+        .find("</p>")
+        .map(|index| start + index)
+}
+
+fn next_html_footer_start(value: &str, start: usize) -> Option<usize> {
+    HTML_SECTION_BOUNDARIES
+        .iter()
+        .filter_map(|candidate| value[start..].find(candidate).map(|index| start + index))
+        .min()
 }
 
 fn normalize_member_href(current_html_path: &str, href: &str) -> String {
@@ -476,11 +612,3 @@ const ALL_SECTION_LABELS: &[&str] = &[
 const SERVICE_FOOTER_LABELS: &[&str] = &["Методическая информация", "Methodical information"];
 
 const HTML_SECTION_BOUNDARIES: &[&str] = &["<HR", "<hr"];
-const HTML_CHAPTER_SECTION_BOUNDARIES: &[&str] = &[
-    "<p class=\"V8SH_chapter\"",
-    "<p class='V8SH_chapter'",
-    "<P class=\"V8SH_chapter\"",
-    "<P class='V8SH_chapter'",
-    "<HR",
-    "<hr",
-];
