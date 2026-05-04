@@ -1196,3 +1196,37 @@ provider JSON and relationships still needed SQLite; Russian fuzzy search for
 `ОтборКомпоновкиДаных` returned no hits in the prototype; and `таблица регистра бухгалтерии`
 ranked generic accounting-register table variants above the UAT-SH-017 accepted top hit. The T49
 decision is to retain the single SQLite/FTS5 query index and not add a storage selection knob.
+
+Follow-up checks with MyStem 3.1 Russian lemmatization kept the same measurement-only sidecar
+boundary. A temporary harness under `target/` read the accepted RU SQLite rows, generated one
+lemmatized line per document with MyStem, built a Tantivy index over those lemmas and lemmatized
+each query before searching. It indexed the same `25082` RU documents.
+
+T49 MyStem/Tantivy follow-up measurements against `target/t49/sqlite-ru.sqlite`:
+
+| Hypothesis variant | Lemmatize, ms | Index, ms | Size, bytes | `таблица регистра бухгалтерии` | `таблицы регистров бухгалтерии` | `отбор скд` | `отбор компоновки данных` | `ОтборКомпоновкиДаных` | `HTTP соединение` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| MyStem lemmas | 2855 | 627 | 6262902 | 1 | 2 | miss | miss | miss | 1 |
+| MyStem `-d` disambiguation | 11528 | 550 | 5390585 | 1 | 1 | miss | miss | miss | 1 |
+| Identifier split in indexed text and query | 6552 | 710 | 8038361 | 1 | 4 | miss | miss | 10 | 2 |
+| Identifier split plus word-to-identifier query terms | 6913 | 640 | 7860588 | miss | miss | miss | 2 | 1 | miss |
+| Identifier split plus domain query expansion | 6646 | 732 | 8031990 | miss | miss | 5 | 2 | 2 | miss |
+| Identifier split, query expansion and domain rerank | 6561 | 778 | 7950694 | 1 | 1 | 1 | 1 | 1 | 1 |
+
+The table reports the rank of the expected BSL-provider target fact in the top 10, or `miss` when
+the expected id was not in the top 10. MyStem lemmatization alone fixed inflected
+accounting-register wording and `HTTP соединение`, but not compact identifiers or SKD intent.
+`mystem -d` improved the plural accounting-register wording (`таблицы регистров бухгалтерии`) from
+rank 2 to rank 1, but cost roughly 4x more lemmatization time and did not help SKD or compact-name
+queries. Identifier splitting helped the compact typo by exposing `Отбор Компоновки Даных`, but by
+itself only moved `ОтборКомпоновкиДаных` to rank 10. Adding compounded BSL-style query terms fixed
+that compact typo, but harmed accounting-register and HTTP ranking because MyStem treats compounded
+Russian identifiers as unknown lexical terms. Domain query expansion helped `отбор скд`, but still
+needed provider-aware reranking to prefer `НастройкиКомпоновкиДанных.Отбор` over generic lexical
+matches.
+
+The follow-up does not change the T49 storage decision. MyStem-backed Tantivy remains only a
+possible future FTS-only experiment: it needs a tokenizer that indexes both original identifiers
+and split terms, controlled synonym/query expansion, and explicit domain reranking. It also brings
+external binary/process and second-artifact complexity while exact lookup, provider JSON and
+relationship traversal still require SQLite.

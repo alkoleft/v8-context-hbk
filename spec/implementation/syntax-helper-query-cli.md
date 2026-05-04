@@ -587,3 +587,21 @@ unusable; it is that a simple FTS-only sidecar does not improve the accepted BSL
 enough to justify a second artifact and ranking path. SQLite/FTS5 therefore remains the selected
 query artifact. Tantivy remains a possible future FTS-only sidecar only if a new source-backed BSL
 scenario shows a search-quality gap that SQLite cannot address without worse complexity.
+
+T49 MyStem follow-up: measurement-only harnesses lemmatized RU `document_search` text with MyStem
+3.1 before Tantivy indexing and compared morphology, identifier splitting, word-to-identifier query
+compounding, domain query expansion and simple provider-aware reranking. MyStem lemmas fixed
+inflected accounting-register wording, and `mystem -d` improved the plural form
+`таблицы регистров бухгалтерии` from rank 2 to rank 1, but it cost roughly 4x more lemmatization
+time. Identifier splitting helped compact API names: `ОтборКомпоновкиДаных` reached rank 10 with
+split terms and rank 1 after adding known compounded query terms. Domain query expansion improved
+`отбор скд`, but generic lexical `Отбор` facts still outranked provider-target facts until a
+domain reranker lifted `НастройкиКомпоновкиДанных.Отбор`.
+
+The practical direction is not "turn on MyStem" by itself. If a future source-backed BSL scenario
+requires better Russian task search, the likely shape is: keep SQLite for exact/provider/related
+facts; optionally add an FTS-only sidecar that indexes original identifiers, split identifier terms
+and MyStem lemmas; apply a controlled synonym map such as `СКД -> компоновка данных`; and rank with
+provider-aware kind/owner boosts. Do not introduce MyStem as a required indexing dependency without
+a new ADR covering the external binary/process boundary and without proving the sidecar improves
+accepted workflows beyond what SQLite/tokenization/reranking can do in one artifact.
