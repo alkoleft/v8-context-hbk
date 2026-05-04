@@ -27,8 +27,8 @@ until an implementation task adds them.
 - `hbk-export` owns output adapters for the Rust domain model.
 - `v8-context-hbk-cli` wires commands and error presentation only.
 - Planned Syntax Assistant search/query code must not make `hbk-export` carry search-only fields in
-  the lean consumer export. Use a search-specific index or maintenance export when structured links
-  or provenance are required for query workflows.
+  the lean consumer export. Use a search-specific index when structured links or provenance are
+  required for query workflows.
 
 ## Public Contract Policy
 
@@ -245,16 +245,19 @@ cross-family semantic ID or cross-file reference model.
 
 Owns FR-CLI-001.
 
-The installed binary name remains `v8-context-hbk`. Accepted command names are `inspect`, `toc`,
-`page` and `syntax-helper`.
+The installed binary name remains `v8-context-hbk`. Accepted inspection/navigation command names are
+`inspect`, `toc` and `page`. The target Syntax Assistant command group for new export/index/query
+work is `syntax`.
 
-### Planned Syntax Assistant query CLI
+### Planned Syntax Assistant query commands
 
 Owns FR-SH-SEARCH-001 and FR-SH-SEARCH-002 after implementation.
 
-The separate query CLI must read a prebuilt export or index artifact for interactive commands. It
-must not parse `shcntx_*.hbk` in exact lookup, text search, fuzzy search or relationship search
-commands.
+The `v8-context-hbk syntax` query commands must read a prebuilt search index artifact for
+interactive commands. They must not parse `shcntx_*.hbk` in exact lookup, text search, fuzzy search
+or relationship search commands. Index build commands may parse Syntax Assistant HBK sources through
+the extraction pipeline and must pass typed extracted facts into the search/index library rather
+than building from consumer JSON export directories.
 
 ## Implementation Dependencies
 

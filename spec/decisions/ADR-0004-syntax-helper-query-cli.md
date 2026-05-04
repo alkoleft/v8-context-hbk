@@ -1,8 +1,8 @@
-# ADR-0004: Add a Separate Syntax Assistant Query CLI on a Prebuilt Search Index
+# ADR-0004: Add Syntax Assistant Query Commands on a Prebuilt Search Index
 
 Date: 2026-04-30.
 
-Status: Proposed.
+Status: Accepted.
 
 ## Context
 
@@ -18,7 +18,8 @@ The `syntax-helper --output` command is intentionally a batch export path. On th
 `shcntx_ru.hbk` source it reads a 40 MiB HBK file and takes about 19 seconds in a debug build. That
 is acceptable for extraction and UAT, but not for interactive API lookup.
 
-The new requirement is a separate CLI interface for Syntax Assistant workflows:
+The new requirement is a separate command level inside the existing CLI for Syntax Assistant
+workflows:
 
 - search by exact API name;
 - search by purpose and keywords;
@@ -35,9 +36,8 @@ into description text.
 
 ## Decision Proposal
 
-Add a separate Syntax Assistant query CLI surface backed by a prebuilt local search index.
-
-The proposed installed binary name is `v8-sh`.
+Add a `syntax` command group under the existing `v8-context-hbk` binary, backed by a prebuilt local
+search index.
 
 Use a single local SQLite database with FTS5 as the first index storage format:
 
@@ -49,23 +49,29 @@ Use a single local SQLite database with FTS5 as the first index storage format:
 - optional vector/semantic tables only after deterministic lexical and graph search are accepted and
   measured.
 
-The existing `v8-context-hbk` binary remains the HBK inspection, navigation and batch extraction
-CLI. It must not become a broad interactive query shell.
+The existing `v8-context-hbk` binary remains the only installed CLI. `inspect`, `toc` and `page`
+stay HBK inspection/navigation commands. `syntax export` owns Syntax Assistant batch export, while
+`syntax index`, `syntax get`, `syntax search` and `syntax related` own local index/query workflows.
 
-The query CLI should use this flow:
+The query command group should use this flow:
 
-1. Build or receive canonical Syntax Assistant export data.
-2. Build a local search index from that export, with optional richer link/provenance input later.
+1. Read a Syntax Assistant HBK through the normal extraction pipeline.
+2. Build a local search index from extracted API facts, with optional richer link/provenance input
+   later.
 3. Run exact lookup, keyword/fuzzy search and relationship queries against the prebuilt index.
 
 Interactive query commands must not open or parse `shcntx_*.hbk` files.
+
+Query commands should support a default index path so repeated interactive commands can omit
+`--index`. The first slice resolves one effective index path by command-line option, environment
+variable or default path; it does not merge multiple index files.
 
 ## Consequences
 
 - Fast query behavior is separated from expensive HBK extraction.
 - `FR-EXPORT-001` can stay lean; search-only fields do not need to pollute consumer export files.
 - A new `syntax-helper-search` library crate can own indexing, ranking and relationship traversal.
-- A new `syntax-helper-cli` binary crate or CLI target can own the `v8-sh` command surface.
+- The existing `v8-context-hbk-cli` crate owns the `syntax` command group and presentation.
 - The first durable index is one rebuildable local database file, not a directory of ad hoc JSONL
   files.
 - The first graph implementation is an edge table plus bounded SQL traversal, not an external graph
@@ -77,18 +83,20 @@ Interactive query commands must not open or parse `shcntx_*.hbk` files.
 
 ### Add more subcommands under `v8-context-hbk syntax-helper`
 
-Rejected for the proposal.
+Rejected in favor of the shorter `v8-context-hbk syntax` command group.
 
-The existing binary is a verification/extraction CLI. Adding interactive search modes there would
-mix expensive source-book operations with fast query operations and make command intent less clear.
+The `syntax-helper` name is too long for repeated interactive search commands. The shorter `syntax`
+level keeps one installed CLI while still separating HBK inspection/navigation from Syntax Assistant
+export/index/query workflows.
 
-### Query the canonical JSON export directly every time
+### Build the index from canonical JSON export directories
 
-Rejected as the target architecture, but acceptable for a narrow prototype.
+Rejected for the first slice.
 
-The current export is only about 21 MiB for `shcntx_ru.hbk`, so direct JSON loading can validate
-query semantics. It does not give a durable latency contract, and it cannot recover structured links
-that were intentionally omitted from consumer files.
+The index should be built directly from HBK through the extraction pipeline, then passed to the
+search library as typed API facts. Building from consumer JSON adds an unnecessary IO and
+serialization round trip, makes search depend on the lean export adapter shape and cannot recover
+structured links or provenance that were intentionally omitted from consumer files.
 
 ### Use JSONL index files plus in-memory maps
 
@@ -134,26 +142,33 @@ queries need deterministic behavior, offline availability and clear acceptance t
 
 1. Keep T17 focused on the selected streaming extraction optimization unless the task ledger is
    explicitly reprioritized.
-2. Add or refine a follow-up task for the query CLI after T17.
+2. Use T18 as the first query command implementation task after the prerequisite export/schema
+   fixes.
 3. Implement `syntax-helper-search`:
-   - load canonical export directories;
+   - accept extracted Syntax Assistant API facts from the extraction pipeline;
    - build `SearchDocument` records;
    - write `index.sqlite` with schema metadata, document rows, exact-name rows, FTS5 rows and
      relationship-edge rows;
    - build exact primary/alias and owner/member indexes;
    - build relationship edges from owner/member and type-reference facts;
    - implement deterministic exact, keyword and fuzzy search over SQLite queries.
-4. Implement the separate query CLI surface:
-   - `v8-sh index <syntax-helper-output-dir> --output <index.sqlite>`;
-   - `v8-sh get --index <index.sqlite> --name <name> --format text|json`;
-   - `v8-sh get --index <index.sqlite> --owner <type> --member <member> --format text|json`;
-   - `v8-sh search --index <index.sqlite> --query <text> --mode keywords|fuzzy --format text|json`;
-   - `v8-sh related --index <index.sqlite> --name <name> --format text|json`.
-5. Add a follow-up extraction/index task for structured Syntax Assistant links:
+4. Implement the `v8-context-hbk syntax` command group:
+   - `v8-context-hbk syntax export <shcntx.hbk> --output <dir>`;
+   - `v8-context-hbk syntax index <shcntx.hbk> --output <index.sqlite>`;
+   - `v8-context-hbk syntax get --index <index.sqlite> --name <name> --format text|json`;
+   - `v8-context-hbk syntax get --index <index.sqlite> --owner <type> --member <member> --format text|json`;
+   - `v8-context-hbk syntax search --index <index.sqlite> --query <text> --mode keywords|fuzzy --format text|json`;
+   - `v8-context-hbk syntax related --index <index.sqlite> --name <name> --format text|json`.
+5. Add default index path resolution:
+   - explicit `--index` or `--output`;
+   - `V8_CONTEXT_HBK_SYNTAX_INDEX`;
+   - `.v8-context-hbk/syntax/index.sqlite` under the current working directory.
+6. Add a follow-up extraction/index task for structured Syntax Assistant links:
    - preserve section member links where they help relationship queries;
    - extract "see also" links as structured relationships;
-   - keep those fields in a search/maintenance artifact, not in lean consumer export files.
-6. Add semantic search only after the deterministic local search path is accepted and measured.
+   - keep those fields in the search index or a search-specific service artifact, not in lean
+     consumer export files.
+7. Add semantic search only after the deterministic local search path is accepted and measured.
 
 ## Verification
 

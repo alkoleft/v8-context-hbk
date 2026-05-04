@@ -40,9 +40,10 @@ that document as a candidate plan, not as approval to skip the baseline measurem
 
 Fast Syntax Assistant lookup is a separate requirement from HBK extraction throughput.
 
-Query commands must use a prebuilt local export or search index and must not parse `shcntx_*.hbk`
-inside the query path. Index build commands may be slower and may reuse extraction/export pipelines,
-but interactive query commands must be optimized for repeated use.
+Query commands must use a prebuilt local search index and must not parse `shcntx_*.hbk` inside the
+query path. Index build commands may be slower and may reuse extraction pipelines, but interactive
+query commands must be optimized for repeated use. Building the index through a canonical JSON export
+directory is not a supported first-slice path.
 
 Provisional targets for the first indexed CLI slice on the target developer workstation:
 
@@ -60,6 +61,12 @@ The first query index storage must remain local and rebuildable. A SQLite/FTS5 i
 preferred implementation direction because it supports exact lookup, full-text search and bounded
 relationship traversal without running a service. External search engines or graph databases require
 a measured limitation in the SQLite-backed slice and a separate ADR update.
+
+Parallel query commands from different CLI processes must be supported as concurrent read-only
+SQLite readers over the same resolved index path. Index rebuild must not update the active index file
+in place: write a complete temporary database beside the target, validate it, then atomically replace
+the target path. Concurrent index writers must be serialized by a lock so readers observe either the
+previous complete index or the next complete index, not a partially written database.
 
 ## NFR-TEST-001: Testability
 

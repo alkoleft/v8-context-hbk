@@ -1,4 +1,4 @@
-# Syntax Assistant Query CLI Architecture
+# Syntax Assistant Query Command Architecture
 
 Status: draft architecture for FR-SH-SEARCH-001 and FR-SH-SEARCH-002. The final component split is
 governed by ADR-0004 once accepted.
@@ -9,22 +9,24 @@ The existing `syntax-helper --output` command is an extraction/export command. I
 `shcntx_*.hbk` files and produces canonical consumer JSON. That is the right boundary for batch
 export, but it is not an interactive search interface.
 
-The query CLI must retrieve API facts quickly and repeatedly. It must search already extracted or
-indexed data, not parse HBK books per query.
+The query command surface must retrieve API facts quickly and repeatedly. Index build commands read
+Syntax Assistant HBK sources once through the normal extraction pipeline and write a local index.
+Lookup, search and relationship commands search that prebuilt index and do not parse HBK books per
+query.
 
 ## Data Layers
 
 Keep these layers separate:
 
 1. Provenance-rich extraction model in `syntax-helper-model`.
-2. Lean consumer export in `hbk-export` for downstream data ingestion.
-3. Search document model for CLI lookup/ranking.
-4. Relationship graph model for owner/member/type/link traversal.
+2. Search document model for CLI lookup/ranking.
+3. Relationship graph model for owner/member/type/link traversal.
+4. Lean consumer export in `hbk-export` for downstream data ingestion.
 5. Optional semantic vectors as a later index extension.
 
-Do not make the lean consumer export carry every search/debug field. If the query CLI needs
-structured links or page provenance, add a search-specific indexed artifact or a maintenance export
-rather than weakening FR-EXPORT-001.
+Do not make the lean consumer export carry every search/debug field. If the query commands need
+structured links or page provenance, store those fields in the search index or a search-specific
+service artifact rather than weakening FR-EXPORT-001.
 
 ## Proposed Components
 
@@ -34,7 +36,7 @@ Planned library crate.
 
 Responsibilities:
 
-- read canonical export directories and build in-memory or on-disk search indexes;
+- build in-memory or on-disk search indexes from extracted Syntax Assistant API facts;
 - define `SearchDocument`, `SearchIndex`, `SearchQuery`, `SearchHit` and `RelationshipGraph`;
 - own the SQLite schema, migrations for provisional schema versions and FTS5 query construction;
 - normalize names, aliases and owner/member identifiers;
@@ -47,42 +49,59 @@ Non-responsibilities:
 
 - HBK container reading;
 - Syntax Assistant HTML parsing;
+- reading or importing canonical consumer export directories in T18, including secondary or
+  development-only modes;
 - CLI argument parsing and presentation;
 - embedding-provider integration in the first slice.
 
-### `syntax-helper-cli`
+### `v8-context-hbk` `syntax` command group
 
-Planned separate CLI surface for Syntax Assistant query workflows. The binary working name is
-`v8-sh` unless ADR-0004 chooses a different installed name.
+Planned command group inside the existing `v8-context-hbk` binary for Syntax Assistant export,
+index and query workflows.
 
 Responsibilities:
 
 - provide query-focused commands and readable errors;
 - present text and JSON outputs;
-- load an existing search index or canonical export directory;
+- resolve the effective search-index path;
+- load an existing search index for query commands;
+- connect HBK extraction to `syntax-helper-search` for index build commands;
 - avoid opening HBK files in query commands.
 
-The existing `v8-context-hbk` binary remains the verification/extraction CLI for `inspect`, `toc`,
-`page` and `syntax-helper --output`.
+The existing `v8-context-hbk` binary remains the single installed CLI. `inspect`, `toc` and `page`
+stay HBK inspection/navigation commands. `syntax export` is the Syntax Assistant batch export path,
+while `syntax index`, `syntax get`, `syntax search` and `syntax related` are the local index/query
+path.
 
 ## Command Shape
 
 Initial command shape:
 
 ```bash
-v8-sh index <syntax-helper-output-dir> --output <index.sqlite>
-v8-sh get --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
-v8-sh get --index <index.sqlite> --owner "НастройкиКомпоновкиДанных" --member "Отбор"
-v8-sh search --index <index.sqlite> --query "отбор скд" --mode keywords --format text
-v8-sh search --index <index.sqlite> --query "DataCompositionFilter" --mode fuzzy --format json
-v8-sh related --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
+v8-context-hbk syntax export <shcntx.hbk> --output <dir>
+v8-context-hbk syntax index <shcntx.hbk> --output <index.sqlite>
+v8-context-hbk syntax get --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
+v8-context-hbk syntax get --index <index.sqlite> --owner "НастройкиКомпоновкиДанных" --member "Отбор"
+v8-context-hbk syntax search --index <index.sqlite> --query "отбор скд" --mode keywords --format text
+v8-context-hbk syntax search --index <index.sqlite> --query "DataCompositionFilter" --mode fuzzy --format json
+v8-context-hbk syntax related --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
+```
+
+For repeated interactive use, query commands may omit `--index` and use the resolved default index
+path:
+
+```bash
+v8-context-hbk syntax index <shcntx.hbk>
+v8-context-hbk syntax get --name "ОтборКомпоновкиДанных"
+v8-context-hbk syntax search --query "отбор скд"
+v8-context-hbk syntax related --name "ОтборКомпоновкиДанных"
 ```
 
 Later command shape after the deterministic graph proves useful:
 
 ```bash
-v8-sh search --index <index.sqlite> --query "как создается отбор скд" --mode semantic
-v8-sh explain --index <index.sqlite> --query "как создается отбор скд" --format text
+v8-context-hbk syntax search --query "как создается отбор скд" --mode semantic
+v8-context-hbk syntax explain --query "как создается отбор скд" --format text
 ```
 
 Semantic or explain-style commands must be additive. They must not replace exact lookup or graph
@@ -93,15 +112,41 @@ queries.
 The first on-disk index is a rebuildable SQLite database:
 
 - `index.sqlite`: primary index artifact.
+- default path: `.v8-context-hbk/syntax/index.sqlite` relative to the current working directory;
 - Optional debug exports under `target/` may dump `documents.jsonl` or `relations.jsonl`, but those
   files are not the query contract.
 
-This is a derived artifact. It should be kept under `target/` during development and generated by
-UAT commands unless a future task explicitly adds small committed fixtures.
+This is a derived artifact. The default path is suitable for repeated local interactive use. UAT and
+development measurements may use explicit paths under `target/`. Index files are service data and
+must not be committed unless a future task explicitly adds small committed fixtures.
+
+### Index Path Resolution
+
+`syntax index`, `syntax get`, `syntax search` and `syntax related` resolve one effective index path.
+The first slice does not merge multiple index files.
+
+Resolution order:
+
+1. `--index <index.sqlite>` for query commands or `--output <index.sqlite>` for index build.
+2. `V8_CONTEXT_HBK_SYNTAX_INDEX`.
+3. `.v8-context-hbk/syntax/index.sqlite` under the current working directory.
+
+This overlay is path selection only. Multi-index overlays, where a project-specific index augments a
+base platform index, require a separate ranking and ambiguity contract before implementation.
+
+### Concurrent Access
+
+Query commands open the resolved SQLite index as read-only connections. Multiple `syntax get`,
+`syntax search` and `syntax related` processes may read the same index concurrently.
+
+`syntax index` must build the replacement database in a temporary file beside the target index,
+validate the completed database, then atomically rename it over the target path. It must serialize
+concurrent writers with a lock. Readers must observe either the previous complete index or the next
+complete index and must not observe a partially written database.
 
 ### Why SQLite First
 
-SQLite with FTS5 is the first storage choice because it keeps the query CLI local and zero-service
+SQLite with FTS5 is the first storage choice because it keeps the query path local and zero-service
 while covering three index shapes in one file:
 
 - exact lookup through indexed relational tables;
@@ -123,8 +168,8 @@ Key/value metadata:
 - `schema_version`;
 - `locale`;
 - `source_locale`;
-- `source_export_schema_version`;
-- `source_export_files`;
+- `source_hbk`;
+- `source_extraction_schema_version`;
 - `built_at`;
 - `builder_version`.
 
@@ -264,7 +309,8 @@ Semantic search:
 
 Before adding semantic search:
 
-1. Build a deterministic SQLite/FTS5 index from the current canonical export.
+1. Build a deterministic SQLite/FTS5 index from a Syntax Assistant HBK through the extraction
+   pipeline.
 2. Implement exact name and owner/member lookup.
 3. Implement keyword search over normalized names, aliases, signatures, type refs and descriptions.
 4. Implement relationship traversal over owner/member and type-reference edges stored in

@@ -17,7 +17,7 @@ the file-level export decided in ADR-0001.
 - Extract structured Syntax Assistant data from `shcntx_*.hbk`.
 - Read Syntax Assistant pages with TOC-aware classification and ownership so the internal platform
   facts represent the book hierarchy, not only local HTML path/title patterns.
-- Provide a separate Syntax Assistant query CLI for fast retrieval of extracted platform API facts,
+- Provide a Syntax Assistant query command surface for fast retrieval of extracted platform API facts,
   including exact lookup, description/keyword search and relationship exploration.
 - Preserve provenance for diagnostics: HBK file path, entity name, TOC path, HTML path and page
   title.
@@ -505,16 +505,22 @@ The system must provide exact lookup helpers for:
 - constructors by type name
 
 Search ranking is out of scope for these in-memory lookup helpers. FR-SH-SEARCH-001 covers the
-separate query CLI search behavior.
+indexed query command behavior.
 
-## FR-SH-SEARCH-001: Fast Syntax Assistant Query CLI
+## FR-SH-SEARCH-001: Fast Syntax Assistant Query Commands
 
-The system must provide a separate Syntax Assistant-focused CLI surface for interactive retrieval
-over extracted platform API facts.
+The system must provide a Syntax Assistant-focused command surface for interactive retrieval over
+extracted platform API facts.
 
-Query commands must operate on a prebuilt local export or search index. The first durable index
-format is expected to be a local SQLite/FTS5 database unless ADR-0004 is revised. Query commands
-must not open and parse large `shcntx_*.hbk` books on every query.
+Index build commands must read Syntax Assistant HBK sources through the normal extraction pipeline
+and write a prebuilt local search index. Query commands must operate only on that prebuilt search
+index. The first durable index format is expected to be a local SQLite/FTS5 database unless ADR-0004
+is revised. Query commands must not open and parse large `shcntx_*.hbk` books on every query.
+
+The query commands must provide a default index path so common lookup and search commands do not
+require `--index` every time. The default may be overlaid by an explicit command-line option or
+environment variable, but the first slice must resolve to one effective index path per command
+rather than merging multiple indexes.
 
 Required query modes:
 
@@ -533,7 +539,7 @@ after the local index and relationship graph prove useful on real extracted data
 Acceptance:
 
 - Exact lookup for `ОтборКомпоновкиДанных` or `DataCompositionFilter` returns the platform type and
-  its description from the Russian Syntax Assistant export.
+  its description from an index built from the Russian Syntax Assistant HBK.
 - Exact lookup for `НастройкиКомпоновкиДанных.Отбор` returns the property with type reference
   `ОтборКомпоновкиДанных`.
 - Keyword search for `отбор скд` returns data-composition filter facts ahead of unrelated filter
@@ -578,11 +584,11 @@ The initial CLI must support:
 v8-context-hbk inspect <book.hbk>
 v8-context-hbk toc <book.hbk> --format json
 v8-context-hbk page <book.hbk> --path <html-path>
-v8-context-hbk syntax-helper <shcntx.hbk> --output <dir>
+v8-context-hbk syntax export <shcntx.hbk> --output <dir>
 ```
 
 Acceptance:
 
 - Commands fail with non-zero exit and readable error on missing/corrupt input.
 - `inspect` prints entity names and basic metadata.
-- `syntax-helper` writes canonical JSON export files.
+- `syntax export` writes canonical JSON export files.

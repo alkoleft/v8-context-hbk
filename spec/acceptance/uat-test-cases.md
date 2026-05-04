@@ -90,7 +90,7 @@ Steps:
 
 ```bash
 rm -rf target/uat/shcntx-ru
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
 ```
 
 Expected result:
@@ -123,7 +123,7 @@ Steps:
 
 ```bash
 rm -rf target/uat/shcntx-en
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
 ```
 
 Expected result:
@@ -154,7 +154,7 @@ Steps:
 
 ```bash
 rm -rf target/uat/shcntx-ru
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
 test ! -f target/uat/shcntx-ru/global-contexts.json
 jq -e 'has("source_hbk") | not' target/uat/shcntx-ru/metadata.json
 jq -e '
@@ -261,18 +261,24 @@ Related requirements: FR-SH-SEARCH-001, NFR-QUERY-001.
 Preconditions:
 
 - `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
-- The Syntax Assistant export command is runnable.
-- The separate Syntax Assistant query CLI is runnable as `v8-sh` or the accepted ADR-0004 binary
-  name.
-- `target/uat/shcntx-ru` can be created or removed.
+- The `v8-context-hbk syntax index` command is runnable.
 - `target/uat/sh-search-ru.sqlite` can be created or removed.
+- `.v8-context-hbk/syntax/index.sqlite` can be created or removed.
 
 Steps:
 
 ```bash
-rm -rf target/uat/shcntx-ru target/uat/sh-search-ru.sqlite
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
-v8-sh index target/uat/shcntx-ru --output target/uat/sh-search-ru.sqlite
+rm -f target/uat/sh-search-ru.sqlite
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+
+rm -rf .v8-context-hbk
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
+test -f .v8-context-hbk/syntax/index.sqlite
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --name "ОтборКомпоновкиДанных" --format json
 ```
 
 Expected result:
@@ -281,13 +287,20 @@ Expected result:
 - The index artifact is a SQLite database.
 - The database contains schema metadata plus deterministic document, exact-name, FTS and
   relationship-edge data.
-- The index build records locale `ru`, source locale `ru` and source export schema version.
-- The query CLI does not require the HBK file path for later lookup commands.
+- The index build records locale `ru`, source locale `ru`, source HBK identity and index/extraction
+  schema version.
+- The index command uses the effective index path from `V8_CONTEXT_HBK_SYNTAX_INDEX` when `--output`
+  is omitted.
+- The index command creates `.v8-context-hbk/syntax/index.sqlite` when both `--output` and
+  `V8_CONTEXT_HBK_SYNTAX_INDEX` are absent.
+- The default-path lookup command resolves `.v8-context-hbk/syntax/index.sqlite` when `--index` and
+  `V8_CONTEXT_HBK_SYNTAX_INDEX` are absent.
+- Later query commands do not require the HBK file path.
 
 Cleanup:
 
-- `target/uat/shcntx-ru` and `target/uat/sh-search-ru.sqlite` are service data and may be deleted
-  after the run.
+- `target/uat/sh-search-ru.sqlite` and `.v8-context-hbk/` are service data and may be deleted after
+  the run.
 
 ## UAT-SH-005: Exact Syntax Assistant Lookup
 
@@ -302,9 +315,15 @@ Preconditions:
 Steps:
 
 ```bash
-v8-sh get --index target/uat/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных" --format json
-v8-sh get --index target/uat/sh-search-ru.sqlite --name "DataCompositionFilter" --format json
-v8-sh get --index target/uat/sh-search-ru.sqlite --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --name "ОтборКомпоновкиДанных" --format json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --name "DataCompositionFilter" --format json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
 ```
 
 Expected result:
@@ -315,6 +334,7 @@ Expected result:
   `DataCompositionFilter` and a non-empty description.
 - The owner/member command returns a type property whose type reference includes
   `ОтборКомпоновкиДанных`.
+- The commands resolve the index path from `V8_CONTEXT_HBK_SYNTAX_INDEX` when `--index` is omitted.
 - The commands return within the NFR-QUERY-001 provisional target when measured on the target
   workstation.
 
@@ -331,8 +351,12 @@ Preconditions:
 Steps:
 
 ```bash
-v8-sh search --index target/uat/sh-search-ru.sqlite --query "отбор скд" --mode keywords --format json
-v8-sh related --index target/uat/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных" --format json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax search --query "отбор скд" --mode keywords --format json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --name "ОтборКомпоновкиДанных" --format json
 ```
 
 Expected result:
@@ -348,6 +372,34 @@ Expected result:
 - The relationship path needed for filter item creation is discoverable through
   `КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` and `ЭлементОтбораКомпоновкиДанных`
   properties such as `ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and `Использование`.
+- The command returns within the NFR-QUERY-001 provisional target when measured on the target
+  workstation.
+
+## UAT-SH-015: Fuzzy Syntax Assistant Name Search
+
+Related use case: UC-SH-003.
+
+Related requirements: FR-SH-SEARCH-001, NFR-QUERY-001.
+
+Preconditions:
+
+- `target/uat/sh-search-ru.sqlite` exists from UAT-SH-004.
+
+Steps:
+
+```bash
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax search --query "ОтборКомпоновкиДаных" --mode fuzzy --format json
+```
+
+Expected result:
+
+- Exit code is `0`.
+- The result set includes the platform type fact with primary name `ОтборКомпоновкиДанных` and
+  alias `DataCompositionFilter`.
+- `ОтборКомпоновкиДанных` is ranked ahead of unrelated facts.
+- The command resolves the index path from `V8_CONTEXT_HBK_SYNTAX_INDEX` when `--index` is omitted.
 - The command returns within the NFR-QUERY-001 provisional target when measured on the target
   workstation.
 
@@ -367,8 +419,8 @@ Steps:
 
 ```bash
 rm -rf target/uat/shcntx-ru target/uat/shcntx-en
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
 ```
 
 Expected result:
@@ -681,8 +733,8 @@ Steps:
 
 ```bash
 rm -rf target/uat/shcntx-ru target/uat/shcntx-en
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
 ```
 
 Then inspect the exported records as the black-box observable result of Syntax Assistant reading.
@@ -822,8 +874,8 @@ Steps:
 
 ```bash
 rm -rf target/uat/shcntx-ru target/uat/shcntx-en
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/shcntx-ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/uat/shcntx-en
 ```
 
 Then verify the event split and owner-classification boundaries:
