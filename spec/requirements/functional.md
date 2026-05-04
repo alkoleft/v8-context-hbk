@@ -277,7 +277,7 @@ Parser provenance remains part of the internal model and diagnostics contract. `
 keeps enough source context for parser maintenance; consumer record files stay focused on platform
 facts.
 
-Required files for the schema v9 consumer export contract:
+Required files for the schema v10 consumer export contract:
 
 - `metadata.json`
 - `global-methods.json`
@@ -293,7 +293,7 @@ Required files for the schema v9 consumer export contract:
 - `enums.json`
 - `diagnostics.json`
 
-The current accepted consumer export schema is `schema_version: 9`. Each consumer record-family file
+The current accepted consumer export schema is `schema_version: 10`. Each consumer record-family file
 is a JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and `records`.
 `metadata.json` contains export-level metadata and file inventory; it must not expose source HBK
 paths or book hierarchy. `diagnostics.json` may keep parser source context because its audience is
@@ -331,10 +331,11 @@ Schema version 8 keeps the TOC-derived semantic model but narrows where `owner_p
 consumer records:
 
 - `owner_path` is emitted on records that represent an owning semantic context, such as
-  `platform-types.json`, `module-events.json.records[].module.owner_path`, type event owner
-  context and `query-tables.json`.
+  `platform-types.json`, `module-events.json.records[].module.owner_path` and
+  `query-tables.json`.
 - `owner_path` is not emitted on derivative records whose owner is already represented by `owner`,
-  including `type-methods.json`, `type-properties.json` and `constructors.json`.
+  including `type-events.json`, `type-methods.json`, `type-properties.json` and
+  `constructors.json`.
 - query table fields and parameters do not repeat `owner_path`; their table context is the enclosing
   `query-tables.json` record.
 
@@ -436,15 +437,19 @@ files are:
   to classify an event as module-level or type-level. Unknown event consumer records still omit raw
   HBK, TOC and HTML provenance; parser-maintenance diagnostics remain provenance-rich.
 
-Type event records expose source-backed owner context as `owner` and optional semantic
-`owner_path`. They must not expose an event-local `owner.kind` / `owner_kind`, `id`, `owner_ref`,
-source HBK path, TOC path, HTML path or page title.
+Type event records expose source-backed semantic owner context as a single `owner` string. When a
+terminal owner label is ambiguous in the source, `owner` is the deterministic localized semantic
+owner chain composed into one string; it must remain sufficient for exact `(owner, event name)`
+lookup without a separate `owner_path`. Type events must not expose an event-local `owner.kind` /
+`owner_kind`, `id`, `owner_ref`, source HBK path, TOC path, HTML path or page title.
 
-Event splitting must preserve the schema version 8 `owner_path` narrowing. It must not reintroduce
-`owner_path` on derivative type members, constructors or nested query table records. Event records
-may keep only the owner context that is explicitly defined for the event export contract; if exact
-event lookup later requires broader owner disambiguation, that requirement must be specified in the
-event task without weakening the schema version 8 derivative-record omission rule.
+Schema version 10 tightens the event split contract by removing semantic `owner_path` from
+`type-events.json`. Event splitting must preserve the schema version 8 `owner_path` narrowing. It
+must not reintroduce `owner_path` on type events, derivative type members, constructors or nested
+query table records. Event records may keep only the owner context that is explicitly defined for
+the event export contract; if exact event lookup later requires broader owner disambiguation, that
+requirement must be specified in the event task without weakening the schema version 8
+derivative-record omission rule.
 
 Owner classification belongs to the owner object/type model, not to a local event-only
 `owner.kind` field. Platform type/object records should expose a source-backed owner/object

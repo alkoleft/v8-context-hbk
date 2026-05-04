@@ -16,9 +16,10 @@ data-quality and performance conclusions live in `acceptance/baseline.md`,
 T35 was explicitly reprioritized before T18 by the 2026-05-01 review of TOC-aware Syntax Assistant
 reading gaps. T36 is now the first unchecked task before T18 because the query/search CLI must build
 on the accepted schema v8 query-table export shape rather than the temporary schema v7
-`table-fields.json` / `table-parameters.json` split. T37 and T38 follow T36 before T18 to remove
-the historical global-context event filename and classify event owners without introducing
-cross-cutting semantic IDs. T13-T17 and T19-T24 are archived historical tasks; their durable
+`table-fields.json` / `table-parameters.json` split. T37, T38 and T39 follow T36 before T18 to
+remove the historical global-context event filename, classify event owners without introducing
+cross-cutting semantic IDs and keep type-event `owner_path` out of consumer JSON. T13-T17 and
+T19-T24 are archived historical tasks; their durable
 performance conclusions live in `acceptance/baseline.md`, `implementation/performance-baseline-t13.md`
 and `implementation/performance-variants.md`.
 
@@ -348,9 +349,55 @@ Completion notes:
 - Verification passed with `cargo fmt`, `cargo test --workspace`, full RU/root UAT exports,
   UAT-SH-014 jq checks and `git diff --check`.
 
+### [x] T39. Keep type-event `owner_path` out of consumer JSON
+
+Depends on: T38. Explicitly reprioritized before T18 by the 2026-05-04 regression report that
+`owner_path` still appeared in JSON after the schema v8 narrowing.
+
+Spec refs:
+
+- FR-EXPORT-001
+- FR-SH-003
+- UAT-SH-011
+- UAT-SH-013
+- UAT-SH-014
+
+Scope:
+
+- Raise the canonical consumer JSON export to `schema_version: 10`.
+- Keep `owner_path` only on owning semantic records: `platform-types.json`, module event context
+  and query table records.
+- Remove `owner_path` from `type-events.json` records; keep type-event owner context as one
+  composed `owner` string that remains sufficient for exact owner/event lookup.
+- Preserve `owner_path` omission on type methods, type properties, constructors and nested query
+  table fields/parameters.
+- Update README and spec truth so the event split does not weaken the schema v8 omission rule.
+
+Expected artifacts:
+
+- Export adapter change removing serialized `owner_path` from type events.
+- Regression tests for context and streaming exporters.
+- Updated UAT checks and acceptance/source evidence.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- Full CLI export for `shcntx_ru.hbk`
+- Targeted jq checks for `schema_version: 10` and `type-events.json` owner_path absence
+- `git diff --check`
+
+Completion notes:
+
+- Removed serialized `owner_path` from `type-events.json` while preserving the same semantic context
+  in a composed `owner` string.
+- Updated consumer schema version to 10 and narrowed FR/UAT/README wording.
+- Verified with `cargo fmt`, `cargo test --workspace`, a fresh full RU CLI export and targeted jq
+  checks.
+
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
-Depends on: T17, T35, T36, T37 and T38 unless this task is explicitly reprioritized.
+Depends on: T17, T35, T36, T37, T38 and T39 unless this task is explicitly reprioritized.
 
 Spec refs:
 

@@ -187,7 +187,7 @@ fn records_envelope_json_is_parseable_and_non_empty() {
     let json = fs::read_to_string(&path).expect("record envelope must be readable");
     assert!(!json.is_empty());
     let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
-    assert_eq!(parsed["schema_version"], 9);
+    assert_eq!(parsed["schema_version"], 10);
     assert_eq!(parsed["locale"], "en");
     assert_eq!(parsed["source_locale"], "root");
     assert!(parsed.get("source_hbk").is_none());
@@ -229,7 +229,7 @@ fn exporter_writes_full_canonical_file_set() {
     }
 
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 9);
+    assert_eq!(metadata["schema_version"], 10);
     assert_eq!(metadata["locale"], "en");
     assert_eq!(metadata["source_locale"], "root");
     assert!(metadata.get("source_hbk").is_none());
@@ -599,7 +599,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
 
     assert!(!dir.join("global-contexts.json").exists());
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 9);
+    assert_eq!(metadata["schema_version"], 10);
     assert_no_keys(&metadata, &["source_hbk"]);
 
     let forbidden = [
@@ -725,11 +725,11 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     let type_event = &type_events["records"][0];
     assert_eq!(type_event["record_family"], "type_event");
     assert_eq!(type_event["branch_kind"], "managed_forms");
-    assert_eq!(type_event["owner"], "Расширение документа");
     assert_eq!(
-        type_event["owner_path"],
-        serde_json::json!(["Форма клиентского приложения", "Расширение документа"])
+        type_event["owner"],
+        "Форма клиентского приложения.Расширение документа"
     );
+    assert!(type_event.get("owner_path").is_none());
     assert!(type_event.get("module").is_none());
     assert!(type_event.get("owner_kind").is_none());
     let unknown_events = read_json(dir.join("unknown-events.json"));
@@ -879,6 +879,25 @@ fn streaming_export_writes_lean_records_without_full_context() {
         })
         .expect("global method must be writable");
     export
+        .global_context_event(model::GlobalContextEvent {
+            name: name("ПередЗаписью"),
+            semantic: semantic(
+                model::BranchKind::ManagedForms,
+                model::RecordFamily::TypeEvent,
+            )
+            .with_owner_path(vec![
+                name("Форма клиентского приложения"),
+                name("Расширение документа"),
+                name("События"),
+            ]),
+            module: model::ModuleEventContext::default(),
+            signatures: Vec::new(),
+            description: None,
+            facts: model::SectionFacts::default(),
+            source: source.clone(),
+        })
+        .expect("type event must be writable");
+    export
         .query_table(model::QueryTable {
             name: "Основная таблица".to_string(),
             semantic: semantic(
@@ -1003,6 +1022,13 @@ fn streaming_export_writes_lean_records_without_full_context() {
             .get("required")
             .is_none()
     );
+
+    let type_events = read_json(dir.join("type-events.json"));
+    assert_eq!(
+        type_events["records"][0]["owner"],
+        "Форма клиентского приложения.Расширение документа"
+    );
+    assert!(type_events["records"][0].get("owner_path").is_none());
 
     let platform_types = read_json(dir.join("platform-types.json"));
     assert!(platform_types["records"].as_array().unwrap().is_empty());

@@ -503,12 +503,12 @@ Preconditions:
 Steps:
 
 ```bash
-jq -e '.schema_version == 9 and (.records | length) == 47' target/uat/shcntx-ru/module-events.json
-jq -e '.schema_version == 9 and (.records | length) == 650' target/uat/shcntx-ru/type-events.json
-jq -e '.schema_version == 9 and (.records | length) > 0' target/uat/shcntx-ru/query-tables.json
-jq -e '.schema_version == 9 and (.records | length) == 47' target/uat/shcntx-en/module-events.json
-jq -e '.schema_version == 9 and (.records | length) == 650' target/uat/shcntx-en/type-events.json
-jq -e '.schema_version == 9 and (.records | length) > 0' target/uat/shcntx-en/query-tables.json
+jq -e '.schema_version == 10 and (.records | length) == 47' target/uat/shcntx-ru/module-events.json
+jq -e '.schema_version == 10 and (.records | length) == 650' target/uat/shcntx-ru/type-events.json
+jq -e '.schema_version == 10 and (.records | length) > 0' target/uat/shcntx-ru/query-tables.json
+jq -e '.schema_version == 10 and (.records | length) == 47' target/uat/shcntx-en/module-events.json
+jq -e '.schema_version == 10 and (.records | length) == 650' target/uat/shcntx-en/type-events.json
+jq -e '.schema_version == 10 and (.records | length) > 0' target/uat/shcntx-en/query-tables.json
 
 jq -e 'all(.records[]; .record_family == "module_event" and has("module"))' target/uat/shcntx-ru/module-events.json
 jq -e 'all(.records[]; .record_family == "module_event" and has("module"))' target/uat/shcntx-en/module-events.json
@@ -538,7 +538,7 @@ Expected result:
   `required`.
 - These records do not appear only as parser diagnostics.
 
-## UAT-SH-012: Lean Schema Version 9 Consumer JSON Shape
+## UAT-SH-012: Lean Schema Version 10 Consumer JSON Shape
 
 Related use case: UC-SH-001.
 
@@ -553,7 +553,7 @@ Steps:
 ```bash
 for file in target/uat/shcntx-ru/metadata.json target/uat/shcntx-en/metadata.json; do
   jq -e '
-    .schema_version == 9
+    .schema_version == 10
     and (.files | any(.[]; .file_name == "query-tables.json"))
     and (.files | any(.[]; .file_name == "module-events.json"))
     and (.files | any(.[]; .file_name == "type-events.json"))
@@ -617,9 +617,11 @@ done
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-methods.json
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-properties.json
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/constructors.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-events.json
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/type-methods.json
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/type-properties.json
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/constructors.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/type-events.json
 jq -e 'all(.records[]; (.fields // [] | all(.[]; (has("owner_path") | not) and (.name | type == "string"))) and (.parameters // [] | all(.[]; (has("owner_path") | not) and (has("required") | not) and (.name | type == "string"))))' target/uat/shcntx-ru/query-tables.json
 jq -e 'all(.records[]; (.fields // [] | all(.[]; (has("owner_path") | not) and (.name | type == "string"))) and (.parameters // [] | all(.[]; (has("owner_path") | not) and (has("required") | not) and (.name | type == "string"))))' target/uat/shcntx-en/query-tables.json
 jq -e '.records[] | select(.owner == "ТабличноеПоле" and .name.primary == "СоздатьКолонки") | .examples[0].text == "ЭлементыФормы.ТабличноеПоле1.Значение = ТаблицаДанных;\nЭлементыФормы.ТабличноеПоле1.СоздатьКолонки();"' target/uat/shcntx-ru/type-methods.json
@@ -631,7 +633,7 @@ jq -e '.records[] | select(.name.primary == "МенеджерИсторииРа�
 
 Expected result:
 
-- Consumer record-family files use `schema_version: 9`.
+- Consumer record-family files use `schema_version: 10`.
 - `metadata.json.files` contains `query-tables.json` and does not contain old schema files
   `enum-values.json`, `table-fields.json` or `table-parameters.json`. Physical stale files from a
   reused output directory are not part of the current export contract and are not deleted by the
@@ -639,7 +641,7 @@ Expected result:
 - Enum values are nested under owning enum records as `values`.
 - Nested enum value names keep the localized-name object shape with `primary` and optional `alias`.
 - Platform API consumer records do not emit `null` fields or empty arrays in any record family.
-- Derivative type member and constructor records do not emit `owner_path`.
+- Type event, derivative type member and constructor records do not emit `owner_path`.
 - Query table fields and parameters are nested under `query-tables.json` table records, use string
   `name` values, do not repeat `owner_path` and do not expose parameter `required`.
 - `usage` is a stable enum string.
@@ -699,9 +701,19 @@ jq -e '
   [.records[]
    | select(.name.primary == "ПередЗаписью"
             and .name.alias == "BeforeWrite")
-   | (.owner_path // []) | join(" > ")]
+   | .owner]
   | length > 1 and (unique | length) == length
 ' target/uat/shcntx-ru/type-events.json
+
+jq -e '
+  ([.records[] | [.owner, .name.primary, (.name.alias // "")] | @tsv] | length)
+  == ([.records[] | [.owner, .name.primary, (.name.alias // "")] | @tsv] | unique | length)
+' target/uat/shcntx-ru/type-events.json
+
+jq -e '
+  ([.records[] | [.owner, .name.primary, (.name.alias // "")] | @tsv] | length)
+  == ([.records[] | [.owner, .name.primary, (.name.alias // "")] | @tsv] | unique | length)
+' target/uat/shcntx-en/type-events.json
 
 jq -e '
   [.records[]
@@ -752,7 +764,7 @@ jq -e 'any(.records[]; .type_kind == "metadata_template" and .name.primary == "�
 
 jq -e '
   any(.records[];
-      ((.owner_path // []) | join(" > ") | test("Client application form"))
+      (.owner | test("Client application form"))
       and .record_family == "type_event"
       and (has("module") | not))
 ' target/uat/shcntx-en/type-events.json
@@ -811,7 +823,7 @@ Then verify the event split and owner-classification boundaries:
 ```bash
 for file in target/uat/shcntx-ru/metadata.json target/uat/shcntx-en/metadata.json; do
   jq -e '
-    .schema_version == 9
+    .schema_version == 10
     and (.files | all(.[]; .file_name != "global-context-events.json"))
     and (.files | any(.[]; .file_name == "module-events.json"))
     and (.files | any(.[]; .file_name == "type-events.json"))
@@ -836,6 +848,7 @@ jq -e 'all(.records[]; .record_family == "unknown_event")' target/uat/shcntx-ru/
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-methods.json
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-properties.json
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/constructors.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-events.json
 
 jq -e '([.records[] | .. | objects | keys[] | select(. == "owner_kind")] | length) == 0' target/uat/shcntx-ru/module-events.json
 jq -e '([.records[] | .. | objects | keys[] | select(. == "owner_kind")] | length) == 0' target/uat/shcntx-ru/type-events.json
@@ -872,8 +885,8 @@ Expected result:
   as `object_kind` and not to an event-only `owner.kind`, `owner_kind` or `object_kind` field.
   Source-backed owner classifications cover regular platform types, managed forms, form extensions
   and metadata objects when the TOC proves them.
-- Derivative type methods, type properties and constructors still omit `owner_path`; the event split
-  does not weaken the schema version 8 omission rule.
+- Type events, derivative type methods, type properties and constructors still omit `owner_path`;
+  the event split does not weaken the schema version 8 omission rule.
 
 Cleanup:
 

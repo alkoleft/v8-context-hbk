@@ -216,17 +216,20 @@ directory.
 
 Schema version 9 stops using the historical `global-context-events.json` filename for event facts.
 The split is `module-events.json`, `type-events.json` and `unknown-events.json`; `hbk-export` routes
-records by source-backed event classification without adding global semantic IDs. Type events may
-carry `owner` and semantic `owner_path` as event owner context, while module events carry `module`.
-Any owner/object kind needed by events belongs on the owner type/object model, not as a duplicated
-event-only taxonomy. The split preserves the schema version 8 rule that derivative records do not
-emit `owner_path`.
+records by source-backed event classification without adding global semantic IDs. Type events carry
+`owner` as a single semantic owner string, while module events carry `module`. Any owner/object kind
+needed by events belongs on the owner type/object model, not as a duplicated event-only taxonomy.
+The split preserves the schema version 8 rule that derivative records do not emit `owner_path`.
 
 T38 adds optional `object_kind` to `platform-types.json` only. `syntax-helper-extract` derives it
 from TOC-backed platform type context after `branch_kind` and `type_kind` are known; `hbk-export`
 passes it through when present. Event files do not expose `object_kind`, `owner_kind`, `id` or
 `owner_ref`, and derivative type members, constructors and nested query table records keep the
 schema version 8 `owner_path` omission rule.
+
+Schema version 10 removes semantic `owner_path` from `type-events.json`. `hbk-export` composes the
+type-event semantic owner chain into the single `owner` string so exact owner/event lookup remains
+unambiguous without adding a second owner field.
 
 ### v8-context-hbk-cli
 

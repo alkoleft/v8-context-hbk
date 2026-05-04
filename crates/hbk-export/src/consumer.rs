@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde::Serialize;
 
 use syntax_helper_model as model;
@@ -95,9 +97,7 @@ pub(crate) struct ConsumerEvent<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     module: Option<ConsumerModuleContext<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    owner: Option<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    owner_path: Vec<&'a str>,
+    owner: Option<Cow<'a, str>>,
     name: ConsumerLocalizedName<'a>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     signatures: Vec<ConsumerSignature<'a>>,
@@ -118,9 +118,6 @@ impl<'a> From<&'a model::GlobalContextEvent> for ConsumerEvent<'a> {
             owner: (event.semantic.record_family == model::RecordFamily::TypeEvent)
                 .then(|| type_event_owner(&type_owner_path))
                 .flatten(),
-            owner_path: (event.semantic.record_family == model::RecordFamily::TypeEvent)
-                .then_some(type_owner_path)
-                .unwrap_or_default(),
             name: ConsumerLocalizedName::from(&event.name),
             signatures: consumer_signatures(&event.signatures),
             description: event.description.as_deref(),
@@ -151,8 +148,12 @@ fn type_event_owner_path(semantic: &model::SemanticContext) -> Vec<&str> {
     owner_path
 }
 
-fn type_event_owner<'a>(owner_path: &[&'a str]) -> Option<&'a str> {
-    owner_path.last().copied()
+fn type_event_owner<'a>(owner_path: &[&'a str]) -> Option<Cow<'a, str>> {
+    match owner_path {
+        [] => None,
+        [owner] => Some(Cow::Borrowed(owner)),
+        _ => Some(Cow::Owned(owner_path.join("."))),
+    }
 }
 
 fn event_group_label(label: &str) -> bool {

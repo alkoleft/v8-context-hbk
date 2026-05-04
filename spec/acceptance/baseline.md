@@ -104,6 +104,11 @@ directories are service data unless promoted here.
   `metadata_object` 287/96. Event records still do not expose `owner_kind`, `object_kind`, `id`,
   `owner_ref` or raw parser provenance, and derivative type members, constructors and nested query
   table records still omit `owner_path`.
+- T39 changed the canonical consumer JSON export to `schema_version: 10` and removed semantic
+  `owner_path` from `type-events.json`. Full debug CLI export for `shcntx_ru.hbk` preserved the
+  T37/T38 record-family counts and kept `owner_path` only on owning records such as platform types,
+  module event context and query table records. Type-event owner context is composed into the
+  single `owner` string, preserving exact uniqueness by `(owner, name.primary, name.alias)`.
 
 ## Post-T29 Runtime Regression To Fix
 

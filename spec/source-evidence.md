@@ -496,6 +496,12 @@ records carry `owner` and semantic `owner_path` as event owner context only; sou
 owner/object classification for the owning platform type/object records remains a separate T38
 task.
 
+T39 changed the canonical export to schema version 10 and removed `owner_path` from
+`type-events.json`. The fresh Russian export kept 47 module events, 650 type events and 0 unknown
+events. Type-event owner context is now composed into a single `owner` string, so
+`type-events.json`, type methods, type properties, constructors and nested query table records omit
+`owner_path` while type events remain unique by `(owner, name.primary, name.alias)`.
+
 ## Owner/Object Classification Findings
 
 T38 implemented source-backed `object_kind` classification on `platform-types.json` records only.
