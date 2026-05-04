@@ -41,7 +41,7 @@ Otherwise reconcile the specification files before implementing.
 - `archive/`: completed milestones and task history moved out of the active ledger
   (`completed-tasks-t0-t12.md`, `completed-tasks-t13-t17-t19-t24.md`,
   `completed-tasks-t25-t34.md`, `completed-tasks-t41-t47.md`,
-  `implementation-todo-2026-05-04.md`).
+  `completed-tasks-t48-t56.md`, `implementation-todo-2026-05-04.md`).
 
 ## External Files
 
