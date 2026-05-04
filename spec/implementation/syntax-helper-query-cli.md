@@ -1,13 +1,14 @@
 # Syntax Assistant Query Command Architecture
 
-Status: draft architecture for FR-SH-SEARCH-001 and FR-SH-SEARCH-002. The final component split is
-governed by ADR-0004 once accepted.
+Status: implemented first slice for FR-SH-SEARCH-001 and FR-SH-SEARCH-002. The component split is
+governed by accepted ADR-0004.
 
 ## Problem
 
-The existing `syntax-helper --output` command is an extraction/export command. It reads large
-`shcntx_*.hbk` files and produces canonical consumer JSON. That is the right boundary for batch
-export, but it is not an interactive search interface.
+The previous `syntax-helper --output` command was an extraction/export command. T18 moved that
+batch path to `syntax export`; it still reads large `shcntx_*.hbk` files and produces canonical
+consumer JSON. That is the right boundary for batch export, but it is not an interactive search
+interface.
 
 The query command surface must retrieve API facts quickly and repeatedly. Index build commands read
 Syntax Assistant HBK sources once through the normal extraction pipeline and write a local index.
@@ -32,7 +33,7 @@ service artifact rather than weakening FR-EXPORT-001.
 
 ### `syntax-helper-search`
 
-Planned library crate.
+Implemented library crate.
 
 Responsibilities:
 
@@ -273,8 +274,10 @@ The first relationship search is not a general graph database.
 
 Rules:
 
-- traverse only bounded depth, default `1`, maximum `3`;
-- prefer structured edges over `mentions`;
+- traverse only bounded depth, default `5`, maximum `5` for the first SKD-filter path accepted by
+  UAT-SH-006;
+- traverse directed outgoing edges from the selected root fact;
+- prefer structured owner/type-reference/return edges over future `mentions`;
 - emit deterministic path order by edge weight, edge kind and stable document id;
 - include enough edge labels to explain why a fact is related;
 - do not use graph algorithms that require an external graph engine in the first slice.
@@ -319,3 +322,6 @@ Before adding semantic search:
 
 Semantic search is intentionally deferred until the local deterministic search path is measured and
 useful.
+
+T18 implementation note: owner/member and type-reference edges were sufficient for UAT-SH-006 on
+`shcntx_ru.hbk`; no immediate structured "see also" extraction follow-up was required.

@@ -6,6 +6,7 @@ members = [
     "crates/hbk-export",
     "crates/syntax-helper-extract",
     "crates/syntax-helper-model",
+    "crates/syntax-helper-search",
     "crates/v8-context-hbk-cli",
 ]
 resolver = "3"
@@ -22,8 +23,11 @@ hbk-docs = { path = "crates/hbk-docs" }
 hbk-export = { path = "crates/hbk-export" }
 memmap2 = "0.9.9"
 scraper = "0.26.0"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+strsim = "0.11.1"
 syntax-helper-extract = { path = "crates/syntax-helper-extract" }
 syntax-helper-model = { path = "crates/syntax-helper-model" }
+syntax-helper-search = { path = "crates/syntax-helper-search" }
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

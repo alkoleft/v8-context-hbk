@@ -243,8 +243,8 @@ Run when the target-platform fixtures exist:
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --path "$(cat tests/fixtures/known-pages/fmtdui_ru.page)"
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax-helper /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en
 ```
 
 Negative CLI smoke:
@@ -960,3 +960,36 @@ The project is successful for the first delivery when:
 - downstream tooling can consume canonical JSON without reading HBK directly;
 - stable API/export commitments remain deferred until parser evidence and consumer feedback justify
   them.
+
+## T18 Query CLI Baseline
+
+T18 implemented the first local Syntax Assistant query slice:
+
+- `syntax-helper-search` builds a rebuildable SQLite/FTS5 index directly from typed extraction
+  results;
+- `v8-context-hbk syntax index` writes `index.sqlite` through a temporary replacement file and
+  writer lock;
+- `syntax get`, `syntax search` and `syntax related` open the index read-only and do not parse
+  `shcntx_*.hbk` on the query path;
+- default index path resolution is `--index` / `--output`, then
+  `V8_CONTEXT_HBK_SYNTAX_INDEX`, then `.v8-context-hbk/syntax/index.sqlite`;
+- deterministic JSON output was verified by repeated `cmp` checks for exact lookup, keyword search,
+  fuzzy search and relationship traversal.
+
+Measured on `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` in debug build:
+
+| Command mode | Measurement |
+| --- | ---: |
+| `syntax index` build | 40.303-43.012 s |
+| exact lookup | 0.00 s |
+| keyword search | 0.11-0.12 s |
+| fuzzy search | 0.44-0.58 s |
+| relationship search | 0.07-0.08 s |
+
+The generated index contained 25,594 searchable documents, including event facts. UAT-SH-004,
+UAT-SH-005, UAT-SH-006 and
+UAT-SH-015 passed against `target/uat/sh-search-ru.sqlite`; UAT-SH-004 default-path resolution also
+created `.v8-context-hbk/syntax/index.sqlite` and resolved it from `syntax get` without `--index`.
+The SKD relationship output included constructor `Новый ОтборКомпоновкиДанных()`, `Элементы`,
+`Добавить`, and filter-item fields `ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and
+`Использование`.

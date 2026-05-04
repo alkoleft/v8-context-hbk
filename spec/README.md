@@ -66,5 +66,6 @@ acceptance baseline, task ledger entry or ADR.
 
 The current provisional Syntax Assistant consumer JSON contract is `schema_version: 11`.
 `FR-EXPORT-001` owns the exact record-family shape; `acceptance/baseline.md` records the latest
-validated counts and schema-changing task conclusions. The next unchecked implementation task is
-the Syntax Assistant query command work unless a narrower regression is explicitly reprioritized.
+validated counts, schema-changing task conclusions and T18 query-index baseline. There is no
+unchecked active implementation task after T18; add the next scoped task to
+`IMPLEMENTATION_TODO.md` before implementing new behavior.

@@ -11,11 +11,12 @@ context boundaries and keeps CLI/export behavior provisional.
 4. `syntax-helper-model`: provenance-rich platform context domain model and lookup helpers.
 5. `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized page parsers.
 6. `hbk-export`: canonical JSON export adapters.
-7. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
+7. `syntax-helper-search`: local SQLite/FTS5 index and query library for Syntax Assistant exact
+   lookup, keyword/fuzzy search and bounded relationship traversal.
+8. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
 
-Planned search/query components are described in
-[`syntax-helper-query-cli.md`](syntax-helper-query-cli.md). They are not current workspace members
-until an implementation task adds them.
+Search/query components are described in
+[`syntax-helper-query-cli.md`](syntax-helper-query-cli.md).
 
 ## Dependency Rules
 
@@ -25,10 +26,12 @@ until an implementation task adds them.
 - `syntax-helper-model` must not depend on HBK container, HTML parsing or CLI code.
 - `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages.
 - `hbk-export` owns output adapters for the Rust domain model.
+- `syntax-helper-search` owns search-index schema, ranking and relationship traversal. It must not
+  parse HBK files or perform CLI presentation.
 - `v8-context-hbk-cli` wires commands and error presentation only.
-- Planned Syntax Assistant search/query code must not make `hbk-export` carry search-only fields in
-  the lean consumer export. Use a search-specific index when structured links or provenance are
-  required for query workflows.
+- Syntax Assistant search/query code must not make `hbk-export` carry search-only fields in the
+  lean consumer export. Use a search-specific index when structured links or provenance are required
+  for query workflows.
 
 ## Public Contract Policy
 
@@ -249,7 +252,7 @@ The installed binary name remains `v8-context-hbk`. Accepted inspection/navigati
 `inspect`, `toc` and `page`. The target Syntax Assistant command group for new export/index/query
 work is `syntax`.
 
-### Planned Syntax Assistant query commands
+### Syntax Assistant query commands
 
 Owns FR-SH-SEARCH-001 and FR-SH-SEARCH-002 after implementation.
 
@@ -258,6 +261,16 @@ interactive commands. They must not parse `shcntx_*.hbk` in exact lookup, text s
 or relationship search commands. Index build commands may parse Syntax Assistant HBK sources through
 the extraction pipeline and must pass typed extracted facts into the search/index library rather
 than building from consumer JSON export directories.
+
+Implemented first slice:
+
+- `syntax-helper-search` owns `index.sqlite` schema version `1`, read-only query opens, FTS5 keyword
+  search, prefix-bounded fuzzy candidate selection, exact name/alias and owner/member lookup, and
+  directed owner/type-reference relationship traversal.
+- `v8-context-hbk syntax export/index/get/search/related` owns CLI argument parsing, index path
+  resolution and text/JSON presentation.
+- `syntax index` builds a replacement index beside the target file and atomically renames it after
+  validation. Concurrent writers are serialized by a lock file.
 
 ## Implementation Dependencies
 

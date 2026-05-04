@@ -14,3 +14,5 @@ hbk-container.workspace = true
 hbk-export.workspace = true
 serde_json.workspace = true
 syntax-helper-extract.workspace = true
+syntax-helper-model.workspace = true
+syntax-helper-search.workspace = true

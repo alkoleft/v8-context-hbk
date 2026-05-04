@@ -11,8 +11,10 @@ Status: Accepted for the current provisional HBK extraction stage.
 `v8-context-hbk` remains a standalone Rust workspace for now.
 
 The first integration surface for `v8-context` is a file-level normalized export produced by
-`v8-context-hbk syntax-helper --output`, not a workspace merge and not direct HBK parsing from
-`v8-context` query code.
+`v8-context-hbk syntax export --output`, not a workspace merge and not direct HBK parsing from
+`v8-context` query code. Historical T9/T17-T24 evidence used the earlier `syntax-helper --output`
+command name; ADR-0004 and T18 moved the current Syntax Assistant command surface under
+`syntax export/index/get/search/related` without changing this file-level integration boundary.
 
 This repository should continue to own HBK container reading, help-book navigation, Syntax
 Assistant parsing, parser diagnostics and the provisional canonical JSON export. `v8-context`
@@ -99,7 +101,7 @@ constraints on the internal model. No current consumer requires the legacy shape
 - `v8-context` can define its normalized platform model without depending on this crate's internal
   Rust structs or provisional JSON layout.
 - The next integration task should be a consumer-side importer or adapter that reads the
-  `syntax-helper --output` directory and maps it into the `v8-context` platform model store.
+  `syntax export --output` directory and maps it into the `v8-context` platform model store.
 - That adapter must decide how to represent current parser limitations, missing HBK availability
   normalization, source freshness metadata and localization merge rules.
 
@@ -117,7 +119,7 @@ constraints on the internal model. No current consumer requires the legacy shape
 ## Implementation Plan
 
 - Keep this repository independently buildable and testable.
-- Keep `syntax-helper --output` as the first integration surface.
+- Keep `syntax export --output` as the first integration surface.
 - Keep the concrete export shape aligned with current FR-EXPORT-001 and later ADRs; this ADR
   preserves the file-level integration boundary, not the historical T9 field list.
 - Keep HBK container reading, TOC/page navigation, Syntax Assistant extraction and export ownership

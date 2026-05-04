@@ -277,6 +277,8 @@ rm -rf .v8-context-hbk
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk
 test -f .v8-context-hbk/syntax/index.sqlite
+test ! -e .v8-context-hbk/syntax/index.sqlite-wal
+test ! -e .v8-context-hbk/syntax/index.sqlite-shm
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax get --name "ОтборКомпоновкиДанных" --format json
 ```
@@ -293,6 +295,8 @@ Expected result:
   is omitted.
 - The index command creates `.v8-context-hbk/syntax/index.sqlite` when both `--output` and
   `V8_CONTEXT_HBK_SYNTAX_INDEX` are absent.
+- The completed replacement index does not leave active SQLite WAL/SHM sidecars beside the default
+  artifact.
 - The default-path lookup command resolves `.v8-context-hbk/syntax/index.sqlite` when `--index` and
   `V8_CONTEXT_HBK_SYNTAX_INDEX` are absent.
 - Later query commands do not require the HBK file path.
@@ -317,10 +321,11 @@ Steps:
 ```bash
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
-  syntax get --name "ОтборКомпоновкиДанных" --format json
+  syntax get --name "ОтборКомпоновкиДанных" --format json > target/uat/get-filter-primary.json
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
-  syntax get --name "DataCompositionFilter" --format json
+  syntax get --name "DataCompositionFilter" --format json > target/uat/get-filter-alias.json
+cmp target/uat/get-filter-primary.json target/uat/get-filter-alias.json
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax get --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
@@ -330,6 +335,8 @@ Expected result:
 
 - Exit code is `0`.
 - The first two commands return the same platform type fact.
+- The unqualified exact lookup does not mix same-name owned member facts into the returned platform
+  type result.
 - The returned type fact contains primary name `ОтборКомпоновкиДанных`, alias
   `DataCompositionFilter` and a non-empty description.
 - The owner/member command returns a type property whose type reference includes
@@ -353,10 +360,18 @@ Steps:
 ```bash
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
-  syntax search --query "отбор скд" --mode keywords --format json
+  syntax search --query "отбор скд" --mode keywords --format json > target/uat/search-filter-keywords-1.json
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
-  syntax related --name "ОтборКомпоновкиДанных" --format json
+  syntax search --query "отбор скд" --mode keywords --format json > target/uat/search-filter-keywords-2.json
+cmp target/uat/search-filter-keywords-1.json target/uat/search-filter-keywords-2.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --name "ОтборКомпоновкиДанных" --format json > target/uat/related-filter-1.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --name "ОтборКомпоновкиДанных" --format json > target/uat/related-filter-2.json
+cmp target/uat/related-filter-1.json target/uat/related-filter-2.json
 ```
 
 Expected result:
@@ -390,7 +405,11 @@ Steps:
 ```bash
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
-  syntax search --query "ОтборКомпоновкиДаных" --mode fuzzy --format json
+  syntax search --query "ОтборКомпоновкиДаных" --mode fuzzy --format json > target/uat/search-filter-fuzzy-1.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax search --query "ОтборКомпоновкиДаных" --mode fuzzy --format json > target/uat/search-filter-fuzzy-2.json
+cmp target/uat/search-filter-fuzzy-1.json target/uat/search-filter-fuzzy-2.json
 ```
 
 Expected result:
@@ -399,6 +418,7 @@ Expected result:
 - The result set includes the platform type fact with primary name `ОтборКомпоновкиДанных` and
   alias `DataCompositionFilter`.
 - `ОтборКомпоновкиДанных` is ranked ahead of unrelated facts.
+- Repeated JSON output is byte-identical for the same index and query.
 - The command resolves the index path from `V8_CONTEXT_HBK_SYNTAX_INDEX` when `--index` is omitted.
 - The command returns within the NFR-QUERY-001 provisional target when measured on the target
   workstation.
