@@ -395,6 +395,12 @@ V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax related --name "ОтборКомпоновкиДанных" --format json > target/uat/related-filter-2.json
 cmp target/uat/related-filter-1.json target/uat/related-filter-2.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax constructors "HTTPСоединение" > target/uat/constructors-httpconnection.txt
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax constructors "HTTPСоединение" --details > target/uat/constructors-httpconnection-details.txt
 ```
 
 Expected result:
@@ -410,6 +416,10 @@ Expected result:
 - The relationship path needed for filter item creation is discoverable through
   `КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` and `ЭлементОтбораКомпоновкиДанных`
   properties such as `ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and `Использование`.
+- Constructor output for `HTTPСоединение` contains its overload signatures directly, including the
+  overload with `<Таймаут>`, `<ЗащищенноеСоединение>` and `<ИспользоватьАутентификациюОС>`.
+- Constructor details output still contains the overload signatures and adds available owner and
+  description context without requiring JSON post-processing.
 - The command returns within the NFR-QUERY-001 provisional target when measured on the target
   workstation.
 

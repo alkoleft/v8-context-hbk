@@ -70,6 +70,16 @@ enum SyntaxCommand {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
+    Constructors {
+        #[arg(value_name = "TYPE")]
+        name: String,
+        #[arg(long, value_name = "INDEX_SQLITE")]
+        index: Option<PathBuf>,
+        #[arg(long)]
+        details: bool,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
     Search {
         #[arg(long, value_name = "INDEX_SQLITE")]
         index: Option<PathBuf>,
@@ -172,6 +182,12 @@ fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
             member,
             format,
         } => syntax_get(index, name, owner, member, format),
+        SyntaxCommand::Constructors {
+            index,
+            name,
+            details,
+            format,
+        } => syntax_constructors(index, &name, details, format),
         SyntaxCommand::Search {
             index,
             query,
@@ -278,6 +294,17 @@ fn syntax_get(
     print_hits("get", &hits, format)
 }
 
+fn syntax_constructors(
+    index: Option<PathBuf>,
+    name: &str,
+    details: bool,
+    format: OutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let index = SearchIndex::open_read_only(resolve_index_path(index))?;
+    let hits = index.constructors_by_name(name)?;
+    print_constructor_hits(&hits, details, format)
+}
+
 fn syntax_search(
     index: Option<PathBuf>,
     query: &str,
@@ -377,6 +404,54 @@ fn print_hits(
             println!("{}", serde_json::to_string_pretty(hits)?);
             Ok(())
         }
+    }
+}
+
+fn print_constructor_hits(
+    hits: &[SearchHit],
+    details: bool,
+    format: OutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match format {
+        OutputFormat::Text => {
+            if hits.is_empty() {
+                println!("constructors: no matches");
+            }
+            for hit in hits {
+                print_constructor_text_hit(hit, details);
+            }
+            Ok(())
+        }
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(hits)?);
+            Ok(())
+        }
+    }
+}
+
+fn print_constructor_text_hit(hit: &SearchHit, details: bool) {
+    if hit.document.signatures.is_empty() {
+        println!("{}", hit.document.name.primary);
+    } else {
+        for signature in &hit.document.signatures {
+            println!("{signature}");
+        }
+    }
+
+    if !details {
+        return;
+    }
+
+    if let Some(owner) = &hit.document.owner {
+        println!("  owner: {}", display_name(owner));
+    }
+    if let Some(alias) = &hit.document.name.alias {
+        println!("  alias: {alias}");
+    }
+    if let Some(description) = &hit.document.description {
+        println!("  {description}");
+    } else if !hit.document.preview.is_empty() {
+        println!("  {}", hit.document.preview);
     }
 }
 

@@ -1081,3 +1081,16 @@ required extra rowid mapping on the query path. Read-only checks on the final T4
 indexes found search-index schema version `2`, matching `documents` / `document_search` /
 `document_fts` counts and zero broken relation endpoints. A representative release keyword query
 against the rebuilt Russian index measured `0.03 s`.
+
+T45 added the direct constructor lookup command as a query-CLI usability wrapper over existing
+owner-to-constructor relations. `v8-context-hbk syntax constructors <TYPE>` opens the same resolved
+read-only index as `syntax get/search/related`; text output prints constructor signatures directly,
+while JSON output returns the full deterministic search-hit records. The release binary was verified
+against the default local index with `HTTPСоединение`, returning both accepted constructor overloads
+including the overload with `<Таймаут>`, `<ЗащищенноеСоединение>` and
+`<ИспользоватьАутентификациюОС>`.
+
+T46 added opt-in detailed text output for constructor lookup. `v8-context-hbk syntax constructors
+<TYPE> --details` keeps the same resolved read-only index path and prints each constructor signature
+with available owner and description context. Signature-only text output remains the default, and
+JSON output remains the full deterministic search-hit records.

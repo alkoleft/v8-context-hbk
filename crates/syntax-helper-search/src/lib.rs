@@ -585,6 +585,13 @@ impl SearchIndex {
         self.get_by_key(&key)
     }
 
+    pub fn constructors_by_name(&self, name: &str) -> Result<Vec<SearchHit>, SearchError> {
+        let Some(root) = self.root_by_name(name)? else {
+            return Ok(Vec::new());
+        };
+        self.owned_documents_by_kind(&root.document.id, "constructor", 100)
+    }
+
     pub fn search(
         &self,
         query: &str,
@@ -603,24 +610,9 @@ impl SearchIndex {
         max_depth: u32,
         limit: usize,
     ) -> Result<Vec<RelatedHit>, SearchError> {
-        let roots = self.get_by_name(name)?;
-        let Some(root) = roots.first() else {
+        let Some(root) = self.root_by_name(name)? else {
             return Ok(Vec::new());
         };
-        if roots.len() > 1 {
-            let ownerless = roots
-                .iter()
-                .filter(|hit| hit.document.owner.is_none())
-                .cloned()
-                .collect::<Vec<_>>();
-            if ownerless.len() == 1 {
-                return self.related(&ownerless[0].document.id, max_depth.min(5), limit);
-            }
-            return Err(SearchError::AmbiguousLookup {
-                name: name.to_string(),
-                matches: roots.len(),
-            });
-        }
         self.related(&root.document.id, max_depth.min(5), limit)
     }
 
@@ -664,6 +656,59 @@ impl SearchIndex {
         } else {
             Ok(ownerless)
         }
+    }
+
+    fn root_by_name(&self, name: &str) -> Result<Option<SearchHit>, SearchError> {
+        let roots = self.get_by_name(name)?;
+        let Some(root) = roots.first() else {
+            return Ok(None);
+        };
+        if roots.len() > 1 {
+            let ownerless = roots
+                .iter()
+                .filter(|hit| hit.document.owner.is_none())
+                .cloned()
+                .collect::<Vec<_>>();
+            if ownerless.len() == 1 {
+                return Ok(ownerless.into_iter().next());
+            }
+            return Err(SearchError::AmbiguousLookup {
+                name: name.to_string(),
+                matches: roots.len(),
+            });
+        }
+        Ok(Some(root.clone()))
+    }
+
+    fn owned_documents_by_kind(
+        &self,
+        owner_id: &str,
+        kind: &str,
+        limit: usize,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
+                 d.owner_alias, d.signature_text, d.parameter_text, d.type_names, \
+                 d.return_names, d.description, d.preview \
+                 FROM relations r \
+                 JOIN documents d ON d.id = r.target_id \
+                 WHERE r.source_id = ?1 AND r.edge_kind = 'owns' AND d.kind = ?2 \
+                 ORDER BY d.kind_priority, d.id \
+                 LIMIT ?3",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map(params![owner_id, kind, limit as i64], |row| {
+                Ok(SearchHit {
+                    document: document_from_row(row)?,
+                    score: 0,
+                })
+            })
+            .map_err(|source| self.sqlite(source))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))
     }
 
     fn keyword_search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, SearchError> {
@@ -2485,6 +2530,15 @@ mod tests {
         assert!(names.contains(&"Элементы"));
         assert!(names.contains(&"Добавить"));
         assert!(names.contains(&"ЛевоеЗначение"));
+
+        let constructors = index
+            .constructors_by_name("ОтборКомпоновкиДанных")
+            .expect("constructor lookup must work");
+        assert_eq!(constructors.len(), 1);
+        assert_eq!(
+            constructors[0].document.signatures,
+            ["Новый ОтборКомпоновкиДанных()"]
+        );
     }
 
     #[test]

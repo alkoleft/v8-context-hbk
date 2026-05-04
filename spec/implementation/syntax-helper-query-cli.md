@@ -83,6 +83,8 @@ v8-context-hbk syntax export <shcntx.hbk> --output <dir>
 v8-context-hbk syntax index <shcntx.hbk> --output <index.sqlite>
 v8-context-hbk syntax get --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
 v8-context-hbk syntax get --index <index.sqlite> --owner "НастройкиКомпоновкиДанных" --member "Отбор"
+v8-context-hbk syntax constructors --index <index.sqlite> "HTTPСоединение"
+v8-context-hbk syntax constructors --index <index.sqlite> "HTTPСоединение" --details
 v8-context-hbk syntax search --index <index.sqlite> --query "отбор скд" --mode keywords --format text
 v8-context-hbk syntax search --index <index.sqlite> --query "DataCompositionFilter" --mode fuzzy --format json
 v8-context-hbk syntax related --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
@@ -94,6 +96,8 @@ path:
 ```bash
 v8-context-hbk syntax index <shcntx.hbk>
 v8-context-hbk syntax get --name "ОтборКомпоновкиДанных"
+v8-context-hbk syntax constructors "HTTPСоединение"
+v8-context-hbk syntax constructors "HTTPСоединение" --details
 v8-context-hbk syntax search --query "отбор скд"
 v8-context-hbk syntax related --name "ОтборКомпоновкиДанных"
 ```
@@ -123,8 +127,8 @@ must not be committed unless a future task explicitly adds small committed fixtu
 
 ### Index Path Resolution
 
-`syntax index`, `syntax get`, `syntax search` and `syntax related` resolve one effective index path.
-The first slice does not merge multiple index files.
+`syntax index`, `syntax get`, `syntax constructors`, `syntax search` and `syntax related` resolve
+one effective index path. The first slice does not merge multiple index files.
 
 Resolution order:
 
@@ -138,7 +142,8 @@ base platform index, require a separate ranking and ambiguity contract before im
 ### Concurrent Access
 
 Query commands open the resolved SQLite index as read-only connections. Multiple `syntax get`,
-`syntax search` and `syntax related` processes may read the same index concurrently.
+`syntax constructors`, `syntax search` and `syntax related` processes may read the same index
+concurrently.
 
 `syntax index` must build the replacement database in a temporary file beside the target index,
 clean stale temporary database artifacts before opening that replacement file, validate the

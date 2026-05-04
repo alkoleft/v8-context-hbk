@@ -15,10 +15,81 @@ Current status: T35-T40 and the T18 first slice are archived historical tasks. T
 export, schema, data-quality, performance and query-search conclusions live in
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md` and `implementation/syntax-helper-query-cli.md`.
-There are no unchecked active implementation tasks after T44. T44 captured the measured
-query-index throughput slice for bulk FTS build after T43 showed that prepared statements,
-deferred ordinary indexes and temp rebuild pragmas help but do not close the gap with
-`syntax export`.
+There are no unchecked active implementation tasks after T46. T46 captured a narrow query-CLI
+usability slice for detailed constructor text output.
+
+### [x] T46. Add detailed text output for constructor lookup
+
+Spec refs:
+
+- FR-SH-SEARCH-001
+- UAT-SH-006
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Add an opt-in detailed text mode to `syntax constructors <TYPE>`.
+- Keep signature-only text output as the default for fast argument-order lookup.
+- Include available owner and description context in detailed text output.
+- Do not change JSON output, SQLite schema, export schema or constructor parsing.
+
+Expected artifacts:
+
+- `--details` CLI flag for `v8-context-hbk syntax constructors <TYPE>`.
+- README/UAT/baseline updates for the detailed constructor workflow.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- `./target/release/v8-context-hbk syntax constructors "HTTPСоединение" --details`
+
+Completion notes:
+
+- Added `--details` to constructor lookup. Text mode now remains compact by default, while detailed
+  mode prints each constructor signature with owner and description when available.
+- JSON output remains the full search-hit records and is not changed by `--details`.
+
+### [x] T45. Add direct Syntax Assistant constructor lookup command
+
+Spec refs:
+
+- FR-SH-SEARCH-001
+- FR-SH-SEARCH-002
+- UAT-SH-006
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Add a direct CLI path for retrieving constructor signatures by type name from the existing local
+  search index.
+- Preserve the current index schema and relationship graph; this is a convenience query over existing
+  constructor documents, not a new export or storage contract.
+- Text output should print constructor signatures directly so users do not need `syntax related |
+  jq` for the common "show constructor signatures" workflow.
+- JSON output should remain deterministic and machine-readable.
+
+Expected artifacts:
+
+- `syntax-helper-search` query helper for constructor lookup by type name.
+- `v8-context-hbk syntax constructors <TYPE>` CLI command.
+- Focused tests and UAT/readme updates for the direct constructor workflow.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- `./target/release/v8-context-hbk syntax constructors "HTTPСоединение"`
+
+Completion notes:
+
+- Added `syntax-helper-search::SearchIndex::constructors_by_name()` as a read-only convenience query
+  over existing owner-to-constructor relations.
+- Added `v8-context-hbk syntax constructors <TYPE>`, with text output printing constructor
+  signatures directly and JSON output preserving full deterministic hit records.
+- No SQLite schema, export schema or relationship graph changes were required.
+- Verified the release binary against the default local Syntax Assistant index for
+  `HTTPСоединение`.
 
 ## Loop Rule
 

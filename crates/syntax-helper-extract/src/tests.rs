@@ -822,6 +822,50 @@ fn strips_methodical_footer_from_section_text_and_html() {
 }
 
 #[test]
+fn constructor_parameters_keep_inline_notes_inside_parameter_section() {
+    let toc = Toc::parse(
+        r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","По умолчанию"}},"/objects/catalog63/catalog578/catalog2125/HTTPConnection/ctors/ctor182.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "objects/catalog63/catalog578/catalog2125/HTTPConnection/ctors/ctor182.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">HTTPСоединение.По умолчанию</h1><p class="V8SH_title">HTTPСоединение (HTTPConnection)</p><p class="V8SH_heading">По умолчанию</p><p class="V8SH_chapter">Синтаксис:</p>Новый HTTPСоединение(&lt;Сервер&gt;, &lt;Порт&gt;, &lt;Пользователь&gt;, &lt;Пароль&gt;, &lt;Прокси&gt;, &lt;Таймаут&gt;, &lt;ЗащищенноеСоединение&gt;, &lt;ИспользоватьАутентификациюОС&gt;)<p class="V8SH_chapter">Параметры:</p><div class="V8SH_rubric"> <p style="margin-top: 2px; margin-bottom: 1px">&lt;Сервер&gt; (обязательный)</div>Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>. <br>Хост сервера, с которым осуществляется соединение.<br>Примечание: Имя хоста не должно содержать указание протокола. Например, example.com.<div class="V8SH_rubric"> <p style="margin-top: 2px; margin-bottom: 1px">&lt;Порт&gt; (необязательный)</div>Тип: <a href="v8help://SyntaxHelperLanguage/def_Number">Число</a>. <br>Порт сервера, с которым осуществляется соединение.<div class="V8SH_rubric"> <p style="margin-top: 2px; margin-bottom: 1px">&lt;Пользователь&gt; (необязательный)</div>Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>. <br>Имя пользователя на указанном сервере.<div class="V8SH_rubric"> <p style="margin-top: 2px; margin-bottom: 1px">&lt;Пароль&gt; (необязательный)</div>Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>. <br>Пароль пользователя на указанном сервере.<div class="V8SH_rubric"> <p style="margin-top: 2px; margin-bottom: 1px">&lt;Прокси&gt; (необязательный)</div>Тип: <a href="v8help://SyntaxHelperContext/objects/catalog63/catalog578/InternetProxy.html">ИнтернетПрокси</a>. <br>Прокси, используемый для соединения с сервером.<div class="V8SH_rubric"> <p style="margin-top: 2px; margin-bottom: 1px">&lt;Таймаут&gt; (необязательный)</div>Тип: <a href="v8help://SyntaxHelperLanguage/def_Number">Число</a>. <br>Таймаут осуществляемого соединения и операций, в секундах. 0 - не устанавливать таймаут.<div class="V8SH_rubric"> <p style="margin-top: 2px; margin-bottom: 1px">&lt;ЗащищенноеСоединение&gt; (необязательный)</div>Тип: <a href="v8help://SyntaxHelperContext/objects/catalog63/catalog578/catalog2014/OpenSSLSecureConnection.html">ЗащищенноеСоединениеOpenSSL</a>, <a href="v8help://SyntaxHelperLanguage/def_Undefined">Неопределено</a>. <br>Объект защищенного соединения.<div class="V8SH_rubric"> <p style="margin-top: 2px; margin-bottom: 1px">&lt;ИспользоватьАутентификациюОС&gt; (необязательный)</div>Тип: <a href="v8help://SyntaxHelperLanguage/def_Boolean">Булево</a>. <br>Включает использование аутентификации NTLM или Negotiate на сервере.<p class="V8SH_chapter">Описание:</p><p>Создает объект <a href="v8help://SyntaxHelperContext/objects/catalog63/catalog578/catalog2125/HTTPConnection.html">HTTPСоединение</a>.</p></body></html>"#,
+    );
+    let constructor = parse_constructor(
+        &content,
+        source("objects/catalog63/catalog578/catalog2125/HTTPConnection/ctors/ctor182.html"),
+    );
+
+    let parameters = &constructor.signatures[0].parameters;
+    assert_eq!(
+        parameters
+            .iter()
+            .map(|parameter| parameter.name.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "Сервер",
+            "Порт",
+            "Пользователь",
+            "Пароль",
+            "Прокси",
+            "Таймаут",
+            "ЗащищенноеСоединение",
+            "ИспользоватьАутентификациюОС"
+        ]
+    );
+    assert_parameter_type(parameters, "Сервер", "Строка");
+    assert_parameter_type(parameters, "Порт", "Число");
+    assert_parameter_type(parameters, "Прокси", "ИнтернетПрокси");
+    assert_parameter_type(parameters, "ИспользоватьАутентификациюОС", "Булево");
+}
+
+#[test]
 fn parses_representative_specialized_fixture_pages() {
     let toc = fixture_toc();
 

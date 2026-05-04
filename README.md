@@ -101,11 +101,14 @@ cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax index /opt/1cv8/x
 If `--output` or `--index` is omitted, commands use `V8_CONTEXT_HBK_SYNTAX_INDEX` and then
 `.v8-context-hbk/syntax/index.sqlite` under the current working directory.
 
-Run exact lookup, keyword search, fuzzy name search and deterministic relationship traversal:
+Run exact lookup, constructor lookup, keyword search, fuzzy name search and deterministic
+relationship traversal:
 
 ```bash
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax get --index target/context/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных" --format json
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax get --index target/context/sh-search-ru.sqlite --owner "НастройкиКомпоновкиДанных" --member "Отбор"
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax constructors --index target/context/sh-search-ru.sqlite "HTTPСоединение"
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax constructors --index target/context/sh-search-ru.sqlite "HTTPСоединение" --details
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax search --index target/context/sh-search-ru.sqlite --query "отбор скд" --mode keywords
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax search --index target/context/sh-search-ru.sqlite --query "ОтборКомпоновкиДаных" --mode fuzzy --format json
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax related --index target/context/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных"

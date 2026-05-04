@@ -526,6 +526,7 @@ Required query modes:
 
 - exact lookup by primary name or alias;
 - exact owner/member lookup, such as `НастройкиКомпоновкиДанных.Отбор`;
+- constructor lookup by type name for direct signature retrieval;
 - keyword/full-text search over names, aliases, signatures, parameter names, return/type references
   and descriptions;
 - fuzzy name search for small spelling differences;
@@ -542,6 +543,10 @@ Acceptance:
   its description from an index built from the Russian Syntax Assistant HBK.
 - Exact lookup for `НастройкиКомпоновкиДанных.Отбор` returns the property with type reference
   `ОтборКомпоновкиДанных`.
+- Constructor lookup for `HTTPСоединение` returns its constructor signatures without requiring users
+  to post-process relationship JSON.
+- Constructor lookup offers a detailed text mode that includes available owner and description
+  context while preserving signature-only output as the default.
 - Keyword search for `отбор скд` returns data-composition filter facts ahead of unrelated filter
   facts when the Russian Syntax Assistant fixture exists.
 - Query output is available as readable text and deterministic JSON.

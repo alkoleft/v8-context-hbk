@@ -252,26 +252,44 @@ pub(crate) fn section_text(content: &PageContent, labels: &[&str]) -> Option<Str
 
 pub(crate) fn section_html<'a>(raw_html: &'a str, labels: &[&str]) -> Option<&'a str> {
     let (label, start) = find_label(raw_html, labels)?;
-    let section_start = html_section_body_start(raw_html, start, label);
-    let section_end = html_section_end(raw_html, section_start, label);
+    let heading = html_section_heading(raw_html, start);
+    let section_start = html_section_body_start(raw_html, start, label, heading);
+    let section_end = html_section_end(raw_html, section_start, label, heading);
     Some(&raw_html[section_start..section_end])
 }
 
-fn html_section_body_start(raw_html: &str, label_start: usize, label: &str) -> usize {
+fn html_section_body_start(
+    raw_html: &str,
+    label_start: usize,
+    label: &str,
+    heading: HtmlSectionHeading,
+) -> usize {
+    if heading == HtmlSectionHeading::V8Chapter {
+        return raw_html[label_start..]
+            .find("</p>")
+            .map(|index| label_start + index + 4)
+            .unwrap_or(label_start + label.len());
+    }
+    label_start + label.len()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HtmlSectionHeading {
+    V8Chapter,
+    Other,
+}
+
+fn html_section_heading(raw_html: &str, label_start: usize) -> HtmlSectionHeading {
     let tag_start = raw_html[..label_start].rfind('<');
     let tag_end = raw_html[label_start..]
         .find('>')
         .map(|index| label_start + index);
-    let label_is_chapter = tag_start.zip(tag_end).is_some_and(|(tag_start, tag_end)| {
+    if tag_start.zip(tag_end).is_some_and(|(tag_start, tag_end)| {
         raw_html[tag_start..=tag_end].contains("class=\"V8SH_chapter\"")
-    });
-    if label_is_chapter {
-        raw_html[label_start..]
-            .find("</p>")
-            .map(|index| label_start + index + 4)
-            .unwrap_or(label_start + label.len())
+    }) {
+        HtmlSectionHeading::V8Chapter
     } else {
-        label_start + label.len()
+        HtmlSectionHeading::Other
     }
 }
 
@@ -287,7 +305,24 @@ fn text_section_end(value: &str, section_start: usize, current_label: &str) -> u
         .unwrap_or(value.len())
 }
 
-fn html_section_end(value: &str, section_start: usize, current_label: &str) -> usize {
+fn html_section_end(
+    value: &str,
+    section_start: usize,
+    current_label: &str,
+    heading: HtmlSectionHeading,
+) -> usize {
+    if heading == HtmlSectionHeading::V8Chapter {
+        return HTML_CHAPTER_SECTION_BOUNDARIES
+            .iter()
+            .filter_map(|candidate| {
+                value[section_start..]
+                    .find(candidate)
+                    .map(|index| section_start + index)
+            })
+            .min()
+            .unwrap_or(value.len());
+    }
+
     text_section_boundaries()
         .chain(HTML_SECTION_BOUNDARIES.iter().copied())
         .filter(|candidate| *candidate != current_label)
@@ -441,3 +476,11 @@ const ALL_SECTION_LABELS: &[&str] = &[
 const SERVICE_FOOTER_LABELS: &[&str] = &["Методическая информация", "Methodical information"];
 
 const HTML_SECTION_BOUNDARIES: &[&str] = &["<HR", "<hr"];
+const HTML_CHAPTER_SECTION_BOUNDARIES: &[&str] = &[
+    "<p class=\"V8SH_chapter\"",
+    "<p class='V8SH_chapter'",
+    "<P class=\"V8SH_chapter\"",
+    "<P class='V8SH_chapter'",
+    "<HR",
+    "<hr",
+];
