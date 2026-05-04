@@ -1113,3 +1113,14 @@ print signature text for humans. The accepted T48 Russian rebuild from
 `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `25082` documents in `64652 ms`; read-only
 inspection found `schema_version=3` and matching `documents`, `document_search` and `document_fts`
 counts.
+
+T50 defined the provisional provider response contract before changing CLI serialization. The
+target JSON envelope for `syntax get`, `syntax constructors`, `syntax search` and `syntax related`
+uses provider `schema_version: 1`, `command`, `status`, normalized `query`, deterministic
+`results[]` and `diagnostics[]`. Shared platform facts live under `results[].fact` with
+export-compatible field names and shapes, while query-only metadata such as score, rank,
+relationship depth, relationship path and richer owner identity lives under `results[].meta`. Owned
+facts use the export-compatible `owner` string shape. Missing and ambiguous lookups are represented
+through `status` and diagnostics. The reviewed current implementation sample remains the
+provisional pre-envelope `SearchHit<SearchDocument>` shape, so T50 is a contract definition task and
+not a CLI serialization implementation.

@@ -348,6 +348,114 @@ signatures in `documents.signature_json`. Public query JSON for callable facts u
 `signatures[].parameters[]` with `name`, `required`, `types` and optional `description`; raw
 parameter/type search terms remain in `documents.parameter_text` and `document_search.parameters`.
 
+## Provider JSON Response Contract
+
+Status: provisional target contract for T50. Existing `SearchHit<SearchDocument>` JSON is a
+temporary implementation shape. Compatibility with that shape is not a goal when it conflicts with
+the provider contract below.
+
+`syntax get`, `syntax constructors`, `syntax search` and `syntax related` JSON output should use one
+response envelope:
+
+```json
+{
+  "schema_version": 1,
+  "command": "constructors",
+  "status": "ok",
+  "query": {
+    "kind": "constructor",
+    "name": "HTTPСоединение"
+  },
+  "results": [
+    {
+      "fact": {
+        "id": "constructor:platform_type:HTTPСоединение:...",
+        "kind": "constructor",
+        "name": {
+          "primary": "Новый HTTPСоединение(<Сервер>, ...)"
+        },
+        "owner": "HTTPСоединение",
+        "signatures": [
+          {
+            "parameters": [
+              {
+                "name": "Сервер",
+                "required": true,
+                "types": ["Строка"],
+                "description": "..."
+              }
+            ]
+          }
+        ]
+      },
+      "meta": {
+        "rank": 1
+      }
+    }
+  ],
+  "diagnostics": []
+}
+```
+
+Envelope fields:
+
+- `schema_version`: provider response schema version. It is separate from `syntax export` consumer
+  `schema_version` and from SQLite index `schema_version`.
+- `command`: one of `get`, `constructors`, `search` or `related`.
+- `status`: `ok`, `not_found` or `ambiguous`.
+- `query`: normalized user query shape, such as `{ "kind": "exact_name", "name": "..." }`,
+  `{ "kind": "owner_member", "owner": "...", "member": "..." }`,
+  `{ "kind": "constructor", "name": "..." }`, `{ "kind": "search", "mode": "keywords",
+  "text": "..." }` or `{ "kind": "related", "root": { "name": "..." }, "depth": 2 }`.
+- `results`: deterministic array of result objects. It is empty for `not_found`.
+- `diagnostics`: deterministic array of provider diagnostics. It is empty when `status` is `ok`.
+
+Result fields:
+
+- `fact`: the platform fact. Shared fact shapes use `syntax export` field names wherever both
+  surfaces expose the same data: `id`, `kind`, `name`, `owner`, `signatures`, `types`, `return`,
+  `description`, availability, examples and see-also when present. Callable signatures use
+  `signatures[].parameters[]` with `name`, `required`, `types` and optional `description`.
+- `meta`: query-only metadata. `search` may put `score`, `rank` and matched mode here. `related`
+  may put `depth` and `path` here. `get` and `constructors` may omit scores when the lookup is
+  exact and deterministic. Query metadata may include richer owner identity, such as owner alias or
+  owner document id, when the fact's export-compatible `owner` field is intentionally only the
+  owner's primary string.
+
+Diagnostic fields:
+
+- `code`: stable machine code such as `NOT_FOUND`, `AMBIGUOUS` or `UNSUPPORTED_QUERY`.
+- `message`: concise human-readable explanation.
+- `query`: optional normalized query fragment that caused the diagnostic.
+- `candidates`: optional stable candidate summaries for ambiguity diagnostics.
+
+Query-only metadata rules:
+
+- FTS/search token fields, raw `parameter_text`, `document_search.parameters`, internal rowids,
+  SQLite scores and debug ranking inputs are not platform facts and must not appear under `fact`.
+- Search scores and ranks belong in `results[].meta`.
+- Relationship traversal metadata belongs in `results[].meta.depth` and `results[].meta.path`.
+  Path steps may contain document ids, `edge_kind`, `label` and `evidence`, but they do not redefine
+  the target fact.
+- Ambiguity and missing-result behavior belongs in `status` and `diagnostics`, not in a hidden
+  winner selection.
+- Provider JSON must not expose HBK file paths, TOC paths, HTML paths or page titles in consumer
+  facts. The `id` field is the semantic search-index identity accepted by this spec, not source
+  provenance.
+
+Command-specific mapping:
+
+- `syntax get --name` and `syntax get --owner --member` return exact lookup facts. Unique matches
+  use `status: "ok"`. Multiple exact matches use `status: "ambiguous"` and include candidate facts
+  or candidate summaries in deterministic order. Missing matches use `status: "not_found"`.
+- `syntax constructors <TYPE>` returns constructor facts owned by the resolved type. Constructor
+  facts must expose structured `signatures` and must not expose mixed parameter/type token arrays.
+- `syntax search --query <TEXT>` returns ranked facts with `results[].meta.score` and
+  `results[].meta.rank`. Ranking metadata is not part of the fact.
+- `syntax related` returns related facts with relationship traversal metadata in `results[].meta`.
+  T52 may add id and owner/member roots; until then the contract still requires ambiguity to be
+  explicit when a plain-name root is not unique.
+
 The first ranking may use FTS5 `bm25()` plus deterministic tie breakers:
 
 1. exact primary or alias match;

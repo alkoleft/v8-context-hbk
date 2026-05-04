@@ -589,6 +589,8 @@ development and code-analysis workflows.
 Provider-oriented outputs must:
 
 - be deterministic for the same index and query;
+- use a versioned provider response envelope for JSON output from `syntax get`, `syntax
+  constructors`, `syntax search` and `syntax related`;
 - include stable document identity and fact kind;
 - expose names, aliases and owner identity where applicable;
 - expose callable signatures as structured facts for methods, constructors and events where source
@@ -612,6 +614,9 @@ Acceptance:
   provider JSON contract.
 - Query/provider JSON that returns constructor, method or event signatures uses field names
   compatible with `syntax export` for shared facts.
+- Query/provider JSON separates provider facts from query metadata: shared platform facts are under
+  result facts, while score, rank, relationship depth, relationship path, ambiguity and missing
+  result diagnostics are envelope or per-result metadata.
 
 ## FR-SH-SEARCH-002: Syntax Assistant Relationship Graph
 

@@ -17,9 +17,10 @@ export, schema, data-quality, performance, parser and query-search conclusions l
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T50. T51 was completed by the same schema-v3 structured callable
-fact mechanism as T48, so T49 is intentionally parked until the provider contract and BSL task
-scenario UAT are fixed by T50/T53. The queued roadmap comes from
+Next active unchecked task is T52. T50 defines the provider response contract, and T51 was
+completed by the same schema-v3 structured callable fact mechanism as T48. T49 is intentionally
+parked until analyzer-safe identity roots and BSL task scenario UAT are fixed by T52/T53. The queued
+roadmap comes from
 `implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
 help during BSL development and code analysis, and toward a future typed local provider role for a
 BSL analyzer.
@@ -94,7 +95,7 @@ Result:
   rebuild from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`, JSON `jq` assertions and read-only
   schema/count inspection (`schema_version=3`, `documents=document_search=document_fts=25082`).
 
-### [ ] T50. Define export-compatible provider response contract
+### [x] T50. Define export-compatible provider response contract
 
 Spec refs:
 
@@ -119,6 +120,22 @@ Verification:
   `spec/implementation/syntax-bsl-provider-plan.md` and UAT cases.
 - Review sample JSON for `HTTPСоединение` and `НастройкиКомпоновкиДанных.Отбор` against the
   proposed contract before implementation.
+
+Result:
+
+- Defined the provisional provider response envelope for `syntax get`, `syntax constructors`,
+  `syntax search` and `syntax related` in `spec/implementation/syntax-helper-query-cli.md`.
+- Provider JSON target uses provider `schema_version: 1`, `command`, `status`, normalized `query`,
+  deterministic `results[]` and `diagnostics[]`.
+- Shared platform facts live under `results[].fact` and use export-compatible field names such as
+  `owner`, `signatures`, `signatures[].parameters[]`, `types` and `return`; query-only metadata
+  such as search score/rank, relationship depth/path and richer owner identity lives under
+  `results[].meta`.
+- Missing and ambiguous exact lookups are represented through `status` and diagnostics instead of a
+  hidden winner.
+- Reviewed current sample JSON for `HTTPСоединение` constructors and
+  `НастройкиКомпоновкиДанных.Отбор`; those samples are still the pre-envelope
+  `SearchHit<SearchDocument>` implementation shape, so implementation remains for a follow-up task.
 
 ### [x] T51. Preserve structured callable facts in the query index
 

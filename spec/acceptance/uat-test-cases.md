@@ -465,6 +465,71 @@ Expected result:
 - The command returns within the NFR-QUERY-001 provisional target when measured on the target
   workstation.
 
+## UAT-SH-016: Provider JSON Contract Review
+
+Related use case: UC-SH-005D.
+
+Related requirements: FR-SH-PROVIDER-001.
+
+Preconditions:
+
+- `target/uat/sh-search-ru.sqlite` exists from UAT-SH-004.
+- Provider-envelope implementation is in scope for the task being verified.
+
+Steps:
+
+```bash
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax constructors "HTTPСоединение" --format json > target/uat/provider-constructors-httpconnection.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json > target/uat/provider-get-skd-filter.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax search --query "отбор скд" --mode keywords --format json > target/uat/provider-search-skd-filter.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --name "ОтборКомпоновкиДанных" --format json > target/uat/provider-related-skd-filter.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --name "НЕСУЩЕСТВУЮЩИЙ_API_ДЛЯ_UAT" --format json > target/uat/provider-get-missing.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --name "Отбор" --format json > target/uat/provider-get-ambiguous.json
+
+jq -e '.schema_version == 1 and .status == "ok" and .command == "constructors" and (.results | length > 0)' target/uat/provider-constructors-httpconnection.json
+jq -e 'all(.results[]; has("fact") and (.fact | has("parameters") | not) and (.fact | has("type_refs") | not) and (.fact | has("return_types") | not))' target/uat/provider-constructors-httpconnection.json
+jq -e 'any(.results[].fact.signatures[]?.parameters[]?; .name == "ИспользоватьАутентификациюОС" and .required == false and (.types | index("Булево") != null))' target/uat/provider-constructors-httpconnection.json
+jq -e '.command == "get" and .status == "ok" and any(.results[].fact; .kind == "type_property" and .owner == "НастройкиКомпоновкиДанных" and (.types | index("ОтборКомпоновкиДанных") != null))' target/uat/provider-get-skd-filter.json
+jq -e '.command == "search" and all(.results[]; .meta.rank >= 1 and (.meta | has("score")))' target/uat/provider-search-skd-filter.json
+jq -e '.command == "related" and all(.results[]; (.meta.depth >= 0) and (.meta | has("path")))' target/uat/provider-related-skd-filter.json
+jq -e '.command == "get" and .status == "not_found" and (.results | length == 0) and any(.diagnostics[]; .code == "NOT_FOUND")' target/uat/provider-get-missing.json
+jq -e '.command == "get" and .status == "ambiguous" and (.results | length == 0) and any(.diagnostics[]; .code == "AMBIGUOUS" and (.candidates | length > 1))' target/uat/provider-get-ambiguous.json
+jq -s -e 'def forbidden_internal:
+  has("source") or has("source_hbk") or has("toc_path") or has("html_path") or has("page_title") or
+  has("rowid") or has("parameter_text") or has("parameter_terms") or has("relation_keys") or
+  has("type_refs") or has("return_types");
+  all(.[]; all(.results[].fact; (has("parameters") | not) and ((.. | objects | forbidden_internal) | not)))
+' target/uat/provider-constructors-httpconnection.json target/uat/provider-get-skd-filter.json target/uat/provider-search-skd-filter.json target/uat/provider-related-skd-filter.json
+```
+
+Expected result:
+
+- Exit code is `0`.
+- All provider JSON responses use the same versioned envelope with `schema_version`, `command`,
+  `status`, `query`, `results` and `diagnostics`.
+- Shared platform facts are under `results[].fact` and use export-compatible field names such as
+  `signatures`, `signatures[].parameters[]`, `types` and `return`.
+- Query-only data is under `results[].meta`: search score/rank for `syntax search`, relationship
+  depth/path for `syntax related`.
+- Owned facts use the export-compatible `owner` string shape. Richer owner identity needed only by
+  provider queries belongs in `results[].meta`, not in the shared fact shape.
+- Public facts do not expose FTS/search token fields, mixed `parameters` arrays, `type_refs`,
+  `return_types`, SQLite rowids or HBK/TOC/HTML/page-title provenance.
+- Missing and ambiguous exact lookups are represented through `status` and `diagnostics` rather
+  than by silently choosing an internal winner.
+
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 
 Related use case: UC-SH-001.

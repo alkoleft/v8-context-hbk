@@ -136,7 +136,10 @@ Resolution path:
    This removes the immediate blocker for constructor-call assistance.
 2. **T50: Define provider response contract.** Specify response envelope, schema/version fields,
    typed callable details, ambiguity/missing-result shape and export-compatibility rules for JSON
-   output.
+   output. The accepted target envelope is recorded in
+   `spec/implementation/syntax-helper-query-cli.md`: provider facts live under `results[].fact`,
+   query-only metadata lives under `results[].meta`, and response-level ambiguity or missing-result
+   behavior is expressed through `status` and `diagnostics`.
 3. **T51: Preserve structured callable facts in the query index.** Completed with the T48
    schema-v3 structured callable fact change; future work should continue with the provider
    envelope/identity/scenario tasks instead of duplicating this storage fix.
