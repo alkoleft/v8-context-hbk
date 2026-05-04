@@ -312,6 +312,8 @@ Expected result:
   is omitted.
 - The index command creates `.v8-context-hbk/syntax/index.sqlite` when both `--output` and
   `V8_CONTEXT_HBK_SYNTAX_INDEX` are absent.
+- The index command removes stale temporary replacement database artifacts before creating a new
+  replacement index.
 - The completed replacement index does not leave active SQLite WAL/SHM sidecars beside the default
   artifact.
 - The default-path lookup command resolves `.v8-context-hbk/syntax/index.sqlite` when `--index` and

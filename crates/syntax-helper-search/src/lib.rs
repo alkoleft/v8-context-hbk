@@ -161,12 +161,7 @@ pub fn build_index(
     }
     let _lock = WriterLock::acquire(path)?;
     let temp_path = temp_index_path(path);
-    if temp_path.exists() {
-        fs::remove_file(&temp_path).map_err(|source| SearchError::Io {
-            path: temp_path.clone(),
-            source,
-        })?;
-    }
+    remove_sqlite_artifacts(&temp_path)?;
 
     let result = build_index_file(&temp_path, metadata, context).and_then(|()| {
         remove_sqlite_sidecars(path)?;
@@ -1654,6 +1649,22 @@ fn remove_sqlite_sidecars(path: &Path) -> Result<(), SearchError> {
     Ok(())
 }
 
+fn remove_sqlite_artifacts(path: &Path) -> Result<(), SearchError> {
+    remove_optional_file(path)?;
+    remove_sqlite_sidecars(path)
+}
+
+fn remove_optional_file(path: &Path) -> Result<(), SearchError> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
 struct WriterLock {
     path: PathBuf,
     _file: File,
@@ -1775,6 +1786,25 @@ mod tests {
             exact[0].document.description.as_deref(),
             Some("updated description")
         );
+    }
+
+    #[test]
+    fn rebuild_cleans_stale_temporary_index_artifacts_before_creation() {
+        let path = temp_path("stale-temp.sqlite");
+        let temp_path = temp_index_path(&path);
+        fs::write(&temp_path, b"not a sqlite database").expect("stale temp file must be writable");
+        fs::write(temp_path.with_extension("sqlite-wal"), b"stale temp wal")
+            .expect("stale temp wal must be writable");
+        fs::write(temp_path.with_extension("sqlite-shm"), b"stale temp shm")
+            .expect("stale temp shm must be writable");
+
+        build_index(&path, &metadata(), &fixture_context())
+            .expect("index build must clean stale temp artifacts first");
+
+        assert!(!temp_path.exists());
+        assert!(!temp_path.with_extension("sqlite-wal").exists());
+        assert!(!temp_path.with_extension("sqlite-shm").exists());
+        assert!(SearchIndex::open_read_only(&path).is_ok());
     }
 
     #[test]

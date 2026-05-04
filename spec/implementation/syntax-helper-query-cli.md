@@ -141,9 +141,10 @@ Query commands open the resolved SQLite index as read-only connections. Multiple
 `syntax search` and `syntax related` processes may read the same index concurrently.
 
 `syntax index` must build the replacement database in a temporary file beside the target index,
-validate the completed database, then atomically rename it over the target path. It must serialize
-concurrent writers with a lock. Readers must observe either the previous complete index or the next
-complete index and must not observe a partially written database.
+clean stale temporary database artifacts before opening that replacement file, validate the
+completed database, then atomically rename it over the target path. It must serialize concurrent
+writers with a lock. Readers must observe either the previous complete index or the next complete
+index and must not observe a missing or partially written target database.
 
 ### Why SQLite First
 
