@@ -495,3 +495,25 @@ provenance, and no event record carries `id`, `owner_ref` or event-local `owner_
 records carry `owner` and semantic `owner_path` as event owner context only; source-backed
 owner/object classification for the owning platform type/object records remains a separate T38
 task.
+
+## Owner/Object Classification Findings
+
+T38 implemented source-backed `object_kind` classification on `platform-types.json` records only.
+The field is derived from TOC branch context after platform type classification and is omitted when
+the source branch does not prove a supported owner/object kind. Event records still do not carry
+`owner_kind`, `object_kind`, `id`, `owner_ref` or raw HBK/TOC/HTML/page-title provenance.
+
+Fresh debug CLI exports for `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` kept the T37 record-family counts and produced the
+following platform owner/object classifications:
+
+| `object_kind` | RU records | EN/root records |
+| --- | ---: | ---: |
+| `regular_platform_type` | 1305 | 1357 |
+| `managed_form` | 77 | 286 |
+| `form_extension` | 174 | 2 |
+| `metadata_object` | 287 | 96 |
+
+The T38 pass also narrowed system-enum branch detection to the actual `objects/catalog2` enum root
+and children. This prevents ordinary `objects/catalog2xx...` platform object paths such as
+universal collection pages from being classified as system-enum branch records by prefix alone.

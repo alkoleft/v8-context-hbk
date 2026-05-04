@@ -446,6 +446,7 @@ pub struct PlatformType {
     pub name: LocalizedName,
     pub semantic: SemanticContext,
     pub type_kind: PlatformTypeKind,
+    pub object_kind: Option<PlatformObjectKind>,
     pub extends: Vec<LocalizedName>,
     pub metadata_kind: Option<String>,
     pub template_parameters: Vec<String>,
@@ -567,6 +568,15 @@ pub enum PlatformTypeKind {
     Extension,
     Primitive,
     MetadataTemplate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlatformObjectKind {
+    RegularPlatformType,
+    ManagedForm,
+    FormExtension,
+    MetadataObject,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

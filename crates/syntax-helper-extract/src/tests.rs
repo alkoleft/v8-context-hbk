@@ -13,6 +13,7 @@ use hbk_docs::{PageContent, parse_page_html};
 struct RecordingSink {
     seen: Vec<String>,
     events: Vec<GlobalContextEvent>,
+    platform_types: Vec<PlatformType>,
 }
 
 impl RecordingSink {
@@ -47,6 +48,7 @@ impl SyntaxHelperSink for RecordingSink {
 
     fn platform_type(&mut self, record: PlatformType) -> Result<(), Self::Error> {
         self.push_name("platform_type", &record.name);
+        self.platform_types.push(record);
         Ok(())
     }
 
@@ -502,6 +504,71 @@ fn root_form_labels_do_not_match_information_and_form_events_stay_form_modules()
     assert_eq!(event.name.primary, "BeforeWrite");
     assert_eq!(event.semantic.record_family, RecordFamily::TypeEvent);
     assert_eq!(event.module.kind, ModuleKind::Unknown);
+}
+
+#[test]
+fn classifies_platform_owner_object_kind_from_toc_context() {
+    let toc = Toc::parse(
+        r#"{
+                9
+                {1,0,3,2,4,7,{0,0,{0,0,{"ru","Платформенные объекты"}},"objects/catalog.html"}}
+                {2,1,1,3,{0,0,{0,0,{"ru","Универсальные коллекции"}},"objects/catalog234.html"}}
+                {3,2,0,{0,0,{0,0,{"ru","Массив"}{"en","Array"}},"objects/catalog234/Array.html"}}
+                {4,1,2,5,6,{0,0,{0,0,{"ru","Формы"}},"objects/catalog1649.html"}}
+                {5,4,0,{0,0,{0,0,{"ru","Форма"}},"objects/catalog1649/Form.html"}}
+                {6,4,0,{0,0,{0,0,{"ru","Расширение формы клиентского приложения для документов"}},"objects/catalog1649/catalog1890/Client application form extension for documents.html"}}
+                {7,1,1,8,{0,0,{0,0,{"ru","Прикладные объекты"}},"objects/catalog125.html"}}
+                {8,7,1,9,{0,0,{0,0,{"ru","Документы"}},"objects/catalog125/catalog132.html"}}
+                {9,8,0,{0,0,{0,0,{"ru","ДокументОбъект.<Имя документа>"}},"objects/catalog125/catalog132/DocumentObject.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+
+    let mut sink = RecordingSink::default();
+    extract_with_loader_into(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc,
+        |html_path| {
+            let title = toc
+                .flat_pages()
+                .find(|page| page.page.html_path == html_path)
+                .map(|page| page.page.title.display().to_string())
+                .expect("fixture page must exist in TOC");
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_ru.hbk",
+                "ru",
+                html_path,
+                &format!(
+                    r#"<html><body><h1 class="V8SH_pagetitle">{title}</h1><h2>{title}</h2></body></html>"#
+                ),
+            ))
+        },
+        &mut sink,
+    )
+    .expect("fixture extraction must stream");
+
+    let object_kind = |name: &str| {
+        sink.platform_types
+            .iter()
+            .find(|platform_type| platform_type.name.primary == name)
+            .and_then(|platform_type| platform_type.object_kind)
+    };
+
+    assert_eq!(
+        object_kind("Массив"),
+        Some(PlatformObjectKind::RegularPlatformType)
+    );
+    assert_eq!(object_kind("Форма"), Some(PlatformObjectKind::ManagedForm));
+    assert_eq!(
+        object_kind("Расширение формы клиентского приложения для документов"),
+        Some(PlatformObjectKind::FormExtension)
+    );
+    assert_eq!(
+        object_kind("ДокументОбъект.<Имя документа>"),
+        Some(PlatformObjectKind::MetadataObject)
+    );
 }
 
 #[test]
@@ -1315,6 +1382,7 @@ fn constructor_lookup_distinguishes_type_without_constructors() {
             },
             semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
             type_kind: PlatformTypeKind::Regular,
+            object_kind: Some(PlatformObjectKind::RegularPlatformType),
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),
@@ -1350,6 +1418,7 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
                 name: aliased_type,
                 semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
                 type_kind: PlatformTypeKind::Regular,
+                object_kind: Some(PlatformObjectKind::RegularPlatformType),
                 extends: Vec::new(),
                 metadata_kind: None,
                 template_parameters: Vec::new(),
@@ -1363,6 +1432,7 @@ fn type_bound_lookup_does_not_cross_match_alias_to_other_primary_name() {
                 name: other_type.clone(),
                 semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
                 type_kind: PlatformTypeKind::Regular,
+                object_kind: Some(PlatformObjectKind::RegularPlatformType),
                 extends: Vec::new(),
                 metadata_kind: None,
                 template_parameters: Vec::new(),
@@ -1475,6 +1545,7 @@ fn lookup_helpers_report_ambiguous_exact_matches() {
         },
         semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
         type_kind: PlatformTypeKind::Regular,
+        object_kind: Some(PlatformObjectKind::RegularPlatformType),
         extends: Vec::new(),
         metadata_kind: None,
         template_parameters: Vec::new(),
@@ -1508,6 +1579,7 @@ fn lookup_helpers_report_ambiguous_exact_matches() {
             },
             semantic: semantic(BranchKind::PlatformObjects, RecordFamily::PlatformType),
             type_kind: PlatformTypeKind::Regular,
+            object_kind: Some(PlatformObjectKind::RegularPlatformType),
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),

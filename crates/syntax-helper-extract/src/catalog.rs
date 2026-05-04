@@ -190,7 +190,7 @@ fn branch_kind(page: &TocPage, ancestors: &[&TocPage]) -> BranchKind {
     if path.starts_with("objects/Global context/") || path == "objects/Global context.html" {
         return BranchKind::GlobalContext;
     }
-    if path.starts_with("objects/catalog2") {
+    if path == "objects/catalog2.html" || path.starts_with("objects/catalog2/") {
         return BranchKind::SystemEnums;
     }
     if labels.iter().any(|label| {

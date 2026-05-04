@@ -96,6 +96,7 @@ pub(crate) fn parse_platform_type_for_mode(
         name: page_title_name(content),
         semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::PlatformType),
         type_kind: PlatformTypeKind::Regular,
+        object_kind: None,
         extends: Vec::new(),
         metadata_kind: None,
         template_parameters: Vec::new(),

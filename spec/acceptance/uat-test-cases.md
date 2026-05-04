@@ -839,6 +839,22 @@ jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/constructo
 
 jq -e '([.records[] | .. | objects | keys[] | select(. == "owner_kind")] | length) == 0' target/uat/shcntx-ru/module-events.json
 jq -e '([.records[] | .. | objects | keys[] | select(. == "owner_kind")] | length) == 0' target/uat/shcntx-ru/type-events.json
+jq -e '([.records[] | .. | objects | keys[] | select(. == "object_kind")] | length) == 0' target/uat/shcntx-ru/module-events.json
+jq -e '([.records[] | .. | objects | keys[] | select(. == "object_kind")] | length) == 0' target/uat/shcntx-ru/type-events.json
+
+jq -e '
+  any(.records[]; .name.primary == "Массив" and .object_kind == "regular_platform_type") and
+  any(.records[]; .name.primary == "ГруппаФормы" and .object_kind == "managed_form") and
+  any(.records[]; .name.primary == "Расширение поля формы для поля ввода" and .object_kind == "form_extension") and
+  any(.records[]; .name.primary == "ДокументОбъект.<Имя документа>" and .object_kind == "metadata_object")
+' target/uat/shcntx-ru/platform-types.json
+
+jq -e '
+  any(.records[]; .name.primary == "UserWorkFavorites" and .object_kind == "regular_platform_type") and
+  any(.records[]; .name.primary == "FormGroup" and .object_kind == "managed_form") and
+  any(.records[]; .name.primary == "Extension for controls located in a form" and .object_kind == "form_extension") and
+  any(.records[]; .name.primary == "MetadataObject: Document" and .object_kind == "metadata_object")
+' target/uat/shcntx-en/platform-types.json
 ```
 
 Expected result:
@@ -853,7 +869,9 @@ Expected result:
 - `unknown-events.json` contains only diagnostic-backed fallback event records when classification
   is not safe.
 - Owner/object classification, when implemented, belongs to the owner platform type/object record
-  and not to an event-only `owner.kind` or `owner_kind` field.
+  as `object_kind` and not to an event-only `owner.kind`, `owner_kind` or `object_kind` field.
+  Source-backed owner classifications cover regular platform types, managed forms, form extensions
+  and metadata objects when the TOC proves them.
 - Derivative type methods, type properties and constructors still omit `owner_path`; the event split
   does not weaken the schema version 8 omission rule.
 

@@ -287,7 +287,7 @@ Completion notes:
   `shcntx_root.hbk`, UAT-SH-011/UAT-SH-012/UAT-SH-013/UAT-SH-014 jq checks and
   `git diff --check`.
 
-### [ ] T38. Move owner/object classification to platform type/object records for event consumers
+### [x] T38. Move owner/object classification to platform type/object records for event consumers
 
 Depends on: T37.
 
@@ -333,6 +333,20 @@ Verification:
 - Targeted checks that event records do not carry an event-only `owner.kind` field and derivative
   records still omit `owner_path`.
 - `git diff --check`
+
+Completion notes:
+
+- Kept the canonical consumer JSON schema at version 9 and added optional `object_kind` only to
+  `platform-types.json`.
+- Derived `object_kind` from TOC-backed platform type context after `branch_kind` and `type_kind`:
+  `regular_platform_type`, `managed_form`, `form_extension` and `metadata_object`.
+- Event files still do not expose event-local owner/object taxonomy (`owner_kind` / `object_kind`),
+  `id`, `owner_ref` or raw parser provenance.
+- Full debug CLI exports for `shcntx_ru.hbk` and `shcntx_root.hbk` preserved T37 record-family
+  counts and produced source-backed platform owner classification counts recorded in
+  `spec/source-evidence.md` and `spec/acceptance/baseline.md`.
+- Verification passed with `cargo fmt`, `cargo test --workspace`, full RU/root UAT exports,
+  UAT-SH-014 jq checks and `git diff --check`.
 
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 

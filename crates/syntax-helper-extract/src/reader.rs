@@ -337,6 +337,7 @@ fn is_skipped_primitive_literal(semantic: &SemanticContext) -> bool {
 
 fn apply_platform_type_semantics(platform_type: &mut PlatformType) {
     platform_type.type_kind = platform_type_kind(platform_type);
+    platform_type.object_kind = platform_object_kind(platform_type);
     if platform_type.type_kind == PlatformTypeKind::MetadataTemplate {
         platform_type.metadata_kind = metadata_kind(&platform_type.name.primary);
         platform_type.template_parameters = template_parameters(&platform_type.name.primary);
@@ -354,6 +355,20 @@ fn platform_type_kind(platform_type: &PlatformType) -> PlatformTypeKind {
         return PlatformTypeKind::Extension;
     }
     PlatformTypeKind::Regular
+}
+
+fn platform_object_kind(platform_type: &PlatformType) -> Option<PlatformObjectKind> {
+    match platform_type.semantic.branch_kind {
+        BranchKind::PlatformObjects if platform_type.type_kind == PlatformTypeKind::Regular => {
+            Some(PlatformObjectKind::RegularPlatformType)
+        }
+        BranchKind::ManagedForms if platform_type.type_kind == PlatformTypeKind::Extension => {
+            Some(PlatformObjectKind::FormExtension)
+        }
+        BranchKind::ManagedForms => Some(PlatformObjectKind::ManagedForm),
+        BranchKind::MetadataObjects => Some(PlatformObjectKind::MetadataObject),
+        _ => None,
+    }
 }
 
 fn is_extension_name(name: &str) -> bool {

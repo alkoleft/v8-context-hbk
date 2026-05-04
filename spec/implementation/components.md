@@ -222,6 +222,12 @@ Any owner/object kind needed by events belongs on the owner type/object model, n
 event-only taxonomy. The split preserves the schema version 8 rule that derivative records do not
 emit `owner_path`.
 
+T38 adds optional `object_kind` to `platform-types.json` only. `syntax-helper-extract` derives it
+from TOC-backed platform type context after `branch_kind` and `type_kind` are known; `hbk-export`
+passes it through when present. Event files do not expose `object_kind`, `owner_kind`, `id` or
+`owner_ref`, and derivative type members, constructors and nested query table records keep the
+schema version 8 `owner_path` omission rule.
+
 ### v8-context-hbk-cli
 
 Owns FR-CLI-001.

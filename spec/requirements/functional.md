@@ -319,6 +319,9 @@ Syntax Assistant reader before export, not raw parser provenance:
 - `module`: module-event context object with `kind` and optional `owner_path`.
 - `type_kind`: platform type kind, one of `regular`, `extension`, `primitive` or
   `metadata_template`.
+- `object_kind`: optional source-backed owner/object classification on platform type/object
+  records, such as `regular_platform_type`, `managed_form`, `form_extension` or
+  `metadata_object`. It is emitted only when TOC evidence proves the classification.
 - `extends`: deterministic array of proven base type or base-role names for extension types. It is
   omitted when the source does not prove a base.
 - `metadata_kind` and `template_parameters`: metadata-template type details when derivable from
@@ -447,6 +450,8 @@ Owner classification belongs to the owner object/type model, not to a local even
 `owner.kind` field. Platform type/object records should expose a source-backed owner/object
 classification field when the TOC proves it, and event records should reuse that owner semantics
 through their record family and owner context rather than inventing a parallel owner taxonomy.
+The current owner/object classification field is `object_kind` on `platform-types.json` records;
+event files must not expose `owner.kind`, `owner_kind` or `object_kind`.
 
 Schema version 5 merges enum values into `enums.json`. `enum-values.json` is no longer emitted.
 Each enum record has `values`, a deterministic array of enum value records. Nested enum value

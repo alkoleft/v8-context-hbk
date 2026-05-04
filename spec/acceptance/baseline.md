@@ -97,6 +97,13 @@ directories are service data unless promoted here.
   Event records do not expose raw HBK/TOC/HTML/page-title provenance, cross-cutting `id` or
   `owner_ref`, or event-local `owner_kind`; type events carry `owner` and semantic `owner_path`
   only as event owner context. The T36 derivative-record `owner_path` omission remains unchanged.
+- T38 kept the canonical consumer JSON export at `schema_version: 9` and added source-backed
+  `object_kind` only to `platform-types.json` records. Full debug CLI exports for both source books
+  preserved the T37 record-family counts. RU/root owner classification counts were:
+  `regular_platform_type` 1305/1357, `managed_form` 77/286, `form_extension` 174/2 and
+  `metadata_object` 287/96. Event records still do not expose `owner_kind`, `object_kind`, `id`,
+  `owner_ref` or raw parser provenance, and derivative type members, constructors and nested query
+  table records still omit `owner_path`.
 
 ## Post-T29 Runtime Regression To Fix
 

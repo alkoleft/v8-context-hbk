@@ -164,6 +164,8 @@ fn event_group_label(label: &str) -> bool {
 pub(crate) struct ConsumerPlatformType<'a> {
     branch_kind: model::BranchKind,
     type_kind: model::PlatformTypeKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    object_kind: Option<model::PlatformObjectKind>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     owner_path: Vec<&'a str>,
     name: ConsumerLocalizedName<'a>,
@@ -184,6 +186,7 @@ impl<'a> From<&'a model::PlatformType> for ConsumerPlatformType<'a> {
         Self {
             branch_kind: platform_type.semantic.branch_kind,
             type_kind: platform_type.type_kind,
+            object_kind: platform_type.object_kind,
             owner_path: semantic_owner_path(&platform_type.semantic),
             name: ConsumerLocalizedName::from(&platform_type.name),
             extends: localized_name_primaries(&platform_type.extends),

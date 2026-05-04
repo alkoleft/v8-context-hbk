@@ -360,22 +360,76 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 source: source.clone(),
             },
         ],
-        platform_types: vec![model::PlatformType {
-            name: name("Массив"),
-            semantic: semantic(
-                model::BranchKind::PlatformObjects,
-                model::RecordFamily::PlatformType,
-            ),
-            type_kind: model::PlatformTypeKind::Regular,
-            extends: Vec::new(),
-            metadata_kind: None,
-            template_parameters: Vec::new(),
-            method_links: vec![link("Добавить")],
-            constructor_links: vec![link("Массив")],
-            description: Some("Array type.".to_string()),
-            facts: model::SectionFacts::default(),
-            source: source.clone(),
-        }],
+        platform_types: vec![
+            model::PlatformType {
+                name: name("Массив"),
+                semantic: semantic(
+                    model::BranchKind::PlatformObjects,
+                    model::RecordFamily::PlatformType,
+                ),
+                type_kind: model::PlatformTypeKind::Regular,
+                object_kind: Some(model::PlatformObjectKind::RegularPlatformType),
+                extends: Vec::new(),
+                metadata_kind: None,
+                template_parameters: Vec::new(),
+                method_links: vec![link("Добавить")],
+                constructor_links: vec![link("Массив")],
+                description: Some("Array type.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source.clone(),
+            },
+            model::PlatformType {
+                name: name("Форма"),
+                semantic: semantic(
+                    model::BranchKind::ManagedForms,
+                    model::RecordFamily::PlatformType,
+                ),
+                type_kind: model::PlatformTypeKind::Regular,
+                object_kind: Some(model::PlatformObjectKind::ManagedForm),
+                extends: Vec::new(),
+                metadata_kind: None,
+                template_parameters: Vec::new(),
+                method_links: Vec::new(),
+                constructor_links: Vec::new(),
+                description: None,
+                facts: model::SectionFacts::default(),
+                source: source.clone(),
+            },
+            model::PlatformType {
+                name: name("Расширение формы"),
+                semantic: semantic(
+                    model::BranchKind::ManagedForms,
+                    model::RecordFamily::PlatformType,
+                ),
+                type_kind: model::PlatformTypeKind::Extension,
+                object_kind: Some(model::PlatformObjectKind::FormExtension),
+                extends: Vec::new(),
+                metadata_kind: None,
+                template_parameters: Vec::new(),
+                method_links: Vec::new(),
+                constructor_links: Vec::new(),
+                description: None,
+                facts: model::SectionFacts::default(),
+                source: source.clone(),
+            },
+            model::PlatformType {
+                name: name("ДокументОбъект.<Имя документа>"),
+                semantic: semantic(
+                    model::BranchKind::MetadataObjects,
+                    model::RecordFamily::PlatformType,
+                ),
+                type_kind: model::PlatformTypeKind::MetadataTemplate,
+                object_kind: Some(model::PlatformObjectKind::MetadataObject),
+                extends: Vec::new(),
+                metadata_kind: Some("ДокументОбъект".to_string()),
+                template_parameters: vec!["Имя документа".to_string()],
+                method_links: Vec::new(),
+                constructor_links: Vec::new(),
+                description: None,
+                facts: model::SectionFacts::default(),
+                source: source.clone(),
+            },
+        ],
         type_methods: vec![model::PlatformMethod {
             owner: name("Массив"),
             name: name("Добавить"),
@@ -685,7 +739,29 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     let platform_type = &platform_types["records"][0];
     assert_eq!(platform_type["branch_kind"], "platform_objects");
     assert_eq!(platform_type["type_kind"], "regular");
+    assert_eq!(platform_type["object_kind"], "regular_platform_type");
     assert!(platform_type.get("owner_path").is_none());
+    assert!(
+        platform_types["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|record| record["object_kind"] == "managed_form")
+    );
+    assert!(
+        platform_types["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|record| record["object_kind"] == "form_extension")
+    );
+    assert!(
+        platform_types["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|record| record["object_kind"] == "metadata_object")
+    );
 
     let query_tables = read_json(dir.join("query-tables.json"));
     assert_eq!(
