@@ -18,7 +18,7 @@ export, schema, data-quality, performance, parser, provider, storage and query-s
 live in `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T59. The queued roadmap comes from
+Next active unchecked task is T60. The queued roadmap comes from
 `implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
 help during BSL development and code analysis, and toward a future typed local provider role for a
 BSL analyzer.
@@ -132,7 +132,7 @@ Completion notes:
 - Verification passed with a fresh RU index at `target/uat/t58-sh-search-ru.sqlite` containing
   `25082` documents.
 
-### [ ] T59. Add expression-chain provider UAT without a BSL parser
+### [x] T59. Add expression-chain provider UAT without a BSL parser
 
 Spec refs:
 
@@ -164,6 +164,16 @@ Verification:
 - Updated `spec/acceptance/baseline.md` after running the scenario.
 - UAT passes against a freshly rebuilt RU index.
 - The scenario uses provider commands/JSON only and does not depend on SQLite table names.
+
+Completion notes:
+
+- UAT-SH-018 now has a dedicated T59 expression-chain scenario that derives each next provider root
+  from previous provider JSON rather than parsing BSL source or querying SQLite tables.
+- Verification passed against a fresh RU index at `target/uat/t59-sh-search-ru.sqlite` with `25082`
+  documents and `52698 ms` build time.
+- The scenario verifies the SKD chain through `НастройкиКомпоновкиДанных.Отбор`,
+  `ОтборКомпоновкиДанных`, `Элементы`, collection `Добавить` and
+  `ЭлементОтбораКомпоновкиДанных` fields, plus the `Новый HTTPСоединение(...)` constructor chain.
 
 ### [ ] T60. Harden ambiguity handling for analyzer type/member inference
 

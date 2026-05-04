@@ -828,12 +828,148 @@ jq -e '.status == "unsupported" and
   target/uat/t58-related-unsupported-mixed-root.json
 ```
 
+T59 expression-chain scenario steps:
+
+```bash
+rm -f target/uat/t59-sh-search-ru.sqlite target/uat/t59-*.json
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t59-sh-search-ru.sqlite
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t59-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get \
+    --owner-type-id "platform_type:НастройкиКомпоновкиДанных" --member "Отбор" --format json \
+  > target/uat/t59-01-filter-property.json
+FILTER_TYPE_ID="$(jq -r '
+  .results[]
+  | select(.fact.id == "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор")
+  | .meta.target_type_ids[]?
+' target/uat/t59-01-filter-property.json)"
+test "$FILTER_TYPE_ID" = "platform_type:ОтборКомпоновкиДанных"
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t59-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get --members-of "$FILTER_TYPE_ID" --format json \
+  > target/uat/t59-02-filter-members.json
+COLLECTION_TYPE_ID="$(jq -r '
+  .results[]
+  | select(.fact.kind == "type_property" and .fact.name.primary == "Элементы")
+  | .meta.target_type_ids[]?
+' target/uat/t59-02-filter-members.json)"
+test "$COLLECTION_TYPE_ID" = "platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных"
+ELEMENTS_PROPERTY_ID="$(jq -r '
+  .results[]
+  | select(.fact.kind == "type_property" and .fact.name.primary == "Элементы")
+  | .fact.id
+' target/uat/t59-02-filter-members.json)"
+test "$ELEMENTS_PROPERTY_ID" = "type_property:platform_type:ОтборКомпоновкиДанных:Элементы"
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t59-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax related --id "$ELEMENTS_PROPERTY_ID" --edge has_type --format json \
+  > target/uat/t59-03-elements-type.json
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t59-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get --members-of "$COLLECTION_TYPE_ID" --format json \
+  > target/uat/t59-04-collection-members.json
+ADD_CALLABLE_ID="$(jq -r '
+  .results[]
+  | select(.fact.kind == "type_method" and .fact.name.primary == "Добавить")
+  | .fact.id
+' target/uat/t59-04-collection-members.json)"
+test "$ADD_CALLABLE_ID" = "type_method:platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных:Добавить"
+ITEM_TYPE_ID="$(jq -r '
+  .results[]
+  | select(.fact.id == "type_method:platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных:Добавить")
+  | .meta.target_type_ids[]?
+  | select(. == "platform_type:ЭлементОтбораКомпоновкиДанных")
+' target/uat/t59-04-collection-members.json)"
+test "$ITEM_TYPE_ID" = "platform_type:ЭлементОтбораКомпоновкиДанных"
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t59-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get --callable-id "$ADD_CALLABLE_ID" --format json \
+  > target/uat/t59-05-add-callable.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t59-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get --members-of "$ITEM_TYPE_ID" --format json \
+  > target/uat/t59-06-filter-item-members.json
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t59-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get --kind platform_type --name "HTTPСоединение" --format json \
+  > target/uat/t59-07-http-type.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t59-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax constructors "HTTPСоединение" --format json \
+  > target/uat/t59-08-http-constructors.json
+HTTP_CONSTRUCTOR_ID="$(jq -r '
+  .results[]
+  | select(any(.fact.signatures[]?.parameters[]?;
+      .name == "ИспользоватьАутентификациюОС" and (.types | index("Булево") != null)))
+  | .fact.id
+' target/uat/t59-08-http-constructors.json)"
+test -n "$HTTP_CONSTRUCTOR_ID"
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t59-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax related --id "$HTTP_CONSTRUCTOR_ID" --edge constructs --format json \
+  > target/uat/t59-09-http-constructor-result.json
+
+jq -e '.status == "ok" and .query.kind == "owner_type_member" and
+  any(.results[]; .fact.id == "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" and
+    (.fact.types | index("ОтборКомпоновкиДанных") != null) and
+    (.meta.target_type_ids | index("platform_type:ОтборКомпоновкиДанных") != null))' \
+  target/uat/t59-01-filter-property.json
+jq -e '.status == "ok" and .query.kind == "member_list" and
+  any(.results[]; .fact.kind == "type_property" and .fact.name.primary == "Элементы" and
+    (.fact.types | index("КоллекцияЭлементовОтбораКомпоновкиДанных") != null) and
+    (.meta.target_type_ids | index("platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных") != null))' \
+  target/uat/t59-02-filter-members.json
+jq -e '.status == "ok" and .query.kind == "type_references" and .query.edge == "has_type" and
+  any(.results[]; .fact.id == "platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных")' \
+  target/uat/t59-03-elements-type.json
+jq -e '.status == "ok" and .query.kind == "member_list" and
+  any(.results[]; .fact.id == "type_method:platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных:Добавить" and
+    (.fact.return | index("ЭлементОтбораКомпоновкиДанных") != null) and
+    (.meta.target_type_ids | index("platform_type:ЭлементОтбораКомпоновкиДанных") != null))' \
+  target/uat/t59-04-collection-members.json
+jq -e '.status == "ok" and .query.kind == "callable_overloads" and
+  any(.results[]; .fact.id == "type_method:platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных:Добавить" and
+    (.fact.return | index("ЭлементОтбораКомпоновкиДанных") != null))' \
+  target/uat/t59-05-add-callable.json
+jq -e '.status == "ok" and .query.kind == "member_list" and
+  any(.results[].fact; .kind == "type_property" and .name.primary == "ЛевоеЗначение") and
+  any(.results[].fact; .kind == "type_property" and .name.primary == "ВидСравнения") and
+  any(.results[].fact; .kind == "type_property" and .name.primary == "ПравоеЗначение") and
+  any(.results[].fact; .kind == "type_property" and .name.primary == "Использование")' \
+  target/uat/t59-06-filter-item-members.json
+jq -e '.status == "ok" and .query.kind == "type_identity" and
+  .results[0].fact.id == "platform_type:HTTPСоединение"' \
+  target/uat/t59-07-http-type.json
+jq -e '.status == "ok" and .query.kind == "constructor" and
+  any(.results[].fact.signatures[]?.parameters[]?;
+    .name == "Таймаут" and (.types | index("Число") != null)) and
+  any(.results[].fact.signatures[]?.parameters[]?;
+    .name == "ЗащищенноеСоединение" and (.types | index("ЗащищенноеСоединениеOpenSSL") != null)) and
+  any(.results[].fact.signatures[]?.parameters[]?;
+    .name == "ИспользоватьАутентификациюОС" and .required == false and
+      (.types | index("Булево") != null))' \
+  target/uat/t59-08-http-constructors.json
+jq -e '.status == "ok" and .query.kind == "type_references" and .query.edge == "constructs" and
+  any(.results[]; .fact.id == "platform_type:HTTPСоединение")' \
+  target/uat/t59-09-http-constructor-result.json
+jq -s -e 'def forbidden_internal:
+  has("source") or has("source_hbk") or has("toc_path") or has("html_path") or has("page_title") or
+  has("rowid") or has("table") or has("sqlite") or has("parameter_text") or has("parameter_terms") or
+  has("relation_keys") or has("type_refs") or has("return_types");
+  all(.[]; ((.. | objects | forbidden_internal) | not))
+' target/uat/t59-*.json
+```
+
 Expected result:
 
 - All calls use provider commands and JSON only; no SQLite table names, rowids, HBK paths, TOC
   paths, HTML paths or page titles are asserted.
 - Type identity, member listing, owner-type/member lookup, callable lookup and type-reference
   traversal use provider `query.kind` values rather than public SQLite table names.
+- The expression-chain scenario derives `ОтборКомпоновкиДанных`,
+  `КоллекцияЭлементовОтбораКомпоновкиДанных` and `ЭлементОтбораКомпоновкиДанных` from provider
+  JSON returned by earlier calls instead of parsing BSL source or reading SQLite tables.
+- The constructor-chain scenario verifies `HTTPСоединение` type identity, constructor result
+  traversal through the `constructs` edge and structured constructor parameters.
 - Analyzer resolution aids such as `owner_type_id` and `target_type_ids` are returned only under
   `results[].meta`; shared facts stay under `results[].fact`.
 - Ambiguous, missing or unsupported primitive calls return provider `status` and diagnostics

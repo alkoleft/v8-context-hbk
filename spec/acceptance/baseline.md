@@ -1293,3 +1293,15 @@ type resolution by Russian primary name and English alias, member listing for
 `HTTPСоединение` and edge-filtered `has_type` traversal from the accepted SKD filter property.
 Existing UAT-SH-017 assertions still passed on the same rebuilt index for owner/member lookup,
 SKD relationship traversal and accounting-register query-table discovery.
+
+T59 added and passed the expression-chain provider UAT without adding a BSL parser, analyzer logic
+or a new provider boundary. The accepted debug rebuild from
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `25082` documents in `52698 ms` at
+`target/uat/t59-sh-search-ru.sqlite`. The UAT models the SKD expression chain as provider JSON
+calls: resolve `НастройкиКомпоновкиДанных.Отбор`, derive `ОтборКомпоновкиДанных`, traverse
+`Элементы` to `КоллекцияЭлементовОтбораКомпоновкиДанных`, resolve collection `Добавить`, derive
+`ЭлементОтбораКомпоновкиДанных` and verify the accepted filter-item fields. The same run verifies
+the `Новый HTTPСоединение(...)` constructor chain through type identity, constructor parameter
+facts and `constructs` traversal back to `HTTPСоединение`. Assertions use only provider commands and
+JSON fields; no SQLite table names, rowids, HBK paths, TOC paths, HTML paths or page titles are
+part of the scenario.
