@@ -15,9 +15,9 @@ Current status: T35-T40 and the T18 first slice are archived historical tasks. T
 export, schema, data-quality, performance and query-search conclusions live in
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md` and `implementation/syntax-helper-query-cli.md`.
-There are no unchecked active tasks after T42. Further T18 continuation may add the next focused
-query/search task after reconciling it with the durable T41 identity findings and T42 build-path
-measurements below.
+There are no unchecked active tasks after T43. Further T18 continuation may add the next focused
+query/search task after reconciling it with the durable T41 identity findings, T42 build-path
+measurements and T43 SQLite-writer measurements below.
 
 ## Loop Rule
 
@@ -200,3 +200,67 @@ Verification:
   endpoint integrity on the rebuilt Russian index
 - measured `syntax get`, `syntax search --mode keywords`, `syntax search --mode fuzzy` and
   `syntax related` smoke commands against the rebuilt Russian index
+
+### [x] T43. Reduce SQLite insertion overhead in Syntax Assistant query-index build
+
+Depends on: T42 staged index-build path.
+
+Spec refs:
+
+- NFR-PERF-001
+- NFR-QUERY-001
+- FR-SH-SEARCH-001
+- FR-SH-SEARCH-002
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/acceptance/baseline.md`
+
+Problem:
+
+- After T42, release `syntax export` for `shcntx_ru.hbk` measured `5.74 s / 197768 KiB`, while
+  release `syntax index` measured `20.48 s / 269828 KiB` on the same source and binary.
+- The rebuilt Russian SQLite index contains 25082 `documents`, 132646 `document_names`, 25082 FTS
+  rows and 65455 `relations`. The current writer inserts those rows through per-row
+  `Connection::execute()` calls, which prepares SQL repeatedly inside the same transaction.
+- This is a narrower bottleneck than changing the index format, adding a cache, introducing
+  concurrency or changing the query command contract.
+
+Scope:
+
+- Reuse prepared SQLite statements for document, name, FTS and relation insertion inside the
+  existing temporary database transaction.
+- Defer ordinary B-tree index creation until after bulk row insertion.
+- Use fixed temp-rebuild-only SQLite settings that are safe for a disposable replacement database
+  validated before atomic rename.
+- Preserve T41/T42 behavior: same SQLite schema, same document ids, same relation endpoints, same
+  writer lock and atomic replacement flow, same query commands.
+- Do not add user-facing tuning knobs, external search services, alternate storage engines,
+  parallel writers or new index artifacts in this slice.
+
+Expected artifacts:
+
+- Narrow `syntax-helper-search` writer changes.
+- Focused tests continue to cover the staged builder-to-SQLite path and replacement/lock behavior.
+- Updated acceptance baseline with before/after index-build timing for `shcntx_ru.hbk`.
+
+Completion notes:
+
+- `syntax-helper-search` now prepares document, lookup-name, FTS and relation insert statements once
+  per temporary database transaction instead of preparing SQL for each row.
+- Ordinary B-tree indexes for lookup and relation tables are created after bulk insertion. FTS
+  remains populated through its existing virtual table.
+- The temporary replacement database uses rebuild-only SQLite settings (`journal_mode=OFF`,
+  `synchronous=OFF`, `locking_mode=EXCLUSIVE`, `temp_store=MEMORY`). The active target database is
+  still replaced only after the temp database is built, indexed and validated.
+- Release `shcntx_ru.hbk` index build improved from the post-T42 measured `20.48 s / 269828 KiB`
+  triage run to `16.30 s / 269632 KiB`; `shcntx_root.hbk` improved from the T42 baseline class
+  `14.55 s / 239972 KiB` to `12.79 s / 243992 KiB`.
+- Counts stayed stable: Russian index `25082 documents / 132646 document_names / 25082 FTS rows /
+  65455 relations`; root index `25062 / 47001 / 25062 / 68670`.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- measured release `syntax index` run for `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- read-only SQLite checks for document count, relation count and relation endpoint integrity on the
+  rebuilt Russian index

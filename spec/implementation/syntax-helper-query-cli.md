@@ -154,6 +154,14 @@ and inserts relations from the finalized document set without materializing a co
 `Vec<Relation>`. This preserves the SQLite artifact, query commands and atomic rebuild behavior; no
 cache layer, graph database, external search service or tuning knob was added.
 
+T43 implementation note: the SQLite writer keeps the same schema and artifact contract but treats
+index build as a bulk load into a disposable replacement database. It prepares insert statements once
+per transaction, creates ordinary lookup/relation B-tree indexes after row insertion and uses fixed
+temp-rebuild settings for the replacement database. These settings do not create a user-facing
+tuning surface: a failed build can leave only a stale temp artifact, which the next build removes
+before creating a new temp database, while readers continue using the previous complete index until
+validated atomic rename.
+
 ### Why SQLite First
 
 SQLite with FTS5 is the first storage choice because it keeps the query path local and zero-service

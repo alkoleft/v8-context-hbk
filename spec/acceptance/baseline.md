@@ -1035,3 +1035,24 @@ Representative release-profile query checks against the rebuilt Russian index re
 NFR-QUERY-001: exact lookup for `ОтборКомпоновкиДанных` measured `0.00 s`, keyword search for
 `отбор скд` measured `0.04 s`, fuzzy search for `ОтборКомпоновкиДаных` measured `0.04 s`, and
 relationship search for `ОтборКомпоновкиДанных` measured `0.01 s`.
+
+T43 kept the T42 staged extraction/index data flow and reduced SQLite writer overhead. The writer
+now reuses prepared insert statements for documents, lookup names, FTS rows and relations; creates
+ordinary B-tree lookup/relation indexes after bulk insertion; and uses temp-rebuild-only SQLite
+settings while constructing the disposable replacement database. The active index path is still
+updated only by validated atomic rename under the existing writer lock.
+
+Release-profile T43 measurements:
+
+| Source / slice | Exit | Elapsed, s | Peak RSS, KiB | Documents | `document_names` | Relations | SQLite size |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` / export comparison | 0 | 5.74 | 197768 | n/a | n/a | n/a | 19M JSON dir |
+| `shcntx_ru.hbk` / post-T42 triage | 0 | 20.48 | 269828 | 25082 | 132646 | 65455 | 145M |
+| `shcntx_ru.hbk` / after prepared statements | 0 | 17.47 | 269756 | 25082 | 132646 | 65455 | 145M |
+| `shcntx_ru.hbk` / after T43 | 0 | 16.30 | 269632 | 25082 | 132646 | 65455 | 139M |
+| `shcntx_root.hbk` / after T43 | 0 | 12.79 | 243992 | 25062 | 47001 | 68670 | 62M |
+
+Read-only checks on the final T43 Russian index found all four expected ordinary indexes present and
+zero relation endpoints missing from `documents`. A representative keyword query against the final
+Russian index measured `0.04 s` and returned `Отбор` as the first hit, matching the accepted query
+behavior class.

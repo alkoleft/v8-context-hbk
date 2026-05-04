@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Statement, params};
 use serde::Serialize;
 use strsim::levenshtein;
 use syntax_helper_model as model;
@@ -535,6 +535,7 @@ fn build_index_file(
         })?;
     insert_documents(&transaction, path, &documents)?;
     insert_relations_from_documents(&transaction, path, &documents)?;
+    create_lookup_indexes(&transaction, path)?;
     transaction.commit().map_err(|source| SearchError::Sqlite {
         path: path.to_path_buf(),
         source,
@@ -989,8 +990,10 @@ struct EnumIdentityInput {
 fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError> {
     connection
         .execute_batch(
-            "PRAGMA journal_mode = DELETE;
-             PRAGMA synchronous = NORMAL;
+            "PRAGMA journal_mode = OFF;
+             PRAGMA synchronous = OFF;
+             PRAGMA locking_mode = EXCLUSIVE;
+             PRAGMA temp_store = MEMORY;
              CREATE TABLE meta (
                  key TEXT PRIMARY KEY,
                  value TEXT NOT NULL
@@ -1015,8 +1018,6 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  key_kind TEXT NOT NULL,
                  document_id TEXT NOT NULL REFERENCES documents(id)
              );
-             CREATE INDEX document_names_key_idx ON document_names(key, key_kind, document_id);
-             CREATE INDEX documents_owner_member_idx ON documents(owner_primary, name_primary);
              CREATE VIRTUAL TABLE document_fts USING fts5(
                  document_id UNINDEXED,
                  name_primary,
@@ -1036,7 +1037,19 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  label TEXT NOT NULL,
                  evidence TEXT NOT NULL,
                  weight INTEGER NOT NULL
-             );
+             );",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })
+}
+
+fn create_lookup_indexes(connection: &Connection, path: &Path) -> Result<(), SearchError> {
+    connection
+        .execute_batch(
+            "CREATE INDEX document_names_key_idx ON document_names(key, key_kind, document_id);
+             CREATE INDEX documents_owner_member_idx ON documents(owner_primary, name_primary);
              CREATE INDEX relations_source_idx ON relations(source_id, edge_kind, target_id);
              CREATE INDEX relations_target_idx ON relations(target_id, edge_kind, source_id);",
         )
@@ -1085,6 +1098,35 @@ fn insert_documents(
     path: &Path,
     documents: &[SearchDocument],
 ) -> Result<(), SearchError> {
+    let mut document_statement = connection
+        .prepare(
+            "INSERT INTO documents(
+                id, kind, kind_priority, name_primary, name_alias, owner_primary, owner_alias,
+                signature_text, parameter_text, type_names, return_names, description, preview
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let mut name_statement = connection
+        .prepare("INSERT INTO document_names(key, key_kind, document_id) VALUES (?1, ?2, ?3)")
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let mut fts_statement = connection
+        .prepare(
+            "INSERT INTO document_fts(
+                document_id, name_primary, name_alias, owner, signatures, parameters,
+                type_names, return_names, description
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
     for document in documents {
         let signatures = document.signatures.join("\n");
         let parameters = document.parameters.join("\n");
@@ -1095,54 +1137,42 @@ fn insert_documents(
             .owner
             .as_ref()
             .and_then(|owner| owner.alias.as_deref());
-        connection
-            .execute(
-                "INSERT INTO documents(
-                    id, kind, kind_priority, name_primary, name_alias, owner_primary, owner_alias,
-                    signature_text, parameter_text, type_names, return_names, description, preview
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                params![
-                    document.id,
-                    document.kind,
-                    kind_priority(&document.kind),
-                    document.name.primary,
-                    document.name.alias,
-                    owner_primary,
-                    owner_alias,
-                    signatures,
-                    parameters,
-                    type_names,
-                    return_names,
-                    document.description,
-                    document.preview,
-                ],
-            )
+        document_statement
+            .execute(params![
+                document.id,
+                document.kind,
+                kind_priority(&document.kind),
+                document.name.primary,
+                document.name.alias,
+                owner_primary,
+                owner_alias,
+                signatures,
+                parameters,
+                type_names,
+                return_names,
+                document.description,
+                document.preview,
+            ])
             .map_err(|source| SearchError::Sqlite {
                 path: path.to_path_buf(),
                 source,
             })?;
-        insert_name_keys(connection, path, document)?;
-        connection
-            .execute(
-                "INSERT INTO document_fts(
-                    document_id, name_primary, name_alias, owner, signatures, parameters,
-                    type_names, return_names, description
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    document.id,
-                    searchable_name(&document.name.primary),
-                    document.name.alias.as_deref().map(searchable_name),
-                    document
-                        .owner
-                        .as_ref()
-                        .map(|owner| searchable_name(&display_name(owner))),
-                    searchable_text(&signatures),
-                    searchable_text(&parameters),
-                    searchable_text(&type_names),
-                    searchable_text(&return_names),
-                    document.description.as_deref().map(searchable_text),
-                ],
-            )
+        insert_name_keys(&mut name_statement, path, document)?;
+        fts_statement
+            .execute(params![
+                document.id,
+                searchable_name(&document.name.primary),
+                document.name.alias.as_deref().map(searchable_name),
+                document
+                    .owner
+                    .as_ref()
+                    .map(|owner| searchable_name(&display_name(owner))),
+                searchable_text(&signatures),
+                searchable_text(&parameters),
+                searchable_text(&type_names),
+                searchable_text(&return_names),
+                document.description.as_deref().map(searchable_text),
+            ])
             .map_err(|source| SearchError::Sqlite {
                 path: path.to_path_buf(),
                 source,
@@ -1152,7 +1182,7 @@ fn insert_documents(
 }
 
 fn insert_name_keys(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     path: &Path,
     document: &SearchDocument,
 ) -> Result<(), SearchError> {
@@ -1186,11 +1216,8 @@ fn insert_name_keys(
         }
     }
     for (key, kind) in keys {
-        connection
-            .execute(
-                "INSERT INTO document_names(key, key_kind, document_id) VALUES (?1, ?2, ?3)",
-                params![key, kind, document.id],
-            )
+        statement
+            .execute(params![key, kind, document.id])
             .map_err(|source| SearchError::Sqlite {
                 path: path.to_path_buf(),
                 source,
@@ -1206,16 +1233,25 @@ fn insert_relations_from_documents(
 ) -> Result<(), SearchError> {
     let by_name = relation_lookup(documents);
     let mut inserted = BTreeSet::new();
+    let mut statement = connection
+        .prepare(
+            "INSERT INTO relations(source_id, target_id, edge_kind, label, evidence, weight)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
     for document in documents {
-        insert_owner_relations(connection, path, document, &by_name, &mut inserted)?;
-        insert_constructor_relation(connection, path, document, &by_name, &mut inserted)?;
-        insert_type_reference_relations(connection, path, document, &by_name, &mut inserted)?;
+        insert_owner_relations(&mut statement, path, document, &by_name, &mut inserted)?;
+        insert_constructor_relation(&mut statement, path, document, &by_name, &mut inserted)?;
+        insert_type_reference_relations(&mut statement, path, document, &by_name, &mut inserted)?;
     }
     Ok(())
 }
 
 fn insert_owner_relations(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     path: &Path,
     document: &SearchDocument,
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
@@ -1233,7 +1269,7 @@ fn insert_owner_relations(
         return Ok(());
     };
     insert_relation_if_new(
-        connection,
+        statement,
         path,
         inserted,
         Relation {
@@ -1246,7 +1282,7 @@ fn insert_owner_relations(
         },
     )?;
     insert_relation_if_new(
-        connection,
+        statement,
         path,
         inserted,
         Relation {
@@ -1265,7 +1301,7 @@ fn insert_owner_relations(
 }
 
 fn insert_constructor_relation(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     path: &Path,
     document: &SearchDocument,
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
@@ -1281,7 +1317,7 @@ fn insert_constructor_relation(
         return Ok(());
     };
     insert_relation_if_new(
-        connection,
+        statement,
         path,
         inserted,
         Relation {
@@ -1296,7 +1332,7 @@ fn insert_constructor_relation(
 }
 
 fn insert_type_reference_relations(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     path: &Path,
     document: &SearchDocument,
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
@@ -1311,7 +1347,7 @@ fn insert_type_reference_relations(
             continue;
         };
         insert_relation_if_new(
-            connection,
+            statement,
             path,
             inserted,
             Relation {
@@ -1332,7 +1368,7 @@ fn insert_type_reference_relations(
 }
 
 fn insert_relation_if_new(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     path: &Path,
     inserted: &mut BTreeSet<(String, String, &'static str)>,
     relation: Relation,
@@ -1344,19 +1380,15 @@ fn insert_relation_if_new(
     )) {
         return Ok(());
     }
-    connection
-        .execute(
-            "INSERT INTO relations(source_id, target_id, edge_kind, label, evidence, weight)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                relation.source_id,
-                relation.target_id,
-                relation.edge_kind,
-                relation.label,
-                relation.evidence,
-                relation.weight,
-            ],
-        )
+    statement
+        .execute(params![
+            relation.source_id,
+            relation.target_id,
+            relation.edge_kind,
+            relation.label,
+            relation.evidence,
+            relation.weight,
+        ])
         .map_err(|source| SearchError::Sqlite {
             path: path.to_path_buf(),
             source,
