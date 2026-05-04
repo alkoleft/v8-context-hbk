@@ -19,8 +19,9 @@ on the accepted schema v8 query-table export shape rather than the temporary sch
 `table-fields.json` / `table-parameters.json` split. T37, T38 and T39 follow T36 before T18 to
 remove the historical global-context event filename, classify event owners without introducing
 cross-cutting semantic IDs, keep type-event `owner_path` out of consumer JSON and derive query table
-role/identifier from Syntax Assistant syntax. T18 is complete. There is no unchecked active task
-after T18; add the next scoped task before implementing new behavior. T13-T17 and T19-T24 are
+role/identifier from Syntax Assistant syntax. T18 has a committed checkpoint (`d990d8a`) but is not
+final: T41 is the first unchecked task before continuing T18 because query-index record identity must
+be settled against real Syntax Assistant data. T13-T17 and T19-T24 are
 archived historical tasks; their durable
 performance conclusions live in `acceptance/baseline.md`, `implementation/performance-baseline-t13.md`
 and `implementation/performance-variants.md`.
@@ -556,3 +557,44 @@ Verification:
 - NFR-QUERY-001 measurement notes recorded for exact lookup, keyword search, fuzzy search and
   relationship search.
 - `git diff --check` passed.
+
+### [ ] T41. Define query-index record identity and form-parameter classification
+
+Depends on: T18 checkpoint `d990d8a`. Blocks further T18 continuation.
+
+Spec refs:
+
+- FR-SH-SEARCH-001
+- FR-SH-SEARCH-002
+- FR-EXPORT-001
+- UAT-SH-004
+- UAT-SH-006
+- UAT-SH-015
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/source-evidence.md`
+
+Scope:
+
+- Define the `syntax-helper-search` document identity contract per record family before changing code.
+  Document ids must not include HBK file paths, TOC paths, HTML paths, page titles or display strings
+  such as `primary (alias)`.
+- Reuse domain identifiers that already exist in the extraction/export model. Query table documents
+  must use `QueryTable.identifier`, not display names such as `Основная таблица`; query table field and
+  parameter documents must be owned by that table identity rather than only by the table page title.
+- Classify Syntax Assistant pages under form and form-extension `Параметры формы` branches as form
+  attributes/parameters owned by the form or extension type. They must not be emitted as
+  `platform_type` records.
+- Treat same-name records as parser/model evidence first. Do not hide a source-family or
+  classification defect by adding source-path-shaped suffixes to search ids.
+- Preserve exact lookup by primary name and alias through lookup tables; aliases may participate in
+  lookup keys but not in document identity.
+- Rebuild a real Russian Syntax Assistant query index and verify that `documents.id`,
+  `relations.source_id` and `relations.target_id` follow the accepted identity contract without
+  SQLite uniqueness failures.
+
+Expected artifacts:
+
+- Updated implementation spec for record-family identity rules.
+- Parser/model/search changes needed for query-table ids and form-parameter classification.
+- Focused tests for query-table identity, relation endpoints and form-parameter classification.
+- Updated UAT/baseline notes with the verified real-index result.
