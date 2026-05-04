@@ -32,6 +32,13 @@ fn name(primary: &str) -> model::LocalizedName {
     }
 }
 
+fn localized(primary: &str, alias: &str) -> model::LocalizedName {
+    model::LocalizedName {
+        primary: primary.to_string(),
+        alias: Some(alias.to_string()),
+    }
+}
+
 fn link(primary: &str) -> model::MemberLink {
     model::MemberLink {
         name: name(primary),
@@ -187,7 +194,7 @@ fn records_envelope_json_is_parseable_and_non_empty() {
     let json = fs::read_to_string(&path).expect("record envelope must be readable");
     assert!(!json.is_empty());
     let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
-    assert_eq!(parsed["schema_version"], 10);
+    assert_eq!(parsed["schema_version"], 11);
     assert_eq!(parsed["locale"], "en");
     assert_eq!(parsed["source_locale"], "root");
     assert!(parsed.get("source_hbk").is_none());
@@ -229,7 +236,7 @@ fn exporter_writes_full_canonical_file_set() {
     }
 
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 10);
+    assert_eq!(metadata["schema_version"], 11);
     assert_eq!(metadata["locale"], "en");
     assert_eq!(metadata["source_locale"], "root");
     assert!(metadata.get("source_hbk").is_none());
@@ -476,23 +483,30 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         query_tables: vec![
             model::QueryTable {
                 name: "Таблица бизнес-процессов".to_string(),
+                syntax: Some(localized(
+                    "БизнесПроцесс.<Имя бизнес-процесса>",
+                    "BusinessProcess.<Имя бизнес-процесса>",
+                )),
+                identifier: "БизнесПроцесс".to_string(),
                 semantic: semantic(
                     model::BranchKind::QueryTables,
                     model::RecordFamily::QueryTable,
                 )
                 .with_owner_path(vec![name("Таблицы запросов")]),
-                table_role: model::QueryTableRole::Additional,
+                table_role: model::QueryTableRole::Primary,
                 description: Some("Таблица бизнес-процессов.".to_string()),
                 source: source.clone(),
             },
             model::QueryTable {
                 name: "Таблица критерия отбора".to_string(),
+                syntax: Some(name("КритерийОтбора.<Имя критерия отбора>")),
+                identifier: "КритерийОтбора".to_string(),
                 semantic: semantic(
                     model::BranchKind::QueryTables,
                     model::RecordFamily::QueryTable,
                 )
                 .with_owner_path(vec![name("Таблицы запросов")]),
-                table_role: model::QueryTableRole::Additional,
+                table_role: model::QueryTableRole::Primary,
                 description: None,
                 source: source.clone(),
             },
@@ -599,7 +613,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
 
     assert!(!dir.join("global-contexts.json").exists());
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 10);
+    assert_eq!(metadata["schema_version"], 11);
     assert_no_keys(&metadata, &["source_hbk"]);
 
     let forbidden = [
@@ -772,7 +786,16 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         query_tables["records"][0]["name"],
         "Таблица бизнес-процессов"
     );
-    assert_eq!(query_tables["records"][0]["table_role"], "additional");
+    assert_eq!(query_tables["records"][0]["table_role"], "primary");
+    assert_eq!(query_tables["records"][0]["identifier"], "БизнесПроцесс");
+    assert_eq!(
+        query_tables["records"][0]["syntax"]["primary"],
+        "БизнесПроцесс.<Имя бизнес-процесса>"
+    );
+    assert_eq!(
+        query_tables["records"][0]["syntax"]["alias"],
+        "BusinessProcess.<Имя бизнес-процесса>"
+    );
     assert_eq!(
         query_tables["records"][0]["fields"][0]["name"],
         "Представление"
@@ -900,6 +923,8 @@ fn streaming_export_writes_lean_records_without_full_context() {
     export
         .query_table(model::QueryTable {
             name: "Основная таблица".to_string(),
+            syntax: Some(name("Задача.<Имя задачи>")),
+            identifier: "Задача".to_string(),
             semantic: semantic(
                 model::BranchKind::QueryTables,
                 model::RecordFamily::QueryTable,
@@ -1005,6 +1030,12 @@ fn streaming_export_writes_lean_records_without_full_context() {
     let query_tables = read_json(dir.join("query-tables.json"));
     assert_eq!(query_tables["records"][0]["name"], "Основная таблица");
     assert_eq!(query_tables["records"][0]["table_role"], "primary");
+    assert_eq!(query_tables["records"][0]["identifier"], "Задача");
+    assert_eq!(
+        query_tables["records"][0]["syntax"]["primary"],
+        "Задача.<Имя задачи>"
+    );
+    assert!(query_tables["records"][0]["syntax"].get("alias").is_none());
     assert_eq!(
         query_tables["records"][0]["owner_path"],
         serde_json::json!(["Таблицы задач"])

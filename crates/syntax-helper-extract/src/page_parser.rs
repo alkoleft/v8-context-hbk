@@ -6,8 +6,8 @@ use hbk_docs::{PageContent, PageSource};
 use syntax_helper_model::*;
 
 use crate::html::{
-    body_text, bracketed_name_ranges, heading_name, links_in_section, page_title_name,
-    section_html, section_text, see_also_links_in_section, select_first_html_text,
+    body_text, bracketed_name_ranges, heading_name, links_in_section, name_from_text,
+    page_title_name, section_html, section_text, see_also_links_in_section, select_first_html_text,
     text_lines_from_html_fragment, title_name,
 };
 
@@ -117,12 +117,62 @@ pub(crate) fn parse_platform_type_for_mode(
 }
 
 pub fn parse_query_table(content: &PageContent, source: SyntaxHelperSource) -> QueryTable {
+    let syntax = query_table_syntax(content);
+    let name = query_table_name(content);
+    let identifier = query_table_identifier(syntax.as_ref(), &name);
+    let table_role = query_table_role(syntax.as_ref(), &name);
     QueryTable {
-        name: page_title_name(content).primary,
+        name,
+        syntax,
+        identifier,
         semantic: SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTable),
-        table_role: QueryTableRole::Unknown,
+        table_role,
         description: section_text(content, &["Описание:", "Description:"]),
         source,
+    }
+}
+
+pub(crate) fn query_table_syntax(content: &PageContent) -> Option<LocalizedName> {
+    chapter_section_text(&content.raw_html, &["Синтаксис", "Syntax"])
+        .map(|text| name_from_text(&text))
+}
+
+fn query_table_name(content: &PageContent) -> String {
+    content
+        .source
+        .toc_title
+        .as_deref()
+        .map(|title| name_from_text(title).primary)
+        .unwrap_or_else(|| page_title_name(content).primary)
+}
+
+pub(crate) fn query_table_identifier(syntax: Option<&LocalizedName>, name: &str) -> String {
+    let primary = syntax
+        .and_then(primary_syntax_segment)
+        .filter(|segment| !segment.is_empty())
+        .unwrap_or_else(|| name.trim());
+    if syntax.is_some_and(|syntax| query_table_syntax_segment_count(syntax) > 2) {
+        format!("{}{}", primary, camel_case_identifier_part(name))
+    } else {
+        compact_identifier_part(primary)
+    }
+}
+
+pub(crate) fn query_table_role(syntax: Option<&LocalizedName>, name: &str) -> QueryTableRole {
+    if let Some(syntax) = syntax.filter(|syntax| !syntax.primary.trim().is_empty()) {
+        return if query_table_syntax_segment_count(syntax) <= 2 {
+            QueryTableRole::Primary
+        } else {
+            QueryTableRole::Additional
+        };
+    }
+    let normalized = name.trim().to_lowercase();
+    if normalized == "основная таблица" || normalized == "main table" {
+        QueryTableRole::Primary
+    } else if normalized.is_empty() {
+        QueryTableRole::Unknown
+    } else {
+        QueryTableRole::Additional
     }
 }
 
@@ -638,6 +688,72 @@ fn signatures_from_section(
             variant: variant.cloned(),
         })
         .collect()
+}
+
+pub(crate) fn query_table_syntax_segment_count(syntax: &LocalizedName) -> usize {
+    syntax
+        .primary
+        .trim()
+        .split('.')
+        .filter(|segment| !segment.trim().is_empty())
+        .count()
+}
+
+fn primary_syntax_segment(syntax: &LocalizedName) -> Option<&str> {
+    syntax
+        .primary
+        .trim()
+        .split('.')
+        .next()
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+}
+
+fn compact_identifier_part(value: &str) -> String {
+    value.split_whitespace().collect()
+}
+
+fn camel_case_identifier_part(value: &str) -> String {
+    let mut output = String::new();
+    let mut capitalize_next = true;
+    for ch in value.chars() {
+        if ch.is_alphanumeric() {
+            if capitalize_next {
+                output.extend(ch.to_uppercase());
+                capitalize_next = false;
+            } else {
+                output.push(ch);
+            }
+        } else {
+            capitalize_next = true;
+        }
+    }
+    output
+}
+
+fn chapter_section_text(raw_html: &str, labels: &[&str]) -> Option<String> {
+    let (_label_start, label_end) = labels.iter().find_map(|label| {
+        raw_html
+            .find(&format!(">{label}</p>"))
+            .map(|index| (index + 1, index + 1 + label.len()))
+            .or_else(|| {
+                raw_html
+                    .find(&format!(">{label}:</p>"))
+                    .map(|index| (index + 1, index + 1 + label.len() + 1))
+            })
+    })?;
+    let body_start = raw_html[label_end..]
+        .find("</p>")
+        .map(|offset| label_end + offset + 4)
+        .unwrap_or(label_end);
+    let body_end = raw_html[body_start..]
+        .find("<p class=\"V8SH_chapter\"")
+        .map(|offset| body_start + offset)
+        .unwrap_or(raw_html.len());
+    let text = text_lines_from_html_fragment(&raw_html[body_start..body_end])
+        .trim()
+        .to_string();
+    (!text.is_empty()).then_some(text)
 }
 
 fn parse_parameters(content: &PageContent) -> Vec<Parameter> {

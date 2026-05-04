@@ -277,7 +277,7 @@ Parser provenance remains part of the internal model and diagnostics contract. `
 keeps enough source context for parser maintenance; consumer record files stay focused on platform
 facts.
 
-Required files for the schema v10 consumer export contract:
+Required files for the current consumer export contract:
 
 - `metadata.json`
 - `global-methods.json`
@@ -293,7 +293,7 @@ Required files for the schema v10 consumer export contract:
 - `enums.json`
 - `diagnostics.json`
 
-The current accepted consumer export schema is `schema_version: 10`. Each consumer record-family file
+The current accepted consumer export schema is `schema_version: 11`. Each consumer record-family file
 is a JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and `records`.
 `metadata.json` contains export-level metadata and file inventory; it must not expose source HBK
 paths or book hierarchy. `diagnostics.json` may keep parser source context because its audience is
@@ -347,11 +347,24 @@ pages under the same owner family. The shape is:
 - `branch_kind`: `query_tables`.
 - `name`: a string table name. Query table names, field names and parameter names use strings, not
   `{ primary, alias }`, unless future source evidence proves aliases for this source family.
+- `syntax`: the Syntax Assistant `Синтаксис` / `Syntax` section for the table page when present,
+  exposed as a localized-name object with `primary` and optional `alias`. Russian source pages may
+  contain both syntax variants in one section, such as
+  `БизнесПроцесс.<Имя бизнес-процесса> (BusinessProcess.<Имя бизнес-процесса>)`; the Russian form
+  is `syntax.primary` and the parenthesized English form is `syntax.alias`.
+- `identifier`: a deterministic table identifier derived from the Syntax Assistant syntax and table
+  page name. Primary table identifiers use the leading syntax segment before the first dot, such as
+  `БизнесПроцесс` for `БизнесПроцесс.<Имя бизнес-процесса>`. Additional table identifiers use the
+  primary table identifier plus the table `name` normalized to CamelCase. Whitespace, hyphens and
+  other punctuation are word separators and are not copied into the identifier.
 - `owner_path`: deterministic semantic owner labels for the table family, such as
   `["Таблицы задач"]`, not raw TOC indexes, HBK paths or HTML paths.
-- `table_role`: `primary`, `additional` or `unknown`. "Основная таблица" / "Main table" maps to
-  `primary`; other table pages under the same owner family map to `additional` unless the source
-  provides a more precise role.
+- `table_role`: `primary`, `additional` or `unknown`. A query table page whose syntax has at most
+  two dot-separated semantic segments, such as `БизнесПроцесс.<Имя бизнес-процесса>` or
+  `Task.<Task name>`, maps to `primary`. A page with a longer syntax, such as
+  `БизнесПроцесс.<Имя бизнес-процесса>.Точки`, maps to `additional`. Generic
+  "Основная таблица" / "Main table" page names remain a fallback primary signal when syntax is not
+  available.
 - `description`: optional table description when parsed from the table page.
 - `fields`: array of table fields with string `name`, `types`, optional `description` and optional
   `note`.
@@ -450,6 +463,14 @@ query table records. Event records may keep only the owner context that is expli
 the event export contract; if exact event lookup later requires broader owner disambiguation, that
 requirement must be specified in the event task without weakening the schema version 8
 derivative-record omission rule.
+
+Schema version 11 promotes query table syntax and identifier to the consumer JSON contract and fixes
+query table role classification to prefer the `syntax.primary` shape over table page title. Tables such as
+`Таблица бизнес-процессов` / `Business Process Table`, whose syntax is
+`БизнесПроцесс.<Имя бизнес-процесса>` / `BusinessProcess.<Business process name>`, are primary
+tables even though their page title is not "Основная таблица" / "Main table". Additional tables such
+as `БизнесПроцесс.<Имя бизнес-процесса>.Точки` derive their identifier from the primary table
+identifier plus the CamelCase-normalized page `name`.
 
 Owner classification belongs to the owner object/type model, not to a local event-only
 `owner.kind` field. Platform type/object records should expose a source-backed owner/object

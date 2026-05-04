@@ -470,6 +470,28 @@ T36 implemented this shape on 2026-05-04. Fresh debug CLI exports for
   parameters omit `required`;
 - normal exports preserve stale files from older schema versions when an output directory is reused.
 
+A later 2026-05-04 review found that schema v10 still classified query table roles from page names
+instead of the table syntax. The source page `tables/table58.html` has title
+`БизнесПроцесс.<Имя бизнес-процесса> (BusinessProcess.<Имя бизнес-процесса>)`, a `Синтаксис`
+section with the same expression and display table name `Таблица бизнес-процессов`. Its root-source
+counterpart has `Syntax` value `BusinessProcess.<Business process name>` and display table name
+`Business Process Table`. These are primary tables by syntax shape even though their page names are
+not `Основная таблица` / `Main table`.
+
+The same review found additional table pages whose syntax extends the primary table syntax, for
+example `БизнесПроцесс.<Имя бизнес-процесса>.Точки` /
+`BusinessProcess.<Business process name>.Points`. Query table extraction therefore needs to keep the
+table syntax and derive a deterministic table identifier from syntax plus page name rather than
+using the display table name as the only consumer lookup key. A follow-up T40 review clarified that
+the page-name suffix must be CamelCase-normalized, not only whitespace-compacted; for example
+`Таблица изменений бизнес-процессов` contributes `ТаблицаИзмененийБизнесПроцессов`.
+
+The table syntax itself follows the same dual-language source pattern as other Syntax Assistant
+facts: Russian pages may contain a Russian expression plus a parenthesized English alias. For
+example, `РегистрРасчета.<Имя регистра расчета>.<Имя перерасчета>.Изменения
+(CalculationRegister.<Имя регистра расчета>.<Имя перерасчета>.Changes)` should be split into
+localized `syntax.primary` and `syntax.alias` instead of exported as one combined string.
+
 ## Event File Split Findings
 
 T37 implemented the schema version 9 event file split on 2026-05-04. Fresh CLI exports for

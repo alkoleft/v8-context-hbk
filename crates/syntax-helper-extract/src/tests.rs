@@ -339,6 +339,64 @@ fn parses_query_table_field_and_parameter_pages() {
 }
 
 #[test]
+fn parses_query_table_syntax_and_identifier_from_page() {
+    let toc = Toc::parse(
+        r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Таблица бизнес-процессов"}},"/tables/table58.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "tables/table58.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">БизнесПроцесс.&lt;Имя бизнес-процесса&gt; (BusinessProcess.&lt;Имя бизнес-процесса&gt;)</h1><p class="V8SH_chapter">Синтаксис</p>БизнесПроцесс.&lt;Имя бизнес-процесса&gt; (BusinessProcess.&lt;Имя бизнес-процесса&gt;)<p class="V8SH_chapter">Поля</p><p class="V8SH_chapter">Описание:</p><p>Предназначена для получения записей бизнес-процессов.</p></body></html>"#,
+    );
+
+    let table = parse_query_table(&content, source("tables/table58.html"));
+
+    let syntax = table.syntax.as_ref().expect("syntax must be parsed");
+    assert_eq!(syntax.primary, "БизнесПроцесс.<Имя бизнес-процесса>");
+    assert_eq!(
+        syntax.alias.as_deref(),
+        Some("BusinessProcess.<Имя бизнес-процесса>")
+    );
+    assert_eq!(table.identifier, "БизнесПроцесс");
+    assert_eq!(table.table_role, QueryTableRole::Primary);
+}
+
+#[test]
+fn parses_additional_query_table_identifier_from_extended_syntax() {
+    let toc = Toc::parse(
+        r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Таблица точек бизнес-процессов"}},"/tables/table57.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "tables/table57.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">БизнесПроцесс.&lt;Имя бизнес-процесса&gt;.Точки (BusinessProcess.&lt;Имя бизнес-процесса&gt;.Points)</h1><p class="V8SH_chapter">Синтаксис</p>БизнесПроцесс.&lt;Имя бизнес-процесса&gt;.Точки (BusinessProcess.&lt;Имя бизнес-процесса&gt;.Points)<p class="V8SH_chapter">Поля</p><p class="V8SH_chapter">Описание:</p><p>Предназначена для получения точек бизнес-процессов.</p></body></html>"#,
+    );
+
+    let table = parse_query_table(&content, source("tables/table57.html"));
+
+    let syntax = table.syntax.as_ref().expect("syntax must be parsed");
+    assert_eq!(syntax.primary, "БизнесПроцесс.<Имя бизнес-процесса>.Точки");
+    assert_eq!(
+        syntax.alias.as_deref(),
+        Some("BusinessProcess.<Имя бизнес-процесса>.Points")
+    );
+    assert_eq!(table.identifier, "БизнесПроцессТаблицаТочекБизнесПроцессов");
+    assert_eq!(table.table_role, QueryTableRole::Additional);
+}
+
+#[test]
 fn resolves_query_table_owner_from_single_toc_index_for_ru_and_root_sources() {
     let toc = Toc::parse(
         r#"{

@@ -460,6 +460,8 @@ pub struct PlatformType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct QueryTable {
     pub name: String,
+    pub syntax: Option<LocalizedName>,
+    pub identifier: String,
     pub semantic: SemanticContext,
     pub table_role: QueryTableRole,
     pub description: Option<String>,

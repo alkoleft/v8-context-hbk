@@ -18,7 +18,8 @@ reading gaps. T36 is now the first unchecked task before T18 because the query/s
 on the accepted schema v8 query-table export shape rather than the temporary schema v7
 `table-fields.json` / `table-parameters.json` split. T37, T38 and T39 follow T36 before T18 to
 remove the historical global-context event filename, classify event owners without introducing
-cross-cutting semantic IDs and keep type-event `owner_path` out of consumer JSON. T13-T17 and
+cross-cutting semantic IDs, keep type-event `owner_path` out of consumer JSON and derive query table
+role/identifier from Syntax Assistant syntax. T18 is now the first unchecked task. T13-T17 and
 T19-T24 are archived historical tasks; their durable
 performance conclusions live in `acceptance/baseline.md`, `implementation/performance-baseline-t13.md`
 and `implementation/performance-variants.md`.
@@ -395,9 +396,86 @@ Completion notes:
 - Verified with `cargo fmt`, `cargo test --workspace`, a fresh full RU CLI export and targeted jq
   checks.
 
+### [x] T40. Derive query table role and identifier from Syntax Assistant syntax
+
+Depends on: T39. Explicitly reprioritized before T18 by the 2026-05-04 query table
+syntax/identifier regression report.
+
+Spec refs:
+
+- FR-EXPORT-001
+- FR-SH-002
+- FR-SH-003
+- UAT-SH-011
+- UAT-SH-012
+- UAT-SH-013
+- `spec/source-evidence.md`, Query Table Export Shape Findings
+- `spec/implementation/components.md`
+
+Scope:
+
+- Raise the canonical consumer JSON export to `schema_version: 11`.
+- Extract the `Синтаксис` / `Syntax` section for each query table page and expose it as a localized
+  `query-tables.json.records[].syntax` object with `primary` and optional `alias` when present.
+- Add `query-tables.json.records[].identifier` as a query-table-local consumer key.
+- Derive `table_role` from `syntax.primary` shape before falling back to generic page names:
+  - `syntax.primary` with at most two dot-separated semantic segments is `primary`;
+  - `syntax.primary` with more than two segments is `additional`;
+  - empty syntax keeps the existing `unknown` / generic-name fallback behavior.
+- Treat `Таблица бизнес-процессов` / `Business Process Table` and similar metadata table pages as
+  primary when their syntax is `БизнесПроцесс.<Имя бизнес-процесса>` /
+  `BusinessProcess.<Business process name>`.
+- Derive primary identifiers from the first syntax segment, for example `БизнесПроцесс` or
+  `BusinessProcess`.
+- Derive additional identifiers from the primary identifier plus the table page `name` with
+  CamelCase normalization; whitespace, hyphens and punctuation are separators and are not copied.
+- Keep query table display `name`, `owner_path`, nested fields/parameters, event files and
+  derivative-record `owner_path` omission otherwise unchanged.
+- Do not introduce cross-file semantic IDs, query CLI behavior, search indexes or broad TOC
+  refactors in this task.
+
+Expected artifacts:
+
+- Model/extractor/export changes for query table syntax, identifier and role derivation.
+- Regression tests for business-process primary table classification and at least one additional
+  table syntax.
+- Updated UAT-SH-011/UAT-SH-012/UAT-SH-013 checks.
+- Updated README, acceptance baseline and source evidence after verification.
+
+Verification:
+
+- `cargo fmt`
+- `cargo test --workspace`
+- Full CLI export for `shcntx_ru.hbk`
+- Full CLI export for `shcntx_root.hbk`
+- Targeted jq checks for schema version 11, business-process primary table identifiers, additional
+  query table identifiers, localized syntax fields and unchanged nested field/parameter shape
+- `git diff --check`
+
+Completion notes:
+
+- Raised the canonical consumer JSON schema to version 11.
+- Added query table localized `syntax` and `identifier` to the model and `query-tables.json` export.
+- Derived `table_role` from query table `syntax.primary` before page-name fallback.
+  Business-process table pages are now primary when syntax has the two-segment shape
+  `БизнесПроцесс.<Имя бизнес-процесса>` / `BusinessProcess.<Business process name>`.
+- Additional table identifiers are derived from the primary syntax segment plus CamelCase-normalized
+  table `name`; `.Точки` / `.Points` tables remain `additional`.
+- Full debug CLI exports for `shcntx_ru.hbk` and `shcntx_root.hbk` preserved existing record-family
+  counts: 59 query tables, 588 nested fields, 78 nested parameters, 47 module events, 650 type
+  events and 4 parser diagnostics per locale.
+- Follow-up review clarified that additional identifier suffixes use CamelCase normalization and
+  remove punctuation such as hyphens, e.g. `Таблица изменений бизнес-процессов` becomes
+  `ТаблицаИзмененийБизнесПроцессов`.
+- The exported `syntax` field follows the same localized-name shape as other dual-language Syntax
+  Assistant facts: Russian pages expose the Russian expression as `primary` and the parenthesized
+  English expression as `alias`; root pages expose only English `primary` when no alias exists.
+- Verification passed with `cargo fmt`, `cargo test --workspace`, full RU/root exports, targeted
+  jq checks and `git diff --check`.
+
 ### [ ] T18. Design and implement the separate Syntax Assistant query CLI first slice
 
-Depends on: T17, T35, T36, T37, T38 and T39 unless this task is explicitly reprioritized.
+Depends on: T17, T35, T36, T37, T38, T39 and T40 unless this task is explicitly reprioritized.
 
 Spec refs:
 

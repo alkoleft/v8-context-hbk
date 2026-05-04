@@ -503,12 +503,12 @@ Preconditions:
 Steps:
 
 ```bash
-jq -e '.schema_version == 10 and (.records | length) == 47' target/uat/shcntx-ru/module-events.json
-jq -e '.schema_version == 10 and (.records | length) == 650' target/uat/shcntx-ru/type-events.json
-jq -e '.schema_version == 10 and (.records | length) > 0' target/uat/shcntx-ru/query-tables.json
-jq -e '.schema_version == 10 and (.records | length) == 47' target/uat/shcntx-en/module-events.json
-jq -e '.schema_version == 10 and (.records | length) == 650' target/uat/shcntx-en/type-events.json
-jq -e '.schema_version == 10 and (.records | length) > 0' target/uat/shcntx-en/query-tables.json
+jq -e '.schema_version == 11 and (.records | length) == 47' target/uat/shcntx-ru/module-events.json
+jq -e '.schema_version == 11 and (.records | length) == 650' target/uat/shcntx-ru/type-events.json
+jq -e '.schema_version == 11 and (.records | length) > 0' target/uat/shcntx-ru/query-tables.json
+jq -e '.schema_version == 11 and (.records | length) == 47' target/uat/shcntx-en/module-events.json
+jq -e '.schema_version == 11 and (.records | length) == 650' target/uat/shcntx-en/type-events.json
+jq -e '.schema_version == 11 and (.records | length) > 0' target/uat/shcntx-en/query-tables.json
 
 jq -e 'all(.records[]; .record_family == "module_event" and has("module"))' target/uat/shcntx-ru/module-events.json
 jq -e 'all(.records[]; .record_family == "module_event" and has("module"))' target/uat/shcntx-en/module-events.json
@@ -518,8 +518,11 @@ jq -e 'all(.records[]; .record_family == "type_event" and has("owner") and (has(
 jq -e '.records[] | select(.name.primary == "ПередЗавершениемРаботыСистемы" and .availability.since == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0] | has("text") | not) and any(.signatures[0].parameters[]; .name == "Отказ" and .required == true and (.types | index("Булево") != null))' target/uat/shcntx-ru/module-events.json
 jq -e '.records[] | select(.name.primary == "BeforeExit" and .availability.since == "8.2") | (.signatures[0].parameters | length == 2) and (.signatures[0] | has("text") | not) and any(.signatures[0].parameters[]; .name == "Cancel" and .required == true and (.types | index("Boolean") != null))' target/uat/shcntx-en/module-events.json
 
-jq -e '.records[] | select(.name == "Таблица бизнес-процессов") | any(.fields[]; .name == "Представление" and (.types | index("Строка") != null) and (.description | test("строку-представление")))' target/uat/shcntx-ru/query-tables.json
-jq -e '.records[] | select(.name == "Business Process Table") | any(.fields[]; .name == "Presentation" and (.types | index("String") != null) and (.description | test("presentation")))' target/uat/shcntx-en/query-tables.json
+jq -e '.records[] | select(.name == "Таблица бизнес-процессов" and .table_role == "primary" and .identifier == "БизнесПроцесс" and .syntax.primary == "БизнесПроцесс.<Имя бизнес-процесса>" and .syntax.alias == "BusinessProcess.<Имя бизнес-процесса>") | any(.fields[]; .name == "Представление" and (.types | index("Строка") != null) and (.description | test("строку-представление")))' target/uat/shcntx-ru/query-tables.json
+jq -e '.records[] | select(.name == "Business Process Table" and .table_role == "primary" and .identifier == "BusinessProcess" and .syntax.primary == "BusinessProcess.<Business process name>" and (.syntax | has("alias") | not)) | any(.fields[]; .name == "Presentation" and (.types | index("String") != null) and (.description | test("presentation")))' target/uat/shcntx-en/query-tables.json
+jq -e '.records[] | select(.syntax.primary == "БизнесПроцесс.<Имя бизнес-процесса>.Точки" and .syntax.alias == "BusinessProcess.<Имя бизнес-процесса>.Points") | .table_role == "additional" and .identifier == "БизнесПроцессТаблицаТочекБизнесПроцессов"' target/uat/shcntx-ru/query-tables.json
+jq -e '.records[] | select(.syntax.primary == "BusinessProcess.<Business process name>.Points" and (.syntax | has("alias") | not)) | .table_role == "additional" and .identifier == "BusinessProcessBusinessProcessPointTable"' target/uat/shcntx-en/query-tables.json
+jq -e '.records[] | select(.name == "Таблица изменений бизнес-процессов") | .identifier == "БизнесПроцессТаблицаИзмененийБизнесПроцессов"' target/uat/shcntx-ru/query-tables.json
 
 jq -e '.records[] | select(.name == "Таблица критерия отбора") | any(.parameters[]; .name == "Значение" and (has("required") | not) and (.description | test("отбор")))' target/uat/shcntx-ru/query-tables.json
 jq -e '.records[] | select(.name == "Filter Criterion Table") | any(.parameters[]; .name == "Value" and (has("required") | not) and (.description | test("filtering")))' target/uat/shcntx-en/query-tables.json
@@ -532,7 +535,7 @@ Expected result:
   and `type-events.json` is the required adapter filename for `type_event` records.
 - Event signatures and parameters are parsed structurally.
 - Query table records preserve table name, semantic owner path, table role, field names, field type
-  references and field descriptions.
+  references, field descriptions, localized syntax and deterministic identifier.
 - Query table parameter records are nested under their owning table, preserve parameter names, type
   references when present, descriptions and default values when present, and do not expose
   `required`.
@@ -553,7 +556,7 @@ Steps:
 ```bash
 for file in target/uat/shcntx-ru/metadata.json target/uat/shcntx-en/metadata.json; do
   jq -e '
-    .schema_version == 10
+    .schema_version == 11
     and (.files | any(.[]; .file_name == "query-tables.json"))
     and (.files | any(.[]; .file_name == "module-events.json"))
     and (.files | any(.[]; .file_name == "type-events.json"))
@@ -624,6 +627,8 @@ jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/constructo
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/type-events.json
 jq -e 'all(.records[]; (.fields // [] | all(.[]; (has("owner_path") | not) and (.name | type == "string"))) and (.parameters // [] | all(.[]; (has("owner_path") | not) and (has("required") | not) and (.name | type == "string"))))' target/uat/shcntx-ru/query-tables.json
 jq -e 'all(.records[]; (.fields // [] | all(.[]; (has("owner_path") | not) and (.name | type == "string"))) and (.parameters // [] | all(.[]; (has("owner_path") | not) and (has("required") | not) and (.name | type == "string"))))' target/uat/shcntx-en/query-tables.json
+jq -e 'all(.records[]; (.syntax.primary | type == "string") and ((.syntax.alias? // "" | type) == "string") and (.identifier | type == "string") and (.identifier | test("[\\s-]") | not))' target/uat/shcntx-ru/query-tables.json
+jq -e 'all(.records[]; (.syntax.primary | type == "string") and ((.syntax.alias? // "" | type) == "string") and (.identifier | type == "string") and (.identifier | test("[\\s-]") | not))' target/uat/shcntx-en/query-tables.json
 jq -e '.records[] | select(.owner == "ТабличноеПоле" and .name.primary == "СоздатьКолонки") | .examples[0].text == "ЭлементыФормы.ТабличноеПоле1.Значение = ТаблицаДанных;\nЭлементыФормы.ТабличноеПоле1.СоздатьКолонки();"' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "ЗадачаОбъект.<Имя задачи>" and .name.primary == "Записать") | (.examples[0].text | contains("ОписаниеОшибки ( )") | not) and (.examples[0].text | contains("ОписаниеОшибки(), 60);"))' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "Расширение поля формы для поля ввода" and .name.primary == "ПараметрыВыбора") | (.examples[0].text | startswith("НовыйПараметр = Новый ПараметрВыбора")) and (.examples[0].text | contains("Тонкий клиент") | not)' target/uat/shcntx-ru/type-properties.json
@@ -633,7 +638,7 @@ jq -e '.records[] | select(.name.primary == "МенеджерИсторииРа�
 
 Expected result:
 
-- Consumer record-family files use `schema_version: 10`.
+- Consumer record-family files use `schema_version: 11`.
 - `metadata.json.files` contains `query-tables.json` and does not contain old schema files
   `enum-values.json`, `table-fields.json` or `table-parameters.json`. Physical stale files from a
   reused output directory are not part of the current export contract and are not deleted by the
@@ -644,6 +649,9 @@ Expected result:
 - Type event, derivative type member and constructor records do not emit `owner_path`.
 - Query table fields and parameters are nested under `query-tables.json` table records, use string
   `name` values, do not repeat `owner_path` and do not expose parameter `required`.
+- Query table records include localized `syntax` objects and string `identifier` values without
+  whitespace or hyphens; additional table identifier suffixes are CamelCase-normalized from page
+  `name`.
 - `usage` is a stable enum string.
 - Property descriptions do not keep leading type-reference prose that already appears in `types`.
 - Type-reference facts are exposed as `types`; method return facts are exposed as `return`; legacy
@@ -823,7 +831,7 @@ Then verify the event split and owner-classification boundaries:
 ```bash
 for file in target/uat/shcntx-ru/metadata.json target/uat/shcntx-en/metadata.json; do
   jq -e '
-    .schema_version == 10
+    .schema_version == 11
     and (.files | all(.[]; .file_name != "global-context-events.json"))
     and (.files | any(.[]; .file_name == "module-events.json"))
     and (.files | any(.[]; .file_name == "type-events.json"))

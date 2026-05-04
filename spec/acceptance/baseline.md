@@ -109,6 +109,19 @@ directories are service data unless promoted here.
   T37/T38 record-family counts and kept `owner_path` only on owning records such as platform types,
   module event context and query table records. Type-event owner context is composed into the
   single `owner` string, preserving exact uniqueness by `(owner, name.primary, name.alias)`.
+- T40 changed the canonical consumer JSON export to `schema_version: 11` and added query table
+  localized `syntax` and `identifier` to `query-tables.json`. Full debug CLI exports for both
+  source books preserved the T36-T39 record-family counts: 59 query tables, 588 nested table fields,
+  78 nested table parameters, 47 module events, 650 type events and 4 parser diagnostics per locale.
+  Query table `table_role` is now derived from `syntax.primary` shape before falling back to generic
+  table names:
+  `Таблица бизнес-процессов` / `Business Process Table` is `primary` with identifier
+  `БизнесПроцесс` / `BusinessProcess`, while the `.Точки` / `.Points` table remains `additional`
+  with a CamelCase identifier derived from the primary table identifier plus page `name`. The
+  additional table suffix normalization removes punctuation such as hyphens, for example
+  `Таблица изменений бизнес-процессов` becomes `ТаблицаИзмененийБизнесПроцессов`. Russian query
+  table syntax splits parenthesized English syntax into `syntax.alias`; root-source English syntax
+  remains `syntax.primary` without an alias when the source has no parenthesized variant.
 
 ## Post-T29 Runtime Regression To Fix
 

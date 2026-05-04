@@ -14,7 +14,8 @@ use crate::page_parser::{
     parse_global_context_for_mode, parse_global_method, parse_global_property,
     parse_platform_method, parse_platform_property, parse_platform_type_for_mode,
     parse_query_table, parse_query_table_field, parse_query_table_parameter,
-    parse_syntax_page_content_with_index_owned, source_from_content, syntax_toc_index,
+    parse_syntax_page_content_with_index_owned, query_table_identifier, query_table_role,
+    source_from_content, syntax_toc_index,
 };
 
 #[derive(Debug)]
@@ -190,7 +191,8 @@ where
                     let mut table = parse_query_table(&content, source);
                     table.semantic = catalog_page.semantic.clone();
                     table.name = name_from_text(&catalog_page.source.page_title).primary;
-                    table.table_role = query_table_role(&table.name);
+                    table.identifier = query_table_identifier(table.syntax.as_ref(), &table.name);
+                    table.table_role = query_table_role(table.syntax.as_ref(), &table.name);
                     sink.query_table(table)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
@@ -248,17 +250,6 @@ where
     }
 
     Ok(())
-}
-
-fn query_table_role(name: &str) -> QueryTableRole {
-    let normalized = name.trim().to_lowercase();
-    if normalized == "основная таблица" || normalized == "main table" {
-        QueryTableRole::Primary
-    } else if normalized.is_empty() {
-        QueryTableRole::Unknown
-    } else {
-        QueryTableRole::Additional
-    }
 }
 
 fn module_context(semantic: &SemanticContext) -> ModuleEventContext {

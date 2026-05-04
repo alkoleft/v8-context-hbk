@@ -231,6 +231,16 @@ Schema version 10 removes semantic `owner_path` from `type-events.json`. `hbk-ex
 type-event semantic owner chain into the single `owner` string so exact owner/event lookup remains
 unambiguous without adding a second owner field.
 
+Schema version 11 adds localized query table `syntax` and `identifier` to `query-tables.json`. The
+extractor parses the `Синтаксис` / `Syntax` section on query table pages, splits parenthesized
+source aliases into `syntax.alias`, and derives `table_role` from the `syntax.primary` shape before
+falling back to generic page names. A primary syntax with at most two dot-separated segments is a
+primary table; a longer primary syntax is an additional table. Query table identifiers are
+query-table-local consumer keys: primary tables use the first primary syntax segment, while
+additional tables use the primary identifier plus the table `name` normalized to CamelCase with
+whitespace, hyphens and punctuation treated as word separators. This does not introduce a
+cross-family semantic ID or cross-file reference model.
+
 ### v8-context-hbk-cli
 
 Owns FR-CLI-001.
