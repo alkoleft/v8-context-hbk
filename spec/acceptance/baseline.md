@@ -1240,3 +1240,9 @@ relations, and UAT-SH-017 passed with the stricter SKD owner/member assertion: t
 `КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` and `ЭлементОтбораКомпоновкиДанных` properties
 `ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and `Использование` within the existing bounded
 local graph query.
+
+T55 did not change runtime behavior, parser facts, provider JSON shape or the SQLite schema. It
+accepted ADR-0007 and selected local CLI JSON over a prebuilt `syntax` index as the first
+downstream analyzer-provider boundary. The SQLite index remains a rebuildable internal provider
+artifact, not a public table-level contract. Rust library APIs, analyzer-specific file artifacts,
+service boundaries and batch APIs require a future ADR or task with concrete consumer evidence.

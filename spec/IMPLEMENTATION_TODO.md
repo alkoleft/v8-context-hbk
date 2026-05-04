@@ -389,7 +389,7 @@ Result:
   rebuild from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and stricter UAT-SH-017 `jq`
   assertions.
 
-### [ ] T55. Decide downstream provider boundary for BSL analyzers
+### [x] T55. Decide downstream provider boundary for BSL analyzers
 
 Spec refs:
 
@@ -409,6 +409,18 @@ Verification:
 
 - ADR or implementation spec records the selected boundary, non-goals and verification path.
 - No BSL parser/analyzer implementation is added as part of the boundary decision.
+
+Result:
+
+- Accepted ADR-0007 and selected local CLI JSON over a prebuilt `syntax` index as the first
+  downstream analyzer-provider boundary.
+- The public boundary is the provider JSON envelope returned by `syntax get`, `syntax
+  constructors`, `syntax search` and `syntax related`; the SQLite index remains a rebuildable
+  internal provider artifact, not a table-level integration contract.
+- Rust library APIs, analyzer-specific file artifacts, daemon/MCP/service boundaries and bulk APIs
+  remain future decisions that require a concrete consumer and separate ADR/task.
+- No BSL parser, analyzer diagnostics, runtime 1C introspection, new storage selector or provider
+  JSON shape change was added.
 
 ### [ ] T56. Normalize query-index storage for analyzer type inference
 

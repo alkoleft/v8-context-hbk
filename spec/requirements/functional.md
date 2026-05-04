@@ -586,6 +586,15 @@ Acceptance:
 The system must evolve the `syntax` query surface as a local platform-API fact provider for BSL
 development and code-analysis workflows.
 
+Decision record: ADR-0007.
+
+The selected first analyzer-facing provider boundary is local CLI JSON over a prebuilt `syntax`
+index. Analyzer-oriented consumers should call `syntax get`, `syntax constructors`, `syntax search`
+or `syntax related` and consume the versioned provider envelope. The SQLite index remains a
+rebuildable internal provider artifact, not a public table-level contract. Rust library APIs,
+batch-only analyzer artifacts and service boundaries require a future ADR or task with a concrete
+consumer need.
+
 Provider-oriented outputs must:
 
 - be deterministic for the same index and query;

@@ -153,6 +153,23 @@ This is a derived artifact. The default path is suitable for repeated local inte
 development measurements may use explicit paths under `target/`. Index files are service data and
 must not be committed unless a future task explicitly adds small committed fixtures.
 
+### Analyzer Provider Boundary
+
+ADR-0007 selects local CLI JSON over a prebuilt `syntax` index as the first downstream
+analyzer-facing provider boundary.
+
+The SQLite index remains an internal derived artifact for the provider implementation. Downstream
+analyzer callers should not depend on SQLite table names, row layouts, FTS columns or index schema
+versions as their integration contract. Query commands own the public provider response envelope:
+`syntax get`, `syntax constructors`, `syntax search` and `syntax related` return versioned,
+deterministic JSON with shared platform facts under `results[].fact` and query-only metadata under
+`results[].meta`.
+
+T56 may normalize analyzer-critical storage tables so the provider can answer type/member inference
+questions without parsing JSON blobs, but that storage revision does not by itself create a Rust API
+contract, file artifact contract, service boundary or analyzer implementation. Any new boundary
+requires a separate ADR or task with a concrete consumer and verification path.
+
 ### Index Path Resolution
 
 `syntax index`, `syntax get`, `syntax constructors`, `syntax search` and `syntax related` resolve

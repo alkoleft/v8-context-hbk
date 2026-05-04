@@ -37,11 +37,11 @@ export-compatible typed facts or the provider envelope implemented by T52.
 
 | Area | Current State | Gap for ADR-0006 Goal | Planned Resolution |
 | --- | --- | --- | --- |
-| Public query JSON | T52 implements the T50 provider response envelope for query commands, and T53 validates it through accepted BSL task scenarios. | The provider contract remains provisional until downstream analyzer boundary decisions are made. | T55 decides whether the provider boundary stays CLI JSON or adds another analyzer-facing contract. |
+| Public query JSON | T52 implements the T50 provider response envelope for query commands, and T53 validates it through accepted BSL task scenarios. ADR-0007 selects local CLI JSON over a prebuilt `syntax` index as the first downstream analyzer-provider boundary. | The provider contract remains provisional and not yet a stabilized external protocol. Additional boundaries still need concrete consumer evidence. | Keep CLI JSON as the current provider boundary; add batch/library/service contracts only through a future ADR or task. |
 | Callable details | T48/T51 preserve structured signatures in the query index through schema version `3` `signature_json`; signature text remains presentation/FTS data. T53 validates `HTTPСоединение` constructor-call parameters through UAT-SH-017. | Additional callable gaps should now come from failed accepted BSL scenarios, not isolated DTO review. | T54 adds only scenario-driven relationship or parser improvements. |
-| Exact identity | T52 adds document-id lookup and relationship roots by document id and owner/member. | Additional analyzer-oriented batch APIs are not defined yet. | Keep CLI JSON as the first provider boundary until T55 decides whether a Rust API, file artifact or batch command is needed. |
+| Exact identity | T52 adds document-id lookup and relationship roots by document id and owner/member. | Additional analyzer-oriented batch APIs are not defined yet. | Use exact ids and owner/member roots through the CLI JSON provider boundary selected by ADR-0007. |
 | Relationship traversal | Graph covers owner/member/type-reference/return/constructor edges and accepted SKD flow. | Code-facing workflows need reliable paths for creation/configuration tasks, not only nearby docs. | Add UAT scenarios and edge coverage for selected BSL development tasks before adding new graph features. |
-| Provider contract | T50 defines and T52 implements a provisional provider schema/envelope for CLI JSON outputs. | Future analyzer-oriented batch/API boundaries are not selected yet. | T55 decides whether the provider boundary stays CLI JSON or adds a Rust/library/file contract. |
+| Provider contract | T50 defines and T52 implements a provisional provider schema/envelope for CLI JSON outputs. ADR-0007 keeps CLI JSON as the first analyzer-facing boundary. | Rust/library/file/service boundaries are intentionally not selected without a concrete downstream consumer. | Treat the CLI JSON envelope as the current provider boundary while storage and query capabilities continue to evolve. |
 | Evidence from real BSL | T53 adds UAT-SH-017 for source-backed BSL development scenarios: constructor call, SKD owner/member access and accounting-register query-table discovery. | The scenario set is intentionally small and should expand only when real workflow gaps are found. | Use UAT-SH-017 as the acceptance corpus for T49/T54 before broad search/storage changes. |
 | Storage evaluation | T49 plans Tantivy comparison. | Storage speed alone does not prove analyzer usefulness. | Run T49 against UAT-SH-017 plus the existing exact, constructor, provider JSON and relationship workflows. |
 | Analyzer storage shape | Schema version `3` stores documents, lookup names, FTS content, relations and `signature_json`. | Type inference, expression-chain evaluation and member completion need relational facts for type identities, members, signatures, parameters and type references, not JSON blobs or FTS terms. | T56 designs and implements an analyzer-oriented SQLite schema revision without JSON columns for inference-critical facts and audits redundant presentation fields such as `preview`. |
@@ -156,9 +156,10 @@ Resolution path:
    lookup, constructor lookup, deterministic JSON and relationship workflows.
 7. **T54: Improve relationship coverage from accepted scenarios.** Add only the edges or parser
    facts needed by failed BSL task scenarios.
-8. **T55: Decide provider boundary for downstream analyzers.** Choose whether the provider is CLI
-   JSON only, a Rust library API, a file artifact contract, or a combination. Capture a new ADR if
-   this changes integration architecture.
+8. **T55: Decide provider boundary for downstream analyzers.** Completed by ADR-0007: local CLI
+   JSON over a prebuilt `syntax` index is the first analyzer-facing provider boundary. Rust library
+   APIs, analyzer-specific file artifacts, services and bulk APIs require a future ADR or task with
+   a concrete consumer need.
 9. **T56: Normalize analyzer storage.** Revise the SQLite index schema so type/member inference
    facts live in relational tables rather than JSON fields: type identities, owned members,
    callables, signatures, parameters and typed references. Remove or confine presentation-only
