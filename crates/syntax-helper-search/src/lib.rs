@@ -13,6 +13,7 @@ use strsim::levenshtein;
 use syntax_helper_model as model;
 
 pub const INDEX_SCHEMA_VERSION: u32 = 3;
+const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 #[derive(Debug, Clone)]
 pub struct IndexMetadata {
@@ -1568,7 +1569,7 @@ fn insert_type_reference_relations(
                 },
                 label: type_name.clone(),
                 evidence: "type_ref",
-                weight: 30,
+                weight: TYPE_REFERENCE_RELATION_WEIGHT,
             },
         )?;
     }
@@ -2027,7 +2028,7 @@ fn relations_from_documents(documents: &[SearchDocument]) -> Vec<Relation> {
                     },
                     label: type_name.clone(),
                     evidence: "type_ref",
-                    weight: 30,
+                    weight: TYPE_REFERENCE_RELATION_WEIGHT,
                 });
             }
         }
@@ -2731,6 +2732,17 @@ mod tests {
                 .iter()
                 .any(|hit| hit.document.name.primary == "ОтборКомпоновкиДанных")
         );
+        assert!(
+            related_by_owner_member
+                .iter()
+                .any(|hit| hit.document.name.primary == "Добавить")
+        );
+        assert!(related_by_owner_member.iter().any(|hit| {
+            hit.document.owner.as_ref().is_some_and(|owner| {
+                owner.primary == "ЭлементОтбораКомпоновкиДанных"
+                    && hit.document.name.primary == "ЛевоеЗначение"
+            })
+        }));
 
         let related_by_id = index
             .related_by_id(
@@ -3179,11 +3191,18 @@ mod tests {
                     "Произвольный",
                 ),
             ],
-            type_methods: vec![type_method(
-                "КоллекцияЭлементовОтбораКомпоновкиДанных",
-                "Добавить",
-                "ЭлементОтбораКомпоновкиДанных",
-            )],
+            type_methods: vec![
+                type_method(
+                    "ОтборКомпоновкиДанных",
+                    "ПолучитьОбъектПоИдентификатору",
+                    "ЭлементОтбораКомпоновкиДанных",
+                ),
+                type_method(
+                    "КоллекцияЭлементовОтбораКомпоновкиДанных",
+                    "Добавить",
+                    "ЭлементОтбораКомпоновкиДанных",
+                ),
+            ],
             constructors: vec![constructor(
                 "ОтборКомпоновкиДанных",
                 "Новый ОтборКомпоновкиДанных()",

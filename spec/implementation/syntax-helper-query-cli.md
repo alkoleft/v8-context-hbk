@@ -653,3 +653,12 @@ and MyStem lemmas; apply a controlled synonym map such as `СКД -> компо�
 provider-aware kind/owner boosts. Do not introduce MyStem as a required indexing dependency without
 a new ADR covering the external binary/process boundary and without proving the sidecar improves
 accepted workflows beyond what SQLite/tokenization/reranking can do in one artifact.
+
+T54 implementation note: relationship traversal now prioritizes structured type-reference and
+return-type edges before the reverse `member_of` owner edge. This keeps analyzer-style roots such as
+`НастройкиКомпоновкиДанных.Отбор` moving forward along the BSL type chain before expanding the
+owning settings object, so the accepted SKD scenario reaches `ОтборКомпоновкиДанных.Элементы`,
+`КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` and `ЭлементОтбораКомпоновкиДанных` fields
+within the existing bounded local traversal. The graph still uses the same SQLite relation table,
+edge kinds and maximum depth; no parser facts, storage engine, network service or semantic-search
+sidecar were added.

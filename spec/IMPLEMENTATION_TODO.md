@@ -353,7 +353,7 @@ Result:
   `ОтборКомпоновкиДаных` returned no hits and `таблица регистра бухгалтерии` ranked generic
   accounting-register table variants above the accepted UAT-SH-017 top hit.
 
-### [ ] T54. Improve relationship coverage from accepted BSL scenarios
+### [x] T54. Improve relationship coverage from accepted BSL scenarios
 
 Spec refs:
 
@@ -373,6 +373,21 @@ Verification:
 - `cargo test -p syntax-helper-extract --lib` when parser facts change
 - `cargo test --workspace`
 - UAT task scenarios pass without broad ranking regressions.
+
+Result:
+
+- Prioritized structured type-reference and return-type relation edges ahead of the reverse
+  `member_of` edge during SQLite relation traversal.
+- This keeps `syntax related --owner "НастройкиКомпоновкиДанных" --member "Отбор"` moving forward
+  through the BSL type chain before expanding the owning settings object, so the accepted SKD
+  scenario reaches `ОтборКомпоновкиДанных.Элементы`,
+  `КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` and `ЭлементОтбораКомпоновкиДанных` fields
+  inside the existing bounded graph query.
+- No parser facts, SQLite schema, public provider JSON shape, storage engine or search sidecar were
+  added.
+- Verified with `cargo test -p syntax-helper-search --lib`, `cargo test --workspace`, real RU index
+  rebuild from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and stricter UAT-SH-017 `jq`
+  assertions.
 
 ### [ ] T55. Decide downstream provider boundary for BSL analyzers
 

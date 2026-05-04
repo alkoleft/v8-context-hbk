@@ -619,6 +619,26 @@ jq -e '
   .status == "ok"
   and any(.results[].fact; .name.primary == "ОтборКомпоновкиДанных")
   and any(.results[].fact; .name.primary == "Элементы")
+  and any(.results[].fact;
+    .kind == "type_method"
+    and .owner == "КоллекцияЭлементовОтбораКомпоновкиДанных"
+    and .name.primary == "Добавить")
+  and any(.results[].fact;
+    .kind == "type_property"
+    and .owner == "ЭлементОтбораКомпоновкиДанных"
+    and .name.primary == "ЛевоеЗначение")
+  and any(.results[].fact;
+    .kind == "type_property"
+    and .owner == "ЭлементОтбораКомпоновкиДанных"
+    and .name.primary == "ВидСравнения")
+  and any(.results[].fact;
+    .kind == "type_property"
+    and .owner == "ЭлементОтбораКомпоновкиДанных"
+    and .name.primary == "ПравоеЗначение")
+  and any(.results[].fact;
+    .kind == "type_property"
+    and .owner == "ЭлементОтбораКомпоновкиДанных"
+    and .name.primary == "Использование")
 ' target/uat/t53-related-skd-filter.json
 jq -e '
   .status == "ok"
@@ -641,8 +661,9 @@ Expected result:
   timeout, secure connection and OS authentication, with type references under `types`.
 - The owner/member scenario for `НастройкиКомпоновкиДанных.Отбор` returns the exact property fact,
   its owner and the `ОтборКомпоновкиДанных` type reference.
-- Relationship traversal from the SKD filter property reaches the referenced filter type and its
-  `Элементы` property.
+- Relationship traversal from the SKD filter property reaches the referenced filter type, its
+  `Элементы` property, collection `Добавить` method and filter-item properties
+  `ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and `Использование`.
 - The task-oriented query `таблица регистра бухгалтерии` ranks a source-backed accounting-register
   query table first and keeps other accounting-register table facts in the result set.
 - Relationship traversal from the accepted accounting-register query table id exposes documented

@@ -1230,3 +1230,13 @@ possible future FTS-only experiment: it needs a tokenizer that indexes both orig
 and split terms, controlled synonym/query expansion, and explicit domain reranking. It also brings
 external binary/process and second-artifact complexity while exact lookup, provider JSON and
 relationship traversal still require SQLite.
+
+T54 improved accepted BSL relationship coverage without adding parser facts or changing the SQLite
+schema. Relationship traversal now prefers structured `has_type` / `returns` edges before the
+reverse `member_of` edge. A rebuilt Russian index from
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` kept schema version `3`, `25082` documents and `65455`
+relations, and UAT-SH-017 passed with the stricter SKD owner/member assertion: traversal from
+`НастройкиКомпоновкиДанных.Отбор` reaches the referenced `ОтборКомпоновкиДанных` type, `Элементы`,
+`КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` and `ЭлементОтбораКомпоновкиДанных` properties
+`ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and `Использование` within the existing bounded
+local graph query.
