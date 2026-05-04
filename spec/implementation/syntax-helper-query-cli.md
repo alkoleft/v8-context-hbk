@@ -542,7 +542,7 @@ The first ranking may use FTS5 `bm25()` plus deterministic tie breakers:
 
 ## Analyzer Query Primitives
 
-Status: target contract for T57. Implementation is deferred to T58.
+Status: implemented by T58 over the schema-v4 normalized provider index.
 
 ADR-0007 keeps CLI JSON over the existing `syntax` query command group as the provider boundary.
 The analyzer-oriented primitives below are therefore provider query kinds inside the same resolved
@@ -658,6 +658,14 @@ Non-goals:
 - no Rust public analyzer API, daemon, MCP service, network search or storage selector;
 - no compatibility with older provisional query JSON when it conflicts with this provider shape;
 - no public SQLite table, column or index schema contract.
+
+T58 implementation note: the CLI extends the existing command group only. `syntax get` accepts the
+selected type identity, member-list, owner-type/member and callable roots; `syntax constructors`
+continues to own constructor overload lookup; `syntax related --id --edge` provides direct
+edge-filtered traversal for `has_type`, `returns` and `constructs` style edges. The implementation
+reads normalized schema-v4 rows inside `syntax-helper-search`, but the public JSON remains the
+provider envelope with stable fact fields under `results[].fact` and analyzer-only resolution
+metadata under `results[].meta`.
 
 ### `relations`
 

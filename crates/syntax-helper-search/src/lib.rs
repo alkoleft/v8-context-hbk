@@ -110,6 +110,12 @@ impl SearchDocument {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum TypeIdentityLookup {
+    Primary,
+    Alias,
+}
+
 #[derive(Debug, Default)]
 pub struct SearchIndexBuilder {
     drafts: Vec<DocumentDraft>,
@@ -645,11 +651,123 @@ impl SearchIndex {
         self.get_by_key(&key)
     }
 
+    pub fn type_identity_by_id(&self, type_id: &str) -> Result<Option<SearchHit>, SearchError> {
+        let Some(document_id) = self.type_identity_document_id(type_id)? else {
+            return Ok(None);
+        };
+        self.get_by_id(&document_id)
+    }
+
+    pub fn type_identities_by_name(&self, name: &str) -> Result<Vec<SearchHit>, SearchError> {
+        self.type_identities_by_lookup_key(&normalize_lookup_key(name), TypeIdentityLookup::Primary)
+    }
+
+    pub fn type_identities_by_alias(&self, alias: &str) -> Result<Vec<SearchHit>, SearchError> {
+        self.type_identities_by_lookup_key(&normalize_lookup_key(alias), TypeIdentityLookup::Alias)
+    }
+
+    pub fn members_by_type_id(&self, type_id: &str) -> Result<Vec<SearchHit>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
+                 d.owner_alias, d.signature_text, d.description \
+                 FROM members m \
+                 JOIN documents d ON d.id = m.document_id \
+                 WHERE m.owner_type_id = ?1 \
+                 ORDER BY d.kind_priority, m.name_primary, d.id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([type_id], |row| {
+                Ok(SearchHit {
+                    document: document_from_row(row)?,
+                    score: 0,
+                })
+            })
+            .map_err(|source| self.sqlite(source))?;
+        let hits = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        self.hydrate_hits(hits)
+    }
+
+    pub fn member_by_owner_type_id(
+        &self,
+        owner_type_id: &str,
+        member: &str,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        let normalized_member = normalize_lookup_key(member);
+        let members = self.members_by_type_id(owner_type_id)?;
+        Ok(members
+            .into_iter()
+            .filter(|hit| {
+                normalize_lookup_key(&hit.document.name.primary) == normalized_member
+                    || hit
+                        .document
+                        .name
+                        .alias
+                        .as_deref()
+                        .is_some_and(|alias| normalize_lookup_key(alias) == normalized_member)
+            })
+            .collect())
+    }
+
     pub fn constructors_by_name(&self, name: &str) -> Result<Vec<SearchHit>, SearchError> {
         let Some(root) = self.root_by_name(name)? else {
             return Ok(Vec::new());
         };
         self.owned_documents_by_kind(&root.document.id, "constructor", 100)
+    }
+
+    pub fn callable_by_id(&self, callable_id: &str) -> Result<Option<SearchHit>, SearchError> {
+        if !self.callable_exists(callable_id)? {
+            return Ok(None);
+        }
+        self.get_by_id(callable_id)
+    }
+
+    pub fn callable_by_owner_type_id(
+        &self,
+        owner_type_id: &str,
+        callable: &str,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        let normalized_callable = normalize_lookup_key(callable);
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
+                 d.owner_alias, d.signature_text, d.description \
+                 FROM callables c \
+                 JOIN documents d ON d.id = c.document_id \
+                 WHERE c.owner_type_id = ?1 \
+                 ORDER BY d.kind_priority, d.name_primary, d.id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([owner_type_id], |row| {
+                Ok(SearchHit {
+                    document: document_from_row(row)?,
+                    score: 0,
+                })
+            })
+            .map_err(|source| self.sqlite(source))?;
+        let hits = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        let hits = self.hydrate_hits(hits)?;
+        Ok(hits
+            .into_iter()
+            .filter(|hit| {
+                normalize_lookup_key(&hit.document.name.primary) == normalized_callable
+                    || hit
+                        .document
+                        .name
+                        .alias
+                        .as_deref()
+                        .is_some_and(|alias| normalize_lookup_key(alias) == normalized_callable)
+            })
+            .collect())
     }
 
     pub fn search(
@@ -688,6 +806,84 @@ impl SearchIndex {
         self.related(id, max_depth.min(5), limit)
     }
 
+    pub fn related_by_id_and_edge(
+        &self,
+        id: &str,
+        edge_kind: &str,
+        limit: usize,
+    ) -> Result<Vec<RelatedHit>, SearchError> {
+        if self.document(id)?.is_none() {
+            return Ok(Vec::new());
+        }
+        if matches!(edge_kind, "has_type" | "returns" | "constructs") {
+            return self.related_type_refs_by_id_and_edge(id, edge_kind, limit);
+        }
+        let mut hits = Vec::new();
+        for edge in self.edges_by_kind(id, edge_kind)? {
+            let Some(document) = self.document(&edge.to)? else {
+                continue;
+            };
+            hits.push(RelatedHit {
+                document,
+                depth: 1,
+                via: vec![edge],
+            });
+            if hits.len() >= limit {
+                break;
+            }
+        }
+        Ok(hits)
+    }
+
+    fn related_type_refs_by_id_and_edge(
+        &self,
+        id: &str,
+        edge_kind: &str,
+        limit: usize,
+    ) -> Result<Vec<RelatedHit>, SearchError> {
+        let ref_kind = edge_ref_kind(edge_kind);
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT target_type_id, target_type_name
+                 FROM type_refs
+                 WHERE source_document_id = ?1
+                   AND ref_kind = ?2
+                   AND target_type_id IS NOT NULL
+                 ORDER BY ordinal, target_type_id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map(params![id, ref_kind], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|source| self.sqlite(source))?;
+        let rows = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        let mut hits = Vec::new();
+        for (target_id, target_name) in rows {
+            let Some(document) = self.document(&target_id)? else {
+                continue;
+            };
+            hits.push(RelatedHit {
+                document,
+                depth: 1,
+                via: vec![RelationStep {
+                    from: id.to_string(),
+                    to: target_id,
+                    edge_kind: edge_kind.to_string(),
+                    label: target_name,
+                    evidence: "type_ref".to_string(),
+                }],
+            });
+            if hits.len() >= limit {
+                break;
+            }
+        }
+        Ok(hits)
+    }
+
     pub fn related_by_owner_member(
         &self,
         owner: &str,
@@ -714,11 +910,48 @@ impl SearchIndex {
             .map_err(|source| self.sqlite(source))
     }
 
+    pub fn owner_type_id_for_document(
+        &self,
+        document_id: &str,
+    ) -> Result<Option<String>, SearchError> {
+        self.connection
+            .query_row(
+                "SELECT owner_type_id FROM members WHERE document_id = ?1
+                 UNION
+                 SELECT owner_type_id FROM callables WHERE document_id = ?1 AND owner_type_id IS NOT NULL
+                 LIMIT 1",
+                [document_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|source| self.sqlite(source))
+    }
+
+    pub fn target_type_ids_for_document(
+        &self,
+        document_id: &str,
+    ) -> Result<Vec<String>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT DISTINCT target_type_id
+                 FROM type_refs
+                 WHERE source_document_id = ?1 AND target_type_id IS NOT NULL
+                 ORDER BY target_type_id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([document_id], |row| row.get(0))
+            .map_err(|source| self.sqlite(source))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))
+    }
+
     fn get_by_key(&self, key: &str) -> Result<Vec<SearchHit>, SearchError> {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
+                "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
                  d.owner_alias, d.signature_text, d.description \
                  FROM document_names n \
                  JOIN documents d ON d.id = n.document_id \
@@ -748,6 +981,72 @@ impl SearchIndex {
         } else {
             Ok(ownerless)
         }
+    }
+
+    fn type_identity_document_id(&self, type_id: &str) -> Result<Option<String>, SearchError> {
+        self.connection
+            .query_row(
+                "SELECT document_id FROM type_identities WHERE type_id = ?1",
+                [type_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|source| self.sqlite(source))
+    }
+
+    fn type_identities_by_lookup_key(
+        &self,
+        key: &str,
+        lookup: TypeIdentityLookup,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
+                 d.owner_alias, d.signature_text, d.description \
+                 FROM type_identities t \
+                 JOIN documents d ON d.id = t.document_id \
+                 ORDER BY d.kind_priority, d.id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok(SearchHit {
+                    document: document_from_row(row)?,
+                    score: 0,
+                })
+            })
+            .map_err(|source| self.sqlite(source))?;
+        let hits = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        let hits = self.hydrate_hits(hits)?;
+        Ok(hits
+            .into_iter()
+            .filter(|hit| match lookup {
+                TypeIdentityLookup::Primary => {
+                    normalize_lookup_key(&hit.document.name.primary) == key
+                }
+                TypeIdentityLookup::Alias => hit
+                    .document
+                    .name
+                    .alias
+                    .as_deref()
+                    .is_some_and(|alias| normalize_lookup_key(alias) == key),
+            })
+            .collect())
+    }
+
+    fn callable_exists(&self, callable_id: &str) -> Result<bool, SearchError> {
+        self.connection
+            .query_row(
+                "SELECT 1 FROM callables WHERE callable_id = ?1",
+                [callable_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|value| value.is_some())
+            .map_err(|source| self.sqlite(source))
     }
 
     fn root_by_name(&self, name: &str) -> Result<Option<SearchHit>, SearchError> {
@@ -954,6 +1253,37 @@ impl SearchIndex {
             .map_err(|source| self.sqlite(source))?;
         let rows = statement
             .query_map([document_id], |row| {
+                let source: String = row.get(0)?;
+                let target: String = row.get(1)?;
+                Ok(RelationStep {
+                    from: source,
+                    to: target,
+                    edge_kind: row.get(2)?,
+                    label: row.get(3)?,
+                    evidence: row.get(4)?,
+                })
+            })
+            .map_err(|source| self.sqlite(source))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))
+    }
+
+    fn edges_by_kind(
+        &self,
+        document_id: &str,
+        edge_kind: &str,
+    ) -> Result<Vec<RelationStep>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT source_id, target_id, edge_kind, label, evidence \
+                 FROM relations \
+                 WHERE source_id = ?1 AND edge_kind = ?2 \
+                 ORDER BY weight, target_id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map(params![document_id, edge_kind], |row| {
                 let source: String = row.get(0)?;
                 let target: String = row.get(1)?;
                 Ok(RelationStep {
@@ -1927,6 +2257,14 @@ fn document_public_type_ref_kinds(kind: &str) -> &'static [&'static str] {
         "query_table_field" => &["query_field_type"],
         "query_table_parameter" => &["query_parameter_type"],
         _ => &["property_type"],
+    }
+}
+
+fn edge_ref_kind(edge_kind: &str) -> &'static str {
+    match edge_kind {
+        "returns" => "return_type",
+        "constructs" => "constructor_result",
+        _ => "property_type",
     }
 }
 
@@ -3258,6 +3596,47 @@ mod tests {
             .expect("member document id must exist");
         assert_eq!(by_id.document.name.primary, "Отбор");
 
+        let type_identity = index
+            .type_identities_by_alias("DataCompositionFilter")
+            .expect("type alias lookup must work");
+        assert_eq!(type_identity.len(), 1);
+        assert_eq!(
+            type_identity[0].document.id,
+            "platform_type:ОтборКомпоновкиДанных"
+        );
+
+        let members = index
+            .members_by_type_id("platform_type:ОтборКомпоновкиДанных")
+            .expect("member listing must work");
+        assert!(members.iter().any(|hit| {
+            hit.document.kind == "type_property" && hit.document.name.primary == "Элементы"
+        }));
+        assert!(members.iter().any(|hit| {
+            hit.document.kind == "type_method"
+                && hit.document.name.primary == "ПолучитьОбъектПоИдентификатору"
+        }));
+
+        let owner_type_member = index
+            .member_by_owner_type_id("platform_type:НастройкиКомпоновкиДанных", "Отбор")
+            .expect("owner type member lookup must work");
+        assert_eq!(owner_type_member.len(), 1);
+        assert_eq!(
+            owner_type_member[0].document.id,
+            "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"
+        );
+
+        let callable = index
+            .callable_by_owner_type_id(
+                "platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных",
+                "Добавить",
+            )
+            .expect("owner type callable lookup must work");
+        assert_eq!(callable.len(), 1);
+        assert_eq!(
+            callable[0].document.return_types,
+            ["ЭлементОтбораКомпоновкиДанных"]
+        );
+
         let keyword = index
             .search("отбор скд", SearchMode::Keywords, 10)
             .expect("keyword search must work");
@@ -3308,6 +3687,19 @@ mod tests {
             )
             .expect("id-root related search must work");
         assert_eq!(related_by_id, related_by_owner_member);
+
+        let type_refs = index
+            .related_by_id_and_edge(
+                "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор",
+                "has_type",
+                20,
+            )
+            .expect("edge-filtered related search must work");
+        assert_eq!(type_refs.len(), 1);
+        assert_eq!(
+            type_refs[0].document.id,
+            "platform_type:ОтборКомпоновкиДанных"
+        );
 
         let constructors = index
             .constructors_by_name("ОтборКомпоновкиДанных")
@@ -3770,6 +4162,18 @@ mod tests {
             )
             .expect("ambiguous type ref row must exist");
         assert_eq!(target_type_id, None);
+
+        let related_type_refs = index
+            .related_by_id_and_edge(
+                "type_property:platform_type:ГруппаФормы:Элементы",
+                "has_type",
+                20,
+            )
+            .expect("edge-filtered type refs must query normalized rows");
+        assert!(
+            related_type_refs.is_empty(),
+            "edge-filtered traversal must not choose a hidden duplicate type identity"
+        );
     }
 
     #[test]

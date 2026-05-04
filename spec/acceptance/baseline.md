@@ -1274,3 +1274,22 @@ public SQLite table contract. UAT-SH-018 records the source-backed expression-ch
 future implementation: `НастройкиКомпоновкиДанных.Отбор` through `ОтборКомпоновкиДанных`,
 `Элементы`, collection `Добавить` and `ЭлементОтбораКомпоновкиДанных` fields, plus the
 `Новый HTTPСоединение(...)` constructor chain.
+
+T58 implemented the analyzer provider primitives selected by T57 over the schema-v4 normalized
+index while preserving the existing `syntax get`, `syntax constructors`, `syntax search` and
+`syntax related` workflows. `syntax get` now supports type identity lookup via
+`--kind platform_type --id|--name|--alias`, member listing via `--members-of`, analyzer-preferred
+owner/member lookup via `--owner-type-id --member`, callable lookup via `--callable-id` or
+`--owner-type-id --callable`, and `syntax related --id --edge` supports direct type-reference edge
+queries. Provider facts remain under `results[].fact`; analyzer resolution aids such as
+`owner_type_id` and `target_type_ids` are emitted only under `results[].meta`.
+
+The accepted debug rebuild from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `25082`
+documents in `52484 ms` at `target/uat/t58-sh-search-ru.sqlite`. T58 JSON assertions passed for
+type resolution by Russian primary name and English alias, member listing for
+`ОтборКомпоновкиДанных`, owner-type/member lookup for
+`НастройкиКомпоновкиДанных.Отбор`, callable lookup for
+`КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить`, constructor parameters for
+`HTTPСоединение` and edge-filtered `has_type` traversal from the accepted SKD filter property.
+Existing UAT-SH-017 assertions still passed on the same rebuilt index for owner/member lookup,
+SKD relationship traversal and accounting-register query-table discovery.

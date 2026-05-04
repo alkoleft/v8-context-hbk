@@ -724,7 +724,7 @@ Related use case: UC-SH-005A, UC-SH-005B, UC-SH-005D.
 
 Related requirements: FR-SH-PROVIDER-001, FR-SH-SEARCH-001, FR-SH-SEARCH-002.
 
-Status: target UAT for T58/T59. T57 defines the command contract only.
+Status: implementation UAT for T58 and expression-chain scenario UAT for T59.
 
 Preconditions:
 
@@ -747,10 +747,95 @@ Source-backed scenario:
   verifying constructor result type plus ordered parameters such as `Таймаут`,
   `ЗащищенноеСоединение` and `ИспользоватьАутентификациюОС`.
 
+T58 primitive implementation steps:
+
+```bash
+rm -f target/uat/t58-sh-search-ru.sqlite target/uat/t58-*.json
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t58-sh-search-ru.sqlite
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t58-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get --kind platform_type --name "ОтборКомпоновкиДанных" --format json \
+  > target/uat/t58-type-filter.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t58-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get --kind platform_type --alias "DataCompositionFilter" --format json \
+  > target/uat/t58-type-filter-alias.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t58-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get --members-of "platform_type:ОтборКомпоновкиДанных" --format json \
+  > target/uat/t58-members-filter.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t58-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get \
+    --owner-type-id "platform_type:НастройкиКомпоновкиДанных" --member "Отбор" --format json \
+  > target/uat/t58-owner-type-member-filter.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t58-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get \
+    --owner-type-id "platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных" \
+    --callable "Добавить" --format json \
+  > target/uat/t58-callable-add.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t58-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax constructors "HTTPСоединение" --format json \
+  > target/uat/t58-constructors-httpconnection.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t58-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax related \
+    --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" \
+    --edge has_type --format json \
+  > target/uat/t58-related-filter-type.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t58-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax get --members-of "ОтборКомпоновкиДанных" --format json \
+  > target/uat/t58-members-unsupported-name.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t58-sh-search-ru.sqlite \
+  target/debug/v8-context-hbk syntax related \
+    --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" \
+    --name "ОтборКомпоновкиДанных" --edge has_type --format json \
+  > target/uat/t58-related-unsupported-mixed-root.json
+
+jq -e '.schema_version == 1 and .command == "get" and .status == "ok" and
+  .query.kind == "type_identity" and
+  .results[0].fact.id == "platform_type:ОтборКомпоновкиДанных"' \
+  target/uat/t58-type-filter.json
+jq -e '.status == "ok" and .query.alias == "DataCompositionFilter" and
+  .results[0].fact.id == "platform_type:ОтборКомпоновкиДанных"' \
+  target/uat/t58-type-filter-alias.json
+jq -e '.status == "ok" and .query.kind == "member_list" and
+  any(.results[].fact; .kind == "type_property" and .name.primary == "Элементы" and
+    (.types | index("КоллекцияЭлементовОтбораКомпоновкиДанных") != null))' \
+  target/uat/t58-members-filter.json
+jq -e '.status == "ok" and .query.kind == "owner_type_member" and
+  any(.results[]; .fact.id == "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" and
+    (.fact.types | index("ОтборКомпоновкиДанных") != null) and
+    (.meta.target_type_ids | index("platform_type:ОтборКомпоновкиДанных") != null))' \
+  target/uat/t58-owner-type-member-filter.json
+jq -e '.status == "ok" and .query.kind == "callable_overloads" and
+  any(.results[]; .fact.kind == "type_method" and
+    .fact.owner == "КоллекцияЭлементовОтбораКомпоновкиДанных" and
+    .fact.name.primary == "Добавить" and
+    (.fact.return | index("ЭлементОтбораКомпоновкиДанных") != null))' \
+  target/uat/t58-callable-add.json
+jq -e '.status == "ok" and .query.kind == "constructor" and
+  any(.results[].fact.signatures[]?.parameters[]?;
+    .name == "ИспользоватьАутентификациюОС" and .required == false and
+    (.types | index("Булево") != null))' \
+  target/uat/t58-constructors-httpconnection.json
+jq -e '.status == "ok" and .query.kind == "type_references" and .query.edge == "has_type" and
+  any(.results[]; .fact.id == "platform_type:ОтборКомпоновкиДанных")' \
+  target/uat/t58-related-filter-type.json
+jq -e '.status == "unsupported" and
+  any(.diagnostics[]; .code == "UNSUPPORTED_QUERY")' \
+  target/uat/t58-members-unsupported-name.json
+jq -e '.status == "unsupported" and
+  any(.diagnostics[]; .code == "UNSUPPORTED_QUERY")' \
+  target/uat/t58-related-unsupported-mixed-root.json
+```
+
 Expected result:
 
 - All calls use provider commands and JSON only; no SQLite table names, rowids, HBK paths, TOC
   paths, HTML paths or page titles are asserted.
+- Type identity, member listing, owner-type/member lookup, callable lookup and type-reference
+  traversal use provider `query.kind` values rather than public SQLite table names.
+- Analyzer resolution aids such as `owner_type_id` and `target_type_ids` are returned only under
+  `results[].meta`; shared facts stay under `results[].fact`.
 - Ambiguous, missing or unsupported primitive calls return provider `status` and diagnostics
   instead of selecting hidden winners.
 - Raw command outputs remain service data under `target/uat`; only the commands, assertions and

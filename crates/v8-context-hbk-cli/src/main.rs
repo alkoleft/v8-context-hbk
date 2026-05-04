@@ -63,13 +63,25 @@ enum SyntaxCommand {
         #[arg(long, value_name = "INDEX_SQLITE")]
         index: Option<PathBuf>,
         #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
         id: Option<String>,
         #[arg(long)]
         name: Option<String>,
         #[arg(long)]
+        alias: Option<String>,
+        #[arg(long)]
         owner: Option<String>,
+        #[arg(long = "owner-type-id")]
+        owner_type_id: Option<String>,
         #[arg(long)]
         member: Option<String>,
+        #[arg(long = "members-of")]
+        members_of: Option<String>,
+        #[arg(long = "callable-id")]
+        callable_id: Option<String>,
+        #[arg(long)]
+        callable: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
@@ -104,6 +116,8 @@ enum SyntaxCommand {
         owner: Option<String>,
         #[arg(long)]
         member: Option<String>,
+        #[arg(long)]
+        edge: Option<String>,
         #[arg(long, default_value_t = 5)]
         depth: u32,
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
@@ -186,12 +200,33 @@ fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
         SyntaxCommand::Index { book, output } => syntax_index(book, output),
         SyntaxCommand::Get {
             index,
+            kind,
             id,
             name,
+            alias,
             owner,
+            owner_type_id,
             member,
+            members_of,
+            callable_id,
+            callable,
             format,
-        } => syntax_get(index, id, name, owner, member, format),
+        } => syntax_get(
+            index,
+            GetArgs {
+                kind,
+                id,
+                name,
+                alias,
+                owner,
+                owner_type_id,
+                member,
+                members_of,
+                callable_id,
+                callable,
+            },
+            format,
+        ),
         SyntaxCommand::Constructors {
             index,
             name,
@@ -210,9 +245,10 @@ fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
             name,
             owner,
             member,
+            edge,
             depth,
             format,
-        } => syntax_related(index, id, name, owner, member, depth, format),
+        } => syntax_related(index, id, name, owner, member, edge, depth, format),
     }
 }
 
@@ -289,46 +325,59 @@ fn syntax_stream_error(
     }
 }
 
-fn syntax_get(
-    index: Option<PathBuf>,
+struct GetArgs {
+    kind: Option<String>,
     id: Option<String>,
     name: Option<String>,
+    alias: Option<String>,
     owner: Option<String>,
+    owner_type_id: Option<String>,
     member: Option<String>,
+    members_of: Option<String>,
+    callable_id: Option<String>,
+    callable: Option<String>,
+}
+
+fn syntax_get(
+    index: Option<PathBuf>,
+    args: GetArgs,
     format: OutputFormat,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let index = SearchIndex::open_read_only(resolve_index_path(index))?;
-    let query = get_query_value(
-        id.as_deref(),
-        name.as_deref(),
-        owner.as_deref(),
-        member.as_deref(),
-    );
-    let hits = match (id, name, owner, member) {
-        (Some(id), None, None, None) => index.get_by_id(&id)?.into_iter().collect(),
-        (None, Some(name), None, None) => index.get_by_name(&name)?,
-        (None, None, Some(owner), Some(member)) => index.get_by_owner_member(&owner, &member)?,
-        _ => {
+    let query = get_query_value(&args);
+    let hits = match get_lookup(&index, &args)? {
+        GetLookupResult::Hits(hits) => hits,
+        GetLookupResult::Unsupported(message) => {
             if matches!(format, OutputFormat::Json) {
                 return print_provider_response(
                     "get",
                     "unsupported",
                     query,
                     Vec::new(),
-                    unsupported_query_diagnostic(
-                        "syntax get requires exactly one root: --id, --name, or both --owner and --member",
-                    ),
+                    unsupported_query_diagnostic(message),
                 );
             }
-            return Err(
-                "syntax get requires exactly one root: --id, --name, or both --owner and --member"
-                    .into(),
-            );
+            return Err(message.into());
+        }
+        GetLookupResult::NotFound => {
+            return match format {
+                OutputFormat::Text => {
+                    println!("get: no matches");
+                    Ok(())
+                }
+                OutputFormat::Json => print_provider_response(
+                    "get",
+                    "not_found",
+                    query.clone(),
+                    Vec::new(),
+                    provider_diagnostics("not_found", &query, &[]),
+                ),
+            };
         }
     };
     match format {
         OutputFormat::Text => print_hits_text("get", &hits),
-        OutputFormat::Json => print_provider_hits("get", query, &hits),
+        OutputFormat::Json => print_provider_hits_with_index("get", query, &hits, Some(&index)),
     }
 }
 
@@ -378,6 +427,7 @@ fn syntax_related(
     name: Option<String>,
     owner: Option<String>,
     member: Option<String>,
+    edge: Option<String>,
     depth: u32,
     format: OutputFormat,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -388,7 +438,62 @@ fn syntax_related(
         owner.as_deref(),
         member.as_deref(),
         depth,
+        edge.as_deref(),
     );
+    if let (Some(id), Some(edge)) = (id.as_deref(), edge.as_deref()) {
+        if name.is_some() || owner.is_some() || member.is_some() {
+            if matches!(format, OutputFormat::Json) {
+                return print_provider_response(
+                    "related",
+                    "unsupported",
+                    query,
+                    Vec::new(),
+                    unsupported_query_diagnostic(
+                        "syntax related --edge requires exactly one root: --id",
+                    ),
+                );
+            }
+            return Err("syntax related --edge requires exactly one root: --id".into());
+        }
+        if !is_supported_edge_filter(edge) {
+            if matches!(format, OutputFormat::Json) {
+                return print_provider_response(
+                    "related",
+                    "unsupported",
+                    query,
+                    Vec::new(),
+                    unsupported_query_diagnostic(
+                        "syntax related --edge supports has_type, returns or constructs",
+                    ),
+                );
+            }
+            return Err("syntax related --edge supports has_type, returns or constructs".into());
+        }
+        if index.get_by_id(id)?.is_none() {
+            return print_related_root_diagnostic("related", query, Vec::new(), format);
+        }
+        let hits = index.related_by_id_and_edge(id, edge, 200)?;
+        return match format {
+            OutputFormat::Text => print_related_hits_text(&hits),
+            OutputFormat::Json => print_provider_related_hits(query, &hits),
+        };
+    }
+    if edge.is_some() {
+        if matches!(format, OutputFormat::Json) {
+            return print_provider_response(
+                "related",
+                "unsupported",
+                query,
+                Vec::new(),
+                unsupported_query_diagnostic(
+                    "syntax related --edge requires an exact --id root in the first implementation",
+                ),
+            );
+        }
+        return Err(
+            "syntax related --edge requires an exact --id root in the first implementation".into(),
+        );
+    }
     let root = match (id, name, owner, member) {
         (Some(id), None, None, None) => RootLookup::ById(id),
         (None, Some(name), None, None) => RootLookup::ByName(name),
@@ -442,20 +547,136 @@ enum RootLookup {
     ByOwnerMember(String, String),
 }
 
-fn get_query_value(
-    id: Option<&str>,
-    name: Option<&str>,
-    owner: Option<&str>,
-    member: Option<&str>,
-) -> Value {
-    match (id, name, owner, member) {
-        (Some(id), None, None, None) => json!({ "kind": "document_id", "id": id }),
-        (None, Some(name), None, None) => json!({ "kind": "exact_name", "name": name }),
-        (None, None, Some(owner), Some(member)) => {
+fn get_query_value(args: &GetArgs) -> Value {
+    match (
+        args.kind.as_deref(),
+        args.id.as_deref(),
+        args.name.as_deref(),
+        args.alias.as_deref(),
+        args.owner.as_deref(),
+        args.owner_type_id.as_deref(),
+        args.member.as_deref(),
+        args.members_of.as_deref(),
+        args.callable_id.as_deref(),
+        args.callable.as_deref(),
+    ) {
+        (Some("platform_type"), Some(id), None, None, None, None, None, None, None, None) => {
+            json!({ "kind": "type_identity", "id": id })
+        }
+        (Some("platform_type"), None, Some(name), None, None, None, None, None, None, None) => {
+            json!({ "kind": "type_identity", "name": name })
+        }
+        (Some("platform_type"), None, None, Some(alias), None, None, None, None, None, None) => {
+            json!({ "kind": "type_identity", "alias": alias })
+        }
+        (None, Some(id), None, None, None, None, None, None, None, None) => {
+            json!({ "kind": "document_id", "id": id })
+        }
+        (None, None, Some(name), None, None, None, None, None, None, None) => {
+            json!({ "kind": "exact_name", "name": name })
+        }
+        (None, None, None, None, None, None, None, Some(type_id), None, None) => {
+            json!({ "kind": "member_list", "owner_type_id": type_id })
+        }
+        (None, None, None, None, None, Some(owner_type_id), Some(member), None, None, None) => {
+            json!({ "kind": "owner_type_member", "owner_type_id": owner_type_id, "name": member })
+        }
+        (None, None, None, None, Some(owner), None, Some(member), None, None, None) => {
             json!({ "kind": "owner_member", "owner": owner, "member": member })
+        }
+        (None, None, None, None, None, None, None, None, Some(callable_id), None) => {
+            json!({ "kind": "callable_overloads", "id": callable_id })
+        }
+        (None, None, None, None, None, Some(owner_type_id), None, None, None, Some(callable)) => {
+            json!({ "kind": "callable_overloads", "owner_type_id": owner_type_id, "name": callable })
         }
         _ => json!({ "kind": "invalid" }),
     }
+}
+
+enum GetLookupResult {
+    Hits(Vec<SearchHit>),
+    NotFound,
+    Unsupported(&'static str),
+}
+
+fn get_lookup(
+    index: &SearchIndex,
+    args: &GetArgs,
+) -> Result<GetLookupResult, Box<dyn std::error::Error>> {
+    let result = match (
+        args.kind.as_deref(),
+        args.id.as_deref(),
+        args.name.as_deref(),
+        args.alias.as_deref(),
+        args.owner.as_deref(),
+        args.owner_type_id.as_deref(),
+        args.member.as_deref(),
+        args.members_of.as_deref(),
+        args.callable_id.as_deref(),
+        args.callable.as_deref(),
+    ) {
+        (Some("platform_type"), Some(id), None, None, None, None, None, None, None, None) => index
+            .type_identity_by_id(id)?
+            .map_or(GetLookupResult::NotFound, |hit| {
+                GetLookupResult::Hits(vec![hit])
+            }),
+        (Some("platform_type"), None, Some(name), None, None, None, None, None, None, None) => {
+            GetLookupResult::Hits(index.type_identities_by_name(name)?)
+        }
+        (Some("platform_type"), None, None, Some(alias), None, None, None, None, None, None) => {
+            GetLookupResult::Hits(index.type_identities_by_alias(alias)?)
+        }
+        (Some(_), _, _, _, _, _, _, _, _, _) => GetLookupResult::Unsupported(
+            "syntax get --kind currently supports only platform_type with exactly one of --id, --name or --alias",
+        ),
+        (None, Some(id), None, None, None, None, None, None, None, None) => index
+            .get_by_id(id)?
+            .map_or(GetLookupResult::NotFound, |hit| {
+                GetLookupResult::Hits(vec![hit])
+            }),
+        (None, None, Some(name), None, None, None, None, None, None, None) => {
+            GetLookupResult::Hits(index.get_by_name(name)?)
+        }
+        (None, None, None, None, None, None, None, Some(type_id), None, None) => {
+            if !type_id.starts_with("platform_type:") {
+                return Ok(GetLookupResult::Unsupported(
+                    "syntax get --members-of requires an exact platform_type provider id",
+                ));
+            }
+            if index.type_identity_by_id(type_id)?.is_none() {
+                GetLookupResult::NotFound
+            } else {
+                GetLookupResult::Hits(index.members_by_type_id(type_id)?)
+            }
+        }
+        (None, None, None, None, None, Some(owner_type_id), Some(member), None, None, None) => {
+            if index.type_identity_by_id(owner_type_id)?.is_none() {
+                GetLookupResult::NotFound
+            } else {
+                GetLookupResult::Hits(index.member_by_owner_type_id(owner_type_id, member)?)
+            }
+        }
+        (None, None, None, None, Some(owner), None, Some(member), None, None, None) => {
+            GetLookupResult::Hits(index.get_by_owner_member(owner, member)?)
+        }
+        (None, None, None, None, None, None, None, None, Some(callable_id), None) => index
+            .callable_by_id(callable_id)?
+            .map_or(GetLookupResult::NotFound, |hit| {
+                GetLookupResult::Hits(vec![hit])
+            }),
+        (None, None, None, None, None, Some(owner_type_id), None, None, None, Some(callable)) => {
+            if index.type_identity_by_id(owner_type_id)?.is_none() {
+                GetLookupResult::NotFound
+            } else {
+                GetLookupResult::Hits(index.callable_by_owner_type_id(owner_type_id, callable)?)
+            }
+        }
+        _ => GetLookupResult::Unsupported(
+            "syntax get requires exactly one root: --id, --name, --kind platform_type with --id/--name/--alias, --members-of, --owner-type-id with --member/--callable, --callable-id, or both --owner and --member",
+        ),
+    };
+    Ok(result)
 }
 
 fn related_query_value(
@@ -464,6 +685,7 @@ fn related_query_value(
     owner: Option<&str>,
     member: Option<&str>,
     depth: u32,
+    edge: Option<&str>,
 ) -> Value {
     let root = match (id, name, owner, member) {
         (Some(id), None, None, None) => json!({ "id": id }),
@@ -471,7 +693,11 @@ fn related_query_value(
         (None, None, Some(owner), Some(member)) => json!({ "owner": owner, "member": member }),
         _ => json!({ "invalid": true }),
     };
-    json!({ "kind": "related", "root": root, "depth": depth.min(5) })
+    let mut query = json!({ "kind": if edge.is_some() { "type_references" } else { "related" }, "root": root, "depth": depth.min(5) });
+    if let Some(edge) = edge {
+        query["edge"] = json!(edge);
+    }
+    query
 }
 
 fn search_mode_name(mode: SearchMode) -> &'static str {
@@ -479,6 +705,10 @@ fn search_mode_name(mode: SearchMode) -> &'static str {
         SearchMode::Keywords => "keywords",
         SearchMode::Fuzzy => "fuzzy",
     }
+}
+
+fn is_supported_edge_filter(edge: &str) -> bool {
+    matches!(edge, "has_type" | "returns" | "constructs")
 }
 
 fn print_hits_text(command: &str, hits: &[SearchHit]) -> Result<(), Box<dyn std::error::Error>> {
@@ -559,26 +789,53 @@ fn print_provider_hits(
     query: Value,
     hits: &[SearchHit],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let status = provider_status(command, hits.len());
+    print_provider_hits_with_index(command, query, hits, None)
+}
+
+fn print_provider_hits_with_index(
+    command: &str,
+    query: Value,
+    hits: &[SearchHit],
+    index: Option<&SearchIndex>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let status = provider_status(command, &query, hits.len());
     let diagnostics = provider_diagnostics(status, &query, hits);
     let results = if status == "ambiguous" {
         Vec::new()
     } else {
         hits.iter()
             .enumerate()
-            .map(|(index, hit)| {
-                let mut meta = json!({ "rank": index + 1 });
+            .map(|(rank_index, hit)| {
+                let mut meta = json!({ "rank": rank_index + 1 });
                 if command == "search" {
                     meta["score"] = json!(hit.score);
                 }
-                json!({
+                if let Some(search_index) = index {
+                    add_provider_resolution_meta(search_index, &hit.document, &mut meta)?;
+                }
+                Ok(json!({
                     "fact": document_fact(&hit.document),
                     "meta": meta,
-                })
+                }))
             })
-            .collect::<Vec<_>>()
+            .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?
     };
     print_provider_response(command, status, query, results, diagnostics)
+}
+
+fn add_provider_resolution_meta(
+    index: &SearchIndex,
+    document: &SearchDocument,
+    meta: &mut Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(owner_type_id) = index.owner_type_id_for_document(&document.id)? {
+        meta["owner_type_id"] = json!(owner_type_id);
+    }
+    let target_type_ids = index.target_type_ids_for_document(&document.id)?;
+    if !target_type_ids.is_empty() {
+        meta["target_type_ids"] = json!(target_type_ids);
+    }
+    Ok(())
 }
 
 fn print_provider_related_hits(
@@ -627,7 +884,10 @@ fn print_related_root_diagnostic(
     }
 }
 
-fn provider_status(command: &str, hit_count: usize) -> &'static str {
+fn provider_status(command: &str, query: &Value, hit_count: usize) -> &'static str {
+    if query["kind"] == "member_list" {
+        return "ok";
+    }
     match (command, hit_count) {
         ("search", _) => "ok",
         (_, 0) => "not_found",

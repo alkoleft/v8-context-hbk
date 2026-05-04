@@ -18,7 +18,7 @@ export, schema, data-quality, performance, parser, provider, storage and query-s
 live in `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T58. The queued roadmap comes from
+Next active unchecked task is T59. The queued roadmap comes from
 `implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
 help during BSL development and code analysis, and toward a future typed local provider role for a
 BSL analyzer.
@@ -92,7 +92,7 @@ Completion notes:
 - UAT-SH-018 records the SKD expression-chain and `Новый HTTPСоединение(...)` constructor-chain
   scenarios for T58/T59 implementation and verification.
 
-### [ ] T58. Implement analyzer provider primitives in CLI JSON
+### [x] T58. Implement analyzer provider primitives in CLI JSON
 
 Spec refs:
 
@@ -121,6 +121,16 @@ Verification:
 - JSON assertions cover type resolution, member listing, owner/member resolution and callable
   overload details from normalized rows.
 - Existing UAT-SH-017 assertions still pass.
+
+Completion notes:
+
+- Implemented analyzer-oriented provider roots through the existing CLI JSON boundary:
+  `--kind platform_type --id|--name|--alias`, `--members-of`, `--owner-type-id --member`,
+  `--callable-id`, `--owner-type-id --callable` and `related --id --edge`.
+- Provider facts continue to use export-compatible `results[].fact`; analyzer-only
+  `owner_type_id` and `target_type_ids` are emitted under `results[].meta`.
+- Verification passed with a fresh RU index at `target/uat/t58-sh-search-ru.sqlite` containing
+  `25082` documents.
 
 ### [ ] T59. Add expression-chain provider UAT without a BSL parser
 

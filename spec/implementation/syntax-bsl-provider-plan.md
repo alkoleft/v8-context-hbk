@@ -170,9 +170,9 @@ Resolution path:
     as a spec-only contract: the selected shape extends existing `syntax get`,
     `syntax constructors` and `syntax related` JSON query kinds instead of adding new top-level
     commands. Implementation remains T58.
-11. **T58: Implement analyzer provider primitives.** Add the selected primitives to the CLI JSON
-    boundary over normalized storage while preserving existing `get`, `constructors`, `search` and
-    `related` workflows.
+11. **T58: Implement analyzer provider primitives.** Completed: the selected primitives are
+    available through the CLI JSON boundary over normalized storage while preserving existing
+    `get`, `constructors`, `search` and `related` workflows.
 12. **T59: Add expression-chain provider UAT.** Validate type/member inference support as a sequence
     of provider calls over real Syntax Assistant data, without adding a BSL parser to this
     repository.
