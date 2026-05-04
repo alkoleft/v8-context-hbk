@@ -38,7 +38,7 @@ Otherwise reconcile the specification files before implementing.
 - `IMPLEMENTATION_TODO.md`: first-unchecked-task ledger for implementation work.
 - `archive/`: completed milestones and task history moved out of the active ledger
   (`completed-tasks-t0-t12.md`, `completed-tasks-t13-t17-t19-t24.md`,
-  `completed-tasks-t25-t34.md`).
+  `completed-tasks-t25-t34.md`, `implementation-todo-2026-05-04.md`).
 
 ## External Files
 
@@ -66,6 +66,5 @@ acceptance baseline, task ledger entry or ADR.
 
 The current provisional Syntax Assistant consumer JSON contract is `schema_version: 11`.
 `FR-EXPORT-001` owns the exact record-family shape; `acceptance/baseline.md` records the latest
-validated counts, schema-changing task conclusions and T18 query-index baseline. There is no
-unchecked active implementation task after T18; add the next scoped task to
-`IMPLEMENTATION_TODO.md` before implementing new behavior.
+validated counts, schema-changing task conclusions and T18 query-index baseline. T41 is the first
+unchecked active implementation task before further T18 continuation.
