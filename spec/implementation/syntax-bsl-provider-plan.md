@@ -25,25 +25,25 @@ platform-API fact provider that another analyzer can call.
 - Query commands resolve a default local index path and do not parse HBK files per query.
 
 These capabilities are a useful first slice for BSL assistance, but the current JSON surface is
-still a search-result DTO rather than an analyzer-safe provider contract.
+still a provisional CLI provider contract rather than a stabilized downstream analyzer boundary.
 
 The provider contract should not invent a second shape for facts already normalized by
 `syntax export`. Query/provider JSON should reuse the accepted export field names and nested shapes
 where applicable. The current query JSON is provisional and may change; compatibility with its
-existing `SearchHit<SearchDocument>` serialization is not a goal when it conflicts with
-export-compatible typed facts.
+older `SearchHit<SearchDocument>` serialization is not a goal when it conflicts with
+export-compatible typed facts or the provider envelope implemented by T52.
 
 ## Gap Matrix
 
 | Area | Current State | Gap for ADR-0006 Goal | Planned Resolution |
 | --- | --- | --- | --- |
-| Public query JSON | T52 implements the T50 provider response envelope for query commands. | The provider contract remains provisional until BSL task scenarios prove it useful. | T53 adds source-backed BSL task UAT before broad provider stabilization. |
-| Callable details | T48/T51 preserve structured signatures in the query index through schema version `3` `signature_json`; signature text remains presentation/FTS data. | Real BSL scenarios still need to validate that callable facts answer task-level questions. | T53 adds constructor-call and task-scenario UAT. |
+| Public query JSON | T52 implements the T50 provider response envelope for query commands, and T53 validates it through accepted BSL task scenarios. | The provider contract remains provisional until downstream analyzer boundary decisions are made. | T55 decides whether the provider boundary stays CLI JSON or adds another analyzer-facing contract. |
+| Callable details | T48/T51 preserve structured signatures in the query index through schema version `3` `signature_json`; signature text remains presentation/FTS data. T53 validates `HTTPСоединение` constructor-call parameters through UAT-SH-017. | Additional callable gaps should now come from failed accepted BSL scenarios, not isolated DTO review. | T54 adds only scenario-driven relationship or parser improvements. |
 | Exact identity | T52 adds document-id lookup and relationship roots by document id and owner/member. | Additional analyzer-oriented batch APIs are not defined yet. | Keep CLI JSON as the first provider boundary until T55 decides whether a Rust API, file artifact or batch command is needed. |
 | Relationship traversal | Graph covers owner/member/type-reference/return/constructor edges and accepted SKD flow. | Code-facing workflows need reliable paths for creation/configuration tasks, not only nearby docs. | Add UAT scenarios and edge coverage for selected BSL development tasks before adding new graph features. |
 | Provider contract | T50 defines and T52 implements a provisional provider schema/envelope for CLI JSON outputs. | Future analyzer-oriented batch/API boundaries are not selected yet. | T55 decides whether the provider boundary stays CLI JSON or adds a Rust/library/file contract. |
-| Evidence from real BSL | Utility has been manually tried on RAT modules, but no durable scenario set exists. | Development may optimize for isolated API lookups rather than real code-analysis questions. | Add a small real-BSL scenario corpus under service data or fixture policy and promote only conclusions to spec. |
-| Storage evaluation | T49 plans Tantivy comparison. | Storage speed alone does not prove analyzer usefulness. | Run T49 only against accepted provider workflows and deterministic JSON requirements. |
+| Evidence from real BSL | T53 adds UAT-SH-017 for source-backed BSL development scenarios: constructor call, SKD owner/member access and accounting-register query-table discovery. | The scenario set is intentionally small and should expand only when real workflow gaps are found. | Use UAT-SH-017 as the acceptance corpus for T49/T54 before broad search/storage changes. |
+| Storage evaluation | T49 plans Tantivy comparison. | Storage speed alone does not prove analyzer usefulness. | Run T49 against UAT-SH-017 plus the existing exact, constructor, provider JSON and relationship workflows. |
 
 ## Target Use Cases and Solution Shape
 
@@ -147,8 +147,9 @@ Resolution path:
 4. **T52: Add analyzer-safe identity queries.** Completed: document-id lookup and relationship
    roots by document id and owner/member are available, plain-name UX remains, and provider JSON
    reports missing or ambiguous roots through `status` and diagnostics.
-5. **T53: Add BSL task scenario UAT.** Use real or source-backed BSL examples to validate
-   constructor lookup, owner/member lookup and task-oriented relationship discovery.
+5. **T53: Add BSL task scenario UAT.** Completed: UAT-SH-017 validates constructor lookup,
+   owner/member lookup and task-oriented query-table discovery against a rebuilt Russian Syntax
+   Assistant index.
 6. **T49: Measure storage/search alternatives against provider workflows.** Tantivy is evaluated
    only after the provider contract and BSL task scenarios are in place, and only against exact
    lookup, constructor lookup, deterministic JSON and relationship workflows.

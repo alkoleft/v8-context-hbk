@@ -558,6 +558,103 @@ Expected result:
 - Missing and ambiguous exact lookups are represented through `status` and `diagnostics` rather
   than by silently choosing an internal winner.
 
+## UAT-SH-017: BSL Task Scenario Provider Queries
+
+Related use case: UC-SH-005A, UC-SH-005B, UC-SH-005C.
+
+Related requirements: FR-SH-SEARCH-001, FR-SH-SEARCH-002, FR-SH-PROVIDER-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- `target/uat/t53-sh-search-ru.sqlite` can be created or removed.
+
+Steps:
+
+```bash
+rm -f target/uat/t53-sh-search-ru.sqlite
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t53-sh-search-ru.sqlite
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t53-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax constructors "HTTPСоединение" --format json \
+  > target/uat/t53-constructors-httpconnection.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t53-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json \
+  > target/uat/t53-get-skd-filter.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t53-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json \
+  > target/uat/t53-related-skd-filter.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t53-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax search --query "таблица регистра бухгалтерии" --mode keywords --format json \
+  > target/uat/t53-search-accounting-register-table.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t53-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "query_table:РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии" --format json \
+  > target/uat/t53-related-accounting-register-changes.json
+
+jq -e '
+  .status == "ok"
+  and any(.results[].fact.signatures[]?.parameters[]?;
+    .name == "Таймаут" and (.types | index("Число") != null))
+  and any(.results[].fact.signatures[]?.parameters[]?;
+    .name == "ЗащищенноеСоединение" and (.types | index("ЗащищенноеСоединениеOpenSSL") != null))
+  and any(.results[].fact.signatures[]?.parameters[]?;
+    .name == "ИспользоватьАутентификациюОС" and (.types | index("Булево") != null))
+' target/uat/t53-constructors-httpconnection.json
+jq -e '
+  .status == "ok"
+  and any(.results[].fact;
+    .kind == "type_property"
+    and .owner == "НастройкиКомпоновкиДанных"
+    and .name.primary == "Отбор"
+    and (.types | index("ОтборКомпоновкиДанных") != null))
+' target/uat/t53-get-skd-filter.json
+jq -e '
+  .status == "ok"
+  and any(.results[].fact; .name.primary == "ОтборКомпоновкиДанных")
+  and any(.results[].fact; .name.primary == "Элементы")
+' target/uat/t53-related-skd-filter.json
+jq -e '
+  .status == "ok"
+  and .results[0].fact.id == "query_table:РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии"
+  and any(.results[].fact;
+    .kind == "query_table"
+    and (.id | startswith("query_table:РегистрБухгалтерии")))
+' target/uat/t53-search-accounting-register-table.json
+jq -e '
+  .status == "ok"
+  and any(.results[].fact; .kind == "query_table_field" and .name.primary == "Регистратор")
+  and any(.results[].fact; .kind == "query_table_field" and .name.primary == "НомерСообщения")
+' target/uat/t53-related-accounting-register-changes.json
+```
+
+Expected result:
+
+- Exit code is `0`.
+- The constructor-call scenario for `Новый HTTPСоединение(...)` exposes structured parameters for
+  timeout, secure connection and OS authentication, with type references under `types`.
+- The owner/member scenario for `НастройкиКомпоновкиДанных.Отбор` returns the exact property fact,
+  its owner and the `ОтборКомпоновкиДанных` type reference.
+- Relationship traversal from the SKD filter property reaches the referenced filter type and its
+  `Элементы` property.
+- The task-oriented query `таблица регистра бухгалтерии` ranks a source-backed accounting-register
+  query table first and keeps other accounting-register table facts in the result set.
+- Relationship traversal from the accepted accounting-register query table id exposes documented
+  query-table fields such as `Регистратор` and `НомерСообщения`.
+- Raw JSON and SQLite artifacts are service data under `target/uat`; only these commands,
+  assertions and conclusions are durable.
+
+Cleanup:
+
+- `target/uat/t53-sh-search-ru.sqlite` and `target/uat/t53-*.json` are service data and may be
+  deleted after the run.
+
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 
 Related use case: UC-SH-001.

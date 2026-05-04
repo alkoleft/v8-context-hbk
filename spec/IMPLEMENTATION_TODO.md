@@ -17,10 +17,10 @@ export, schema, data-quality, performance, parser and query-search conclusions l
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T53. T50 defines the provider response contract, T51 was completed by
-the same schema-v3 structured callable fact mechanism as T48, and T52 added analyzer-safe identity
-roots for query/provider traversal. T49 is intentionally parked until BSL task scenario UAT is fixed
-by T53. The queued roadmap comes from
+Next active unchecked task is T49. T50 defines the provider response contract, T51 was completed by
+the same schema-v3 structured callable fact mechanism as T48, T52 added analyzer-safe identity roots
+for query/provider traversal, and T53 added the source-backed BSL task scenario UAT that gates
+storage/search experiments. The queued roadmap comes from
 `implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
 help during BSL development and code analysis, and toward a future typed local provider role for a
 BSL analyzer.
@@ -211,7 +211,7 @@ Result:
   get-by-id, owner/member, search, related-by-name, related-by-id, related-by-owner-member,
   missing, ambiguous and unsupported lookup paths.
 
-### [ ] T53. Add BSL task scenario UAT
+### [x] T53. Add BSL task scenario UAT
 
 Spec refs:
 
@@ -234,6 +234,18 @@ Verification:
 - Updated `spec/acceptance/uat-test-cases.md`.
 - UAT commands are reproducible with a rebuilt local Syntax Assistant index.
 
+Result:
+
+- Added UAT-SH-017 as the accepted BSL task scenario corpus for ADR-0006 provider workflows.
+- The scenario rebuilds a real RU index under `target/uat/`, then verifies constructor-call
+  assistance for `HTTPСоединение`, exact owner/member lookup and relationship traversal for
+  `НастройкиКомпоновкиДанных.Отбор`, and task-oriented query-table discovery for
+  `таблица регистра бухгалтерии`.
+- Promoted the durable T53 conclusion into `spec/acceptance/baseline.md`; raw JSON and SQLite
+  artifacts remain service data under `target/uat/`.
+- Verified against `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`: rebuilt index produced `25082`
+  documents in `54105 ms`, and the UAT-SH-017 `jq` assertions passed.
+
 ### [ ] T49. Evaluate Tantivy against the current SQLite/FTS5 query index
 
 Spec refs:
@@ -245,6 +257,7 @@ Spec refs:
 - UAT-SH-004
 - UAT-SH-006
 - UAT-SH-015
+- UAT-SH-017
 - ADR-0006
 - `spec/implementation/syntax-helper-query-cli.md`
 - `spec/acceptance/baseline.md`
@@ -286,6 +299,8 @@ Comparison cases:
 - Keyword search: `отбор скд`, `HTTP соединение`, `таблица регистра бухгалтерии`.
 - Fuzzy search: `ОтборКомпоновкиДаных`, plus one English typo from the root source.
 - Relationship traversal: `ОтборКомпоновкиДанных` and one constructor/type relationship case.
+- BSL task scenario UAT: UAT-SH-017 constructor, owner/member, relationship and
+  accounting-register query-table assertions.
 - Ambiguity behavior: same-name owner/member or enum cases already covered by search-index tests.
 
 Decision criteria:
@@ -312,6 +327,7 @@ Verification:
 
 - `cargo test -p syntax-helper-search --lib`
 - `cargo test --workspace`
+- UAT-SH-017 provider workflow assertions against the rebuilt RU index
 - measured RU/root build comparison for current SQLite/FTS5 and Tantivy prototype
 - measured query comparison for all comparison cases above
 

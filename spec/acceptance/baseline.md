@@ -1139,3 +1139,14 @@ assertions passed for `HTTPСоединение` constructor parameters, `Нас
 keyword search, related-by-name, related-by-id, related-by-owner-member, missing lookup and
 ambiguous lookup paths. Invalid JSON root combinations return provider `status: "unsupported"` with
 an `UNSUPPORTED_QUERY` diagnostic.
+
+T53 added BSL task scenario UAT for the ADR-0006 provider direction. The accepted debug rebuild from
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `25082` documents in `54105 ms` at
+`target/uat/t53-sh-search-ru.sqlite`. UAT-SH-017 now validates three source-backed BSL development
+questions: `Новый HTTPСоединение(...)` constructor parameters, `НастройкиКомпоновкиДанных.Отбор`
+owner/member lookup plus relationship traversal, and task-oriented discovery for
+`таблица регистра бухгалтерии`. The accepted accounting-register search ranks
+`query_table:РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии` first and relationship
+traversal from that id exposes query-table fields such as `Регистратор` and `НомерСообщения`.
+T53 did not change code, index schema or provider JSON shape; it fixed the acceptance corpus that
+future T49/T54 work must use before changing search storage or relationship coverage.
