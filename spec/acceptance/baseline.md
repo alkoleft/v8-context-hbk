@@ -81,6 +81,14 @@ directories are service data unless promoted here.
   diagnostics per locale. The root/English acceptance guard also checks that `Client application
   form...` event branches stay `module.kind="form"` and that `Information` suffixes do not match
   the managed-forms branch by substring alone.
+- T36 changed the canonical consumer JSON export to `schema_version: 8`. `metadata.json.files` now
+  lists `query-tables.json` instead of `table-fields.json` and `table-parameters.json`; normal
+  exports do not delete stale older-schema files from reused output directories. Full debug CLI
+  exports for both source books produced 59 query table records, 588 nested table fields, 78 nested
+  table parameters, 697 module events, 1869 platform types and 4 diagnostics per locale. Query table
+  records carry table-family `owner_path` and `table_role`; nested fields and parameters use string
+  names, do not repeat `owner_path`, and parameters do not expose `required`. Type methods, type
+  properties and constructors no longer expose derivative-record `owner_path`.
 
 ## Post-T29 Runtime Regression To Fix
 

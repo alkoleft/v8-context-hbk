@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-pub(crate) const SCHEMA_VERSION: u32 = 7;
+pub(crate) const SCHEMA_VERSION: u32 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ExportFile {
@@ -34,12 +34,8 @@ pub const EXPORT_FILES: &[ExportFile] = &[
         record_kind: "type_property",
     },
     ExportFile {
-        file_name: "table-fields.json",
-        record_kind: "table_field",
-    },
-    ExportFile {
-        file_name: "table-parameters.json",
-        record_kind: "table_parameter",
+        file_name: "query-tables.json",
+        record_kind: "query_table",
     },
     ExportFile {
         file_name: "constructors.json",

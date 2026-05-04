@@ -148,8 +148,7 @@ fn export_file_manifest_documents_canonical_json_files() {
         "platform-types.json",
         "type-methods.json",
         "type-properties.json",
-        "table-fields.json",
-        "table-parameters.json",
+        "query-tables.json",
         "constructors.json",
         "enums.json",
         "diagnostics.json",
@@ -186,7 +185,7 @@ fn records_envelope_json_is_parseable_and_non_empty() {
     let json = fs::read_to_string(&path).expect("record envelope must be readable");
     assert!(!json.is_empty());
     let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
-    assert_eq!(parsed["schema_version"], 7);
+    assert_eq!(parsed["schema_version"], 8);
     assert_eq!(parsed["locale"], "en");
     assert_eq!(parsed["source_locale"], "root");
     assert!(parsed.get("source_hbk").is_none());
@@ -205,6 +204,10 @@ fn exporter_writes_full_canonical_file_set() {
     }
     fs::create_dir_all(&dir).expect("export test dir must be creatable");
     fs::write(dir.join("enum-values.json"), "{}").expect("stale enum-values file must be writable");
+    fs::write(dir.join("table-fields.json"), "{}")
+        .expect("stale table-fields file must be writable");
+    fs::write(dir.join("table-parameters.json"), "{}")
+        .expect("stale table-parameters file must be writable");
 
     let summary = JsonExporter::new(&dir)
         .export_platform_context("en", "root", "shcntx_root.hbk", &PlatformContext::default())
@@ -212,7 +215,9 @@ fn exporter_writes_full_canonical_file_set() {
 
     assert_eq!(summary.files.len(), EXPORT_FILES.len() + 1);
     assert!(!dir.join("global-contexts.json").exists());
-    assert!(!dir.join("enum-values.json").exists());
+    assert!(dir.join("enum-values.json").exists());
+    assert!(dir.join("table-fields.json").exists());
+    assert!(dir.join("table-parameters.json").exists());
     for file in &summary.files {
         let json = fs::read_to_string(file)
             .unwrap_or_else(|error| panic!("{} must be readable: {error}", file.display()));
@@ -222,7 +227,7 @@ fn exporter_writes_full_canonical_file_set() {
     }
 
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 7);
+    assert_eq!(metadata["schema_version"], 8);
     assert_eq!(metadata["locale"], "en");
     assert_eq!(metadata["source_locale"], "root");
     assert!(metadata.get("source_hbk").is_none());
@@ -393,9 +398,33 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             facts: model::SectionFacts::default(),
             source: source.clone(),
         }],
+        query_tables: vec![
+            model::QueryTable {
+                name: "Таблица бизнес-процессов".to_string(),
+                semantic: semantic(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                )
+                .with_owner_path(vec![name("Таблицы запросов")]),
+                table_role: model::QueryTableRole::Additional,
+                description: Some("Таблица бизнес-процессов.".to_string()),
+                source: source.clone(),
+            },
+            model::QueryTable {
+                name: "Таблица критерия отбора".to_string(),
+                semantic: semantic(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                )
+                .with_owner_path(vec![name("Таблицы запросов")]),
+                table_role: model::QueryTableRole::Additional,
+                description: None,
+                source: source.clone(),
+            },
+        ],
         table_fields: vec![model::QueryTableField {
             owner: name("Таблица бизнес-процессов"),
-            name: name("Представление"),
+            name: "Представление".to_string(),
             semantic: semantic(
                 model::BranchKind::QueryTables,
                 model::RecordFamily::QueryTableField,
@@ -413,7 +442,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         }],
         table_parameters: vec![model::QueryTableParameter {
             owner: name("Таблица критерия отбора"),
-            name: name("Значение"),
+            name: "Значение".to_string(),
             semantic: semantic(
                 model::BranchKind::QueryTables,
                 model::RecordFamily::QueryTableParameter,
@@ -422,7 +451,6 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 name("Таблицы запросов"),
                 name("Таблица критерия отбора"),
             ]),
-            required: true,
             type_refs: Vec::new(),
             description: Some("Значение отбора.".to_string()),
             default_value: Some("Неопределено".to_string()),
@@ -496,7 +524,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
 
     assert!(!dir.join("global-contexts.json").exists());
     let metadata = read_json(dir.join("metadata.json"));
-    assert_eq!(metadata["schema_version"], 7);
+    assert_eq!(metadata["schema_version"], 8);
     assert_no_keys(&metadata, &["source_hbk"]);
 
     let forbidden = [
@@ -516,8 +544,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         "platform-types.json",
         "type-methods.json",
         "type-properties.json",
-        "table-fields.json",
-        "table-parameters.json",
+        "query-tables.json",
         "constructors.json",
         "enums.json",
     ] {
@@ -595,20 +622,14 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     let type_methods = read_json(dir.join("type-methods.json"));
     let type_method = &type_methods["records"][0];
     assert_eq!(type_method["owner"], "Массив");
-    assert_eq!(
-        type_method["owner_path"],
-        serde_json::json!(["Универсальные коллекции", "Массив"])
-    );
+    assert!(type_method.get("owner_path").is_none());
     assert_eq!(type_method["return"], serde_json::json!(["Число"]));
     assert!(type_method.get("return_types").is_none());
 
     let type_properties = read_json(dir.join("type-properties.json"));
     let type_property = &type_properties["records"][0];
     assert_eq!(type_property["owner"], "ГруппаФормы");
-    assert_eq!(
-        type_property["owner_path"],
-        serde_json::json!(["Форма", "ГруппаФормы"])
-    );
+    assert!(type_property.get("owner_path").is_none());
     assert_eq!(type_property["usage"], "ReadWrite");
     assert_eq!(type_property["description"], "Определяет видимость группы.");
 
@@ -628,19 +649,58 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     assert_eq!(platform_type["type_kind"], "regular");
     assert!(platform_type.get("owner_path").is_none());
 
-    let table_fields = read_json(dir.join("table-fields.json"));
+    let query_tables = read_json(dir.join("query-tables.json"));
     assert_eq!(
-        table_fields["records"][0]["owner_path"],
-        serde_json::json!(["Таблицы запросов", "Таблица бизнес-процессов"])
+        query_tables["records"][0]["owner_path"],
+        serde_json::json!(["Таблицы запросов"])
     );
-
-    let table_parameters = read_json(dir.join("table-parameters.json"));
     assert_eq!(
-        table_parameters["records"][0]["owner_path"],
-        serde_json::json!(["Таблицы запросов", "Таблица критерия отбора"])
+        query_tables["records"][0]["name"],
+        "Таблица бизнес-процессов"
     );
-    assert!(table_parameters["records"][0].get("types").is_none());
-    assert!(table_parameters["records"][0].get("type_refs").is_none());
+    assert_eq!(query_tables["records"][0]["table_role"], "additional");
+    assert_eq!(
+        query_tables["records"][0]["fields"][0]["name"],
+        "Представление"
+    );
+    assert_eq!(
+        query_tables["records"][0]["fields"][0]["types"],
+        serde_json::json!(["Строка"])
+    );
+    assert!(
+        query_tables["records"][0]["fields"][0]
+            .get("owner_path")
+            .is_none()
+    );
+    assert!(
+        query_tables["records"][0]["fields"][0]
+            .get("owner")
+            .is_none()
+    );
+    assert_eq!(
+        query_tables["records"][1]["parameters"][0]["name"],
+        "Значение"
+    );
+    assert!(
+        query_tables["records"][1]["parameters"][0]
+            .get("required")
+            .is_none()
+    );
+    assert!(
+        query_tables["records"][1]["parameters"][0]
+            .get("owner_path")
+            .is_none()
+    );
+    assert!(
+        query_tables["records"][1]["parameters"][0]
+            .get("types")
+            .is_none()
+    );
+    assert!(
+        query_tables["records"][1]["parameters"][0]
+            .get("type_refs")
+            .is_none()
+    );
 
     let enums = read_json(dir.join("enums.json"));
     let enum_record = &enums["records"][0];
@@ -676,6 +736,10 @@ fn streaming_export_writes_lean_records_without_full_context() {
     }
     fs::create_dir_all(&dir).expect("stream export test dir must be creatable");
     fs::write(dir.join("enum-values.json"), "{}").expect("stale enum-values file must be writable");
+    fs::write(dir.join("table-fields.json"), "{}")
+        .expect("stale table-fields file must be writable");
+    fs::write(dir.join("table-parameters.json"), "{}")
+        .expect("stale table-parameters file must be writable");
 
     let source = source();
     let mut export = JsonExporter::new(&dir)
@@ -700,6 +764,49 @@ fn streaming_export_writes_lean_records_without_full_context() {
             source: source.clone(),
         })
         .expect("global method must be writable");
+    export
+        .query_table(model::QueryTable {
+            name: "Основная таблица".to_string(),
+            semantic: semantic(
+                model::BranchKind::QueryTables,
+                model::RecordFamily::QueryTable,
+            )
+            .with_owner_path(vec![name("Таблицы задач")]),
+            table_role: model::QueryTableRole::Primary,
+            description: None,
+            source: source.clone(),
+        })
+        .expect("query table must be buffered");
+    export
+        .table_field(model::QueryTableField {
+            owner: name("Основная таблица"),
+            name: "<Имя измерения>".to_string(),
+            semantic: semantic(
+                model::BranchKind::QueryTables,
+                model::RecordFamily::QueryTableField,
+            )
+            .with_owner_path(vec![name("Таблицы задач"), name("Основная таблица")]),
+            type_refs: Vec::new(),
+            description: Some("Поле основной таблицы.".to_string()),
+            note: None,
+            source: source.clone(),
+        })
+        .expect("query table field must be buffered");
+    export
+        .table_parameter(model::QueryTableParameter {
+            owner: name("Основная таблица"),
+            name: "Период".to_string(),
+            semantic: semantic(
+                model::BranchKind::QueryTables,
+                model::RecordFamily::QueryTableParameter,
+            )
+            .with_owner_path(vec![name("Таблицы задач"), name("Основная таблица")]),
+            type_refs: Vec::new(),
+            description: None,
+            default_value: None,
+            source: source.clone(),
+        })
+        .expect("query table parameter must be buffered");
     export
         .enum_value(model::EnumValue {
             owner: name("ТипЗначенияJSON"),
@@ -732,11 +839,16 @@ fn streaming_export_writes_lean_records_without_full_context() {
     assert_eq!(summary.files.len(), EXPORT_FILES.len() + 1);
     assert_eq!(summary.counts.global_contexts, 1);
     assert_eq!(summary.counts.global_methods, 1);
+    assert_eq!(summary.counts.query_tables, 1);
+    assert_eq!(summary.counts.table_fields, 1);
+    assert_eq!(summary.counts.table_parameters, 1);
     assert_eq!(summary.counts.enums, 1);
     assert_eq!(summary.counts.enum_values, 1);
     assert_eq!(summary.counts.diagnostics, 1);
     assert!(!dir.join("global-contexts.json").exists());
-    assert!(!dir.join("enum-values.json").exists());
+    assert!(dir.join("enum-values.json").exists());
+    assert!(dir.join("table-fields.json").exists());
+    assert!(dir.join("table-parameters.json").exists());
 
     let global_methods = read_json(dir.join("global-methods.json"));
     assert_eq!(global_methods["records"].as_array().unwrap().len(), 1);
@@ -755,6 +867,27 @@ fn streaming_export_writes_lean_records_without_full_context() {
     assert_eq!(
         enums["records"][0]["values"][0]["name"]["primary"],
         "КонецМассива"
+    );
+
+    let query_tables = read_json(dir.join("query-tables.json"));
+    assert_eq!(query_tables["records"][0]["name"], "Основная таблица");
+    assert_eq!(query_tables["records"][0]["table_role"], "primary");
+    assert_eq!(
+        query_tables["records"][0]["owner_path"],
+        serde_json::json!(["Таблицы задач"])
+    );
+    assert_eq!(
+        query_tables["records"][0]["fields"][0]["name"],
+        "<Имя измерения>"
+    );
+    assert_eq!(
+        query_tables["records"][0]["parameters"][0]["name"],
+        "Период"
+    );
+    assert!(
+        query_tables["records"][0]["parameters"][0]
+            .get("required")
+            .is_none()
     );
 
     let platform_types = read_json(dir.join("platform-types.json"));

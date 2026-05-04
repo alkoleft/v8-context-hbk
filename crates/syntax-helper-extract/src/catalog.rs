@@ -80,6 +80,8 @@ fn classify_catalog_page(page: &TocPage, branch: BranchKind) -> PageClass {
         PageClass::QueryTableField
     } else if branch == BranchKind::QueryTables && path.contains("/params/") {
         PageClass::QueryTableParameter
+    } else if branch == BranchKind::QueryTables && path.starts_with("tables/") {
+        PageClass::QueryTable
     } else if path.contains("/events/") {
         PageClass::ModuleEvent
     } else if path.contains("/methods/") {
@@ -126,6 +128,7 @@ fn record_family(class: PageClass) -> RecordFamily {
         PageClass::GlobalProperty => RecordFamily::GlobalProperty,
         PageClass::ModuleEvent => RecordFamily::ModuleEvent,
         PageClass::ObjectType => RecordFamily::PlatformType,
+        PageClass::QueryTable => RecordFamily::QueryTable,
         PageClass::ObjectMethod => RecordFamily::TypeMethod,
         PageClass::ObjectProperty => RecordFamily::TypeProperty,
         PageClass::QueryTableField => RecordFamily::QueryTableField,
@@ -196,6 +199,11 @@ fn owner_path(
     ancestors: &[&TocPage],
 ) -> Vec<LocalizedName> {
     match class {
+        PageClass::QueryTable => ancestors
+            .iter()
+            .filter(|ancestor| include_query_owner_path_node(ancestor))
+            .map(|ancestor| semantic_page_name(locale, ancestor))
+            .collect(),
         PageClass::QueryTableField | PageClass::QueryTableParameter => ancestors
             .iter()
             .filter(|ancestor| include_query_owner_path_node(ancestor))

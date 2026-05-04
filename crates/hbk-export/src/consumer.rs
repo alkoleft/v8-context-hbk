@@ -158,8 +158,6 @@ impl<'a> From<&'a model::PlatformType> for ConsumerPlatformType<'a> {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ConsumerPlatformMethod<'a> {
     owner: &'a str,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    owner_path: Vec<&'a str>,
     name: ConsumerLocalizedName<'a>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     signatures: Vec<ConsumerSignature<'a>>,
@@ -176,7 +174,6 @@ impl<'a> From<&'a model::PlatformMethod> for ConsumerPlatformMethod<'a> {
     fn from(method: &'a model::PlatformMethod) -> Self {
         Self {
             owner: &method.owner.primary,
-            owner_path: semantic_owner_path(&method.semantic),
             name: ConsumerLocalizedName::from(&method.name),
             signatures: consumer_signatures(&method.signatures),
             return_types: type_ref_names(&method.return_types),
@@ -189,8 +186,6 @@ impl<'a> From<&'a model::PlatformMethod> for ConsumerPlatformMethod<'a> {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ConsumerPlatformProperty<'a> {
     owner: &'a str,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    owner_path: Vec<&'a str>,
     name: ConsumerLocalizedName<'a>,
     usage: &'static str,
     #[serde(rename = "types")]
@@ -206,7 +201,6 @@ impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
     fn from(property: &'a model::PlatformProperty) -> Self {
         Self {
             owner: &property.owner.primary,
-            owner_path: semantic_owner_path(&property.semantic),
             name: ConsumerLocalizedName::from(&property.name),
             usage: property_usage(&property.usage),
             type_refs: type_ref_names(&property.type_refs),
@@ -217,11 +211,44 @@ impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct ConsumerQueryTableField<'a> {
-    owner: &'a str,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+pub(crate) struct ConsumerQueryTable<'a> {
+    name: &'a str,
+    table_role: model::QueryTableRole,
     owner_path: Vec<&'a str>,
-    name: ConsumerLocalizedName<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fields: Vec<ConsumerQueryTableField<'a>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    parameters: Vec<ConsumerQueryTableParameter<'a>>,
+}
+
+impl<'a> ConsumerQueryTable<'a> {
+    fn new(
+        table: &'a model::QueryTable,
+        fields: Vec<&'a model::QueryTableField>,
+        parameters: Vec<&'a model::QueryTableParameter>,
+    ) -> Self {
+        Self {
+            name: &table.name,
+            table_role: table.table_role,
+            owner_path: semantic_owner_path(&table.semantic),
+            description: table.description.as_deref(),
+            fields: fields
+                .into_iter()
+                .map(ConsumerQueryTableField::from)
+                .collect(),
+            parameters: parameters
+                .into_iter()
+                .map(ConsumerQueryTableParameter::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ConsumerQueryTableField<'a> {
+    name: &'a str,
     #[serde(rename = "types")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     type_refs: Vec<&'a str>,
@@ -234,9 +261,7 @@ pub(crate) struct ConsumerQueryTableField<'a> {
 impl<'a> From<&'a model::QueryTableField> for ConsumerQueryTableField<'a> {
     fn from(field: &'a model::QueryTableField) -> Self {
         Self {
-            owner: &field.owner.primary,
-            owner_path: semantic_owner_path(&field.semantic),
-            name: ConsumerLocalizedName::from(&field.name),
+            name: &field.name,
             type_refs: type_ref_names(&field.type_refs),
             description: field.description.as_deref(),
             note: field.note.as_deref(),
@@ -246,11 +271,7 @@ impl<'a> From<&'a model::QueryTableField> for ConsumerQueryTableField<'a> {
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ConsumerQueryTableParameter<'a> {
-    owner: &'a str,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    owner_path: Vec<&'a str>,
-    name: ConsumerLocalizedName<'a>,
-    required: bool,
+    name: &'a str,
     #[serde(rename = "types")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     type_refs: Vec<&'a str>,
@@ -263,10 +284,7 @@ pub(crate) struct ConsumerQueryTableParameter<'a> {
 impl<'a> From<&'a model::QueryTableParameter> for ConsumerQueryTableParameter<'a> {
     fn from(parameter: &'a model::QueryTableParameter) -> Self {
         Self {
-            owner: &parameter.owner.primary,
-            owner_path: semantic_owner_path(&parameter.semantic),
-            name: ConsumerLocalizedName::from(&parameter.name),
-            required: parameter.required,
+            name: &parameter.name,
             type_refs: type_ref_names(&parameter.type_refs),
             description: parameter.description.as_deref(),
             default_value: parameter.default_value.as_deref(),
@@ -277,8 +295,6 @@ impl<'a> From<&'a model::QueryTableParameter> for ConsumerQueryTableParameter<'a
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ConsumerConstructor<'a> {
     owner: &'a str,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    owner_path: Vec<&'a str>,
     name: ConsumerLocalizedName<'a>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     signatures: Vec<ConsumerSignature<'a>>,
@@ -292,7 +308,6 @@ impl<'a> From<&'a model::Constructor> for ConsumerConstructor<'a> {
     fn from(constructor: &'a model::Constructor) -> Self {
         Self {
             owner: &constructor.owner.primary,
-            owner_path: semantic_owner_path(&constructor.semantic),
             name: ConsumerLocalizedName::from(&constructor.name),
             signatures: consumer_signatures(&constructor.signatures),
             description: constructor.description.as_deref(),
@@ -484,6 +499,47 @@ pub(crate) fn consumer_enums<'a>(
             ConsumerEnumDefinition::new(enum_definition, enum_values)
         })
         .collect()
+}
+
+pub(crate) fn consumer_query_tables<'a>(
+    tables: &'a [model::QueryTable],
+    fields: &'a [model::QueryTableField],
+    parameters: &'a [model::QueryTableParameter],
+) -> Vec<ConsumerQueryTable<'a>> {
+    tables
+        .iter()
+        .map(|table| {
+            ConsumerQueryTable::new(
+                table,
+                fields
+                    .iter()
+                    .filter(|field| {
+                        query_member_belongs_to_table(table, &field.owner, &field.semantic)
+                    })
+                    .collect(),
+                parameters
+                    .iter()
+                    .filter(|parameter| {
+                        query_member_belongs_to_table(table, &parameter.owner, &parameter.semantic)
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn query_member_belongs_to_table(
+    table: &model::QueryTable,
+    owner: &model::LocalizedName,
+    semantic: &model::SemanticContext,
+) -> bool {
+    if owner.primary != table.name && owner.alias.as_deref() != Some(table.name.as_str()) {
+        return false;
+    }
+    let Some((table_owner, member_family_path)) = semantic.owner_path.split_last() else {
+        return table.semantic.owner_path.is_empty();
+    };
+    table_owner.primary == table.name && member_family_path == table.semantic.owner_path.as_slice()
 }
 
 fn group_enum_values<'a>(

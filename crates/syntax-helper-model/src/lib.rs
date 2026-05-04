@@ -46,6 +46,7 @@ pub enum PageClass {
     GlobalProperty,
     ModuleEvent,
     ObjectType,
+    QueryTable,
     ObjectMethod,
     ObjectProperty,
     QueryTableField,
@@ -78,6 +79,7 @@ pub enum RecordFamily {
     GlobalProperty,
     ModuleEvent,
     PlatformType,
+    QueryTable,
     TypeMethod,
     TypeProperty,
     TypeConstructor,
@@ -147,6 +149,7 @@ pub struct PlatformContext {
     pub global_properties: Vec<GlobalProperty>,
     pub global_context_events: Vec<GlobalContextEvent>,
     pub platform_types: Vec<PlatformType>,
+    pub query_tables: Vec<QueryTable>,
     pub type_methods: Vec<PlatformMethod>,
     pub type_properties: Vec<PlatformProperty>,
     pub table_fields: Vec<QueryTableField>,
@@ -236,6 +239,7 @@ pub trait SyntaxHelperSink {
     fn global_property(&mut self, record: GlobalProperty) -> Result<(), Self::Error>;
     fn global_context_event(&mut self, record: GlobalContextEvent) -> Result<(), Self::Error>;
     fn platform_type(&mut self, record: PlatformType) -> Result<(), Self::Error>;
+    fn query_table(&mut self, record: QueryTable) -> Result<(), Self::Error>;
     fn type_method(&mut self, record: PlatformMethod) -> Result<(), Self::Error>;
     fn type_property(&mut self, record: PlatformProperty) -> Result<(), Self::Error>;
     fn table_field(&mut self, record: QueryTableField) -> Result<(), Self::Error>;
@@ -277,6 +281,11 @@ impl SyntaxHelperSink for PlatformContext {
 
     fn platform_type(&mut self, record: PlatformType) -> Result<(), Self::Error> {
         self.platform_types.push(record);
+        Ok(())
+    }
+
+    fn query_table(&mut self, record: QueryTable) -> Result<(), Self::Error> {
+        self.query_tables.push(record);
         Ok(())
     }
 
@@ -444,6 +453,23 @@ pub struct PlatformType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct QueryTable {
+    pub name: String,
+    pub semantic: SemanticContext,
+    pub table_role: QueryTableRole,
+    pub description: Option<String>,
+    pub source: SyntaxHelperSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryTableRole {
+    Primary,
+    Additional,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlatformMethod {
     pub owner: LocalizedName,
     pub name: LocalizedName,
@@ -470,7 +496,7 @@ pub struct PlatformProperty {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct QueryTableField {
     pub owner: LocalizedName,
-    pub name: LocalizedName,
+    pub name: String,
     pub semantic: SemanticContext,
     pub type_refs: Vec<TypeRef>,
     pub description: Option<String>,
@@ -481,9 +507,8 @@ pub struct QueryTableField {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct QueryTableParameter {
     pub owner: LocalizedName,
-    pub name: LocalizedName,
+    pub name: String,
     pub semantic: SemanticContext,
-    pub required: bool,
     pub type_refs: Vec<TypeRef>,
     pub description: Option<String>,
     pub default_value: Option<String>,

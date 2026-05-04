@@ -291,9 +291,8 @@ Required files for the schema v8 consumer export contract:
 - `enums.json`
 - `diagnostics.json`
 
-The current accepted consumer export schema is `schema_version: 7`. The next accepted export-contract
-task must raise it to `schema_version: 8`. Each consumer record-family file is a JSON object with
-`schema_version`, `locale`, `source_locale`, `record_kind` and `records`.
+The current accepted consumer export schema is `schema_version: 8`. Each consumer record-family file
+is a JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and `records`.
 `metadata.json` contains export-level metadata and file inventory; it must not expose source HBK
 paths or book hierarchy. `diagnostics.json` may keep parser source context because its audience is
 parser maintenance, not downstream platform API consumption.
@@ -414,9 +413,10 @@ Schema version 4 adds Syntax Assistant source families that were previously diag
 - `table-parameters.json`: schema v4-v7 query/table metadata parameters with `owner`, `name`,
   `required`, `owner_path`, `types`, `description` and `default_value`.
 
-Module events, table fields and table parameters are first-class consumer facts. They must no
-longer be reported as `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`,
-`OUT_OF_SCOPE_TABLE_FIELD` or `OUT_OF_SCOPE_TABLE_PARAMETER` for the target platform source books.
+Module events and query tables are first-class consumer facts. Query table fields and parameters
+are nested under their owning `query-tables.json` records in schema v8. They must no longer be
+reported as `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`, `OUT_OF_SCOPE_TABLE_FIELD` or
+`OUT_OF_SCOPE_TABLE_PARAMETER` for the target platform source books.
 
 The next event-export task after schema version 8 must replace the historical
 `global-context-events.json` adapter with event-specific record-family files. It must not introduce

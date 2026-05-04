@@ -596,7 +596,11 @@ done
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-methods.json
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/type-properties.json
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-ru/constructors.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/type-methods.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/type-properties.json
+jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/constructors.json
 jq -e 'all(.records[]; (.fields // [] | all(.[]; (has("owner_path") | not) and (.name | type == "string"))) and (.parameters // [] | all(.[]; (has("owner_path") | not) and (has("required") | not) and (.name | type == "string"))))' target/uat/shcntx-ru/query-tables.json
+jq -e 'all(.records[]; (.fields // [] | all(.[]; (has("owner_path") | not) and (.name | type == "string"))) and (.parameters // [] | all(.[]; (has("owner_path") | not) and (has("required") | not) and (.name | type == "string"))))' target/uat/shcntx-en/query-tables.json
 jq -e '.records[] | select(.owner == "ТабличноеПоле" and .name.primary == "СоздатьКолонки") | .examples[0].text == "ЭлементыФормы.ТабличноеПоле1.Значение = ТаблицаДанных;\nЭлементыФормы.ТабличноеПоле1.СоздатьКолонки();"' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "ЗадачаОбъект.<Имя задачи>" and .name.primary == "Записать") | (.examples[0].text | contains("ОписаниеОшибки ( )") | not) and (.examples[0].text | contains("ОписаниеОшибки(), 60);"))' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "Расширение поля формы для поля ввода" and .name.primary == "ПараметрыВыбора") | (.examples[0].text | startswith("НовыйПараметр = Новый ПараметрВыбора")) and (.examples[0].text | contains("Тонкий клиент") | not)' target/uat/shcntx-ru/type-properties.json

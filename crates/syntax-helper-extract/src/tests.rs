@@ -50,6 +50,11 @@ impl SyntaxHelperSink for RecordingSink {
         Ok(())
     }
 
+    fn query_table(&mut self, record: QueryTable) -> Result<(), Self::Error> {
+        self.seen.push(format!("query_table:{}", record.name));
+        Ok(())
+    }
+
     fn type_method(&mut self, record: PlatformMethod) -> Result<(), Self::Error> {
         self.push_name("type_method", &record.name);
         Ok(())
@@ -63,7 +68,7 @@ impl SyntaxHelperSink for RecordingSink {
     fn table_field(&mut self, record: QueryTableField) -> Result<(), Self::Error> {
         self.seen.push(format!(
             "table_field:{}:{}",
-            record.owner.primary, record.name.primary
+            record.owner.primary, record.name
         ));
         Ok(())
     }
@@ -71,7 +76,7 @@ impl SyntaxHelperSink for RecordingSink {
     fn table_parameter(&mut self, record: QueryTableParameter) -> Result<(), Self::Error> {
         self.seen.push(format!(
             "table_parameter:{}:{}",
-            record.owner.primary, record.name.primary
+            record.owner.primary, record.name
         ));
         Ok(())
     }
@@ -316,15 +321,13 @@ fn parses_query_table_field_and_parameter_pages() {
         source("tables/catalog36/table42/params/param82.html"),
     );
 
-    assert_eq!(field.name.primary, "Представление");
-    assert_eq!(field.name.alias.as_deref(), Some("Presentation"));
+    assert_eq!(field.name, "Представление");
     assert_eq!(field.type_refs[0].name, "Строка");
     assert_eq!(
         field.description.as_deref(),
         Some("Содержит строку-представление бизнес-процесса")
     );
-    assert_eq!(parameter.name.primary, "Первые");
-    assert!(!parameter.required);
+    assert_eq!(parameter.name, "Первые");
     assert_eq!(parameter.type_refs[0].name, "Число");
     assert_eq!(
         parameter.description.as_deref(),
@@ -1760,8 +1763,11 @@ fn real_shcntx_ru_extraction_returns_required_families_when_fixture_exists() {
     assert!(!context.global_methods.is_empty());
     assert!(!context.global_properties.is_empty());
     assert!(!context.platform_types.is_empty());
+    assert!(!context.query_tables.is_empty());
     assert!(!context.type_methods.is_empty());
     assert!(!context.type_properties.is_empty());
+    assert!(!context.table_fields.is_empty());
+    assert!(!context.table_parameters.is_empty());
     assert!(!context.constructors.is_empty());
     assert!(!context.enums.is_empty());
     assert!(!context.enum_values.is_empty());

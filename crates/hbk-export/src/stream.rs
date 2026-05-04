@@ -5,18 +5,13 @@ use syntax_helper_model::{self as model, SyntaxHelperSink};
 
 use crate::consumer::{
     ConsumerConstructor, ConsumerGlobalContextEvent, ConsumerGlobalMethod, ConsumerGlobalProperty,
-    ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType,
-    ConsumerQueryTableField, ConsumerQueryTableParameter, ExportMetadata, consumer_enums,
+    ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType, ExportMetadata,
+    consumer_enums, consumer_query_tables,
 };
 use crate::context::{JsonExportCounts, JsonExportSummary};
 use crate::error::ExportError;
 use crate::manifest::{EXPORT_FILES, SCHEMA_VERSION};
-use crate::writer::{
-    RecordFileWriter, open_record_file, remove_export_files, remove_named_export_files,
-    write_json_file,
-};
-
-const REMOVED_EXPORT_FILES: &[&str] = &["enum-values.json"];
+use crate::writer::{RecordFileWriter, open_record_file, remove_export_files, write_json_file};
 
 pub struct StreamingSyntaxHelperExport {
     output_dir: PathBuf,
@@ -30,8 +25,10 @@ pub struct StreamingSyntaxHelperExport {
     platform_types: RecordFileWriter,
     type_methods: RecordFileWriter,
     type_properties: RecordFileWriter,
-    table_fields: RecordFileWriter,
-    table_parameters: RecordFileWriter,
+    query_tables: RecordFileWriter,
+    query_table_records: Vec<model::QueryTable>,
+    query_table_fields: Vec<model::QueryTableField>,
+    query_table_parameters: Vec<model::QueryTableParameter>,
     constructors: RecordFileWriter,
     enums: RecordFileWriter,
     enum_definitions: Vec<model::EnumDefinition>,
@@ -49,8 +46,6 @@ impl StreamingSyntaxHelperExport {
             path: output_dir.clone(),
             source,
         })?;
-        remove_named_export_files(&output_dir, REMOVED_EXPORT_FILES.iter().copied())?;
-
         let metadata = ExportMetadata {
             schema_version: SCHEMA_VERSION,
             locale,
@@ -108,21 +103,13 @@ impl StreamingSyntaxHelperExport {
             source_locale,
             "type_property",
         )?;
-        let table_fields = open_record_file(
+        let query_tables = open_record_file(
             &output_dir,
             &mut files,
-            "table-fields.json",
+            "query-tables.json",
             locale,
             source_locale,
-            "table_field",
-        )?;
-        let table_parameters = open_record_file(
-            &output_dir,
-            &mut files,
-            "table-parameters.json",
-            locale,
-            source_locale,
-            "table_parameter",
+            "query_table",
         )?;
         let constructors = open_record_file(
             &output_dir,
@@ -161,8 +148,10 @@ impl StreamingSyntaxHelperExport {
             platform_types,
             type_methods,
             type_properties,
-            table_fields,
-            table_parameters,
+            query_tables,
+            query_table_records: Vec::new(),
+            query_table_fields: Vec::new(),
+            query_table_parameters: Vec::new(),
             constructors,
             enums,
             enum_definitions: Vec::new(),
@@ -176,6 +165,14 @@ impl StreamingSyntaxHelperExport {
         for enum_record in &enums {
             self.enums.write_record(enum_record)?;
         }
+        let query_tables = consumer_query_tables(
+            &self.query_table_records,
+            &self.query_table_fields,
+            &self.query_table_parameters,
+        );
+        for query_table in &query_tables {
+            self.query_tables.write_record(query_table)?;
+        }
 
         self.global_methods.finish()?;
         self.global_properties.finish()?;
@@ -183,8 +180,7 @@ impl StreamingSyntaxHelperExport {
         self.platform_types.finish()?;
         self.type_methods.finish()?;
         self.type_properties.finish()?;
-        self.table_fields.finish()?;
-        self.table_parameters.finish()?;
+        self.query_tables.finish()?;
         self.constructors.finish()?;
         self.enums.finish()?;
         self.diagnostics.finish()?;
@@ -207,8 +203,7 @@ impl StreamingSyntaxHelperExport {
             platform_types,
             type_methods,
             type_properties,
-            table_fields,
-            table_parameters,
+            query_tables,
             constructors,
             enums,
             diagnostics,
@@ -221,8 +216,7 @@ impl StreamingSyntaxHelperExport {
         platform_types.close_unfinished();
         type_methods.close_unfinished();
         type_properties.close_unfinished();
-        table_fields.close_unfinished();
-        table_parameters.close_unfinished();
+        query_tables.close_unfinished();
         constructors.close_unfinished();
         enums.close_unfinished();
         diagnostics.close_unfinished();
@@ -274,6 +268,12 @@ impl SyntaxHelperSink for StreamingSyntaxHelperExport {
         Ok(())
     }
 
+    fn query_table(&mut self, record: model::QueryTable) -> Result<(), Self::Error> {
+        self.query_table_records.push(record);
+        self.counts.query_tables += 1;
+        Ok(())
+    }
+
     fn type_method(&mut self, record: model::PlatformMethod) -> Result<(), Self::Error> {
         self.type_methods
             .write_record(&ConsumerPlatformMethod::from(&record))?;
@@ -289,15 +289,13 @@ impl SyntaxHelperSink for StreamingSyntaxHelperExport {
     }
 
     fn table_field(&mut self, record: model::QueryTableField) -> Result<(), Self::Error> {
-        self.table_fields
-            .write_record(&ConsumerQueryTableField::from(&record))?;
+        self.query_table_fields.push(record);
         self.counts.table_fields += 1;
         Ok(())
     }
 
     fn table_parameter(&mut self, record: model::QueryTableParameter) -> Result<(), Self::Error> {
-        self.table_parameters
-            .write_record(&ConsumerQueryTableParameter::from(&record))?;
+        self.query_table_parameters.push(record);
         self.counts.table_parameters += 1;
         Ok(())
     }

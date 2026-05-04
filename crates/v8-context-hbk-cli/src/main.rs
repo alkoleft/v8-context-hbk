@@ -121,6 +121,7 @@ fn syntax_helper(book_path: PathBuf, output: PathBuf) -> Result<(), Box<dyn std:
         summary.counts.global_context_events
     );
     println!("platform_types: {}", summary.counts.platform_types);
+    println!("query_tables: {}", summary.counts.query_tables);
     println!("type_methods: {}", summary.counts.type_methods);
     println!("type_properties: {}", summary.counts.type_properties);
     println!("table_fields: {}", summary.counts.table_fields);

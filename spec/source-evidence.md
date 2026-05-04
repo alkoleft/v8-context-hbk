@@ -457,3 +457,15 @@ The reviewed query table families did not show a need for localized-name alias o
 field or parameter names, so schema v8 should use string names for this source family unless future
 source evidence proves aliases. The existing query table parameter `required` field also lacks a
 clear source-backed contract and should be removed from schema v8 consumer JSON.
+
+T36 implemented this shape on 2026-05-04. Fresh debug CLI exports for
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` both produced 59 `query-tables.json` records with
+588 nested fields and 78 nested parameters. The T36 checks confirmed:
+
+- `metadata.json.files` lists `query-tables.json` and does not list `table-fields.json`,
+  `table-parameters.json` or `enum-values.json`.
+- table records use string `name`, table-family `owner_path` and `table_role`;
+- nested field and parameter records use string `name`, omit `owner_path`, and query table
+  parameters omit `required`;
+- normal exports preserve stale files from older schema versions when an output directory is reused.

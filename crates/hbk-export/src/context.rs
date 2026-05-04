@@ -8,14 +8,13 @@ use syntax_helper_model::PlatformContext;
 
 use crate::consumer::{
     ConsumerConstructor, ConsumerGlobalContextEvent, ConsumerGlobalMethod, ConsumerGlobalProperty,
-    ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType,
-    ConsumerQueryTableField, ConsumerQueryTableParameter, ExportMetadata, RecordsEnvelope,
-    consumer_enums,
+    ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType, ExportMetadata,
+    RecordsEnvelope, consumer_enums, consumer_query_tables,
 };
 use crate::error::ExportError;
 use crate::manifest::{EXPORT_FILES, SCHEMA_VERSION};
 use crate::stream::StreamingSyntaxHelperExport;
-use crate::writer::{remove_named_export_files, write_json_file};
+use crate::writer::write_json_file;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsonExporter {
@@ -70,8 +69,6 @@ impl JsonExporter {
             path: self.output_dir.clone(),
             source,
         })?;
-        remove_named_export_files(&self.output_dir, REMOVED_EXPORT_FILES.iter().copied())?;
-
         let metadata = ExportMetadata {
             schema_version: SCHEMA_VERSION,
             locale,
@@ -153,29 +150,17 @@ impl JsonExporter {
             "type_property",
             &type_properties,
         )?);
-        let table_fields = context
-            .table_fields
-            .iter()
-            .map(ConsumerQueryTableField::from)
-            .collect::<Vec<_>>();
+        let query_tables = consumer_query_tables(
+            &context.query_tables,
+            &context.table_fields,
+            &context.table_parameters,
+        );
         files.push(self.write_records(
-            "table-fields.json",
+            "query-tables.json",
             locale,
             source_locale,
-            "table_field",
-            &table_fields,
-        )?);
-        let table_parameters = context
-            .table_parameters
-            .iter()
-            .map(ConsumerQueryTableParameter::from)
-            .collect::<Vec<_>>();
-        files.push(self.write_records(
-            "table-parameters.json",
-            locale,
-            source_locale,
-            "table_parameter",
-            &table_parameters,
+            "query_table",
+            &query_tables,
         )?);
         let constructors = context
             .constructors
@@ -235,8 +220,6 @@ impl JsonExporter {
     }
 }
 
-const REMOVED_EXPORT_FILES: &[&str] = &["enum-values.json"];
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsonExportSummary {
     pub output_dir: PathBuf,
@@ -253,6 +236,7 @@ pub struct JsonExportCounts {
     pub global_properties: usize,
     pub global_context_events: usize,
     pub platform_types: usize,
+    pub query_tables: usize,
     pub type_methods: usize,
     pub type_properties: usize,
     pub table_fields: usize,
@@ -271,6 +255,7 @@ impl From<&PlatformContext> for JsonExportCounts {
             global_properties: context.global_properties.len(),
             global_context_events: context.global_context_events.len(),
             platform_types: context.platform_types.len(),
+            query_tables: context.query_tables.len(),
             type_methods: context.type_methods.len(),
             type_properties: context.type_properties.len(),
             table_fields: context.table_fields.len(),

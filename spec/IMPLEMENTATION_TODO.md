@@ -129,7 +129,7 @@ Completion notes:
 - Follow-up review tightened root/English guards for `Client application form...` module events and
   `Information` suffix branch classification.
 
-### [ ] T36. Replace flat query table files with schema v8 `query-tables.json`
+### [x] T36. Replace flat query table files with schema v8 `query-tables.json`
 
 Depends on: T35. Explicitly reprioritized before T18 by the schema v8 export-contract review.
 
@@ -195,6 +195,19 @@ Verification:
 - Targeted checks for "Основная таблица", additional query tables, nested fields, nested parameters,
   absence of `required` in query table parameters and absence of `owner_path` in derivative records
 - `git diff --check`
+
+Completion notes:
+
+- Implemented schema v8 `query-tables.json` for both context and streaming exporters.
+- Added typed query table records, TOC-derived table-family `owner_path`, `table_role`, nested
+  fields and nested parameters.
+- Removed query table parameter `required` from the internal query-table parameter model and
+  consumer JSON.
+- Preserved stale older-schema files in reused output directories; `metadata.json.files` is the
+  current inventory contract.
+- Verified with `cargo fmt`, `cargo test --workspace`, full debug CLI exports for
+  `shcntx_ru.hbk` and `shcntx_root.hbk`, UAT-SH-011/UAT-SH-012/UAT-SH-013 jq checks and
+  `git diff --check`.
 
 ### [ ] T37. Split event export files and remove the historical global-context event adapter name
 

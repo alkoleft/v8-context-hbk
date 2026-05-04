@@ -115,6 +115,16 @@ pub(crate) fn parse_platform_type_for_mode(
     }
 }
 
+pub fn parse_query_table(content: &PageContent, source: SyntaxHelperSource) -> QueryTable {
+    QueryTable {
+        name: page_title_name(content).primary,
+        semantic: SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTable),
+        table_role: QueryTableRole::Unknown,
+        description: section_text(content, &["Описание:", "Description:"]),
+        source,
+    }
+}
+
 pub fn parse_platform_method(content: &PageContent, source: SyntaxHelperSource) -> PlatformMethod {
     PlatformMethod {
         owner: title_name(content),
@@ -155,7 +165,7 @@ pub fn parse_query_table_field(
     let body = detail_body_after_heading(content);
     QueryTableField {
         owner,
-        name: page_title_name(content),
+        name: page_title_name(content).primary,
         semantic: SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTableField),
         type_refs: parse_type_refs(&body),
         description: description_after_type(&body),
@@ -172,9 +182,8 @@ pub fn parse_query_table_parameter(
     let body = first_chapter_body(content).unwrap_or_else(|| detail_body_after_heading(content));
     QueryTableParameter {
         owner,
-        name: page_title_name(content),
+        name: page_title_name(content).primary,
         semantic: SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTableParameter),
-        required: table_parameter_required(content),
         type_refs: parse_type_refs(&body),
         description: table_parameter_description(&body),
         default_value: default_value(&body),
@@ -902,11 +911,4 @@ fn clean_free_text(text: &str) -> Option<String> {
     let text = before_any_label(text, &["Методическая информация", "Methodical information"]);
     let text = text.trim().trim_matches('.').trim();
     (!text.is_empty()).then(|| text.to_string())
-}
-
-fn table_parameter_required(content: &PageContent) -> bool {
-    let marker = select_first_html_text(&content.raw_html, ".V8SH_chapter")
-        .unwrap_or_else(|| content.title.clone())
-        .to_lowercase();
-    !(marker.contains("необязательный") || marker.contains("optional"))
 }
