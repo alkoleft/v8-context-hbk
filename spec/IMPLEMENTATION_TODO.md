@@ -395,6 +395,76 @@ Verification:
 - ADR or implementation spec records the selected boundary, non-goals and verification path.
 - No BSL parser/analyzer implementation is added as part of the boundary decision.
 
+### [ ] T56. Normalize query-index storage for analyzer type inference
+
+Spec refs:
+
+- ADR-0006
+- UC-SH-005A
+- UC-SH-005B
+- UC-SH-005D
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Problem:
+
+- The current SQLite schema version `3` is sufficient for CLI lookup/search/provider JSON, but it
+  still stores analyzer-critical callable details in `documents.signature_json` and stores
+  parameter/type/return references as text fields for FTS or presentation.
+- Future BSL analyzer use cases need deterministic type inference, expression-chain evaluation and
+  member completion. Those workflows should query typed relational facts, not parse JSON blobs or
+  infer meaning from `parameter_text`, `type_names`, `return_names` or FTS rows.
+- The current `documents.preview` column duplicates `description` as a truncated 180-character
+  presentation value and should be removed or generated at presentation time unless measurement
+  proves it is needed in the SQLite artifact.
+
+Scope:
+
+- Design and implement the next SQLite schema revision for analyzer-oriented facts without JSON
+  columns as the source of truth for inference-critical data.
+- Add relational tables for:
+  - canonical type identities and aliases;
+  - owned members by owner type id and member kind;
+  - callables, signatures and ordered parameters;
+  - typed references for property types, parameter types, return types, constructor result types and
+    other source-backed inference edges.
+- Keep `documents`, `document_names`, `document_search`/`document_fts` and `relations` only where
+  they still serve provider/search/graph workflows.
+- Remove or confine redundant/presentation-only fields where possible:
+  - remove `documents.preview` or generate it outside storage;
+  - avoid keeping both document-level and FTS-level copies of searchable text unless each has a
+    distinct query/provider role;
+  - replace `documents.signature_json` for provider output with assembly from normalized
+    signature/parameter/type-reference rows;
+  - keep `signature_text`, `parameter_text`, `type_names` and `return_names` as FTS/presentation
+    inputs only if they are generated from normalized rows and not treated as analyzer truth.
+- Do not add a BSL parser, linter or diagnostics engine in this task.
+- Do not add compatibility import/migration for old generated indexes; stale indexes may be rejected
+  by schema version with a rebuild instruction.
+
+Expected outcome:
+
+- Analyzer-relevant questions can be served from relational tables:
+  - resolve constructor overloads and parameter type references;
+  - resolve owner/member access to a typed member fact;
+  - list members for a platform type identity;
+  - follow return/property/parameter type references across expression chains.
+- Provider JSON remains export-compatible, but it is assembled from normalized storage rather than
+  stored as JSON in SQLite.
+- The implementation spec records the final schema shape and explains which fields remain for
+  search/presentation only.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- rebuild a real RU index from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- UAT-SH-017 provider workflow assertions still pass against the rebuilt index
+- targeted SQL or library assertions prove that constructor signatures, parameter types,
+  owner/member facts and return/property type refs are present in normalized tables
+- inspect the rebuilt schema to confirm analyzer-critical tables do not use JSON columns
+
 ## Loop Rule
 
 - Take the first unchecked task.

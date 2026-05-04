@@ -353,6 +353,54 @@ signatures in `documents.signature_json`. Public query JSON for callable facts u
 `signatures[].parameters[]` with `name`, `required`, `types` and optional `description`; raw
 parameter/type search terms remain in `documents.parameter_text` and `document_search.parameters`.
 
+### Analyzer-Oriented Storage Normalization
+
+The schema version `3` layout is acceptable for CLI lookup/search, but it is not the final shape for
+type inference, expression-chain evaluation or analyzer member completion. Analyzer-facing storage
+must answer structured questions without parsing JSON blobs or FTS text fields:
+
+- resolve a constructor expression such as `Новый HTTPСоединение(...)` to possible platform types
+  and overloads;
+- resolve owner/member access such as `НастройкиКомпоновкиДанных.Отбор` to a member fact and its
+  type references;
+- list members for a known platform type identity;
+- follow method/constructor return types and parameter type references across a chain of
+  expressions;
+- report ambiguous, missing or unsupported type/member resolution deterministically.
+
+The next analyzer-oriented schema revision should normalize inference-critical facts into ordinary
+relational tables instead of adding or relying on JSON columns. Candidate tables:
+
+- `type_identities`: canonical platform type identities, aliases, kind/object-kind and semantic
+  variants used by type inference and member lookup;
+- `members`: owned platform members with `owner_type_id`, member kind, primary/alias names and the
+  backing document id;
+- `callables`: methods, constructors and callable events that can own signatures;
+- `signatures`: overload rows with stable callable id and ordinal;
+- `parameters`: ordered signature parameters with name, requiredness and optional description;
+- `type_refs`: normalized type-reference edges for property types, parameter types, return types,
+  constructor results, extension/base relations and collection/item roles where source evidence
+  exists.
+
+`documents` may remain the provider/search fact table, and `relations` may remain the graph/query
+edge table, but analyzer-critical lookups should read the normalized tables first. Provider JSON can
+be assembled from relational rows and existing Rust domain structs; the database schema should not
+introduce a new JSON cache as the source of truth for typed facts.
+
+The same schema revision should audit existing duplicated or presentation-only columns:
+
+- `documents.preview` is currently derived from `description` by truncating to 180 characters and
+  should be removed or generated at presentation time unless measurement proves it is needed in the
+  SQLite artifact;
+- `documents.description` and `document_search.description` intentionally serve different roles
+  today: provider fact text vs normalized FTS content. Keep that distinction only if both are still
+  needed after the normalized analyzer tables are added;
+- `documents.signature_text`, `documents.parameter_text`, `documents.type_names` and
+  `documents.return_names` are presentation/FTS aids, not analyzer truth. They should either be
+  generated from normalized rows during index build or confined to `document_search`;
+- `documents.signature_json` is a schema-v3 bridge for structured provider output. It should not
+  survive as the analyzer source of truth once `signatures` and `parameters` exist.
+
 ## Provider JSON Response Contract
 
 Status: provisional target contract for T50. Existing `SearchHit<SearchDocument>` JSON is a

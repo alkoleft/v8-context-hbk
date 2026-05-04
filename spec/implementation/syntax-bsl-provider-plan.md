@@ -44,6 +44,7 @@ export-compatible typed facts or the provider envelope implemented by T52.
 | Provider contract | T50 defines and T52 implements a provisional provider schema/envelope for CLI JSON outputs. | Future analyzer-oriented batch/API boundaries are not selected yet. | T55 decides whether the provider boundary stays CLI JSON or adds a Rust/library/file contract. |
 | Evidence from real BSL | T53 adds UAT-SH-017 for source-backed BSL development scenarios: constructor call, SKD owner/member access and accounting-register query-table discovery. | The scenario set is intentionally small and should expand only when real workflow gaps are found. | Use UAT-SH-017 as the acceptance corpus for T49/T54 before broad search/storage changes. |
 | Storage evaluation | T49 plans Tantivy comparison. | Storage speed alone does not prove analyzer usefulness. | Run T49 against UAT-SH-017 plus the existing exact, constructor, provider JSON and relationship workflows. |
+| Analyzer storage shape | Schema version `3` stores documents, lookup names, FTS content, relations and `signature_json`. | Type inference, expression-chain evaluation and member completion need relational facts for type identities, members, signatures, parameters and type references, not JSON blobs or FTS terms. | T56 designs and implements an analyzer-oriented SQLite schema revision without JSON columns for inference-critical facts and audits redundant presentation fields such as `preview`. |
 
 ## Target Use Cases and Solution Shape
 
@@ -158,6 +159,10 @@ Resolution path:
 8. **T55: Decide provider boundary for downstream analyzers.** Choose whether the provider is CLI
    JSON only, a Rust library API, a file artifact contract, or a combination. Capture a new ADR if
    this changes integration architecture.
+9. **T56: Normalize analyzer storage.** Revise the SQLite index schema so type/member inference
+   facts live in relational tables rather than JSON fields: type identities, owned members,
+   callables, signatures, parameters and typed references. Remove or confine presentation-only
+   duplicates where possible.
 
 ## Non-Goals for This Plan
 
