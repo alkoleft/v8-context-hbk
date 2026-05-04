@@ -40,7 +40,7 @@ fn collect_child_catalog_pages(
     pages: &mut Vec<CatalogPage>,
 ) {
     let branch = branch_kind(page, ancestors);
-    let class = classify_catalog_page(page, branch);
+    let class = classify_catalog_page(page, ancestors, branch);
     pages.push(CatalogPage {
         class,
         semantic: semantic_context(locale, branch, class, page, ancestors),
@@ -66,7 +66,7 @@ fn collect_child_catalog_pages(
     }
 }
 
-fn classify_catalog_page(page: &TocPage, branch: BranchKind) -> PageClass {
+fn classify_catalog_page(page: &TocPage, ancestors: &[&TocPage], branch: BranchKind) -> PageClass {
     let path = page.html_path.as_str();
     if is_catalog_path(path) {
         PageClass::Catalog
@@ -83,7 +83,7 @@ fn classify_catalog_page(page: &TocPage, branch: BranchKind) -> PageClass {
     } else if branch == BranchKind::QueryTables && path.starts_with("tables/") {
         PageClass::QueryTable
     } else if path.contains("/events/") {
-        PageClass::ModuleEvent
+        event_page_class(ancestors, branch)
     } else if path.contains("/methods/") {
         PageClass::ObjectMethod
     } else if path.contains("/properties/") && path.contains("/catalog2/") {
@@ -101,6 +101,30 @@ fn classify_catalog_page(page: &TocPage, branch: BranchKind) -> PageClass {
     } else {
         PageClass::Unknown
     }
+}
+
+fn event_page_class(ancestors: &[&TocPage], branch: BranchKind) -> PageClass {
+    if branch == BranchKind::GlobalContext || has_explicit_module_context(ancestors) {
+        PageClass::ModuleEvent
+    } else if matches!(
+        branch,
+        BranchKind::SystemEnums
+            | BranchKind::MetadataObjects
+            | BranchKind::ManagedForms
+            | BranchKind::PlatformObjects
+            | BranchKind::AutomationExternalApi
+    ) {
+        PageClass::TypeEvent
+    } else {
+        PageClass::UnknownEvent
+    }
+}
+
+fn has_explicit_module_context(ancestors: &[&TocPage]) -> bool {
+    ancestors.iter().any(|ancestor| {
+        let label = normalized_title(ancestor);
+        label.contains("модул") || label.contains("module")
+    })
 }
 
 fn is_catalog_path(path: &str) -> bool {
@@ -127,6 +151,8 @@ fn record_family(class: PageClass) -> RecordFamily {
         PageClass::GlobalMethod => RecordFamily::GlobalMethod,
         PageClass::GlobalProperty => RecordFamily::GlobalProperty,
         PageClass::ModuleEvent => RecordFamily::ModuleEvent,
+        PageClass::TypeEvent => RecordFamily::TypeEvent,
+        PageClass::UnknownEvent => RecordFamily::UnknownEvent,
         PageClass::ObjectType => RecordFamily::PlatformType,
         PageClass::QueryTable => RecordFamily::QueryTable,
         PageClass::ObjectMethod => RecordFamily::TypeMethod,
@@ -210,6 +236,8 @@ fn owner_path(
             .map(|ancestor| semantic_page_name(locale, ancestor))
             .collect(),
         PageClass::ModuleEvent
+        | PageClass::TypeEvent
+        | PageClass::UnknownEvent
         | PageClass::ObjectProperty
         | PageClass::Constructor
         | PageClass::ObjectMethod => ancestors

@@ -89,10 +89,15 @@ impl<'a> From<&'a model::GlobalProperty> for ConsumerGlobalProperty<'a> {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct ConsumerGlobalContextEvent<'a> {
+pub(crate) struct ConsumerEvent<'a> {
     record_family: model::RecordFamily,
     branch_kind: model::BranchKind,
-    module: ConsumerModuleContext<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    module: Option<ConsumerModuleContext<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner: Option<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    owner_path: Vec<&'a str>,
     name: ConsumerLocalizedName<'a>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     signatures: Vec<ConsumerSignature<'a>>,
@@ -102,18 +107,57 @@ pub(crate) struct ConsumerGlobalContextEvent<'a> {
     facts: ConsumerSectionFacts<'a>,
 }
 
-impl<'a> From<&'a model::GlobalContextEvent> for ConsumerGlobalContextEvent<'a> {
+impl<'a> From<&'a model::GlobalContextEvent> for ConsumerEvent<'a> {
     fn from(event: &'a model::GlobalContextEvent) -> Self {
+        let type_owner_path = type_event_owner_path(&event.semantic);
         Self {
             record_family: event.semantic.record_family,
             branch_kind: event.semantic.branch_kind,
-            module: ConsumerModuleContext::from(&event.module),
+            module: (event.semantic.record_family == model::RecordFamily::ModuleEvent)
+                .then(|| ConsumerModuleContext::from(&event.module)),
+            owner: (event.semantic.record_family == model::RecordFamily::TypeEvent)
+                .then(|| type_event_owner(&type_owner_path))
+                .flatten(),
+            owner_path: (event.semantic.record_family == model::RecordFamily::TypeEvent)
+                .then_some(type_owner_path)
+                .unwrap_or_default(),
             name: ConsumerLocalizedName::from(&event.name),
             signatures: consumer_signatures(&event.signatures),
             description: event.description.as_deref(),
             facts: ConsumerSectionFacts::from(&event.facts),
         }
     }
+}
+
+impl ConsumerEvent<'_> {
+    pub(crate) fn record_kind(&self) -> &'static str {
+        match self.record_family {
+            model::RecordFamily::ModuleEvent => "module_event",
+            model::RecordFamily::TypeEvent => "type_event",
+            model::RecordFamily::UnknownEvent => "unknown_event",
+            _ => "unknown_event",
+        }
+    }
+}
+
+fn type_event_owner_path(semantic: &model::SemanticContext) -> Vec<&str> {
+    let mut owner_path = semantic_owner_path(semantic);
+    if owner_path
+        .last()
+        .is_some_and(|label| event_group_label(label))
+    {
+        owner_path.pop();
+    }
+    owner_path
+}
+
+fn type_event_owner<'a>(owner_path: &[&'a str]) -> Option<&'a str> {
+    owner_path.last().copied()
+}
+
+fn event_group_label(label: &str) -> bool {
+    let label = label.trim().to_lowercase();
+    label == "события" || label == "events"
 }
 
 #[derive(Debug, Clone, Serialize)]

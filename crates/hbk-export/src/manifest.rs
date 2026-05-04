@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-pub(crate) const SCHEMA_VERSION: u32 = 8;
+pub(crate) const SCHEMA_VERSION: u32 = 9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ExportFile {
@@ -18,8 +18,16 @@ pub const EXPORT_FILES: &[ExportFile] = &[
         record_kind: "global_property",
     },
     ExportFile {
-        file_name: "global-context-events.json",
+        file_name: "module-events.json",
         record_kind: "module_event",
+    },
+    ExportFile {
+        file_name: "type-events.json",
+        record_kind: "type_event",
+    },
+    ExportFile {
+        file_name: "unknown-events.json",
+        record_kind: "unknown_event",
     },
     ExportFile {
         file_name: "platform-types.json",

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use syntax_helper_model::{self as model, SyntaxHelperSink};
 
 use crate::consumer::{
-    ConsumerConstructor, ConsumerGlobalContextEvent, ConsumerGlobalMethod, ConsumerGlobalProperty,
+    ConsumerConstructor, ConsumerEvent, ConsumerGlobalMethod, ConsumerGlobalProperty,
     ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType, ExportMetadata,
     consumer_enums, consumer_query_tables,
 };
@@ -21,7 +21,9 @@ pub struct StreamingSyntaxHelperExport {
     counts: JsonExportCounts,
     global_methods: RecordFileWriter,
     global_properties: RecordFileWriter,
-    global_context_events: RecordFileWriter,
+    module_events: RecordFileWriter,
+    type_events: RecordFileWriter,
+    unknown_events: RecordFileWriter,
     platform_types: RecordFileWriter,
     type_methods: RecordFileWriter,
     type_properties: RecordFileWriter,
@@ -71,13 +73,29 @@ impl StreamingSyntaxHelperExport {
             source_locale,
             "global_property",
         )?;
-        let global_context_events = open_record_file(
+        let module_events = open_record_file(
             &output_dir,
             &mut files,
-            "global-context-events.json",
+            "module-events.json",
             locale,
             source_locale,
             "module_event",
+        )?;
+        let type_events = open_record_file(
+            &output_dir,
+            &mut files,
+            "type-events.json",
+            locale,
+            source_locale,
+            "type_event",
+        )?;
+        let unknown_events = open_record_file(
+            &output_dir,
+            &mut files,
+            "unknown-events.json",
+            locale,
+            source_locale,
+            "unknown_event",
         )?;
         let platform_types = open_record_file(
             &output_dir,
@@ -144,7 +162,9 @@ impl StreamingSyntaxHelperExport {
             counts: JsonExportCounts::default(),
             global_methods,
             global_properties,
-            global_context_events,
+            module_events,
+            type_events,
+            unknown_events,
             platform_types,
             type_methods,
             type_properties,
@@ -176,7 +196,9 @@ impl StreamingSyntaxHelperExport {
 
         self.global_methods.finish()?;
         self.global_properties.finish()?;
-        self.global_context_events.finish()?;
+        self.module_events.finish()?;
+        self.type_events.finish()?;
+        self.unknown_events.finish()?;
         self.platform_types.finish()?;
         self.type_methods.finish()?;
         self.type_properties.finish()?;
@@ -199,7 +221,9 @@ impl StreamingSyntaxHelperExport {
             files,
             global_methods,
             global_properties,
-            global_context_events,
+            module_events,
+            type_events,
+            unknown_events,
             platform_types,
             type_methods,
             type_properties,
@@ -212,7 +236,9 @@ impl StreamingSyntaxHelperExport {
 
         global_methods.close_unfinished();
         global_properties.close_unfinished();
-        global_context_events.close_unfinished();
+        module_events.close_unfinished();
+        type_events.close_unfinished();
+        unknown_events.close_unfinished();
         platform_types.close_unfinished();
         type_methods.close_unfinished();
         type_properties.close_unfinished();
@@ -255,8 +281,13 @@ impl SyntaxHelperSink for StreamingSyntaxHelperExport {
         &mut self,
         record: model::GlobalContextEvent,
     ) -> Result<(), Self::Error> {
-        self.global_context_events
-            .write_record(&ConsumerGlobalContextEvent::from(&record))?;
+        let event = ConsumerEvent::from(&record);
+        match event.record_kind() {
+            "module_event" => self.module_events.write_record(&event)?,
+            "type_event" => self.type_events.write_record(&event)?,
+            "unknown_event" => self.unknown_events.write_record(&event)?,
+            _ => self.unknown_events.write_record(&event)?,
+        }
         self.counts.global_context_events += 1;
         Ok(())
     }

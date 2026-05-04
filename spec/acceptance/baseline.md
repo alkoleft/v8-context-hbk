@@ -89,6 +89,14 @@ directories are service data unless promoted here.
   records carry table-family `owner_path` and `table_role`; nested fields and parameters use string
   names, do not repeat `owner_path`, and parameters do not expose `required`. Type methods, type
   properties and constructors no longer expose derivative-record `owner_path`.
+- T37 changed the canonical consumer JSON export to `schema_version: 9`. `metadata.json.files` now
+  lists `module-events.json`, `type-events.json` and `unknown-events.json` instead of
+  `global-context-events.json`. Full CLI exports for both source books produced 47 module events,
+  650 type events and 0 unknown events per locale, while preserving 59 query table records, 588
+  nested table fields, 78 nested table parameters, 1869 platform types and 4 diagnostics per locale.
+  Event records do not expose raw HBK/TOC/HTML/page-title provenance, cross-cutting `id` or
+  `owner_ref`, or event-local `owner_kind`; type events carry `owner` and semantic `owner_path`
+  only as event owner context. The T36 derivative-record `owner_path` omission remains unchanged.
 
 ## Post-T29 Runtime Regression To Fix
 

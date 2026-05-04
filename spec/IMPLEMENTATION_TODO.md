@@ -209,7 +209,7 @@ Completion notes:
   `shcntx_ru.hbk` and `shcntx_root.hbk`, UAT-SH-011/UAT-SH-012/UAT-SH-013 jq checks and
   `git diff --check`.
 
-### [ ] T37. Split event export files and remove the historical global-context event adapter name
+### [x] T37. Split event export files and remove the historical global-context event adapter name
 
 Depends on: T36. Explicitly reprioritized before T18 by the 2026-05-04 JSON output planning review.
 
@@ -271,6 +271,21 @@ Verification:
   events are in `module-events.json`, type/form events are in `type-events.json` and unknown events
   are empty or diagnostic-backed.
 - `git diff --check`
+
+Completion notes:
+
+- Implemented schema version 9 for both context and streaming exporters.
+- Replaced the historical `global-context-events.json` inventory entry with `module-events.json`,
+  `type-events.json` and `unknown-events.json`.
+- Routed global context and explicit module TOC branches to `module-events.json`; routed
+  type/object/form/form-extension/control event pages without explicit module TOC context to
+  `type-events.json`.
+- Fresh RU/root exports produced 47 module events, 650 type events and 0 unknown events per locale.
+- Preserved T36 query-table shape and derivative-record `owner_path` omission; no event records
+  expose raw HBK/TOC/HTML/page-title provenance, `id`, `owner_ref` or event-local `owner_kind`.
+- Verified with `cargo fmt`, `cargo test --workspace`, full CLI exports for `shcntx_ru.hbk` and
+  `shcntx_root.hbk`, UAT-SH-011/UAT-SH-012/UAT-SH-013/UAT-SH-014 jq checks and
+  `git diff --check`.
 
 ### [ ] T38. Move owner/object classification to platform type/object records for event consumers
 

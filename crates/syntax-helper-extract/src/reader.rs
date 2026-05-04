@@ -166,10 +166,12 @@ where
                 PageClass::GlobalProperty => sink
                     .global_property(parse_global_property(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
-                PageClass::ModuleEvent => {
+                PageClass::ModuleEvent | PageClass::TypeEvent | PageClass::UnknownEvent => {
                     let mut event = parse_global_context_event(&content, source);
                     event.semantic = catalog_page.semantic.clone();
-                    event.module = module_context(&catalog_page.semantic);
+                    if event.semantic.record_family == RecordFamily::ModuleEvent {
+                        event.module = module_context(&catalog_page.semantic);
+                    }
                     sink.global_context_event(event)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }

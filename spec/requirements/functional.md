@@ -277,12 +277,14 @@ Parser provenance remains part of the internal model and diagnostics contract. `
 keeps enough source context for parser maintenance; consumer record files stay focused on platform
 facts.
 
-Required files for the schema v8 consumer export contract:
+Required files for the schema v9 consumer export contract:
 
 - `metadata.json`
 - `global-methods.json`
 - `global-properties.json`
-- `global-context-events.json`
+- `module-events.json`
+- `type-events.json`
+- `unknown-events.json`
 - `platform-types.json`
 - `type-methods.json`
 - `type-properties.json`
@@ -291,7 +293,7 @@ Required files for the schema v8 consumer export contract:
 - `enums.json`
 - `diagnostics.json`
 
-The current accepted consumer export schema is `schema_version: 8`. Each consumer record-family file
+The current accepted consumer export schema is `schema_version: 9`. Each consumer record-family file
 is a JSON object with `schema_version`, `locale`, `source_locale`, `record_kind` and `records`.
 `metadata.json` contains export-level metadata and file inventory; it must not expose source HBK
 paths or book hierarchy. `diagnostics.json` may keep parser source context because its audience is
@@ -306,8 +308,8 @@ Schema version 7 adds TOC-derived semantic identity fields for source families t
 looked up safely by title alone. These fields are platform/documentation semantics derived by the
 Syntax Assistant reader before export, not raw parser provenance:
 
-- `record_family`: stable snake_case source-family value when the adapter filename is broader than
-  the domain fact, such as `module_event` records written to `global-context-events.json`.
+- `record_family`: stable snake_case source-family value when a consumer needs to distinguish
+  closely related facts, such as `module_event`, `type_event` and `unknown_event`.
 - `branch_kind`: stable snake_case TOC branch category used for classification, such as
   `global_context`, `query_tables`, `primitive_types`, `metadata_objects`, `managed_forms`,
   `platform_objects` or `automation_external_api`.
@@ -326,8 +328,8 @@ Schema version 8 keeps the TOC-derived semantic model but narrows where `owner_p
 consumer records:
 
 - `owner_path` is emitted on records that represent an owning semantic context, such as
-  `platform-types.json`, `global-context-events.json.records[].module.owner_path` and
-  `query-tables.json`.
+  `platform-types.json`, `module-events.json.records[].module.owner_path`, type event owner
+  context and `query-tables.json`.
 - `owner_path` is not emitted on derivative records whose owner is already represented by `owner`,
   including `type-methods.json`, `type-properties.json` and `constructors.json`.
 - query table fields and parameters do not repeat `owner_path`; their table context is the enclosing
@@ -418,18 +420,22 @@ are nested under their owning `query-tables.json` records in schema v8. They mus
 reported as `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`, `OUT_OF_SCOPE_TABLE_FIELD` or
 `OUT_OF_SCOPE_TABLE_PARAMETER` for the target platform source books.
 
-The next event-export task after schema version 8 must replace the historical
-`global-context-events.json` adapter with event-specific record-family files. It must not introduce
-a cross-cutting semantic identifier; stable IDs and cross-file references are a separate future
-contract if a concrete consumer needs them. The planned event files are:
+Schema version 9 replaces the historical `global-context-events.json` adapter with event-specific
+record-family files. It must not introduce a cross-cutting semantic identifier; stable IDs and
+cross-file references are a separate future contract if a concrete consumer needs them. The event
+files are:
 
 - `module-events.json`: module-level events, including current global-context event groups and
   object/manager module events when the TOC identifies them as module handlers.
 - `type-events.json`: event-like facts owned by platform types, forms, form extensions, form
   elements, type extensions or other type/object branches that are not module-level handlers.
 - `unknown-events.json`: recoverable fallback records only when TOC/HTML evidence is insufficient
-  to classify an event as module-level or type-level. Unknown events must keep parser-maintenance
-  diagnostics provenance; consumer records must still omit raw HBK, TOC and HTML provenance.
+  to classify an event as module-level or type-level. Unknown event consumer records still omit raw
+  HBK, TOC and HTML provenance; parser-maintenance diagnostics remain provenance-rich.
+
+Type event records expose source-backed owner context as `owner` and optional semantic
+`owner_path`. They must not expose an event-local `owner.kind` / `owner_kind`, `id`, `owner_ref`,
+source HBK path, TOC path, HTML path or page title.
 
 Event splitting must preserve the schema version 8 `owner_path` narrowing. It must not reintroduce
 `owner_path` on derivative type members, constructors or nested query table records. Event records

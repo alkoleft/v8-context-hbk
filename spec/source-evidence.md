@@ -469,3 +469,29 @@ T36 implemented this shape on 2026-05-04. Fresh debug CLI exports for
 - nested field and parameter records use string `name`, omit `owner_path`, and query table
   parameters omit `required`;
 - normal exports preserve stale files from older schema versions when an output directory is reused.
+
+## Event File Split Findings
+
+T37 implemented the schema version 9 event file split on 2026-05-04. Fresh CLI exports for
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` both produced:
+
+- 47 records in `module-events.json`;
+- 650 records in `type-events.json`;
+- 0 records in `unknown-events.json`.
+
+The durable source-backed split is:
+
+- Global context event groups and explicit module branches such as session/application/service
+  modules are module events.
+- Event pages under type/object/form/form-extension/control branches without explicit module TOC
+  context are type events.
+- No target 8.5.1.1150 event pages required the unknown-event fallback after TOC-aware
+  classification.
+
+The T37 checks confirmed that `metadata.json.files` no longer lists
+`global-context-events.json`, event consumer records omit raw HBK, TOC, HTML and page-title
+provenance, and no event record carries `id`, `owner_ref` or event-local `owner_kind`. Type event
+records carry `owner` and semantic `owner_path` as event owner context only; source-backed
+owner/object classification for the owning platform type/object records remains a separate T38
+task.

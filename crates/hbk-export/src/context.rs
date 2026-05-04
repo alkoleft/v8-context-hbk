@@ -7,7 +7,7 @@ use hbk_book::HbkBook;
 use syntax_helper_model::PlatformContext;
 
 use crate::consumer::{
-    ConsumerConstructor, ConsumerGlobalContextEvent, ConsumerGlobalMethod, ConsumerGlobalProperty,
+    ConsumerConstructor, ConsumerEvent, ConsumerGlobalMethod, ConsumerGlobalProperty,
     ConsumerPlatformMethod, ConsumerPlatformProperty, ConsumerPlatformType, ExportMetadata,
     RecordsEnvelope, consumer_enums, consumer_query_tables,
 };
@@ -102,17 +102,31 @@ impl JsonExporter {
             "global_property",
             &global_properties,
         )?);
-        let global_context_events = context
+        let events = context
             .global_context_events
             .iter()
-            .map(ConsumerGlobalContextEvent::from)
+            .map(ConsumerEvent::from)
             .collect::<Vec<_>>();
         files.push(self.write_records(
-            "global-context-events.json",
+            "module-events.json",
             locale,
             source_locale,
             "module_event",
-            &global_context_events,
+            &event_records(&events, "module_event"),
+        )?);
+        files.push(self.write_records(
+            "type-events.json",
+            locale,
+            source_locale,
+            "type_event",
+            &event_records(&events, "type_event"),
+        )?);
+        files.push(self.write_records(
+            "unknown-events.json",
+            locale,
+            source_locale,
+            "unknown_event",
+            &event_records(&events, "unknown_event"),
         )?);
         let platform_types = context
             .platform_types
@@ -218,6 +232,16 @@ impl JsonExporter {
     ) -> Result<PathBuf, ExportError> {
         write_json_file(&self.output_dir, file_name, value)
     }
+}
+
+fn event_records<'a>(
+    events: &'a [ConsumerEvent<'a>],
+    record_kind: &'static str,
+) -> Vec<&'a ConsumerEvent<'a>> {
+    events
+        .iter()
+        .filter(|event| event.record_kind() == record_kind)
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

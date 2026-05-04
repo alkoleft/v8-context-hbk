@@ -426,9 +426,9 @@ fn derives_toc_semantic_context_for_ambiguous_query_and_event_pages() {
         .iter()
         .find(|page| page.source.html_path.ends_with("BeforeWrite335.html"))
         .expect("event page must be collected");
-    assert_eq!(event.class, PageClass::ModuleEvent);
+    assert_eq!(event.class, PageClass::TypeEvent);
     assert_eq!(event.semantic.branch_kind, BranchKind::ManagedForms);
-    assert_eq!(event.semantic.record_family, RecordFamily::ModuleEvent);
+    assert_eq!(event.semantic.record_family, RecordFamily::TypeEvent);
     assert!(
         event
             .semantic
@@ -500,7 +500,80 @@ fn root_form_labels_do_not_match_information_and_form_events_stay_form_modules()
 
     let event = sink.events.first().expect("event must be extracted");
     assert_eq!(event.name.primary, "BeforeWrite");
-    assert_eq!(event.module.kind, ModuleKind::Form);
+    assert_eq!(event.semantic.record_family, RecordFamily::TypeEvent);
+    assert_eq!(event.module.kind, ModuleKind::Unknown);
+}
+
+#[test]
+fn classifies_explicit_module_events_and_unknown_event_fallbacks() {
+    let toc = Toc::parse(
+        r#"{
+                9
+                {1,0,3,2,6,8,{0,0,{0,0,{"ru","Платформенные объекты"}},"/objects/catalog.html"}}
+                {2,1,1,3,{0,0,{0,0,{"ru","Документы"}},"/objects/catalog1.html"}}
+                {3,2,1,4,{0,0,{0,0,{"ru","Модуль менеджера документа"}},"/objects/catalog1/Document manager module.html"}}
+                {4,3,0,{0,0,{0,0,{"ru","ОбработкаПолученияФормы"}},"/objects/catalog1/Document manager module/events/GetFormProcessing.html"}}
+                {5,1,0,{0,0,{0,0,{"ru","Выбор"}},"/objects/catalog1/Document/events/Choice.html"}}
+                {6,0,1,7,{0,0,{0,0,{"ru","Неподдержанный раздел"}},"/misc.html"}}
+                {7,6,0,{0,0,{0,0,{"ru","Событие"}},"/misc/events/Event.html"}}
+                {8,1,1,9,{0,0,{0,0,{"ru","Модуль объекта документа"}},"/objects/catalog1/Document object module.html"}}
+                {9,8,0,{0,0,{0,0,{"ru","ПередЗаписью"}},"/objects/catalog1/Document object module/events/BeforeWrite.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let root_flats = toc.flat_pages().collect::<Vec<_>>();
+    let mut pages = collect_catalog_pages(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc.pages()[0],
+        &root_flats[0],
+    );
+    pages.extend(collect_catalog_pages(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc.pages()[1],
+        root_flats
+            .iter()
+            .find(|page| page.page.html_path.ends_with("misc.html"))
+            .expect("misc root flat page must exist"),
+    ));
+
+    let module_event = pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("GetFormProcessing.html"))
+        .expect("explicit module event page must be collected");
+    assert_eq!(module_event.class, PageClass::ModuleEvent);
+    assert_eq!(
+        module_event.semantic.record_family,
+        RecordFamily::ModuleEvent
+    );
+
+    let object_module_event = pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("BeforeWrite.html"))
+        .expect("explicit object module event page must be collected");
+    assert_eq!(object_module_event.class, PageClass::ModuleEvent);
+    assert_eq!(
+        object_module_event.semantic.record_family,
+        RecordFamily::ModuleEvent
+    );
+
+    let type_event = pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("Choice.html"))
+        .expect("type event page must be collected");
+    assert_eq!(type_event.class, PageClass::TypeEvent);
+    assert_eq!(type_event.semantic.record_family, RecordFamily::TypeEvent);
+
+    let unknown_event = pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("Event.html"))
+        .expect("unknown event page must be collected");
+    assert_eq!(unknown_event.class, PageClass::UnknownEvent);
+    assert_eq!(
+        unknown_event.semantic.record_family,
+        RecordFamily::UnknownEvent
+    );
 }
 
 #[test]

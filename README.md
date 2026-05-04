@@ -61,7 +61,9 @@ The output directory contains JSON files by record family:
 - `metadata.json`
 - `global-methods.json`
 - `global-properties.json`
-- `global-context-events.json`
+- `module-events.json`
+- `type-events.json`
+- `unknown-events.json`
 - `platform-types.json`
 - `type-methods.json`
 - `type-properties.json`
@@ -70,11 +72,12 @@ The output directory contains JSON files by record family:
 - `enums.json`
 - `diagnostics.json`
 
-The current provisional export schema is `schema_version: 8`. Consumer record-family files include
+The current provisional export schema is `schema_version: 9`. Consumer record-family files include
 structured `availability`, `examples`, `see_also`, signature variant metadata, type references and
 return types when the source page contains those facts. TOC-derived semantic identity fields such as
-`record_family`, `module`, `owner_path` and `type_kind` are emitted where title-only lookup would be
-ambiguous. Query table fields and parameters are nested under `query-tables.json` table records.
+`record_family`, `module`, `owner`, `owner_path` and `type_kind` are emitted where title-only
+lookup would be ambiguous. Query table fields and parameters are nested under `query-tables.json`
+table records.
 Absent facts are omitted from platform API consumer records. Enum values are nested in `enums.json`;
 `enum-values.json` is not emitted. Consumer records omit HBK file paths, TOC paths, HTML paths and
 page titles; `diagnostics.json` keeps parser provenance for maintenance.
