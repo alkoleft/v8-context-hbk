@@ -17,6 +17,12 @@ follow links consistently.
 As an AI/indexing tool, I need structured platform API data from Syntax Assistant: methods,
 properties, types, constructors, enums, signatures, parameters and return types.
 
+### BSL Developer or Code-Analysis Tool
+
+As a developer, coding agent or future BSL analyzer, I need a fast local provider of platform API
+facts that can answer code-facing questions about available members, constructor/method signatures,
+parameter names and types, return types and related platform objects.
+
 ### Syntax Assistant CLI User
 
 As a developer or agent, I need to quickly find platform API facts by exact name, purpose,
@@ -84,6 +90,65 @@ filter item collection, item creation method and comparison item fields that are
 extracted Syntax Assistant data.
 
 Related requirements: FR-SH-SEARCH-001, FR-SH-SEARCH-002, NFR-QUERY-001.
+
+## UC-SH-005: Support BSL Development and Code Analysis
+
+Primary user: BSL developer or code-analysis tool.
+
+Outcome: a user or analyzer can resolve platform API facts needed to write, review or analyze BSL
+code: callable signatures, constructor signatures, parameter names and types, return/type
+references, owner/member relationships and nearby APIs.
+
+Examples:
+
+- Given `Новый HTTPСоединение(...)`, retrieve valid constructor overloads and structured parameter
+  details without ambiguous name/type interleaving.
+- Given `НастройкиКомпоновкиДанных.Отбор`, retrieve the property, its type reference and related
+  collection/item APIs needed to construct or inspect filter code.
+- Given an approximate or task-oriented query such as `отбор скд`, find the relevant platform facts
+  and relationship chain before broader documentation prose.
+
+Related requirements: FR-SH-SEARCH-001, FR-SH-SEARCH-002, FR-EXPORT-001, NFR-QUERY-001.
+
+### UC-SH-005A: Resolve Constructor Call
+
+Outcome: given a BSL constructor expression such as `Новый HTTPСоединение(...)`, a developer or
+analyzer can retrieve all documented overloads with structured parameter names, requiredness,
+parameter type references and descriptions when available.
+
+Solution shape: `syntax constructors <TYPE>` remains the human shortcut, while JSON output must
+expose typed callable facts instead of interleaving parameter names and type names in one array. For
+shared facts, the JSON shape should be compatible with `syntax export`, for example parameter
+objects with `name`, `required`, `types` and optional `description`.
+
+### UC-SH-005B: Resolve Owner/Member Access
+
+Outcome: given a BSL member access such as `НастройкиКомпоновкиДанных.Отбор`, a developer or
+analyzer can retrieve the exact owned fact, its owner identity, type references or return types and
+related API facts.
+
+Solution shape: `syntax get --owner <TYPE> --member <MEMBER>` is the first query path. Follow-up
+relationship queries should support unambiguous roots such as document id or owner/member input
+when a plain name can match multiple facts.
+
+### UC-SH-005C: Find APIs for a BSL Task
+
+Outcome: given a task-oriented query such as `отбор скд`, `HTTP соединение` or
+`таблица регистра бухгалтерии`, a developer or coding agent can find relevant API facts and follow a
+relationship chain to the constructors, properties and methods needed to write or review code.
+
+Solution shape: keyword/fuzzy search finds candidate facts; relationship traversal explains nearby
+facts through deterministic owner/type/return edges. New ranking or graph work must be justified by
+failed source-backed BSL task scenarios.
+
+### UC-SH-005D: Analyzer-Safe Batch Lookup
+
+Outcome: a future BSL analyzer can resolve exact names, owner/member pairs or stable provider ids
+against a prebuilt local platform index and receive versioned, deterministic, tool-readable JSON.
+
+Solution shape: define a provider response contract with explicit ambiguity and missing-result
+behavior, using `syntax export` field shapes for shared platform facts. Keep BSL parsing and
+diagnostics outside this repository.
 
 ## UC-INT-001: Consume HBK Data from v8-context Later
 

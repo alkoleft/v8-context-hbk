@@ -31,6 +31,8 @@ Otherwise reconcile the specification files before implementing.
   selection rules.
 - `implementation/syntax-helper-query-cli.md`: draft architecture for the separate Syntax
   Assistant query/search CLI and its index/relationship model.
+- `implementation/syntax-bsl-provider-plan.md`: ADR-0006 gap analysis, BSL/code-analysis use-case
+  mapping and sequenced `syntax` provider improvement plan.
 - `acceptance/baseline.md`: acceptance gates, commands, durable T9/T10 conclusions and success metrics.
 - `acceptance/test-case-requirements.md`: rules for UAT and black-box test case specifications.
 - `acceptance/uat-test-cases.md`: current UAT test case catalog.
@@ -38,7 +40,8 @@ Otherwise reconcile the specification files before implementing.
 - `IMPLEMENTATION_TODO.md`: first-unchecked-task ledger for implementation work.
 - `archive/`: completed milestones and task history moved out of the active ledger
   (`completed-tasks-t0-t12.md`, `completed-tasks-t13-t17-t19-t24.md`,
-  `completed-tasks-t25-t34.md`, `implementation-todo-2026-05-04.md`).
+  `completed-tasks-t25-t34.md`, `completed-tasks-t41-t47.md`,
+  `implementation-todo-2026-05-04.md`).
 
 ## External Files
 
@@ -62,9 +65,20 @@ Intermediate command reports, generated exports and one-off acceptance logs are 
 keep them as durable documentation unless their conclusions are promoted into a requirement,
 acceptance baseline, task ledger entry or ADR.
 
+## Current Syntax Direction
+
+The `syntax` command scope is oriented toward successful help during BSL code development and
+analysis. Treat Syntax Assistant extraction, query commands, relationship traversal and JSON output
+as a local platform-API provider for human developers, coding agents and a future BSL analyzer.
+ADR-0006 owns this direction.
+
+When changing `syntax` behavior, prefer precise callable facts, structured parameters, type
+references, owner/member relationships, deterministic local queries and unambiguous machine-readable
+output over generic documentation-search breadth.
+
 ## Current Export Contract
 
 The current provisional Syntax Assistant consumer JSON contract is `schema_version: 11`.
 `FR-EXPORT-001` owns the exact record-family shape; `acceptance/baseline.md` records the latest
-validated counts, schema-changing task conclusions and T18/T42/T43/T44 query-index baselines. There
-are no unchecked active implementation tasks after T44.
+validated counts, schema-changing task conclusions and query-index baselines. The active task ledger
+owns current unchecked work.

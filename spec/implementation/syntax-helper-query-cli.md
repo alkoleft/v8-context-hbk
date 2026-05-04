@@ -15,6 +15,29 @@ Syntax Assistant HBK sources once through the normal extraction pipeline and wri
 Lookup, search and relationship commands search that prebuilt index and do not parse HBK books per
 query.
 
+## Product Direction
+
+ADR-0006 owns the product direction for this scope. The `syntax` scope exists to help with BSL code
+development and analysis. Treat Syntax Assistant lookup, search, relationship traversal and JSON
+output as a local platform-API provider for a human developer, coding agent and future BSL analyzer.
+
+This direction is the decision filter for new `syntax` work:
+
+- Prefer precise callable facts over broad prose search: signatures, constructor overloads,
+  parameter names, parameter types, return types, owner/member relationships and related platform
+  objects.
+- Keep machine-readable query output typed and unambiguous enough for tools. Search-only tokens,
+  ranking aids and presentation shortcuts must not leak as misleading public JSON fields.
+- Use `syntax export` consumer JSON as the compatibility anchor for shared fact shapes. Query JSON
+  may add query metadata, scores or relationship paths, but callable signatures, parameters,
+  `types`, `return`, names and owners should match export conventions where applicable.
+- Preserve deterministic local behavior: analyzers must be able to query a prebuilt index without
+  opening HBK books, depending on network services or receiving nondeterministic result ordering.
+- Keep the BSL analyzer itself out of this repository until a separate plan changes scope. This
+  repository provides extracted platform facts and query/index contracts.
+- Evaluate future search/index/storage changes by whether they improve BSL development and
+  code-analysis workflows, not only generic documentation search quality.
+
 ## Data Layers
 
 Keep these layers separate:

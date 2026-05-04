@@ -5,9 +5,21 @@
 `v8-context-hbk` reads 1C `*.hbk` help books and extracts structured platform documentation/context
 from Syntax Assistant books. The first target platform baseline is `8.5.1.1150`.
 
+The `syntax` command scope is product-oriented, not only source-oriented. ADR-0006 owns its goal:
+successful assistance during BSL code development and analysis. Syntax Assistant facts, query
+commands and machine-readable outputs should help a developer or tool answer practical code
+questions such as which platform API exists, which constructor or method signature is valid, which
+parameter names and types are expected, and which related types or members are needed to use an API
+correctly.
+
 The project stays independently testable until the HBK extraction model and provisional contracts are
 validated on real HBK data. Future `v8-context` integration must use an explicit boundary, currently
 the file-level export decided in ADR-0001.
+
+Future BSL analyzer integration is an intended consumer direction for the `syntax` scope. This
+repository still extracts documentation from HBK sources and does not implement BSL parsing or
+runtime introspection, but `syntax` query/export contracts should be designed so they can become a
+typed local provider for a BSL analyzer without re-parsing HBK books in analyzer query paths.
 
 ## Goals
 
@@ -19,6 +31,9 @@ the file-level export decided in ADR-0001.
   facts represent the book hierarchy, not only local HTML path/title patterns.
 - Provide a Syntax Assistant query command surface for fast retrieval of extracted platform API facts,
   including exact lookup, description/keyword search and relationship exploration.
+- Orient `syntax` command and index behavior toward BSL development and code-analysis assistance:
+  precise signatures, constructor parameters, type references, owner/member relationships and
+  deterministic tool-readable output are more important than generic documentation search breadth.
 - Preserve provenance for diagnostics: HBK file path, entity name, TOC path, HTML path and page
   title.
 - Keep public library, CLI and export contracts provisional until real-platform acceptance and
@@ -33,6 +48,7 @@ the file-level export decided in ADR-0001.
 - Complete compatibility proof for every platform version.
 - Backward-compatible reproduction of Java/Kotlin public APIs, class names, DTOs or CLI behavior.
 - Immediate merge into `/home/alko/develop/open-source/v8-context/`.
+- Implementing a full BSL parser, linter or analyzer in this repository.
 - General-purpose question answering that is not grounded in extracted Syntax Assistant facts.
 - Network-hosted semantic search or embedding-provider integration as the first search CLI slice.
 
@@ -511,7 +527,8 @@ indexed query command behavior.
 ## FR-SH-SEARCH-001: Fast Syntax Assistant Query Commands
 
 The system must provide a Syntax Assistant-focused command surface for interactive retrieval over
-extracted platform API facts.
+extracted platform API facts. Its primary success criterion is whether it helps BSL developers and
+code-analysis tools resolve platform API usage questions quickly and accurately.
 
 Index build commands must read Syntax Assistant HBK sources through the normal extraction pipeline
 and write a prebuilt local search index. Query commands must operate only on that prebuilt search
@@ -535,6 +552,15 @@ Required query modes:
   data composition;
 - relationship search from one API fact to related facts.
 
+Machine-readable query output must be suitable for BSL development and code-analysis tools. Public
+JSON fields must represent typed facts rather than internal search tokens. In particular, callable
+parameter output must preserve parameter names separately from parameter type references,
+requiredness and descriptions when those facts are available.
+
+When query JSON exposes the same platform facts as `syntax export`, it should use export-compatible
+field names and shapes. Existing query JSON remains provisional; compatibility with the current
+search-result serialization is not a goal when it conflicts with the accepted export shape.
+
 The first implementation may use lexical ranking only. Semantic search is a planned extension point
 after the local index and relationship graph prove useful on real extracted data.
 
@@ -548,9 +574,44 @@ Acceptance:
   to post-process relationship JSON.
 - Constructor lookup offers a detailed text mode that includes available owner and description
   context while preserving signature-only output as the default.
+- Constructor JSON for `HTTPСоединение` exposes parameter names and type references without
+  interleaving both kinds of values in one ambiguous array, preferably using the export-compatible
+  parameter shape with `name`, `required`, `types` and optional `description`.
 - Keyword search for `отбор скд` returns data-composition filter facts ahead of unrelated filter
   facts when the Russian Syntax Assistant fixture exists.
 - Query output is available as readable text and deterministic JSON.
+
+## FR-SH-PROVIDER-001: Syntax Provider Contract for BSL Tooling
+
+The system must evolve the `syntax` query surface as a local platform-API fact provider for BSL
+development and code-analysis workflows.
+
+Provider-oriented outputs must:
+
+- be deterministic for the same index and query;
+- include stable document identity and fact kind;
+- expose names, aliases and owner identity where applicable;
+- expose callable signatures as structured facts for methods, constructors and events where source
+  data contains structured signatures, using the `syntax export` signature shape where applicable;
+- expose parameter name, requiredness, type references and description as separate fields;
+- expose return/type references as typed arrays, not only prose;
+- report ambiguity or missing facts explicitly instead of silently choosing hidden matches;
+- keep FTS/ranking/search-only tokens internal unless a future task deliberately exposes them under
+  an explicit debug field.
+
+The provider contract remains provisional until real BSL task scenarios are accepted. This
+repository must not implement BSL parsing, linting or diagnostics as part of this requirement.
+
+Acceptance:
+
+- `syntax constructors "HTTPСоединение" --format json` can be consumed by a tool to identify the
+  overload containing `ИспользоватьАутентификациюОС` and its `Булево` type reference.
+- `syntax get --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json` exposes the
+  property kind, owner and `ОтборКомпоновкиДанных` type reference in deterministic JSON.
+- Search-only token fields used to populate FTS are not exposed as misleading public fields in the
+  provider JSON contract.
+- Query/provider JSON that returns constructor, method or event signatures uses field names
+  compatible with `syntax export` for shared facts.
 
 ## FR-SH-SEARCH-002: Syntax Assistant Relationship Graph
 
