@@ -205,6 +205,9 @@ where
                 PageClass::ObjectProperty => {
                     let mut property = parse_platform_property(&content, source);
                     property.semantic = catalog_page.semantic.clone();
+                    if let Some(owner) = form_parameter_owner(&property.semantic) {
+                        property.owner = owner;
+                    }
                     sink.type_property(property)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
@@ -320,6 +323,19 @@ fn module_kind(owner_path: &[LocalizedName]) -> ModuleKind {
     } else {
         ModuleKind::Unknown
     }
+}
+
+fn form_parameter_owner(semantic: &SemanticContext) -> Option<LocalizedName> {
+    if semantic.branch_kind != BranchKind::ManagedForms
+        || semantic.record_family != RecordFamily::TypeProperty
+    {
+        return None;
+    }
+    semantic.owner_path.windows(2).find_map(|window| {
+        let current = window[1].primary.to_lowercase();
+        (current.contains("параметры формы") || current.contains("form parameters"))
+            .then(|| window[0].clone())
+    })
 }
 
 fn is_skipped_primitive_literal(semantic: &SemanticContext) -> bool {

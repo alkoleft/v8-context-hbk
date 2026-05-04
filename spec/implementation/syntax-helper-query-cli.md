@@ -191,6 +191,46 @@ One row per searchable API fact:
 - `preview`;
 - optional source fields when the index was built from a provenance-rich artifact.
 
+Document ids are search-index identities, not parser provenance. They must not include HBK file
+paths, TOC paths, HTML paths, page titles, alias display strings such as `primary (alias)` or
+fallback source-path suffixes. Exact primary-name, alias and owner/member lookup belongs in
+`document_names`, not in `documents.id`.
+
+Query table documents use `QueryTable.identifier` as the base identity. If real source data contains
+more than one query table with the same `QueryTable.identifier`, the index must append the minimal
+semantic table-family variant needed to disambiguate the duplicate, derived from the semantic
+`owner_path` labels rather than from raw source paths. For example, the two accounting-register
+families with and without correspondence support share table identifiers and require a
+correspondence-support semantic variant.
+
+Query table field and parameter documents are owned by the final query table identity. Their ids use
+the accepted table identity plus the field or parameter name:
+`query_table_field:<query_table_identity>:<field.name>` and
+`query_table_parameter:<query_table_identity>:<parameter.name>`. Here `query_table_identity` is the
+plain `QueryTable.identifier` for unique tables and `QueryTable.identifier` plus the accepted
+semantic variant for duplicated table identities.
+
+Platform type documents use the primary name as the base identity, but same-primary facts from
+different semantic type families must keep a minimal semantic variant. Form-related examples include
+ordinary-form and managed-client-form `ЭлементыФормы` / `Controls` / `FormItems` records, which are
+different source-backed types rather than duplicate pages. Type member documents must therefore be
+owned by the final owner identity, not only by `owner.primary`:
+`type_method:<owner_identity>:<method.name>` and
+`type_property:<owner_identity>:<property.name>`.
+
+The Syntax Assistant TOC may disambiguate duplicate same-title children by appending an internal
+marker such as `#&^@^%&*^#1` to the title. This marker is parser service data, not semantic identity.
+Search-index document ids and lookup names must ignore the marker. If a marker-stripped fact with
+the same final owner identity and primary name has already been indexed, the marked source page must
+not create a second document or receive a source-path suffix. This rule applies across document
+families, including methods, properties, constructors, enums and enum values.
+
+Constructor documents are owned by the final type identity and constructor primary name.
+
+Enum documents use the primary name as the base identity, but metadata-object property enums are a
+separate enum kind from ordinary system enums. Enum value documents are owned by the final enum
+identity: `enum_value:<enum_identity>:<value.name>`.
+
 Indexes:
 
 - `documents(kind)`;

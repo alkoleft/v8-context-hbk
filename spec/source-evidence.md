@@ -545,3 +545,20 @@ following platform owner/object classifications:
 The T38 pass also narrowed system-enum branch detection to the actual `objects/catalog2` enum root
 and children. This prevents ordinary `objects/catalog2xx...` platform object paths such as
 universal collection pages from being classified as system-enum branch records by prefix alone.
+
+## Query Index Identity Findings
+
+T41 verified the first search-index identity contract against
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` on 2026-05-04.
+
+The real source data contains duplicate query table identifiers in semantic table families. The
+accounting-register families with and without correspondence support share identifiers such as
+`РегистрБухгалтерии`, so the search index must append the minimal table-family `owner_path` variant
+for those duplicated identities. Query table fields and parameters can then use that final table
+identity as their owner and relation endpoint without raw source-path suffixes.
+
+The same pass found that some form/form-extension `Параметры формы` pages do not use `/params/` in
+their HTML path. Classification must therefore use the semantic TOC ancestor `Параметры формы` /
+`Form parameters`, not only path fragments. Those pages represent form parameters or attributes
+owned by the preceding form or form-extension type and must not be indexed or exported as platform
+types.

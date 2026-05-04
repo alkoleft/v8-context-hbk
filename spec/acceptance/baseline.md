@@ -993,3 +993,20 @@ created `.v8-context-hbk/syntax/index.sqlite` and resolved it from `syntax get` 
 The SKD relationship output included constructor `Новый ОтборКомпоновкиДанных()`, `Элементы`,
 `Добавить`, and filter-item fields `ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and
 `Использование`.
+
+T41 rebuilt the Russian index after replacing provenance-shaped document ids with semantic
+record-family identities. The debug build command
+`v8-context-hbk syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output
+target/uat/sh-search-ru.sqlite` completed without SQLite uniqueness failures in 63.703 s and
+produced 25,082 documents and 65,455 relations.
+
+Read-only SQLite checks confirmed:
+
+- no `documents.id` contains `.html`, `/` source paths or TOC duplicate-title marker
+  `#&^@^%&*^#`;
+- duplicated accounting-register query-table identifiers use minimal semantic table-family
+  variants such as `Таблицы регистра бухгалтерии (без поддержки корреспонденции)` and
+  `Таблицы регистра бухгалтерии (с поддержкой корреспонденции)`;
+- query-table field/parameter relation endpoints use the final query-table identity;
+- form/form-extension `Параметры формы` pages are no longer indexed as `platform_type` records and
+  are indexed as type properties owned by the form or extension type.

@@ -273,6 +273,14 @@ impl SearchIndex {
             return Ok(Vec::new());
         };
         if roots.len() > 1 {
+            let ownerless = roots
+                .iter()
+                .filter(|hit| hit.document.owner.is_none())
+                .cloned()
+                .collect::<Vec<_>>();
+            if ownerless.len() == 1 {
+                return self.related(&ownerless[0].document.id, max_depth.min(5), limit);
+            }
             return Err(SearchError::AmbiguousLookup {
                 name: name.to_string(),
                 matches: roots.len(),
@@ -775,6 +783,7 @@ fn validate_index(connection: &Connection, path: &Path) -> Result<(), SearchErro
 
 fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocument> {
     let mut documents = Vec::new();
+    let identities = DocumentIdentities::new(context);
     for record in &context.global_methods {
         documents.push(document(
             "global_method",
@@ -784,7 +793,7 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &record.return_types,
             &[],
             record.description.as_deref(),
-            &record.source,
+            document_identity("global_method", None, &record.name),
         ));
     }
     for record in &context.global_properties {
@@ -796,7 +805,7 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &[],
             &record.type_refs,
             record.description.as_deref(),
-            &record.source,
+            document_identity("global_property", None, &record.name),
         ));
     }
     for record in &context.global_context_events {
@@ -814,11 +823,11 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &[],
             &[],
             record.description.as_deref(),
-            &record.source,
+            document_identity(kind, owner.as_ref(), &record.name),
         ));
     }
     for record in &context.platform_types {
-        documents.push(document(
+        let mut platform_type = document(
             "platform_type",
             None,
             &record.name,
@@ -830,11 +839,16 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
                 .map(type_ref_from_name)
                 .collect::<Vec<_>>(),
             record.description.as_deref(),
-            &record.source,
-        ));
+            identities.platform_type_identity(record),
+        );
+        platform_type
+            .relation_keys
+            .push(identity_relation_key(&platform_type.id));
+        documents.push(platform_type);
     }
     for record in &context.type_methods {
-        documents.push(document(
+        let owner_identity = identities.type_owner_identity(&record.owner, &record.semantic);
+        let mut method = document(
             "type_method",
             Some(&record.owner),
             &record.name,
@@ -842,11 +856,14 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &record.return_types,
             &[],
             record.description.as_deref(),
-            &record.source,
-        ));
+            owned_document_identity("type_method", &owner_identity, &record.name.primary),
+        );
+        method.owner_relation_key = Some(identity_relation_key(&owner_identity));
+        documents.push(method);
     }
     for record in &context.type_properties {
-        documents.push(document(
+        let owner_identity = identities.type_owner_identity(&record.owner, &record.semantic);
+        let mut property = document(
             "type_property",
             Some(&record.owner),
             &record.name,
@@ -854,8 +871,10 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &[],
             &record.type_refs,
             record.description.as_deref(),
-            &record.source,
-        ));
+            owned_document_identity("type_property", &owner_identity, &record.name.primary),
+        );
+        property.owner_relation_key = Some(identity_relation_key(&owner_identity));
+        documents.push(property);
     }
     for record in &context.constructors {
         let name = model::LocalizedName {
@@ -866,7 +885,8 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
                 .unwrap_or_else(|| format!("Новый {}", record.owner.primary)),
             alias: record.name.alias.clone(),
         };
-        documents.push(document(
+        let owner_identity = identities.type_owner_identity(&record.owner, &record.semantic);
+        let mut constructor = document(
             "constructor",
             Some(&record.owner),
             &name,
@@ -874,8 +894,10 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &[],
             &[],
             record.description.as_deref(),
-            &record.source,
-        ));
+            owned_document_identity("constructor", &owner_identity, &name.primary),
+        );
+        constructor.owner_relation_key = Some(identity_relation_key(&owner_identity));
+        documents.push(constructor);
     }
     for record in &context.query_tables {
         let name = model::LocalizedName {
@@ -893,11 +915,12 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &[],
             &[],
             record.description.as_deref(),
-            &record.source,
+            identities.query_table_identity(record),
         );
         table
             .relation_keys
             .push(semantic_relation_key(&record.semantic, &name.primary));
+        table.relation_keys.push(identity_relation_key(&table.id));
         documents.push(table);
     }
     for record in &context.table_fields {
@@ -905,6 +928,8 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             primary: record.name.clone(),
             alias: None,
         };
+        let owner_identity =
+            identities.query_member_owner_identity(&record.owner, &record.semantic);
         let mut field = document(
             "query_table_field",
             Some(&record.owner),
@@ -913,12 +938,9 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &[],
             &record.type_refs,
             record.description.as_deref(),
-            &record.source,
+            owned_document_identity("query_table_field", &owner_identity, &name.primary),
         );
-        field.owner_relation_key = Some(semantic_relation_key(
-            &record.semantic,
-            &record.owner.primary,
-        ));
+        field.owner_relation_key = Some(identity_relation_key(&owner_identity));
         documents.push(field);
     }
     for record in &context.table_parameters {
@@ -926,6 +948,8 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             primary: record.name.clone(),
             alias: None,
         };
+        let owner_identity =
+            identities.query_member_owner_identity(&record.owner, &record.semantic);
         let mut parameter = document(
             "query_table_parameter",
             Some(&record.owner),
@@ -934,16 +958,13 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &[],
             &record.type_refs,
             record.description.as_deref(),
-            &record.source,
+            owned_document_identity("query_table_parameter", &owner_identity, &name.primary),
         );
-        parameter.owner_relation_key = Some(semantic_relation_key(
-            &record.semantic,
-            &record.owner.primary,
-        ));
+        parameter.owner_relation_key = Some(identity_relation_key(&owner_identity));
         documents.push(parameter);
     }
     for record in &context.enums {
-        documents.push(document(
+        let mut enum_document = document(
             "enum",
             None,
             &record.name,
@@ -951,11 +972,16 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &[],
             &[],
             record.description.as_deref(),
-            &record.source,
-        ));
+            identities.enum_identity(record),
+        );
+        enum_document
+            .relation_keys
+            .push(identity_relation_key(&enum_document.id));
+        documents.push(enum_document);
     }
     for record in &context.enum_values {
-        documents.push(document(
+        let owner_identity = identities.enum_owner_identity(&record.owner);
+        let mut value = document(
             "enum_value",
             Some(&record.owner),
             &record.name,
@@ -963,14 +989,17 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
             &[],
             &[],
             record.description.as_deref(),
-            &record.source,
-        ));
+            owned_document_identity("enum_value", &owner_identity, &record.name.primary),
+        );
+        value.owner_relation_key = Some(identity_relation_key(&owner_identity));
+        documents.push(value);
     }
     documents.sort_by(|left, right| {
         kind_priority(&left.kind)
             .cmp(&kind_priority(&right.kind))
             .then_with(|| left.id.cmp(&right.id))
     });
+    documents.dedup_by(|left, right| left.id == right.id);
     documents
 }
 
@@ -982,7 +1011,7 @@ fn document(
     return_types: &[model::TypeRef],
     type_refs: &[model::TypeRef],
     description: Option<&str>,
-    source: &model::SyntaxHelperSource,
+    id: String,
 ) -> SearchDocument {
     let parameters = signatures
         .iter()
@@ -1008,7 +1037,6 @@ fn document(
         .iter()
         .map(|type_ref| type_ref.name.clone())
         .collect::<Vec<_>>();
-    let id = document_id(kind, owner, name, source);
     SearchDocument {
         id,
         kind: kind.to_string(),
@@ -1197,14 +1225,260 @@ fn split_lines(value: String) -> Vec<String> {
         .collect()
 }
 
-fn document_id(
+struct DocumentIdentities {
+    platform_type_ids: BTreeMap<String, String>,
+    query_table_ids: BTreeMap<String, String>,
+    enum_ids: BTreeMap<String, String>,
+}
+
+impl DocumentIdentities {
+    fn new(context: &model::PlatformContext) -> Self {
+        let platform_type_counts = count_by(
+            context
+                .platform_types
+                .iter()
+                .map(|record| base_name_key(&record.name.primary)),
+        );
+        let query_table_counts = count_by(
+            context
+                .query_tables
+                .iter()
+                .map(|record| normalize_lookup_key(&record.identifier)),
+        );
+        let platform_type_ids = context
+            .platform_types
+            .iter()
+            .map(|record| {
+                (
+                    semantic_record_key(&record.name.primary, &record.semantic),
+                    platform_type_identity(record, &platform_type_counts),
+                )
+            })
+            .collect();
+        let query_table_ids = context
+            .query_tables
+            .iter()
+            .map(|record| {
+                (
+                    semantic_relation_key(&record.semantic, &record.name),
+                    query_table_identity(record, &query_table_counts),
+                )
+            })
+            .collect();
+        let enum_ids = context
+            .enums
+            .iter()
+            .map(|record| (enum_base_key(record), enum_identity(record)))
+            .collect();
+
+        Self {
+            platform_type_ids,
+            query_table_ids,
+            enum_ids,
+        }
+    }
+
+    fn platform_type_identity(&self, record: &model::PlatformType) -> String {
+        self.platform_type_ids
+            .get(&semantic_record_key(&record.name.primary, &record.semantic))
+            .cloned()
+            .unwrap_or_else(|| document_identity("platform_type", None, &record.name))
+    }
+
+    fn type_owner_identity(
+        &self,
+        owner: &model::LocalizedName,
+        semantic: &model::SemanticContext,
+    ) -> String {
+        self.platform_type_ids
+            .get(&semantic_record_key(&owner.primary, semantic))
+            .cloned()
+            .or_else(|| {
+                self.platform_type_ids
+                    .values()
+                    .find(|identity| {
+                        identity_primary_matches(identity, "platform_type", &owner.primary)
+                    })
+                    .cloned()
+            })
+            .unwrap_or_else(|| document_identity("platform_type", None, owner))
+    }
+
+    fn query_table_identity(&self, record: &model::QueryTable) -> String {
+        self.query_table_ids
+            .get(&semantic_relation_key(&record.semantic, &record.name))
+            .cloned()
+            .unwrap_or_else(|| format!("query_table:{}", clean_identity_part(&record.identifier)))
+    }
+
+    fn query_member_owner_identity(
+        &self,
+        owner: &model::LocalizedName,
+        semantic: &model::SemanticContext,
+    ) -> String {
+        self.query_table_ids
+            .get(&semantic_relation_key(semantic, &owner.primary))
+            .cloned()
+            .unwrap_or_else(|| format!("query_table:{}", clean_identity_part(&owner.primary)))
+    }
+
+    fn enum_identity(&self, record: &model::EnumDefinition) -> String {
+        self.enum_ids
+            .get(&enum_base_key(record))
+            .cloned()
+            .unwrap_or_else(|| document_identity("enum", None, &record.name))
+    }
+
+    fn enum_owner_identity(&self, owner: &model::LocalizedName) -> String {
+        let matches = self
+            .enum_ids
+            .values()
+            .filter(|identity| identity_primary_matches(identity, "enum", &owner.primary))
+            .cloned()
+            .collect::<Vec<_>>();
+        matches
+            .iter()
+            .find(|identity| identity.starts_with("enum:system:"))
+            .cloned()
+            .or_else(|| matches.into_iter().next())
+            .unwrap_or_else(|| document_identity("enum", None, owner))
+    }
+}
+
+fn count_by(keys: impl Iterator<Item = String>) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for key in keys {
+        *counts.entry(key).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn platform_type_identity(
+    record: &model::PlatformType,
+    counts: &BTreeMap<String, usize>,
+) -> String {
+    let base = clean_identity_part(&record.name.primary);
+    if counts
+        .get(&base_name_key(&record.name.primary))
+        .copied()
+        .unwrap_or(0)
+        <= 1
+    {
+        format!("platform_type:{base}")
+    } else {
+        format!(
+            "platform_type:{base}:{}",
+            semantic_variant(&record.semantic.owner_path)
+        )
+    }
+}
+
+fn query_table_identity(record: &model::QueryTable, counts: &BTreeMap<String, usize>) -> String {
+    let base = clean_identity_part(&record.identifier);
+    if counts
+        .get(&normalize_lookup_key(&record.identifier))
+        .copied()
+        .unwrap_or(0)
+        <= 1
+    {
+        format!("query_table:{base}")
+    } else {
+        format!(
+            "query_table:{base}:{}",
+            semantic_variant(&record.semantic.owner_path)
+        )
+    }
+}
+
+fn enum_identity(record: &model::EnumDefinition) -> String {
+    let base = clean_identity_part(&record.name.primary);
+    let kind = enum_kind(record);
+    format!("enum:{kind}:{base}")
+}
+
+fn document_identity(
     kind: &str,
     owner: Option<&model::LocalizedName>,
     name: &model::LocalizedName,
-    source: &model::SyntaxHelperSource,
 ) -> String {
-    let owner = owner.map(display_name).unwrap_or_default();
-    format!("{kind}:{owner}:{}:{}", display_name(name), source.html_path)
+    match owner {
+        Some(owner) => owned_document_identity(
+            kind,
+            &format!("owner:{}", clean_identity_part(&owner.primary)),
+            &name.primary,
+        ),
+        None => format!("{kind}:{}", clean_identity_part(&name.primary)),
+    }
+}
+
+fn owned_document_identity(kind: &str, owner_identity: &str, name: &str) -> String {
+    format!("{kind}:{owner_identity}:{}", clean_identity_part(name))
+}
+
+fn identity_relation_key(identity: &str) -> String {
+    format!("id:{}", normalize_lookup_key(identity))
+}
+
+fn identity_primary_matches(identity: &str, kind: &str, primary: &str) -> bool {
+    let primary = clean_identity_part(primary);
+    identity
+        .strip_prefix(kind)
+        .and_then(|tail| tail.strip_prefix(':'))
+        .is_some_and(|tail| {
+            tail == primary
+                || tail.starts_with(&format!("{primary}:"))
+                || tail.ends_with(&format!(":{primary}"))
+                || tail.contains(&format!(":{primary}:"))
+        })
+}
+
+fn semantic_record_key(name: &str, semantic: &model::SemanticContext) -> String {
+    let mut parts = semantic
+        .owner_path
+        .iter()
+        .map(|name| clean_identity_part(&name.primary))
+        .collect::<Vec<_>>();
+    parts.push(clean_identity_part(name));
+    parts.join(":")
+}
+
+fn base_name_key(value: &str) -> String {
+    normalize_lookup_key(&strip_toc_duplicate_marker(value))
+}
+
+fn clean_identity_part(value: &str) -> String {
+    strip_toc_duplicate_marker(value).trim().to_string()
+}
+
+fn strip_toc_duplicate_marker(value: &str) -> &str {
+    value.split("#&^@^%&*^#").next().unwrap_or(value)
+}
+
+fn semantic_variant(owner_path: &[model::LocalizedName]) -> String {
+    owner_path
+        .iter()
+        .rev()
+        .find(|name| !name.primary.trim().is_empty())
+        .map(|name| clean_identity_part(&name.primary))
+        .unwrap_or_else(|| "semantic_variant".to_string())
+}
+
+fn enum_base_key(record: &model::EnumDefinition) -> String {
+    format!(
+        "{}:{}",
+        enum_kind(record),
+        base_name_key(&record.name.primary)
+    )
+}
+
+fn enum_kind(record: &model::EnumDefinition) -> &'static str {
+    if record.source.html_path.starts_with("objects/catalog2/")
+        || record.source.html_path == "objects/catalog2.html"
+    {
+        "system"
+    } else {
+        "metadata_property"
+    }
 }
 
 fn display_name(name: &model::LocalizedName) -> String {
@@ -1430,6 +1704,7 @@ mod tests {
             .expect("exact lookup must work");
         assert_eq!(exact.len(), 1);
         assert_eq!(exact[0].document.name.primary, "ОтборКомпоновкиДанных");
+        assert_eq!(exact[0].document.kind, "platform_type");
 
         let event = index
             .get_by_name("ПередЗаписью")
@@ -1522,6 +1797,146 @@ mod tests {
         assert!(index.document_count().expect("document count must work") > 0);
     }
 
+    #[test]
+    fn query_table_identity_uses_identifier_and_semantic_variant_for_members() {
+        let context = model::PlatformContext {
+            query_tables: vec![
+                query_table(
+                    "ОстаткиИОбороты",
+                    "Таблицы регистра накопления",
+                    "Основная таблица",
+                ),
+                query_table(
+                    "ОстаткиИОбороты",
+                    "Таблицы регистра бухгалтерии (без поддержки корреспонденции)",
+                    "Основная таблица",
+                ),
+            ],
+            table_fields: vec![query_table_field(
+                "Основная таблица",
+                "Таблицы регистра бухгалтерии (без поддержки корреспонденции)",
+                "Сумма",
+            )],
+            table_parameters: vec![query_table_parameter(
+                "Основная таблица",
+                "Таблицы регистра накопления",
+                "Период",
+            )],
+            ..model::PlatformContext::default()
+        };
+
+        let documents = documents_from_context(&context);
+        let ids = documents
+            .iter()
+            .map(|document| document.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(ids.contains(&"query_table:ОстаткиИОбороты:Таблицы регистра накопления"));
+        assert!(ids.contains(
+            &"query_table:ОстаткиИОбороты:Таблицы регистра бухгалтерии (без поддержки корреспонденции)"
+        ));
+        assert!(ids.contains(
+            &"query_table_field:query_table:ОстаткиИОбороты:Таблицы регистра бухгалтерии (без поддержки корреспонденции):Сумма"
+        ));
+        assert!(ids.contains(
+            &"query_table_parameter:query_table:ОстаткиИОбороты:Таблицы регистра накопления:Период"
+        ));
+
+        let relations = relations_from_documents(&documents);
+        assert!(relations.iter().any(|relation| {
+            relation.source_id == "query_table:ОстаткиИОбороты:Таблицы регистра накопления"
+                && relation.target_id
+                    == "query_table_parameter:query_table:ОстаткиИОбороты:Таблицы регистра накопления:Период"
+        }));
+        assert!(relations.iter().any(|relation| {
+            relation.source_id
+                == "query_table:ОстаткиИОбороты:Таблицы регистра бухгалтерии (без поддержки корреспонденции)"
+                && relation.target_id
+                    == "query_table_field:query_table:ОстаткиИОбороты:Таблицы регистра бухгалтерии (без поддержки корреспонденции):Сумма"
+        }));
+    }
+
+    #[test]
+    fn type_identity_keeps_semantic_variants_and_strips_toc_markers() {
+        let context = model::PlatformContext {
+            platform_types: vec![
+                platform_type_with_owner_path("ЭлементыФормы", "Форма"),
+                platform_type_with_owner_path("ЭлементыФормы", "ФормаКлиентскогоПриложения"),
+                platform_type_with_owner_path("ГруппаФормы", "Форма"),
+            ],
+            type_properties: vec![
+                type_property_with_owner_path("ЭлементыФормы", "Форма", "ТекущийЭлемент", "Строка"),
+                type_property_with_owner_path(
+                    "ЭлементыФормы",
+                    "ФормаКлиентскогоПриложения",
+                    "ТекущийЭлемент",
+                    "Строка",
+                ),
+                type_property_with_owner_path("ГруппаФормы", "Форма", "Видимость", "Булево"),
+                type_property_with_owner_path(
+                    "ГруппаФормы",
+                    "Форма",
+                    "Видимость#&^@^%&*^#1",
+                    "Булево",
+                ),
+            ],
+            ..model::PlatformContext::default()
+        };
+
+        let documents = documents_from_context(&context);
+        let ids = documents
+            .iter()
+            .map(|document| document.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(ids.contains(&"platform_type:ЭлементыФормы:Форма"));
+        assert!(ids.contains(&"platform_type:ЭлементыФормы:ФормаКлиентскогоПриложения"));
+        assert!(ids.contains(&"type_property:platform_type:ЭлементыФормы:Форма:ТекущийЭлемент"));
+        assert!(ids.contains(
+            &"type_property:platform_type:ЭлементыФормы:ФормаКлиентскогоПриложения:ТекущийЭлемент"
+        ));
+        assert_eq!(
+            ids.iter()
+                .filter(|id| **id == "type_property:platform_type:ГруппаФормы:Видимость")
+                .count(),
+            1
+        );
+        assert!(!ids.iter().any(|id| id.contains("#&^@^%&*^#")));
+    }
+
+    #[test]
+    fn enum_identity_distinguishes_metadata_property_enums() {
+        let context = model::PlatformContext {
+            enums: vec![
+                enum_definition("Видимость", "objects/catalog2/catalog999/Visible.html"),
+                enum_definition(
+                    "Видимость",
+                    "objects/catalog1649/Form/properties/Visible.html",
+                ),
+            ],
+            enum_values: vec![
+                enum_value("Видимость", "Использовать"),
+                enum_value("Видимость", "Использовать#&^@^%&*^#1"),
+            ],
+            ..model::PlatformContext::default()
+        };
+
+        let documents = documents_from_context(&context);
+        let ids = documents
+            .iter()
+            .map(|document| document.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(ids.contains(&"enum:system:Видимость"));
+        assert!(ids.contains(&"enum:metadata_property:Видимость"));
+        assert_eq!(
+            ids.iter()
+                .filter(|id| **id == "enum_value:enum:system:Видимость:Использовать")
+                .count(),
+            1
+        );
+    }
+
     fn metadata() -> IndexMetadata {
         IndexMetadata {
             locale: "ru".to_string(),
@@ -1604,6 +2019,12 @@ mod tests {
         }
     }
 
+    fn platform_type_with_owner_path(primary: &str, owner: &str) -> model::PlatformType {
+        let mut record = platform_type(primary, None, "type description");
+        record.semantic = semantic(model::RecordFamily::PlatformType, owner);
+        record
+    }
+
     fn type_property(owner: &str, primary: &str, type_ref: &str) -> model::PlatformProperty {
         model::PlatformProperty {
             owner: name(owner, None),
@@ -1617,6 +2038,82 @@ mod tests {
             facts: model::SectionFacts::default(),
             source: source(&format!("{owner}.{primary}")),
         }
+    }
+
+    fn type_property_with_owner_path(
+        owner: &str,
+        owner_path: &str,
+        primary: &str,
+        type_ref: &str,
+    ) -> model::PlatformProperty {
+        let mut record = type_property(owner, primary, type_ref);
+        record.semantic = semantic(model::RecordFamily::TypeProperty, owner_path);
+        record
+    }
+
+    fn query_table(identifier: &str, owner_path: &str, table_name: &str) -> model::QueryTable {
+        model::QueryTable {
+            name: table_name.to_string(),
+            syntax: None,
+            identifier: identifier.to_string(),
+            semantic: semantic(model::RecordFamily::QueryTable, owner_path),
+            table_role: model::QueryTableRole::Primary,
+            description: Some("table description".to_string()),
+            source: source(table_name),
+        }
+    }
+
+    fn query_table_field(owner: &str, owner_path: &str, primary: &str) -> model::QueryTableField {
+        model::QueryTableField {
+            owner: name(owner, None),
+            name: primary.to_string(),
+            semantic: semantic(model::RecordFamily::QueryTableField, owner_path),
+            type_refs: Vec::new(),
+            description: Some("field description".to_string()),
+            note: None,
+            source: source(&format!("{owner}.{primary}")),
+        }
+    }
+
+    fn query_table_parameter(
+        owner: &str,
+        owner_path: &str,
+        primary: &str,
+    ) -> model::QueryTableParameter {
+        model::QueryTableParameter {
+            owner: name(owner, None),
+            name: primary.to_string(),
+            semantic: semantic(model::RecordFamily::QueryTableParameter, owner_path),
+            type_refs: Vec::new(),
+            description: Some("parameter description".to_string()),
+            default_value: None,
+            source: source(&format!("{owner}.{primary}")),
+        }
+    }
+
+    fn enum_definition(primary: &str, html_path: &str) -> model::EnumDefinition {
+        model::EnumDefinition {
+            name: name(primary, None),
+            value_links: Vec::new(),
+            description: Some("enum description".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source_with_html_path(primary, html_path),
+        }
+    }
+
+    fn enum_value(owner: &str, primary: &str) -> model::EnumValue {
+        model::EnumValue {
+            owner: name(owner, None),
+            name: name(primary, None),
+            description: Some("value description".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source(&format!("{owner}.{primary}")),
+        }
+    }
+
+    fn semantic(record_family: model::RecordFamily, owner_path: &str) -> model::SemanticContext {
+        model::SemanticContext::new(model::BranchKind::PlatformObjects, record_family)
+            .with_owner_path(vec![name(owner_path, None)])
     }
 
     fn type_method(owner: &str, primary: &str, return_type: &str) -> model::PlatformMethod {
@@ -1682,11 +2179,15 @@ mod tests {
     }
 
     fn source(name: &str) -> model::SyntaxHelperSource {
+        source_with_html_path(name, &format!("{name}.html"))
+    }
+
+    fn source_with_html_path(name: &str, html_path: &str) -> model::SyntaxHelperSource {
         model::SyntaxHelperSource {
             hbk_path: PathBuf::from("fixture.hbk"),
             locale: "ru".to_string(),
             toc_path: Some(name.to_string()),
-            html_path: format!("{name}.html"),
+            html_path: html_path.to_string(),
             page_title: name.to_string(),
         }
     }

@@ -15,9 +15,8 @@ Current status: T35-T40 and the T18 first slice are archived historical tasks. T
 export, schema, data-quality, performance and query-search conclusions live in
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md` and `implementation/syntax-helper-query-cli.md`.
-There is one unchecked active task: T41. It blocks further T18 continuation because query-index
-record identity must be settled against real Syntax Assistant data before expanding query/search
-behavior.
+There are no unchecked active tasks after T41. Further T18 continuation may add the next focused
+query/search task after reconciling it with the durable identity and form-parameter findings below.
 
 ## Loop Rule
 
@@ -34,7 +33,7 @@ behavior.
   `git diff --cached --name-only`.
 - Do not create empty commits.
 
-### [ ] T41. Define query-index record identity and form-parameter classification
+### [x] T41. Define query-index record identity and form-parameter classification
 
 Depends on: T18 checkpoint `d990d8a`. Blocks further T18 continuation.
 
@@ -57,9 +56,23 @@ Scope:
 - Reuse domain identifiers that already exist in the extraction/export model. Query table documents
   must use `QueryTable.identifier`, not display names such as `Основная таблица`; query table field and
   parameter documents must be owned by that table identity rather than only by the table page title.
+  Accepted query table identity shape: use plain `QueryTable.identifier` when it is unique in the
+  real source data, and append only the minimal semantic `owner_path`-derived variant when the same
+  identifier appears in multiple table families, such as accounting-register tables with and without
+  correspondence support. Query table field and parameter ids use that final table identity plus the
+  field or parameter name.
 - Classify Syntax Assistant pages under form and form-extension `Параметры формы` branches as form
   attributes/parameters owned by the form or extension type. They must not be emitted as
   `platform_type` records.
+- Preserve semantic variants for same-primary form/interface platform types such as ordinary-form
+  and managed-client-form `ЭлементыФормы`, and build type member ids from the final owner identity
+  rather than `owner.primary` alone.
+- Treat TOC duplicate-title markers such as `#&^@^%&*^#1` as parser service data, not semantic
+  identity. After stripping the marker, duplicate source pages for the same final owner identity and
+  primary name must not create a second search document or receive a source-path suffix; this applies
+  across methods, properties, constructors, enums and enum values.
+- Distinguish metadata-object property enums from ordinary system enums in enum document identity;
+  enum value ids must be owned by the final enum identity.
 - Treat same-name records as parser/model evidence first. Do not hide a source-family or
   classification defect by adding source-path-shaped suffixes to search ids.
 - Preserve exact lookup by primary name and alias through lookup tables; aliases may participate in
@@ -74,3 +87,26 @@ Expected artifacts:
 - Parser/model/search changes needed for query-table ids and form-parameter classification.
 - Focused tests for query-table identity, relation endpoints and form-parameter classification.
 - Updated UAT/baseline notes with the verified real-index result.
+
+Completion notes:
+
+- `syntax-helper-search` document ids now use semantic record-family identities rather than HBK,
+  TOC, HTML or page-title provenance. Exact lookup keys remain in `document_names`.
+- Query table ids use `QueryTable.identifier`, with `owner_path`-derived semantic variants only for
+  duplicated real-source table identifiers. Query table field/parameter ids and relations use the
+  final table identity.
+- Managed-form `Параметры формы` pages are classified as type properties owned by the preceding
+  form/form-extension type, including pages whose HTML path does not contain `/params/`.
+- The rebuilt Russian index completed without uniqueness failures and produced 25,082 documents /
+  65,455 relations. SQLite read-only checks found no `.html`, `/` source path or
+  `#&^@^%&*^#` marker in document ids and no form-parameter `platform_type` records.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib classifies_form_parameters_as_type_properties`
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- `cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax index
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/uat/sh-search-ru.sqlite`
+- read-only SQLite checks over `target/uat/sh-search-ru.sqlite` for id shape, query-table variants,
+  relation endpoints and form-parameter classification.

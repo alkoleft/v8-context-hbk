@@ -82,6 +82,10 @@ fn classify_catalog_page(page: &TocPage, ancestors: &[&TocPage], branch: BranchK
         PageClass::QueryTableParameter
     } else if branch == BranchKind::QueryTables && path.starts_with("tables/") {
         PageClass::QueryTable
+    } else if branch == BranchKind::ManagedForms
+        && (path.contains("/params/") || has_form_parameters_context(ancestors))
+    {
+        PageClass::ObjectProperty
     } else if path.contains("/events/") {
         event_page_class(ancestors, branch)
     } else if path.contains("/methods/") {
@@ -124,6 +128,13 @@ fn has_explicit_module_context(ancestors: &[&TocPage]) -> bool {
     ancestors.iter().any(|ancestor| {
         let label = normalized_title(ancestor);
         label.contains("модул") || label.contains("module")
+    })
+}
+
+fn has_form_parameters_context(ancestors: &[&TocPage]) -> bool {
+    ancestors.iter().any(|ancestor| {
+        let label = normalized_title(ancestor);
+        label.contains("параметры формы") || label.contains("form parameters")
     })
 }
 

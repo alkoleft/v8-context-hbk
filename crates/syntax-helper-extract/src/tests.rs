@@ -14,6 +14,7 @@ struct RecordingSink {
     seen: Vec<String>,
     events: Vec<GlobalContextEvent>,
     platform_types: Vec<PlatformType>,
+    type_properties: Vec<PlatformProperty>,
 }
 
 impl RecordingSink {
@@ -64,6 +65,7 @@ impl SyntaxHelperSink for RecordingSink {
 
     fn type_property(&mut self, record: PlatformProperty) -> Result<(), Self::Error> {
         self.push_name("type_property", &record.name);
+        self.type_properties.push(record);
         Ok(())
     }
 
@@ -562,6 +564,82 @@ fn root_form_labels_do_not_match_information_and_form_events_stay_form_modules()
     assert_eq!(event.name.primary, "BeforeWrite");
     assert_eq!(event.semantic.record_family, RecordFamily::TypeEvent);
     assert_eq!(event.module.kind, ModuleKind::Unknown);
+}
+
+#[test]
+fn classifies_form_parameters_as_type_properties() {
+    let toc = Toc::parse(
+        r#"{
+                4
+                {1,0,1,2,{0,0,{0,0,{"ru","Формы"}},"/objects/catalog1649.html"}}
+                {2,1,1,3,{0,0,{0,0,{"ru","Расширение формы клиентского приложения для документов"}},"/objects/catalog1649/catalog1890/Client application form extension for documents.html"}}
+                {3,2,1,4,{0,0,{0,0,{"ru","Параметры формы"}},"/objects/catalog1649/catalog1890/params.html"}}
+                {4,3,0,{0,0,{0,0,{"ru","Ключ"}{"en","Key"}},"/objects/catalog1649/catalog1890/Key.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let root = &toc.pages()[0];
+    let root_flat = toc
+        .flat_pages()
+        .next()
+        .expect("fixture root page must exist");
+
+    let pages = collect_catalog_pages(Path::new("shcntx_ru.hbk"), "ru", root, &root_flat);
+    let parameter = pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("/Key.html"))
+        .expect("form parameter page must be collected");
+
+    assert_eq!(parameter.class, PageClass::ObjectProperty);
+    assert_eq!(parameter.semantic.branch_kind, BranchKind::ManagedForms);
+    assert_eq!(parameter.semantic.record_family, RecordFamily::TypeProperty);
+    assert!(
+        parameter
+            .semantic
+            .owner_path
+            .iter()
+            .any(|name| name.primary.contains("Расширение формы"))
+    );
+
+    let mut sink = RecordingSink::default();
+    extract_with_loader_into(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc,
+        |html_path| {
+            let title = toc
+                .flat_pages()
+                .find(|page| page.page.html_path == html_path)
+                .map(|page| page.page.title.display().to_string())
+                .expect("fixture page must exist in TOC");
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_ru.hbk",
+                "ru",
+                html_path,
+                &format!(
+                    r#"<html><body><h1 class="V8SH_pagetitle">{title}</h1><p class="V8SH_title">{title}</p><p class="V8SH_heading">{title}</p><p class="V8SH_chapter">Описание:</p>Тип: Строка. Описание.</body></html>"#
+                ),
+            ))
+        },
+        &mut sink,
+    )
+    .expect("fixture extraction must stream");
+
+    assert!(
+        sink.platform_types
+            .iter()
+            .all(|record| record.name.primary != "Ключ")
+    );
+    let property = sink
+        .type_properties
+        .iter()
+        .find(|record| record.name.primary == "Ключ")
+        .expect("form parameter must be extracted as a type property");
+    assert_eq!(
+        property.owner.primary,
+        "Расширение формы клиентского приложения для документов"
+    );
 }
 
 #[test]

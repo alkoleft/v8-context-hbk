@@ -281,6 +281,23 @@ test ! -e .v8-context-hbk/syntax/index.sqlite-wal
 test ! -e .v8-context-hbk/syntax/index.sqlite-shm
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax get --name "ОтборКомпоновкиДанных" --format json
+python3 - <<'PY'
+import sqlite3
+con = sqlite3.connect("file:target/uat/sh-search-ru.sqlite?mode=ro", uri=True)
+cur = con.cursor()
+assert not cur.execute(
+    "select 1 from documents where id like '%.html%' or id like '%/%' or id like '%#&^@^%&*^#%' limit 1"
+).fetchone()
+assert not cur.execute(
+    "select 1 from documents where kind='platform_type' and id like '%Параметры формы%' limit 1"
+).fetchone()
+assert cur.execute(
+    "select 1 from documents where kind='query_table' and id like 'query_table:РегистрБухгалтерии:%' limit 1"
+).fetchone()
+assert cur.execute(
+    "select 1 from relations where source_id like 'query_table:РегистрБухгалтерии:%' and target_id like 'query_table_field:query_table:РегистрБухгалтерии:%' limit 1"
+).fetchone()
+PY
 ```
 
 Expected result:
@@ -300,6 +317,10 @@ Expected result:
 - The default-path lookup command resolves `.v8-context-hbk/syntax/index.sqlite` when `--index` and
   `V8_CONTEXT_HBK_SYNTAX_INDEX` are absent.
 - Later query commands do not require the HBK file path.
+- Document ids do not contain HBK/HTML path fragments or TOC duplicate-title markers.
+- Duplicated query table identifiers use semantic table-family variants in document ids and
+  relation endpoints.
+- Form/form-extension `Параметры формы` pages are not indexed as `platform_type` records.
 
 Cleanup:
 
