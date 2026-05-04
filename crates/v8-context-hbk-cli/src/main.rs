@@ -7,9 +7,11 @@ use hbk_book::{Toc, TocPage};
 use hbk_container::HbkContainer;
 use hbk_export::JsonExporter;
 use serde_json::json;
-use syntax_helper_extract::SyntaxHelperReader;
+use syntax_helper_extract::{SyntaxHelperReader, SyntaxHelperStreamError};
 use syntax_helper_model::LocalizedName;
-use syntax_helper_search::{IndexMetadata, SearchHit, SearchIndex, SearchMode, build_index};
+use syntax_helper_search::{
+    IndexMetadata, SearchHit, SearchIndex, SearchIndexBuilder, SearchMode, build_index_from_builder,
+};
 
 #[derive(Debug, Parser)]
 #[command(version, about = "Read and inspect 1C HBK help book containers")]
@@ -228,14 +230,17 @@ fn syntax_index(
     let output = resolve_index_path(output);
     let started = Instant::now();
     let book = HbkBook::open(&book_path)?;
-    let context = SyntaxHelperReader::new(&book).extract()?;
+    let mut builder = SearchIndexBuilder::new();
+    if let Err(error) = SyntaxHelperReader::new(&book).extract_into(&mut builder) {
+        return Err(syntax_stream_error(error));
+    }
     let metadata = IndexMetadata {
         locale: book.locale().export_code().to_string(),
         source_locale: book.locale().source_code().to_string(),
         source_hbk: book.path().display().to_string(),
         source_extraction_schema_version: 11,
     };
-    build_index(&output, &metadata, &context)?;
+    build_index_from_builder(&output, &metadata, builder)?;
     println!("index: {}", output.display());
     println!(
         "locale: {} (source: {})",
@@ -244,6 +249,15 @@ fn syntax_index(
     println!("documents: {}", syntax_document_count(&output)?);
     println!("elapsed_ms: {}", started.elapsed().as_millis());
     Ok(())
+}
+
+fn syntax_stream_error(
+    error: SyntaxHelperStreamError<std::convert::Infallible>,
+) -> Box<dyn std::error::Error> {
+    match error {
+        SyntaxHelperStreamError::Source(source) => Box::new(source),
+        SyntaxHelperStreamError::Sink(never) => match never {},
+    }
 }
 
 fn syntax_get(

@@ -271,6 +271,11 @@ Implemented first slice:
   resolution and text/JSON presentation.
 - `syntax index` builds a replacement index beside the target file and atomically renames it after
   validation. Concurrent writers are serialized by a lock file.
+- `syntax index` feeds extraction records into a search-index builder through
+  `SyntaxHelperReader::extract_into()`. The builder keeps only search-index drafts and identity
+  inputs, then writes documents and streams relation inserts into SQLite. The build path does not
+  retain a full `PlatformContext`, complete search-document vector and complete relation vector at
+  the same time.
 
 ## Implementation Dependencies
 

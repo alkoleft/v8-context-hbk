@@ -146,6 +146,14 @@ completed database, then atomically rename it over the target path. It must seri
 writers with a lock. Readers must observe either the previous complete index or the next complete
 index and must not observe a missing or partially written target database.
 
+T42 implementation note: index build consumes Syntax Assistant extraction through
+`SyntaxHelperReader::extract_into()` into a search-index builder rather than through the full
+`PlatformContext` convenience path. The builder stages search document drafts and the minimal
+identity inputs needed for T41 semantic ids, then writes documents to the temporary SQLite database
+and inserts relations from the finalized document set without materializing a complete
+`Vec<Relation>`. This preserves the SQLite artifact, query commands and atomic rebuild behavior; no
+cache layer, graph database, external search service or tuning knob was added.
+
 ### Why SQLite First
 
 SQLite with FTS5 is the first storage choice because it keeps the query path local and zero-service

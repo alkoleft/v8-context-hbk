@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::convert::Infallible;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io;
@@ -71,6 +72,329 @@ pub struct SearchDocument {
     pub relation_keys: Vec<String>,
     #[serde(skip)]
     pub owner_relation_key: Option<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct SearchIndexBuilder {
+    drafts: Vec<DocumentDraft>,
+    platform_types: Vec<PlatformTypeIdentityInput>,
+    query_tables: Vec<QueryTableIdentityInput>,
+    enums: Vec<EnumIdentityInput>,
+}
+
+impl SearchIndexBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn into_documents(self) -> Vec<SearchDocument> {
+        let identities =
+            DocumentIdentities::from_inputs(&self.platform_types, &self.query_tables, &self.enums);
+        let mut documents = self
+            .drafts
+            .into_iter()
+            .map(|draft| draft.into_document(&identities))
+            .collect::<Vec<_>>();
+        documents.sort_by(|left, right| {
+            kind_priority(&left.kind)
+                .cmp(&kind_priority(&right.kind))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        documents.dedup_by(|left, right| left.id == right.id);
+        documents
+    }
+}
+
+impl model::SyntaxHelperSink for SearchIndexBuilder {
+    type Error = Infallible;
+
+    fn global_context(&mut self, _record: model::GlobalContext) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn global_method(&mut self, record: model::GlobalMethod) -> Result<(), Self::Error> {
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "global_method",
+                None,
+                &record.name,
+                &record.signatures,
+                &record.return_types,
+                &[],
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::Immediate(document_identity("global_method", None, &record.name)),
+        ));
+        Ok(())
+    }
+
+    fn global_property(&mut self, record: model::GlobalProperty) -> Result<(), Self::Error> {
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "global_property",
+                None,
+                &record.name,
+                &[],
+                &[],
+                &record.type_refs,
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::Immediate(document_identity("global_property", None, &record.name)),
+        ));
+        Ok(())
+    }
+
+    fn global_context_event(
+        &mut self,
+        record: model::GlobalContextEvent,
+    ) -> Result<(), Self::Error> {
+        let owner = event_owner(&record);
+        let kind = match record.semantic.record_family {
+            model::RecordFamily::ModuleEvent => "module_event",
+            model::RecordFamily::TypeEvent => "type_event",
+            _ => "unknown_event",
+        };
+        self.drafts.push(DocumentDraft::new(
+            document(
+                kind,
+                owner.as_ref(),
+                &record.name,
+                &record.signatures,
+                &[],
+                &[],
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::Immediate(document_identity(kind, owner.as_ref(), &record.name)),
+        ));
+        Ok(())
+    }
+
+    fn platform_type(&mut self, record: model::PlatformType) -> Result<(), Self::Error> {
+        self.platform_types.push(PlatformTypeIdentityInput {
+            name_primary: record.name.primary.clone(),
+            semantic: record.semantic.clone(),
+        });
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "platform_type",
+                None,
+                &record.name,
+                &[],
+                &[],
+                &record
+                    .extends
+                    .iter()
+                    .map(type_ref_from_name)
+                    .collect::<Vec<_>>(),
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::PlatformType {
+                name_primary: record.name.primary,
+                semantic: record.semantic,
+            },
+        ));
+        Ok(())
+    }
+
+    fn query_table(&mut self, record: model::QueryTable) -> Result<(), Self::Error> {
+        let name = model::LocalizedName {
+            primary: record.name.clone(),
+            alias: record
+                .syntax
+                .as_ref()
+                .and_then(|syntax| syntax.alias.clone()),
+        };
+        self.query_tables.push(QueryTableIdentityInput {
+            name_primary: record.name.clone(),
+            identifier: record.identifier.clone(),
+            semantic: record.semantic.clone(),
+        });
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "query_table",
+                None,
+                &name,
+                &[],
+                &[],
+                &[],
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::QueryTable {
+                name_primary: record.name,
+                identifier: record.identifier,
+                semantic: record.semantic,
+            },
+        ));
+        Ok(())
+    }
+
+    fn type_method(&mut self, record: model::PlatformMethod) -> Result<(), Self::Error> {
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "type_method",
+                Some(&record.owner),
+                &record.name,
+                &record.signatures,
+                &record.return_types,
+                &[],
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::TypeOwned {
+                owner: record.owner,
+                semantic: record.semantic,
+            },
+        ));
+        Ok(())
+    }
+
+    fn type_property(&mut self, record: model::PlatformProperty) -> Result<(), Self::Error> {
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "type_property",
+                Some(&record.owner),
+                &record.name,
+                &[],
+                &[],
+                &record.type_refs,
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::TypeOwned {
+                owner: record.owner,
+                semantic: record.semantic,
+            },
+        ));
+        Ok(())
+    }
+
+    fn table_field(&mut self, record: model::QueryTableField) -> Result<(), Self::Error> {
+        let name = model::LocalizedName {
+            primary: record.name,
+            alias: None,
+        };
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "query_table_field",
+                Some(&record.owner),
+                &name,
+                &[],
+                &[],
+                &record.type_refs,
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::QueryMember {
+                owner: record.owner,
+                semantic: record.semantic,
+            },
+        ));
+        Ok(())
+    }
+
+    fn table_parameter(&mut self, record: model::QueryTableParameter) -> Result<(), Self::Error> {
+        let name = model::LocalizedName {
+            primary: record.name,
+            alias: None,
+        };
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "query_table_parameter",
+                Some(&record.owner),
+                &name,
+                &[],
+                &[],
+                &record.type_refs,
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::QueryMember {
+                owner: record.owner,
+                semantic: record.semantic,
+            },
+        ));
+        Ok(())
+    }
+
+    fn constructor(&mut self, record: model::Constructor) -> Result<(), Self::Error> {
+        let name = model::LocalizedName {
+            primary: record
+                .signatures
+                .first()
+                .map(|signature| signature.text.clone())
+                .unwrap_or_else(|| format!("Новый {}", record.owner.primary)),
+            alias: record.name.alias,
+        };
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "constructor",
+                Some(&record.owner),
+                &name,
+                &record.signatures,
+                &[],
+                &[],
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::TypeOwned {
+                owner: record.owner,
+                semantic: record.semantic,
+            },
+        ));
+        Ok(())
+    }
+
+    fn enum_definition(&mut self, record: model::EnumDefinition) -> Result<(), Self::Error> {
+        self.enums.push(EnumIdentityInput {
+            name_primary: record.name.primary.clone(),
+            source_html_path: record.source.html_path.clone(),
+        });
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "enum",
+                None,
+                &record.name,
+                &[],
+                &[],
+                &[],
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::Enum {
+                name_primary: record.name.primary,
+                source_html_path: record.source.html_path,
+            },
+        ));
+        Ok(())
+    }
+
+    fn enum_value(&mut self, record: model::EnumValue) -> Result<(), Self::Error> {
+        self.drafts.push(DocumentDraft::new(
+            document(
+                "enum_value",
+                Some(&record.owner),
+                &record.name,
+                &[],
+                &[],
+                &[],
+                record.description.as_deref(),
+                String::new(),
+            ),
+            DraftIdentity::EnumValue {
+                owner: record.owner,
+            },
+        ));
+        Ok(())
+    }
+
+    fn diagnostic(&mut self, _record: model::SyntaxHelperDiagnostic) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -149,6 +473,22 @@ pub fn build_index(
     metadata: &IndexMetadata,
     context: &model::PlatformContext,
 ) -> Result<(), SearchError> {
+    build_index_from_documents(path, metadata, documents_from_context(context))
+}
+
+pub fn build_index_from_builder(
+    path: impl AsRef<Path>,
+    metadata: &IndexMetadata,
+    builder: SearchIndexBuilder,
+) -> Result<(), SearchError> {
+    build_index_from_documents(path, metadata, builder.into_documents())
+}
+
+fn build_index_from_documents(
+    path: impl AsRef<Path>,
+    metadata: &IndexMetadata,
+    documents: Vec<SearchDocument>,
+) -> Result<(), SearchError> {
     let path = path.as_ref();
     if let Some(parent) = path
         .parent()
@@ -163,7 +503,7 @@ pub fn build_index(
     let temp_path = temp_index_path(path);
     remove_sqlite_artifacts(&temp_path)?;
 
-    let result = build_index_file(&temp_path, metadata, context).and_then(|()| {
+    let result = build_index_file(&temp_path, metadata, documents).and_then(|()| {
         remove_sqlite_sidecars(path)?;
         fs::rename(&temp_path, path).map_err(|source| SearchError::Io {
             path: path.to_path_buf(),
@@ -179,7 +519,7 @@ pub fn build_index(
 fn build_index_file(
     path: &Path,
     metadata: &IndexMetadata,
-    context: &model::PlatformContext,
+    documents: Vec<SearchDocument>,
 ) -> Result<(), SearchError> {
     let mut connection = Connection::open(path).map_err(|source| SearchError::Sqlite {
         path: path.to_path_buf(),
@@ -187,8 +527,6 @@ fn build_index_file(
     })?;
     create_schema(&connection, path)?;
     write_metadata(&connection, path, metadata)?;
-    let documents = documents_from_context(context);
-    let relations = relations_from_documents(&documents);
     let transaction = connection
         .transaction()
         .map_err(|source| SearchError::Sqlite {
@@ -196,7 +534,7 @@ fn build_index_file(
             source,
         })?;
     insert_documents(&transaction, path, &documents)?;
-    insert_relations(&transaction, path, &relations)?;
+    insert_relations_from_documents(&transaction, path, &documents)?;
     transaction.commit().map_err(|source| SearchError::Sqlite {
         path: path.to_path_buf(),
         source,
@@ -520,6 +858,134 @@ struct Relation {
     weight: i64,
 }
 
+#[derive(Debug)]
+struct DocumentDraft {
+    document: SearchDocument,
+    identity: DraftIdentity,
+}
+
+impl DocumentDraft {
+    fn new(document: SearchDocument, identity: DraftIdentity) -> Self {
+        Self { document, identity }
+    }
+
+    fn into_document(mut self, identities: &DocumentIdentities) -> SearchDocument {
+        match self.identity {
+            DraftIdentity::Immediate(id) => {
+                self.document.id = id;
+            }
+            DraftIdentity::PlatformType {
+                name_primary,
+                semantic,
+            } => {
+                self.document.id = identities.platform_type_identity_by(&name_primary, &semantic);
+                self.document
+                    .relation_keys
+                    .push(identity_relation_key(&self.document.id));
+            }
+            DraftIdentity::TypeOwned { owner, semantic } => {
+                let owner_identity = identities.type_owner_identity(&owner, &semantic);
+                self.document.id = owned_document_identity(
+                    &self.document.kind,
+                    &owner_identity,
+                    &self.document.name.primary,
+                );
+                self.document.owner_relation_key = Some(identity_relation_key(&owner_identity));
+            }
+            DraftIdentity::QueryTable {
+                name_primary,
+                identifier,
+                semantic,
+            } => {
+                self.document.id =
+                    identities.query_table_identity_by(&name_primary, &identifier, &semantic);
+                self.document
+                    .relation_keys
+                    .push(semantic_relation_key(&semantic, &name_primary));
+                self.document
+                    .relation_keys
+                    .push(identity_relation_key(&self.document.id));
+            }
+            DraftIdentity::QueryMember { owner, semantic } => {
+                let owner_identity = identities.query_member_owner_identity(&owner, &semantic);
+                self.document.id = owned_document_identity(
+                    &self.document.kind,
+                    &owner_identity,
+                    &self.document.name.primary,
+                );
+                self.document.owner_relation_key = Some(identity_relation_key(&owner_identity));
+            }
+            DraftIdentity::Enum {
+                name_primary,
+                source_html_path,
+            } => {
+                self.document.id = identities.enum_identity_by(&name_primary, &source_html_path);
+                self.document
+                    .relation_keys
+                    .push(identity_relation_key(&self.document.id));
+            }
+            DraftIdentity::EnumValue { owner } => {
+                let owner_identity = identities.enum_owner_identity(&owner);
+                self.document.id = owned_document_identity(
+                    "enum_value",
+                    &owner_identity,
+                    &self.document.name.primary,
+                );
+                self.document.owner_relation_key = Some(identity_relation_key(&owner_identity));
+            }
+        }
+        self.document
+    }
+}
+
+#[derive(Debug)]
+enum DraftIdentity {
+    Immediate(String),
+    PlatformType {
+        name_primary: String,
+        semantic: model::SemanticContext,
+    },
+    TypeOwned {
+        owner: model::LocalizedName,
+        semantic: model::SemanticContext,
+    },
+    QueryTable {
+        name_primary: String,
+        identifier: String,
+        semantic: model::SemanticContext,
+    },
+    QueryMember {
+        owner: model::LocalizedName,
+        semantic: model::SemanticContext,
+    },
+    Enum {
+        name_primary: String,
+        source_html_path: String,
+    },
+    EnumValue {
+        owner: model::LocalizedName,
+    },
+}
+
+#[derive(Debug)]
+struct PlatformTypeIdentityInput {
+    name_primary: String,
+    semantic: model::SemanticContext,
+}
+
+#[derive(Debug)]
+struct QueryTableIdentityInput {
+    name_primary: String,
+    identifier: String,
+    semantic: model::SemanticContext,
+}
+
+#[derive(Debug)]
+struct EnumIdentityInput {
+    name_primary: String,
+    source_html_path: String,
+}
+
 fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError> {
     connection
         .execute_batch(
@@ -733,30 +1199,168 @@ fn insert_name_keys(
     Ok(())
 }
 
-fn insert_relations(
+fn insert_relations_from_documents(
     connection: &Connection,
     path: &Path,
-    relations: &[Relation],
+    documents: &[SearchDocument],
 ) -> Result<(), SearchError> {
-    for relation in relations {
-        connection
-            .execute(
-                "INSERT INTO relations(source_id, target_id, edge_kind, label, evidence, weight)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    relation.source_id,
-                    relation.target_id,
-                    relation.edge_kind,
-                    relation.label,
-                    relation.evidence,
-                    relation.weight,
-                ],
-            )
-            .map_err(|source| SearchError::Sqlite {
-                path: path.to_path_buf(),
-                source,
-            })?;
+    let by_name = relation_lookup(documents);
+    let mut inserted = BTreeSet::new();
+    for document in documents {
+        insert_owner_relations(connection, path, document, &by_name, &mut inserted)?;
+        insert_constructor_relation(connection, path, document, &by_name, &mut inserted)?;
+        insert_type_reference_relations(connection, path, document, &by_name, &mut inserted)?;
     }
+    Ok(())
+}
+
+fn insert_owner_relations(
+    connection: &Connection,
+    path: &Path,
+    document: &SearchDocument,
+    by_name: &BTreeMap<String, (&SearchDocument, String)>,
+    inserted: &mut BTreeSet<(String, String, &'static str)>,
+) -> Result<(), SearchError> {
+    let Some(owner) = &document.owner else {
+        return Ok(());
+    };
+    let owner_key = document
+        .owner_relation_key
+        .as_deref()
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| normalize_lookup_key(&owner.primary));
+    let Some((_, owner_id)) = by_name.get(&owner_key) else {
+        return Ok(());
+    };
+    insert_relation_if_new(
+        connection,
+        path,
+        inserted,
+        Relation {
+            source_id: owner_id.clone(),
+            target_id: document.id.clone(),
+            edge_kind: "owns",
+            label: format!("{} owns {}", display_name(owner), document.name.primary),
+            evidence: "owner",
+            weight: 10,
+        },
+    )?;
+    insert_relation_if_new(
+        connection,
+        path,
+        inserted,
+        Relation {
+            source_id: document.id.clone(),
+            target_id: owner_id.clone(),
+            edge_kind: "member_of",
+            label: format!(
+                "{} member of {}",
+                document.name.primary,
+                display_name(owner)
+            ),
+            evidence: "owner",
+            weight: 20,
+        },
+    )
+}
+
+fn insert_constructor_relation(
+    connection: &Connection,
+    path: &Path,
+    document: &SearchDocument,
+    by_name: &BTreeMap<String, (&SearchDocument, String)>,
+    inserted: &mut BTreeSet<(String, String, &'static str)>,
+) -> Result<(), SearchError> {
+    if document.kind != "constructor" {
+        return Ok(());
+    }
+    let Some(owner) = &document.owner else {
+        return Ok(());
+    };
+    let Some((_, owner_id)) = by_name.get(&normalize_lookup_key(&owner.primary)) else {
+        return Ok(());
+    };
+    insert_relation_if_new(
+        connection,
+        path,
+        inserted,
+        Relation {
+            source_id: document.id.clone(),
+            target_id: owner_id.clone(),
+            edge_kind: "constructs",
+            label: format!("constructs {}", display_name(owner)),
+            evidence: "structured",
+            weight: 15,
+        },
+    )
+}
+
+fn insert_type_reference_relations(
+    connection: &Connection,
+    path: &Path,
+    document: &SearchDocument,
+    by_name: &BTreeMap<String, (&SearchDocument, String)>,
+    inserted: &mut BTreeSet<(String, String, &'static str)>,
+) -> Result<(), SearchError> {
+    for type_name in document
+        .type_refs
+        .iter()
+        .chain(document.return_types.iter())
+    {
+        let Some((_, target_id)) = by_name.get(&normalize_lookup_key(type_name)) else {
+            continue;
+        };
+        insert_relation_if_new(
+            connection,
+            path,
+            inserted,
+            Relation {
+                source_id: document.id.clone(),
+                target_id: target_id.clone(),
+                edge_kind: if document.return_types.contains(type_name) {
+                    "returns"
+                } else {
+                    "has_type"
+                },
+                label: type_name.clone(),
+                evidence: "type_ref",
+                weight: 30,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+fn insert_relation_if_new(
+    connection: &Connection,
+    path: &Path,
+    inserted: &mut BTreeSet<(String, String, &'static str)>,
+    relation: Relation,
+) -> Result<(), SearchError> {
+    if !inserted.insert((
+        relation.source_id.clone(),
+        relation.target_id.clone(),
+        relation.edge_kind,
+    )) {
+        return Ok(());
+    }
+    connection
+        .execute(
+            "INSERT INTO relations(source_id, target_id, edge_kind, label, evidence, weight)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                relation.source_id,
+                relation.target_id,
+                relation.edge_kind,
+                relation.label,
+                relation.evidence,
+                relation.weight,
+            ],
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
     Ok(())
 }
 
@@ -1082,19 +1686,9 @@ fn semantic_relation_key(semantic: &model::SemanticContext, fallback: &str) -> S
     normalize_lookup_key(&parts.join("."))
 }
 
+#[cfg(test)]
 fn relations_from_documents(documents: &[SearchDocument]) -> Vec<Relation> {
-    let mut by_name = BTreeMap::<String, (&SearchDocument, String)>::new();
-    for document in documents {
-        for key in document_lookup_keys(document) {
-            match by_name.get(&key) {
-                Some((existing, _))
-                    if kind_priority(&existing.kind) <= kind_priority(&document.kind) => {}
-                _ => {
-                    by_name.insert(key, (document, document.id.clone()));
-                }
-            }
-        }
-    }
+    let by_name = relation_lookup(documents);
     let mut relations = Vec::new();
     for document in documents {
         if let Some(owner) = &document.owner {
@@ -1176,6 +1770,22 @@ fn relations_from_documents(documents: &[SearchDocument]) -> Vec<Relation> {
     relations
 }
 
+fn relation_lookup(documents: &[SearchDocument]) -> BTreeMap<String, (&SearchDocument, String)> {
+    let mut by_name = BTreeMap::<String, (&SearchDocument, String)>::new();
+    for document in documents {
+        for key in document_lookup_keys(document) {
+            match by_name.get(&key) {
+                Some((existing, _))
+                    if kind_priority(&existing.kind) <= kind_priority(&document.kind) => {}
+                _ => {
+                    by_name.insert(key, (document, document.id.clone()));
+                }
+            }
+        }
+    }
+    by_name
+}
+
 fn document_lookup_keys(document: &SearchDocument) -> Vec<String> {
     let mut keys = vec![normalize_lookup_key(&document.name.primary)];
     if let Some(alias) = &document.name.alias {
@@ -1228,42 +1838,79 @@ struct DocumentIdentities {
 
 impl DocumentIdentities {
     fn new(context: &model::PlatformContext) -> Self {
+        let platform_types = context
+            .platform_types
+            .iter()
+            .map(|record| PlatformTypeIdentityInput {
+                name_primary: record.name.primary.clone(),
+                semantic: record.semantic.clone(),
+            })
+            .collect::<Vec<_>>();
+        let query_tables = context
+            .query_tables
+            .iter()
+            .map(|record| QueryTableIdentityInput {
+                name_primary: record.name.clone(),
+                identifier: record.identifier.clone(),
+                semantic: record.semantic.clone(),
+            })
+            .collect::<Vec<_>>();
+        let enums = context
+            .enums
+            .iter()
+            .map(|record| EnumIdentityInput {
+                name_primary: record.name.primary.clone(),
+                source_html_path: record.source.html_path.clone(),
+            })
+            .collect::<Vec<_>>();
+        Self::from_inputs(&platform_types, &query_tables, &enums)
+    }
+
+    fn from_inputs(
+        platform_types: &[PlatformTypeIdentityInput],
+        query_tables: &[QueryTableIdentityInput],
+        enums: &[EnumIdentityInput],
+    ) -> Self {
         let platform_type_counts = count_by(
-            context
-                .platform_types
+            platform_types
                 .iter()
-                .map(|record| base_name_key(&record.name.primary)),
+                .map(|record| base_name_key(&record.name_primary)),
         );
         let query_table_counts = count_by(
-            context
-                .query_tables
+            query_tables
                 .iter()
                 .map(|record| normalize_lookup_key(&record.identifier)),
         );
-        let platform_type_ids = context
-            .platform_types
+        let platform_type_ids = platform_types
             .iter()
             .map(|record| {
                 (
-                    semantic_record_key(&record.name.primary, &record.semantic),
-                    platform_type_identity(record, &platform_type_counts),
+                    semantic_record_key(&record.name_primary, &record.semantic),
+                    platform_type_identity(
+                        &record.name_primary,
+                        &record.semantic,
+                        &platform_type_counts,
+                    ),
                 )
             })
             .collect();
-        let query_table_ids = context
-            .query_tables
+        let query_table_ids = query_tables
             .iter()
             .map(|record| {
                 (
-                    semantic_relation_key(&record.semantic, &record.name),
-                    query_table_identity(record, &query_table_counts),
+                    semantic_relation_key(&record.semantic, &record.name_primary),
+                    query_table_identity(&record.identifier, &record.semantic, &query_table_counts),
                 )
             })
             .collect();
-        let enum_ids = context
-            .enums
+        let enum_ids = enums
             .iter()
-            .map(|record| (enum_base_key(record), enum_identity(record)))
+            .map(|record| {
+                (
+                    enum_base_key(&record.name_primary, &record.source_html_path),
+                    enum_identity(&record.name_primary, &record.source_html_path),
+                )
+            })
             .collect();
 
         Self {
@@ -1274,10 +1921,18 @@ impl DocumentIdentities {
     }
 
     fn platform_type_identity(&self, record: &model::PlatformType) -> String {
+        self.platform_type_identity_by(&record.name.primary, &record.semantic)
+    }
+
+    fn platform_type_identity_by(
+        &self,
+        name_primary: &str,
+        semantic: &model::SemanticContext,
+    ) -> String {
         self.platform_type_ids
-            .get(&semantic_record_key(&record.name.primary, &record.semantic))
+            .get(&semantic_record_key(name_primary, semantic))
             .cloned()
-            .unwrap_or_else(|| document_identity("platform_type", None, &record.name))
+            .unwrap_or_else(|| format!("platform_type:{}", clean_identity_part(name_primary)))
     }
 
     fn type_owner_identity(
@@ -1300,10 +1955,19 @@ impl DocumentIdentities {
     }
 
     fn query_table_identity(&self, record: &model::QueryTable) -> String {
+        self.query_table_identity_by(&record.name, &record.identifier, &record.semantic)
+    }
+
+    fn query_table_identity_by(
+        &self,
+        name_primary: &str,
+        identifier: &str,
+        semantic: &model::SemanticContext,
+    ) -> String {
         self.query_table_ids
-            .get(&semantic_relation_key(&record.semantic, &record.name))
+            .get(&semantic_relation_key(semantic, name_primary))
             .cloned()
-            .unwrap_or_else(|| format!("query_table:{}", clean_identity_part(&record.identifier)))
+            .unwrap_or_else(|| format!("query_table:{}", clean_identity_part(identifier)))
     }
 
     fn query_member_owner_identity(
@@ -1318,10 +1982,14 @@ impl DocumentIdentities {
     }
 
     fn enum_identity(&self, record: &model::EnumDefinition) -> String {
+        self.enum_identity_by(&record.name.primary, &record.source.html_path)
+    }
+
+    fn enum_identity_by(&self, name_primary: &str, source_html_path: &str) -> String {
         self.enum_ids
-            .get(&enum_base_key(record))
+            .get(&enum_base_key(name_primary, source_html_path))
             .cloned()
-            .unwrap_or_else(|| document_identity("enum", None, &record.name))
+            .unwrap_or_else(|| enum_identity(name_primary, source_html_path))
     }
 
     fn enum_owner_identity(&self, owner: &model::LocalizedName) -> String {
@@ -1349,12 +2017,13 @@ fn count_by(keys: impl Iterator<Item = String>) -> BTreeMap<String, usize> {
 }
 
 fn platform_type_identity(
-    record: &model::PlatformType,
+    name_primary: &str,
+    semantic: &model::SemanticContext,
     counts: &BTreeMap<String, usize>,
 ) -> String {
-    let base = clean_identity_part(&record.name.primary);
+    let base = clean_identity_part(name_primary);
     if counts
-        .get(&base_name_key(&record.name.primary))
+        .get(&base_name_key(name_primary))
         .copied()
         .unwrap_or(0)
         <= 1
@@ -1363,15 +2032,19 @@ fn platform_type_identity(
     } else {
         format!(
             "platform_type:{base}:{}",
-            semantic_variant(&record.semantic.owner_path)
+            semantic_variant(&semantic.owner_path)
         )
     }
 }
 
-fn query_table_identity(record: &model::QueryTable, counts: &BTreeMap<String, usize>) -> String {
-    let base = clean_identity_part(&record.identifier);
+fn query_table_identity(
+    identifier: &str,
+    semantic: &model::SemanticContext,
+    counts: &BTreeMap<String, usize>,
+) -> String {
+    let base = clean_identity_part(identifier);
     if counts
-        .get(&normalize_lookup_key(&record.identifier))
+        .get(&normalize_lookup_key(identifier))
         .copied()
         .unwrap_or(0)
         <= 1
@@ -1380,14 +2053,14 @@ fn query_table_identity(record: &model::QueryTable, counts: &BTreeMap<String, us
     } else {
         format!(
             "query_table:{base}:{}",
-            semantic_variant(&record.semantic.owner_path)
+            semantic_variant(&semantic.owner_path)
         )
     }
 }
 
-fn enum_identity(record: &model::EnumDefinition) -> String {
-    let base = clean_identity_part(&record.name.primary);
-    let kind = enum_kind(record);
+fn enum_identity(name_primary: &str, source_html_path: &str) -> String {
+    let base = clean_identity_part(name_primary);
+    let kind = enum_kind(source_html_path);
     format!("enum:{kind}:{base}")
 }
 
@@ -1458,17 +2131,17 @@ fn semantic_variant(owner_path: &[model::LocalizedName]) -> String {
         .unwrap_or_else(|| "semantic_variant".to_string())
 }
 
-fn enum_base_key(record: &model::EnumDefinition) -> String {
+fn enum_base_key(name_primary: &str, source_html_path: &str) -> String {
     format!(
         "{}:{}",
-        enum_kind(record),
-        base_name_key(&record.name.primary)
+        enum_kind(source_html_path),
+        base_name_key(name_primary)
     )
 }
 
-fn enum_kind(record: &model::EnumDefinition) -> &'static str {
-    if record.source.html_path.starts_with("objects/catalog2/")
-        || record.source.html_path == "objects/catalog2.html"
+fn enum_kind(source_html_path: &str) -> &'static str {
+    if source_html_path.starts_with("objects/catalog2/")
+        || source_html_path == "objects/catalog2.html"
     {
         "system"
     } else {
@@ -1703,6 +2376,7 @@ impl Drop for WriterLock {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use model::SyntaxHelperSink;
 
     #[test]
     fn index_supports_exact_keyword_fuzzy_and_related_queries() {
@@ -1748,6 +2422,48 @@ mod tests {
         assert!(names.contains(&"Элементы"));
         assert!(names.contains(&"Добавить"));
         assert!(names.contains(&"ЛевоеЗначение"));
+    }
+
+    #[test]
+    fn streaming_builder_preserves_context_document_and_relation_shape() {
+        let context = fixture_context();
+        let context_documents = documents_from_context(&context);
+        let builder_documents = builder_from_context(&context).into_documents();
+
+        assert_eq!(builder_documents, context_documents);
+        let context_relations = relations_from_documents(&context_documents)
+            .into_iter()
+            .map(|relation| (relation.source_id, relation.target_id, relation.edge_kind))
+            .collect::<Vec<_>>();
+        let builder_relations = relations_from_documents(&builder_documents)
+            .into_iter()
+            .map(|relation| (relation.source_id, relation.target_id, relation.edge_kind))
+            .collect::<Vec<_>>();
+        assert_eq!(builder_relations, context_relations);
+    }
+
+    #[test]
+    fn streaming_builder_builds_sqlite_index_with_expected_queries_and_relations() {
+        let path = temp_path("streaming-builder.sqlite");
+        build_index_from_builder(&path, &metadata(), builder_from_context(&fixture_context()))
+            .expect("streaming builder must build SQLite index");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let exact = index
+            .get_by_name("DataCompositionFilter")
+            .expect("exact lookup must work");
+        assert_eq!(exact[0].document.name.primary, "ОтборКомпоновкиДанных");
+
+        let related = index
+            .related_by_name("ОтборКомпоновкиДанных", 5, 20)
+            .expect("related search must work");
+        assert!(related.iter().any(|hit| {
+            hit.document.kind == "constructor"
+                && hit.document.name.primary == "Новый ОтборКомпоновкиДанных()"
+        }));
+        assert!(related.iter().any(|hit| {
+            hit.document.kind == "type_property" && hit.document.name.primary == "Элементы"
+        }));
     }
 
     #[test]
@@ -2030,6 +2746,53 @@ mod tests {
             global_context_events: vec![type_event("ОтборКомпоновкиДанных", "ПередЗаписью")],
             ..model::PlatformContext::default()
         }
+    }
+
+    fn builder_from_context(context: &model::PlatformContext) -> SearchIndexBuilder {
+        let mut builder = SearchIndexBuilder::new();
+        for record in context.global_contexts.iter().cloned() {
+            builder.global_context(record).unwrap();
+        }
+        for record in context.global_methods.iter().cloned() {
+            builder.global_method(record).unwrap();
+        }
+        for record in context.global_properties.iter().cloned() {
+            builder.global_property(record).unwrap();
+        }
+        for record in context.global_context_events.iter().cloned() {
+            builder.global_context_event(record).unwrap();
+        }
+        for record in context.platform_types.iter().cloned() {
+            builder.platform_type(record).unwrap();
+        }
+        for record in context.query_tables.iter().cloned() {
+            builder.query_table(record).unwrap();
+        }
+        for record in context.type_methods.iter().cloned() {
+            builder.type_method(record).unwrap();
+        }
+        for record in context.type_properties.iter().cloned() {
+            builder.type_property(record).unwrap();
+        }
+        for record in context.table_fields.iter().cloned() {
+            builder.table_field(record).unwrap();
+        }
+        for record in context.table_parameters.iter().cloned() {
+            builder.table_parameter(record).unwrap();
+        }
+        for record in context.constructors.iter().cloned() {
+            builder.constructor(record).unwrap();
+        }
+        for record in context.enums.iter().cloned() {
+            builder.enum_definition(record).unwrap();
+        }
+        for record in context.enum_values.iter().cloned() {
+            builder.enum_value(record).unwrap();
+        }
+        for record in context.diagnostics.iter().cloned() {
+            builder.diagnostic(record).unwrap();
+        }
+        builder
     }
 
     fn platform_type(primary: &str, alias: Option<&str>, description: &str) -> model::PlatformType {

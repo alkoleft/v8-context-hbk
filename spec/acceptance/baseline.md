@@ -1010,3 +1010,28 @@ Read-only SQLite checks confirmed:
 - query-table field/parameter relation endpoints use the final query-table identity;
 - form/form-extension `Параметры формы` pages are no longer indexed as `platform_type` records and
   are indexed as type properties owned by the form or extension type.
+
+T42 changed only the index build data flow. `syntax index` now streams extraction records into a
+search-index builder and inserts relations into SQLite without retaining the full `PlatformContext`,
+complete search document vector and complete relation vector together. The SQLite schema, atomic
+temporary rebuild, writer lock and read-only query path stayed unchanged.
+
+Release-profile T42 measurements used the built `target/release/v8-context-hbk` binary and GNU
+`time`:
+
+| Source / slice | Exit | Elapsed, s | Peak RSS, KiB | Documents | Relations | SQLite size |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` / before T42 | 0 | 20.25 | 617872 | 25082 | 65455 | 145M |
+| `shcntx_ru.hbk` / after T42 | 0 | 18.80 | 269612 | 25082 | 65455 | 145M |
+| `shcntx_root.hbk` / before T42 | 0 | 15.17 | 443532 | 25062 | 68670 | 65M |
+| `shcntx_root.hbk` / after T42 | 0 | 14.55 | 239972 | 25062 | 68670 | 65M |
+
+Read-only checks on the rebuilt Russian index found zero malformed semantic ids, zero form-parameter
+`platform_type` documents, zero relation endpoints missing from `documents`, two duplicated
+accounting-register query-table semantic variants and 28 query-table field edges using those final
+variant identities.
+
+Representative release-profile query checks against the rebuilt Russian index remained within
+NFR-QUERY-001: exact lookup for `ОтборКомпоновкиДанных` measured `0.00 s`, keyword search for
+`отбор скд` measured `0.04 s`, fuzzy search for `ОтборКомпоновкиДаных` measured `0.04 s`, and
+relationship search for `ОтборКомпоновкиДанных` measured `0.01 s`.
