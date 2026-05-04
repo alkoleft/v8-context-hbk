@@ -1150,3 +1150,49 @@ owner/member lookup plus relationship traversal, and task-oriented discovery for
 traversal from that id exposes query-table fields such as `Регистратор` and `НомерСообщения`.
 T53 did not change code, index schema or provider JSON shape; it fixed the acceptance corpus that
 future T49/T54 work must use before changing search storage or relationship coverage.
+
+T49 compared a temporary Tantivy full-text sidecar prototype with the accepted SQLite/FTS5 query
+index. The prototype was intentionally not wired into production CLI behavior: it read the
+already-built SQLite `documents` / `document_search` rows, wrote a Tantivy directory under
+`target/t49/`, and reported only measurement JSON. The prototype code and dependency were removed
+before task completion because Tantivy was not selected. SQLite remained the control for exact
+lookup, owner/member lookup, constructor lookup, deterministic provider JSON and relationship
+traversal.
+
+Release-profile T49 build measurements:
+
+| Source / artifact | Exit | Elapsed, s | Peak RSS, KiB | Documents | Relations | Size |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `shcntx_ru.hbk` / SQLite index | 0 | 15.35 | 302124 | 25082 | 65455 | 144M |
+| `shcntx_root.hbk` / SQLite index | 0 | 12.02 | 272600 | 25062 | 68670 | 65M |
+| RU SQLite rows / Tantivy sidecar | 0 | 0.95 | 123120 | 25082 | n/a | 7.3M |
+| root SQLite rows / Tantivy sidecar | 0 | 0.67 | 101884 | 25062 | n/a | 4.5M |
+
+Representative SQLite query measurements against `target/t49/sqlite-ru.sqlite`:
+
+| Query workflow | Elapsed, s |
+| --- | ---: |
+| exact `ОтборКомпоновкиДанных` | 0.00 |
+| owner/member `НастройкиКомпоновкиДанных.Отбор` | 0.00 |
+| constructor JSON `HTTPСоединение` | 0.00 |
+| constructor compact text `HTTPСоединение` | 0.00 |
+| constructor detailed text `HTTPСоединение` | 0.00 |
+| keyword `отбор скд` | 0.04 |
+| keyword `HTTP соединение` | 0.01 |
+| keyword `таблица регистра бухгалтерии` | 0.03 |
+| fuzzy `ОтборКомпоновкиДаных` | 0.04 |
+| root fuzzy `DataCompositionFiltter` | 0.03 |
+| related by name `ОтборКомпоновкиДанных` | 0.02 |
+| related by owner/member `НастройкиКомпоновкиДанных.Отбор` | 0.02 |
+| related constructor/type case `HTTPСоединение` | 0.01 |
+
+The SQLite control passed deterministic repeated-output comparisons and the UAT-SH-017 provider
+assertions for `HTTPСоединение` constructor parameters, `НастройкиКомпоновкиДанных.Отбор`
+relationship traversal, constructor/type relationship traversal from `HTTPСоединение`, root fuzzy
+lookup for `DataCompositionFiltter`, and accounting-register query-table discovery. Tantivy keyword
+search was fast, and root fuzzy `DataCompositionFiltter` did find `DataCompositionFilter`, but it
+did not justify replacing or splitting the accepted artifact: exact lookup, constructor lookup,
+provider JSON and relationships still needed SQLite; Russian fuzzy search for
+`ОтборКомпоновкиДаных` returned no hits in the prototype; and `таблица регистра бухгалтерии`
+ranked generic accounting-register table variants above the UAT-SH-017 accepted top hit. The T49
+decision is to retain the single SQLite/FTS5 query index and not add a storage selection knob.

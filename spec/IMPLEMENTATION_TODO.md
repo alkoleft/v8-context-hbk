@@ -17,10 +17,11 @@ export, schema, data-quality, performance, parser and query-search conclusions l
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T49. T50 defines the provider response contract, T51 was completed by
-the same schema-v3 structured callable fact mechanism as T48, T52 added analyzer-safe identity roots
-for query/provider traversal, and T53 added the source-backed BSL task scenario UAT that gates
-storage/search experiments. The queued roadmap comes from
+Next active unchecked task is T54. T49 retained SQLite/FTS5 after measured Tantivy comparison; T50
+defines the provider response contract, T51 was completed by the same schema-v3 structured callable
+fact mechanism as T48, T52 added analyzer-safe identity roots for query/provider traversal, and T53
+added the source-backed BSL task scenario UAT that gates storage/search experiments. The queued
+roadmap comes from
 `implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
 help during BSL development and code analysis, and toward a future typed local provider role for a
 BSL analyzer.
@@ -246,7 +247,7 @@ Result:
 - Verified against `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`: rebuilt index produced `25082`
   documents in `54105 ms`, and the UAT-SH-017 `jq` assertions passed.
 
-### [ ] T49. Evaluate Tantivy against the current SQLite/FTS5 query index
+### [x] T49. Evaluate Tantivy against the current SQLite/FTS5 query index
 
 Spec refs:
 
@@ -330,6 +331,27 @@ Verification:
 - UAT-SH-017 provider workflow assertions against the rebuilt RU index
 - measured RU/root build comparison for current SQLite/FTS5 and Tantivy prototype
 - measured query comparison for all comparison cases above
+
+Result:
+
+- Used a measurement-only Tantivy sidecar prototype during T49. It read accepted SQLite
+  `documents` / `document_search` rows, wrote a Tantivy directory under `target/`, and reported
+  keyword/fuzzy measurements as JSON without changing production CLI behavior. The prototype code
+  and dependency were removed before task completion because Tantivy was not selected.
+- Release-profile SQLite rebuilds from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` and
+  `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` produced the accepted schema-v3 row counts
+  (`25082`/`25062` documents, `65455`/`68670` relations). The Tantivy sidecars were much smaller
+  and fast to build from already materialized SQLite rows, but they did not cover exact lookup,
+  owner/member lookup, constructor lookup, deterministic provider JSON or relationship traversal
+  without SQLite.
+- Query measurements stayed within NFR-QUERY-001 for SQLite/FTS5. UAT-SH-017 assertions passed for
+  `HTTPСоединение` constructor parameters, `НастройкиКомпоновкиДанных.Отбор` traversal,
+  accounting-register query-table discovery, root English fuzzy typo lookup and a constructor/type
+  relationship case from `HTTPСоединение`.
+- Retained the single SQLite/FTS5 query artifact. Tantivy is not adopted for primary storage or
+  FTS-only sidecar in this task because the prototype lost accepted workflow quality: fuzzy
+  `ОтборКомпоновкиДаных` returned no hits and `таблица регистра бухгалтерии` ranked generic
+  accounting-register table variants above the accepted UAT-SH-017 top hit.
 
 ### [ ] T54. Improve relationship coverage from accepted BSL scenarios
 

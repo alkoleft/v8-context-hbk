@@ -571,3 +571,19 @@ T52 implementation note: query JSON now uses the provider envelope from this spe
 lookup plus relationship traversal from document id and owner/member roots. The human-friendly
 plain-name `syntax related --name` path remains, but analyzer workflows can avoid ambiguous
 same-name roots by using `--id` or `--owner --member`.
+
+T49 implementation note: a temporary Tantivy sidecar prototype was measured against the accepted
+SQLite/FTS5 index after the provider-envelope and BSL-task-scenario work, then removed before task
+completion because it was not selected. The prototype indexed the same `documents` /
+`document_search` rows as text fields and measured keyword/fuzzy search as a full-text sidecar only;
+exact lookup, constructor lookup, provider JSON assembly and relationship traversal still required
+the SQLite relational tables. The measured sidecar was fast and small, but it did not preserve
+accepted workflow quality by itself: Russian fuzzy lookup for `ОтборКомпоновкиДаных` returned no
+hits, and task search for `таблица регистра бухгалтерии` ranked generic accounting-register table
+variants ahead of the UAT-SH-017 accepted top hit
+`query_table:РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии`. Root/English fuzzy lookup for
+`DataCompositionFiltter` did find `DataCompositionFilter`, so the conclusion is not that Tantivy is
+unusable; it is that a simple FTS-only sidecar does not improve the accepted BSL/provider workflows
+enough to justify a second artifact and ranking path. SQLite/FTS5 therefore remains the selected
+query artifact. Tantivy remains a possible future FTS-only sidecar only if a new source-backed BSL
+scenario shows a search-quality gap that SQLite cannot address without worse complexity.
