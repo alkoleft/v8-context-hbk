@@ -434,7 +434,7 @@ fn print_constructor_text_hit(hit: &SearchHit, details: bool) {
         println!("{}", hit.document.name.primary);
     } else {
         for signature in &hit.document.signatures {
-            println!("{signature}");
+            println!("{}", signature.text);
         }
     }
 

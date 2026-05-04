@@ -238,6 +238,9 @@ One row per searchable API fact:
 - `owner_primary`;
 - `owner_alias`;
 - `signature_text`;
+- `signature_json`: structured callable signatures serialized with the public query/export-compatible
+  shape; signature text remains in `signature_text` for text presentation and FTS only;
+- `parameter_text`: internal searchable parameter names and type-reference terms;
 - `type_names`;
 - `return_names`;
 - `description`;
@@ -317,7 +320,8 @@ Ordinary FTS content table. It stores one searchable row per `documents` row and
 - `name_alias`;
 - `owner`;
 - `signatures`;
-- `parameters`;
+- `parameters`: searchable parameter names and type-reference terms for FTS only, not a public JSON
+  contract field;
 - `type_names`;
 - `return_names`;
 - `description`.
@@ -338,6 +342,11 @@ FTS5 virtual table over:
 
 Schema version `2` uses `document_search` as the external content table and populates
 `document_fts` with SQLite FTS5 rebuild semantics after content rows are loaded.
+
+Schema version `3` keeps the same SQLite/FTS5 artifact shape but stores structured callable
+signatures in `documents.signature_json`. Public query JSON for callable facts uses
+`signatures[].parameters[]` with `name`, `required`, `types` and optional `description`; raw
+parameter/type search terms remain in `documents.parameter_text` and `document_search.parameters`.
 
 The first ranking may use FTS5 `bm25()` plus deterministic tie breakers:
 

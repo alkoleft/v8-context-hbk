@@ -1102,3 +1102,14 @@ constructor parameters when parameter descriptions contain inline labels such as
 motivating `HTTPСоединение` constructor page should expose later parameters such as
 `ИспользоватьАутентификациюОС` after export or index rebuild. No consumer JSON or search-index
 schema change is required.
+
+T48 changed the provisional query-index schema to version `3` to keep public callable JSON separate
+from internal FTS search terms. The `documents` table now stores `signature_json` for structured
+callable facts, while `parameter_text` and `document_search.parameters` remain internal searchable
+text. `syntax constructors "HTTPСоединение" --format json` no longer exposes mixed
+`document.parameters`; callable parameters are returned under `signatures[].parameters[]` with
+`name`, `required`, `types` and optional `description`. Compact and detailed text output continue to
+print signature text for humans. The accepted T48 Russian rebuild from
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `25082` documents in `64652 ms`; read-only
+inspection found `schema_version=3` and matching `documents`, `document_search` and `document_fts`
+counts.

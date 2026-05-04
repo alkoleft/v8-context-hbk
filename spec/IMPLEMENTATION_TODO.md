@@ -17,12 +17,14 @@ export, schema, data-quality, performance, parser and query-search conclusions l
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active task is T48. T49-T55 are the current queued roadmap from
+Next active unchecked task is T50. T51 was completed by the same schema-v3 structured callable
+fact mechanism as T48, so T49 is intentionally parked until the provider contract and BSL task
+scenario UAT are fixed by T50/T53. The queued roadmap comes from
 `implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
 help during BSL development and code analysis, and toward a future typed local provider role for a
 BSL analyzer.
 
-### [ ] T48. Separate structured parameters from search terms in query JSON
+### [x] T48. Separate structured parameters from search terms in query JSON
 
 Spec refs:
 
@@ -79,6 +81,122 @@ Scope:
 - Keep search-only tokenization internal to the index/search implementation.
 - Do not revisit the T47 HTML section-boundary parser fix unless a regression test proves it is
   still involved.
+
+Result:
+
+- Public query JSON no longer exposes mixed `document.parameters` for callable facts.
+- `syntax-helper-search` schema version `3` stores structured `signature_json` and keeps raw
+  parameter/type search terms internal to `parameter_text` / `document_search.parameters`.
+- `syntax constructors "HTTPСоединение" --format json` exposes structured
+  `signatures[].parameters[]` with `name`, `required`, `types` and optional `description`; compact
+  and detailed text output still prints signature text.
+- Verified with `cargo test -p syntax-helper-search --lib`, `cargo test --workspace`, real RU index
+  rebuild from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`, JSON `jq` assertions and read-only
+  schema/count inspection (`schema_version=3`, `documents=document_search=document_fts=25082`).
+
+### [ ] T50. Define export-compatible provider response contract
+
+Spec refs:
+
+- FR-SH-PROVIDER-001
+- ADR-0006
+- UC-SH-005D
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Scope:
+
+- Define the provisional query/provider JSON response envelope for `syntax get`, `syntax
+  constructors`, `syntax search` and `syntax related`.
+- Use `syntax export` field names and shapes for shared platform facts wherever applicable.
+- Define where query-only metadata belongs: score, depth, relationship path, ambiguity and missing
+  result diagnostics.
+- State that compatibility with the current provisional `SearchHit<SearchDocument>` JSON is not a
+  goal when it conflicts with export-compatible provider facts.
+
+Verification:
+
+- Updated `spec/requirements/functional.md`, `spec/implementation/syntax-helper-query-cli.md`,
+  `spec/implementation/syntax-bsl-provider-plan.md` and UAT cases.
+- Review sample JSON for `HTTPСоединение` and `НастройкиКомпоновкиДанных.Отбор` against the
+  proposed contract before implementation.
+
+### [x] T51. Preserve structured callable facts in the query index
+
+Spec refs:
+
+- FR-SH-PROVIDER-001
+- UC-SH-005A
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Scope:
+
+- Preserve or reconstruct export-compatible structured signatures in query output for constructors,
+  methods and events.
+- Keep internal FTS/search tokens separate from public JSON.
+- Keep text output behavior stable unless the task explicitly updates CLI text UX.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- Rebuilt real RU index exposes `HTTPСоединение` constructor parameters as structured facts with
+  `name`, `required`, `types` and optional `description`.
+
+Result:
+
+- Completed by the T48 schema-v3 query-index change. `SearchDocument.signatures` now stores
+  structured signatures for methods, constructors and events; `documents.signature_json` preserves
+  those facts across SQLite rebuild/read-only query; `signature_text` remains presentation/FTS data.
+- Raw parameter/type search terms remain internal to `parameter_text` / `document_search.parameters`
+  and are not serialized as public `document.parameters`.
+- Verified by the T48 focused SQLite round-trip test, full workspace tests and real RU constructor
+  JSON assertions for `HTTPСоединение`.
+
+### [ ] T52. Add analyzer-safe identity query roots
+
+Spec refs:
+
+- FR-SH-PROVIDER-001
+- FR-SH-SEARCH-002
+- UC-SH-005B
+- UC-SH-005D
+
+Scope:
+
+- Add query entry points needed to resolve ambiguous facts deterministically, such as document-id
+  lookup and owner/member roots for relationship traversal.
+- Preserve current simple name-based CLI UX for human use.
+- Define explicit ambiguity and missing-result JSON behavior.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- UAT covers relationship traversal from `НастройкиКомпоновкиДанных.Отбор` without relying on an
+  ambiguous plain-name root.
+
+### [ ] T53. Add BSL task scenario UAT
+
+Spec refs:
+
+- UC-SH-005A
+- UC-SH-005B
+- UC-SH-005C
+- ADR-0006
+
+Scope:
+
+- Add source-backed BSL development scenarios that validate the utility against real code-analysis
+  questions.
+- Start with constructor lookup for `HTTPСоединение`, owner/member lookup for SKD filter access and
+  task-oriented search/relationship discovery for one query-table or register-table scenario.
+- Keep raw scenario run outputs under `target/`; promote only stable commands, assertions and
+  conclusions into UAT/baseline.
+
+Verification:
+
+- Updated `spec/acceptance/uat-test-cases.md`.
+- UAT commands are reproducible with a rebuilt local Syntax Assistant index.
 
 ### [ ] T49. Evaluate Tantivy against the current SQLite/FTS5 query index
 
@@ -160,100 +278,6 @@ Verification:
 - `cargo test --workspace`
 - measured RU/root build comparison for current SQLite/FTS5 and Tantivy prototype
 - measured query comparison for all comparison cases above
-
-### [ ] T50. Define export-compatible provider response contract
-
-Spec refs:
-
-- FR-SH-PROVIDER-001
-- ADR-0006
-- UC-SH-005D
-- `spec/implementation/syntax-bsl-provider-plan.md`
-
-Scope:
-
-- Define the provisional query/provider JSON response envelope for `syntax get`, `syntax
-  constructors`, `syntax search` and `syntax related`.
-- Use `syntax export` field names and shapes for shared platform facts wherever applicable.
-- Define where query-only metadata belongs: score, depth, relationship path, ambiguity and missing
-  result diagnostics.
-- State that compatibility with the current provisional `SearchHit<SearchDocument>` JSON is not a
-  goal when it conflicts with export-compatible provider facts.
-
-Verification:
-
-- Updated `spec/requirements/functional.md`, `spec/implementation/syntax-helper-query-cli.md`,
-  `spec/implementation/syntax-bsl-provider-plan.md` and UAT cases.
-- Review sample JSON for `HTTPСоединение` and `НастройкиКомпоновкиДанных.Отбор` against the
-  proposed contract before implementation.
-
-### [ ] T51. Preserve structured callable facts in the query index
-
-Spec refs:
-
-- FR-SH-PROVIDER-001
-- UC-SH-005A
-- `spec/implementation/syntax-bsl-provider-plan.md`
-
-Scope:
-
-- Preserve or reconstruct export-compatible structured signatures in query output for constructors,
-  methods and events.
-- Keep internal FTS/search tokens separate from public JSON.
-- Keep text output behavior stable unless the task explicitly updates CLI text UX.
-
-Verification:
-
-- `cargo test -p syntax-helper-search --lib`
-- `cargo test --workspace`
-- Rebuilt real RU index exposes `HTTPСоединение` constructor parameters as structured facts with
-  `name`, `required`, `types` and optional `description`.
-
-### [ ] T52. Add analyzer-safe identity query roots
-
-Spec refs:
-
-- FR-SH-PROVIDER-001
-- FR-SH-SEARCH-002
-- UC-SH-005B
-- UC-SH-005D
-
-Scope:
-
-- Add query entry points needed to resolve ambiguous facts deterministically, such as document-id
-  lookup and owner/member roots for relationship traversal.
-- Preserve current simple name-based CLI UX for human use.
-- Define explicit ambiguity and missing-result JSON behavior.
-
-Verification:
-
-- `cargo test -p syntax-helper-search --lib`
-- `cargo test --workspace`
-- UAT covers relationship traversal from `НастройкиКомпоновкиДанных.Отбор` without relying on an
-  ambiguous plain-name root.
-
-### [ ] T53. Add BSL task scenario UAT
-
-Spec refs:
-
-- UC-SH-005A
-- UC-SH-005B
-- UC-SH-005C
-- ADR-0006
-
-Scope:
-
-- Add source-backed BSL development scenarios that validate the utility against real code-analysis
-  questions.
-- Start with constructor lookup for `HTTPСоединение`, owner/member lookup for SKD filter access and
-  task-oriented search/relationship discovery for one query-table or register-table scenario.
-- Keep raw scenario run outputs under `target/`; promote only stable commands, assertions and
-  conclusions into UAT/baseline.
-
-Verification:
-
-- Updated `spec/acceptance/uat-test-cases.md`.
-- UAT commands are reproducible with a rebuilt local Syntax Assistant index.
 
 ### [ ] T54. Improve relationship coverage from accepted BSL scenarios
 

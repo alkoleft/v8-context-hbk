@@ -264,7 +264,7 @@ than building from consumer JSON export directories.
 
 Implemented first slice:
 
-- `syntax-helper-search` owns `index.sqlite` schema version `2`, read-only query opens, FTS5 keyword
+- `syntax-helper-search` owns `index.sqlite` schema version `3`, read-only query opens, FTS5 keyword
   search, prefix-bounded fuzzy candidate selection, exact name/alias and owner/member lookup, and
   directed owner/type-reference relationship traversal.
 - `v8-context-hbk syntax export/index/get/search/related` owns CLI argument parsing, index path

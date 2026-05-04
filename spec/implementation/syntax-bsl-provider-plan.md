@@ -36,8 +36,8 @@ export-compatible typed facts.
 
 | Area | Current State | Gap for ADR-0006 Goal | Planned Resolution |
 | --- | --- | --- | --- |
-| Public query JSON | CLI serializes `SearchHit<SearchDocument>` directly. | Internal search fields leak into public JSON; `parameters` mixes names and type names. | T48 returns export-compatible structured parameter facts and keeps search terms internal. |
-| Callable details | `signatures` are text strings in `SearchDocument`; structured domain `Signature` is not preserved in query JSON. | Analyzer cannot reliably inspect parameter requiredness, per-parameter types or descriptions from query output. | Add provider DTOs for structured signatures using the `syntax export` signature shape where applicable. |
+| Public query JSON | T48/T51 keep callable search terms internal and expose structured `signatures[].parameters[]` for callable facts. | Query output still lacks a provider response envelope and explicit query-metadata placement. | T50 defines the provider response contract around the now-structured callable facts. |
+| Callable details | T48/T51 preserve structured signatures in the query index through schema version `3` `signature_json`; signature text remains presentation/FTS data. | The provider contract still needs to state how structured callable facts are wrapped, versioned and combined with ambiguity/missing-result diagnostics. | T50 defines the envelope and metadata rules without duplicating the schema-v3 storage fix. |
 | Exact identity | JSON includes document ids, but command inputs mostly use names. `related` accepts only `--name`. | Analyzer workflows need stable disambiguation by id and owner/member, especially for same-name facts. | Add id-based and owner/member query entry points where ambiguity matters. |
 | Relationship traversal | Graph covers owner/member/type-reference/return/constructor edges and accepted SKD flow. | Code-facing workflows need reliable paths for creation/configuration tasks, not only nearby docs. | Add UAT scenarios and edge coverage for selected BSL development tasks before adding new graph features. |
 | Provider contract | No separate provider schema/envelope for query outputs. | Future analyzer cannot depend on response version, field semantics or field compatibility with export. | Define a provisional provider JSON contract anchored to `syntax export` shapes for shared facts. |
@@ -134,18 +134,19 @@ Resolution path:
 
 1. **T48: Fix public parameter JSON.** Separate internal search terms from typed public parameters.
    This removes the immediate blocker for constructor-call assistance.
-2. **T49: Measure storage/search alternatives against provider workflows.** Tantivy is evaluated
-   only against exact lookup, constructor lookup, deterministic JSON and relationship workflows.
-3. **T50: Define provider response contract.** Specify response envelope, schema/version fields,
+2. **T50: Define provider response contract.** Specify response envelope, schema/version fields,
    typed callable details, ambiguity/missing-result shape and export-compatibility rules for JSON
    output.
-4. **T51: Preserve structured callable facts in the query index.** Store or reconstruct structured
-   signatures/parameters for methods, constructors and events instead of returning only signature
-   strings.
-5. **T52: Add analyzer-safe identity queries.** Allow document-id and owner/member relationship
+3. **T51: Preserve structured callable facts in the query index.** Completed with the T48
+   schema-v3 structured callable fact change; future work should continue with the provider
+   envelope/identity/scenario tasks instead of duplicating this storage fix.
+4. **T52: Add analyzer-safe identity queries.** Allow document-id and owner/member relationship
    roots where names are ambiguous; keep text UX simple but make JSON stable for tools.
-6. **T53: Add BSL task scenario UAT.** Use real or source-backed BSL examples to validate
+5. **T53: Add BSL task scenario UAT.** Use real or source-backed BSL examples to validate
    constructor lookup, owner/member lookup and task-oriented relationship discovery.
+6. **T49: Measure storage/search alternatives against provider workflows.** Tantivy is evaluated
+   only after the provider contract and BSL task scenarios are in place, and only against exact
+   lookup, constructor lookup, deterministic JSON and relationship workflows.
 7. **T54: Improve relationship coverage from accepted scenarios.** Add only the edges or parser
    facts needed by failed BSL task scenarios.
 8. **T55: Decide provider boundary for downstream analyzers.** Choose whether the provider is CLI

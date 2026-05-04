@@ -401,6 +401,12 @@ V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
 V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
   cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
   syntax constructors "HTTPСоединение" --details > target/uat/constructors-httpconnection-details.txt
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax constructors "HTTPСоединение" --format json > target/uat/constructors-httpconnection.json
+jq -e 'all(.[]; .document | has("parameters") | not)' target/uat/constructors-httpconnection.json
+jq -e 'any(.[].document.signatures[]?.parameters[]?; .name == "ИспользоватьАутентификациюОС" and .required == false and (.types | index("Булево") != null))' target/uat/constructors-httpconnection.json
+jq -e 'all(.[].document.signatures[]?; has("text") | not)' target/uat/constructors-httpconnection.json
 ```
 
 Expected result:
@@ -420,6 +426,9 @@ Expected result:
   overload with `<Таймаут>`, `<ЗащищенноеСоединение>` and `<ИспользоватьАутентификациюОС>`.
 - Constructor details output still contains the overload signatures and adds available owner and
   description context without requiring JSON post-processing.
+- Constructor JSON for `HTTPСоединение` does not expose mixed `document.parameters`; callable
+  details use structured `signatures[].parameters[]` objects with `name`, `required`, `types` and
+  optional `description`, and signature text remains presentation data.
 - The command returns within the NFR-QUERY-001 provisional target when measured on the target
   workstation.
 

@@ -7,12 +7,12 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OpenFlags, OptionalExtension, Statement, params};
-use serde::Serialize;
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Statement, params, types::Type};
+use serde::{Deserialize, Serialize};
 use strsim::levenshtein;
 use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 2;
+pub const INDEX_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct IndexMetadata {
@@ -58,9 +58,7 @@ pub struct SearchDocument {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<model::LocalizedName>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub signatures: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub parameters: Vec<String>,
+    pub signatures: Vec<SearchSignature>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub type_refs: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -69,9 +67,46 @@ pub struct SearchDocument {
     pub description: Option<String>,
     pub preview: String,
     #[serde(skip)]
+    pub parameter_terms: Vec<String>,
+    #[serde(skip)]
     pub relation_keys: Vec<String>,
     #[serde(skip)]
     pub owner_relation_key: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchSignature {
+    #[serde(skip)]
+    pub text: String,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub parameters: Vec<SearchParameter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchParameter {
+    pub name: String,
+    pub required: bool,
+    #[serde(default)]
+    #[serde(rename = "types")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub type_refs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+impl SearchDocument {
+    fn signature_text_lines(&self) -> Vec<String> {
+        self.signatures
+            .iter()
+            .map(|signature| signature.text.clone())
+            .filter(|text| !text.is_empty())
+            .collect()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -407,11 +442,20 @@ pub enum SearchError {
         path: PathBuf,
         source: rusqlite::Error,
     },
+    Json {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
     WriterLockTimeout {
         path: PathBuf,
     },
     MissingIndex {
         path: PathBuf,
+    },
+    UnsupportedSchemaVersion {
+        path: PathBuf,
+        expected: u32,
+        actual: String,
     },
     AmbiguousLookup {
         name: String,
@@ -436,6 +480,13 @@ impl fmt::Display for SearchError {
                     path.display()
                 )
             }
+            Self::Json { path, source } => {
+                write!(
+                    f,
+                    "failed to encode search index document '{}': {source}",
+                    path.display()
+                )
+            }
             Self::WriterLockTimeout { path } => {
                 write!(
                     f,
@@ -445,6 +496,17 @@ impl fmt::Display for SearchError {
             }
             Self::MissingIndex { path } => {
                 write!(f, "search index does not exist: {}", path.display())
+            }
+            Self::UnsupportedSchemaVersion {
+                path,
+                expected,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "unsupported search index schema version in '{}': expected {expected}, got {actual}; rebuild the index",
+                    path.display()
+                )
             }
             Self::AmbiguousLookup { name, matches } => {
                 write!(
@@ -461,8 +523,10 @@ impl std::error::Error for SearchError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Sqlite { source, .. } => Some(source),
+            Self::Json { source, .. } => Some(source),
             Self::WriterLockTimeout { .. }
             | Self::MissingIndex { .. }
+            | Self::UnsupportedSchemaVersion { .. }
             | Self::AmbiguousLookup { .. } => None,
         }
     }
@@ -565,6 +629,7 @@ impl SearchIndex {
             path: path.to_path_buf(),
             source,
         })?;
+        validate_schema_version(&connection, path)?;
         Ok(Self {
             path: path.to_path_buf(),
             connection,
@@ -627,8 +692,8 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.parameter_text, d.type_names, \
-                 d.return_names, d.description, d.preview \
+                 d.owner_alias, d.signature_text, d.signature_json, d.parameter_text, \
+                 d.type_names, d.return_names, d.description, d.preview \
                  FROM document_names n \
                  JOIN documents d ON d.id = n.document_id \
                  WHERE n.key = ?1 \
@@ -690,8 +755,8 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.parameter_text, d.type_names, \
-                 d.return_names, d.description, d.preview \
+                 d.owner_alias, d.signature_text, d.signature_json, d.parameter_text, \
+                 d.type_names, d.return_names, d.description, d.preview \
                  FROM relations r \
                  JOIN documents d ON d.id = r.target_id \
                  WHERE r.source_id = ?1 AND r.edge_kind = 'owns' AND d.kind = ?2 \
@@ -720,8 +785,9 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.parameter_text, d.type_names, \
-                 d.return_names, d.description, d.preview, CAST(bm25(document_fts) * 1000000 AS INTEGER) \
+                 d.owner_alias, d.signature_text, d.signature_json, d.parameter_text, \
+                 d.type_names, d.return_names, d.description, d.preview, \
+                 CAST(bm25(document_fts) * 1000000 AS INTEGER) \
                  FROM document_fts \
                  JOIN documents d ON d.id = document_fts.document_id \
                  WHERE document_fts MATCH ?1 \
@@ -734,7 +800,7 @@ impl SearchIndex {
             .query_map(params![fts_query, sql_limit], |row| {
                 Ok(SearchHit {
                     document: document_from_row(row)?,
-                    score: row.get(12)?,
+                    score: row.get(13)?,
                 })
             })
             .map_err(|source| self.sqlite(source))?;
@@ -789,8 +855,8 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.parameter_text, d.type_names, \
-                 d.return_names, d.description, d.preview \
+                 d.owner_alias, d.signature_text, d.signature_json, d.parameter_text, \
+                 d.type_names, d.return_names, d.description, d.preview \
                  FROM document_names n \
                  JOIN documents d ON d.id = n.document_id \
                  WHERE n.key LIKE ?1 \
@@ -878,7 +944,7 @@ impl SearchIndex {
         self.connection
             .query_row(
                 "SELECT id, kind, name_primary, name_alias, owner_primary, owner_alias, \
-                 signature_text, parameter_text, type_names, return_names, description, preview \
+                 signature_text, signature_json, parameter_text, type_names, return_names, description, preview \
                  FROM documents WHERE id = ?1",
                 [id],
                 document_from_row,
@@ -892,6 +958,28 @@ impl SearchIndex {
             path: self.path.clone(),
             source,
         }
+    }
+}
+
+fn validate_schema_version(connection: &Connection, path: &Path) -> Result<(), SearchError> {
+    let actual = connection
+        .query_row(
+            "SELECT value FROM meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if actual == INDEX_SCHEMA_VERSION.to_string() {
+        Ok(())
+    } else {
+        Err(SearchError::UnsupportedSchemaVersion {
+            path: path.to_path_buf(),
+            expected: INDEX_SCHEMA_VERSION,
+            actual,
+        })
     }
 }
 
@@ -1053,6 +1141,7 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  owner_primary TEXT,
                  owner_alias TEXT,
                  signature_text TEXT NOT NULL,
+                 signature_json TEXT NOT NULL,
                  parameter_text TEXT NOT NULL,
                  type_names TEXT NOT NULL,
                  return_names TEXT NOT NULL,
@@ -1162,8 +1251,8 @@ fn insert_documents(
         .prepare(
             "INSERT INTO documents(
                 id, kind, kind_priority, name_primary, name_alias, owner_primary, owner_alias,
-                signature_text, parameter_text, type_names, return_names, description, preview
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                signature_text, signature_json, parameter_text, type_names, return_names, description, preview
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         )
         .map_err(|source| SearchError::Sqlite {
             path: path.to_path_buf(),
@@ -1190,8 +1279,13 @@ fn insert_documents(
 
     for (index, document) in documents.iter().enumerate() {
         let rowid = (index + 1) as i64;
-        let signatures = document.signatures.join("\n");
-        let parameters = document.parameters.join("\n");
+        let signatures = document.signature_text_lines().join("\n");
+        let signature_json =
+            serde_json::to_string(&document.signatures).map_err(|source| SearchError::Json {
+                path: path.to_path_buf(),
+                source,
+            })?;
+        let parameters = document.parameter_terms.join("\n");
         let type_names = document.type_refs.join("\n");
         let return_names = document.return_types.join("\n");
         let owner_primary = document.owner.as_ref().map(|owner| owner.primary.as_str());
@@ -1209,6 +1303,7 @@ fn insert_documents(
                 owner_primary,
                 owner_alias,
                 signatures,
+                signature_json,
                 parameters,
                 type_names,
                 return_names,
@@ -1720,7 +1815,7 @@ fn document(
     description: Option<&str>,
     id: String,
 ) -> SearchDocument {
-    let parameters = signatures
+    let parameter_terms = signatures
         .iter()
         .flat_map(|signature| signature.parameters.iter())
         .flat_map(|parameter| {
@@ -1734,7 +1829,7 @@ fn document(
         .collect::<Vec<_>>();
     let signatures = signatures
         .iter()
-        .map(|signature| signature.text.clone())
+        .map(SearchSignature::from)
         .collect::<Vec<_>>();
     let return_types = return_types
         .iter()
@@ -1750,15 +1845,52 @@ fn document(
         name: name.clone(),
         owner: owner.cloned(),
         signatures,
-        parameters,
         type_refs,
         return_types,
         description: description.map(ToOwned::to_owned),
         preview: description
             .map(|value| value.chars().take(180).collect())
             .unwrap_or_default(),
+        parameter_terms,
         relation_keys: Vec::new(),
         owner_relation_key: None,
+    }
+}
+
+impl From<&model::Signature> for SearchSignature {
+    fn from(signature: &model::Signature) -> Self {
+        Self {
+            text: signature.text.clone(),
+            parameters: signature
+                .parameters
+                .iter()
+                .map(SearchParameter::from)
+                .collect(),
+            title: signature
+                .variant
+                .as_ref()
+                .map(|variant| variant.title.clone())
+                .filter(|title| !title.is_empty()),
+            description: signature
+                .variant
+                .as_ref()
+                .and_then(|variant| variant.description.clone()),
+        }
+    }
+}
+
+impl From<&model::Parameter> for SearchParameter {
+    fn from(parameter: &model::Parameter) -> Self {
+        Self {
+            name: parameter.name.clone(),
+            required: parameter.required,
+            type_refs: parameter
+                .type_refs
+                .iter()
+                .map(|type_ref| type_ref.name.clone())
+                .collect(),
+            description: parameter.description.clone(),
+        }
     }
 }
 
@@ -1904,6 +2036,23 @@ fn document_lookup_keys(document: &SearchDocument) -> Vec<String> {
 }
 
 fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument> {
+    let signature_texts = split_lines(row.get(6)?);
+    let signature_json: String = row.get(7)?;
+    let mut signatures: Vec<SearchSignature> =
+        serde_json::from_str(&signature_json).map_err(|source| {
+            rusqlite::Error::FromSqlConversionFailure(7, Type::Text, Box::new(source))
+        })?;
+    let mut signature_texts = signature_texts.into_iter();
+    for signature in &mut signatures {
+        signature.text = signature_texts.next().unwrap_or_default();
+    }
+    signatures.extend(signature_texts.map(|text| SearchSignature {
+        text,
+        parameters: Vec::new(),
+        title: None,
+        description: None,
+    }));
+
     Ok(SearchDocument {
         id: row.get(0)?,
         kind: row.get(1)?,
@@ -1912,12 +2061,12 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
             alias: row.get(3)?,
         },
         owner: optional_localized_name(row.get(4)?, row.get(5)?),
-        signatures: split_lines(row.get(6)?),
-        parameters: split_lines(row.get(7)?),
-        type_refs: split_lines(row.get(8)?),
-        return_types: split_lines(row.get(9)?),
-        description: row.get(10)?,
-        preview: row.get(11)?,
+        signatures,
+        parameter_terms: split_lines(row.get(8)?),
+        type_refs: split_lines(row.get(9)?),
+        return_types: split_lines(row.get(10)?),
+        description: row.get(11)?,
+        preview: row.get(12)?,
         relation_keys: Vec::new(),
         owner_relation_key: None,
     })
@@ -2536,8 +2685,76 @@ mod tests {
             .expect("constructor lookup must work");
         assert_eq!(constructors.len(), 1);
         assert_eq!(
-            constructors[0].document.signatures,
+            constructors[0].document.signature_text_lines(),
             ["Новый ОтборКомпоновкиДанных()"]
+        );
+    }
+
+    #[test]
+    fn constructor_json_preserves_structured_parameters_after_sqlite_roundtrip() {
+        let path = temp_path("http-constructor-json.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![platform_type(
+                "HTTPСоединение",
+                Some("HTTPConnection"),
+                "HTTP connection.",
+            )],
+            constructors: vec![http_connection_constructor()],
+            ..model::PlatformContext::default()
+        };
+        build_index(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let constructors = index
+            .constructors_by_name("HTTPСоединение")
+            .expect("constructor lookup must work");
+        assert_eq!(constructors.len(), 1);
+        assert_eq!(
+            constructors[0].document.signatures[0].text,
+            "Новый HTTPСоединение(<Сервер>, <Порт>, <ИспользоватьАутентификациюОС>)"
+        );
+        assert!(
+            constructors[0]
+                .document
+                .parameter_terms
+                .contains(&"ИспользоватьАутентификациюОС".to_string())
+        );
+        assert!(
+            constructors[0]
+                .document
+                .parameter_terms
+                .contains(&"Булево".to_string())
+        );
+
+        let json = serde_json::to_value(&constructors).expect("search hits must serialize");
+        let document = &json[0]["document"];
+        assert!(
+            document.get("parameters").is_none(),
+            "public JSON must not expose mixed parameter search terms"
+        );
+        let signatures = document["signatures"]
+            .as_array()
+            .expect("structured signatures must be public JSON");
+        assert!(
+            signatures
+                .iter()
+                .all(|signature| signature.get("text").is_none()),
+            "signature text remains presentation data, not provider JSON"
+        );
+        let parameters = signatures[0]["parameters"]
+            .as_array()
+            .expect("signature parameters must be structured");
+        let os_auth = parameters
+            .iter()
+            .find(|parameter| parameter["name"] == "ИспользоватьАутентификациюОС")
+            .expect("OS authentication parameter must be present");
+        assert_eq!(os_auth["required"], false);
+        assert!(
+            os_auth["types"]
+                .as_array()
+                .expect("parameter types must be an array")
+                .iter()
+                .any(|value| value == "Булево")
         );
     }
 
@@ -2600,6 +2817,37 @@ mod tests {
         assert!(related.iter().any(|hit| {
             hit.document.kind == "type_property" && hit.document.name.primary == "Элементы"
         }));
+    }
+
+    #[test]
+    fn read_only_open_rejects_stale_schema_version() {
+        let path = temp_path("stale-schema.sqlite");
+        build_index(&path, &metadata(), &fixture_context()).expect("index must build");
+        {
+            let connection = Connection::open(&path).expect("index must open for fixture mutation");
+            connection
+                .execute(
+                    "UPDATE meta SET value = '2' WHERE key = 'schema_version'",
+                    [],
+                )
+                .expect("schema version fixture mutation must work");
+        }
+
+        let error = match SearchIndex::open_read_only(&path) {
+            Ok(_) => panic!("stale index must be rejected"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            SearchError::UnsupportedSchemaVersion {
+                expected: INDEX_SCHEMA_VERSION,
+                ..
+            }
+        ));
+        assert!(
+            error.to_string().contains("rebuild the index"),
+            "stale schema error should tell the user how to recover"
+        );
     }
 
     #[test]
@@ -3077,6 +3325,50 @@ mod tests {
             description: None,
             facts: model::SectionFacts::default(),
             source: source(signature),
+        }
+    }
+
+    fn http_connection_constructor() -> model::Constructor {
+        model::Constructor {
+            owner: name("HTTPСоединение", Some("HTTPConnection")),
+            name: name("По параметрам соединения", None),
+            semantic: model::SemanticContext::default(),
+            signatures: vec![model::Signature {
+                text: "Новый HTTPСоединение(<Сервер>, <Порт>, <ИспользоватьАутентификациюОС>)"
+                    .to_string(),
+                parameters: vec![
+                    model::Parameter {
+                        name: "Сервер".to_string(),
+                        required: true,
+                        type_refs: vec![model::TypeRef {
+                            name: "Строка".to_string(),
+                        }],
+                        description: Some("Имя сервера.".to_string()),
+                    },
+                    model::Parameter {
+                        name: "Порт".to_string(),
+                        required: false,
+                        type_refs: vec![model::TypeRef {
+                            name: "Число".to_string(),
+                        }],
+                        description: Some("Порт соединения.".to_string()),
+                    },
+                    model::Parameter {
+                        name: "ИспользоватьАутентификациюОС".to_string(),
+                        required: false,
+                        type_refs: vec![model::TypeRef {
+                            name: "Булево".to_string(),
+                        }],
+                        description: Some(
+                            "Использовать аутентификацию операционной системы.".to_string(),
+                        ),
+                    },
+                ],
+                variant: None,
+            }],
+            description: None,
+            facts: model::SectionFacts::default(),
+            source: source("HTTPСоединение"),
         }
     }
 
