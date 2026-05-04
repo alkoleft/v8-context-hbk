@@ -7,12 +7,12 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OpenFlags, OptionalExtension, Statement, params, types::Type};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Statement, params};
 use serde::{Deserialize, Serialize};
 use strsim::levenshtein;
 use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 3;
+pub const INDEX_SCHEMA_VERSION: u32 = 4;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 #[derive(Debug, Clone)]
@@ -443,10 +443,6 @@ pub enum SearchError {
         path: PathBuf,
         source: rusqlite::Error,
     },
-    Json {
-        path: PathBuf,
-        source: serde_json::Error,
-    },
     WriterLockTimeout {
         path: PathBuf,
     },
@@ -478,13 +474,6 @@ impl fmt::Display for SearchError {
                 write!(
                     f,
                     "failed to use search index '{}': {source}",
-                    path.display()
-                )
-            }
-            Self::Json { path, source } => {
-                write!(
-                    f,
-                    "failed to encode search index document '{}': {source}",
                     path.display()
                 )
             }
@@ -524,7 +513,6 @@ impl std::error::Error for SearchError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Sqlite { source, .. } => Some(source),
-            Self::Json { source, .. } => Some(source),
             Self::WriterLockTimeout { .. }
             | Self::MissingIndex { .. }
             | Self::UnsupportedSchemaVersion { .. }
@@ -599,6 +587,7 @@ fn build_index_file(
             source,
         })?;
     insert_documents(&transaction, path, &documents)?;
+    insert_normalized_facts(&transaction, path, &documents)?;
     rebuild_document_fts(&transaction, path)?;
     insert_relations_from_documents(&transaction, path, &documents)?;
     create_lookup_indexes(&transaction, path)?;
@@ -730,8 +719,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.signature_json, d.parameter_text, \
-                 d.type_names, d.return_names, d.description, d.preview \
+                 d.owner_alias, d.signature_text, d.description \
                  FROM document_names n \
                  JOIN documents d ON d.id = n.document_id \
                  WHERE n.key = ?1 \
@@ -749,6 +737,7 @@ impl SearchIndex {
         let hits = rows
             .collect::<Result<Vec<_>, _>>()
             .map_err(|source| self.sqlite(source))?;
+        let hits = self.hydrate_hits(hits)?;
         let ownerless = hits
             .iter()
             .filter(|hit| hit.document.owner.is_none())
@@ -793,8 +782,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.signature_json, d.parameter_text, \
-                 d.type_names, d.return_names, d.description, d.preview \
+                 d.owner_alias, d.signature_text, d.description \
                  FROM relations r \
                  JOIN documents d ON d.id = r.target_id \
                  WHERE r.source_id = ?1 AND r.edge_kind = 'owns' AND d.kind = ?2 \
@@ -810,8 +798,10 @@ impl SearchIndex {
                 })
             })
             .map_err(|source| self.sqlite(source))?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|source| self.sqlite(source))
+        let hits = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        self.hydrate_hits(hits)
     }
 
     fn keyword_search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, SearchError> {
@@ -823,8 +813,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.signature_json, d.parameter_text, \
-                 d.type_names, d.return_names, d.description, d.preview, \
+                 d.owner_alias, d.signature_text, d.description, \
                  CAST(bm25(document_fts) * 1000000 AS INTEGER) \
                  FROM document_fts \
                  JOIN documents d ON d.id = document_fts.document_id \
@@ -838,13 +827,14 @@ impl SearchIndex {
             .query_map(params![fts_query, sql_limit], |row| {
                 Ok(SearchHit {
                     document: document_from_row(row)?,
-                    score: row.get(13)?,
+                    score: row.get(8)?,
                 })
             })
             .map_err(|source| self.sqlite(source))?;
         let mut hits = rows
             .collect::<Result<Vec<_>, _>>()
             .map_err(|source| self.sqlite(source))?;
+        hits = self.hydrate_hits(hits)?;
         hits.sort_by(|left, right| {
             keyword_order(query, &left.document)
                 .cmp(&keyword_order(query, &right.document))
@@ -893,8 +883,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.signature_json, d.parameter_text, \
-                 d.type_names, d.return_names, d.description, d.preview \
+                 d.owner_alias, d.signature_text, d.description \
                  FROM document_names n \
                  JOIN documents d ON d.id = n.document_id \
                  WHERE n.key LIKE ?1 \
@@ -910,8 +899,10 @@ impl SearchIndex {
                 })
             })
             .map_err(|source| self.sqlite(source))?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|source| self.sqlite(source))
+        let hits = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        self.hydrate_hits(hits)
     }
 
     fn related(
@@ -979,16 +970,185 @@ impl SearchIndex {
     }
 
     fn document(&self, id: &str) -> Result<Option<SearchDocument>, SearchError> {
-        self.connection
+        let document = self
+            .connection
             .query_row(
                 "SELECT id, kind, name_primary, name_alias, owner_primary, owner_alias, \
-                 signature_text, signature_json, parameter_text, type_names, return_names, description, preview \
+                 signature_text, description \
                  FROM documents WHERE id = ?1",
                 [id],
                 document_from_row,
             )
             .optional()
+            .map_err(|source| self.sqlite(source))?;
+        document
+            .map(|document| self.hydrate_document(document))
+            .transpose()
+    }
+
+    fn hydrate_hits(&self, hits: Vec<SearchHit>) -> Result<Vec<SearchHit>, SearchError> {
+        hits.into_iter()
+            .map(|hit| {
+                self.hydrate_document(hit.document)
+                    .map(|document| SearchHit { document, ..hit })
+            })
+            .collect()
+    }
+
+    fn hydrate_document(
+        &self,
+        mut document: SearchDocument,
+    ) -> Result<SearchDocument, SearchError> {
+        let mut type_refs = Vec::new();
+        for ref_kind in document_public_type_ref_kinds(&document.kind) {
+            type_refs.extend(self.type_ref_names(&document.id, ref_kind)?);
+        }
+        document.type_refs = type_refs;
+        document.return_types = self.type_ref_names(&document.id, "return_type")?;
+        document.signatures = self.signatures_for(&document)?;
+        document.parameter_terms = self.parameter_terms_for(&document)?;
+        Ok(document)
+    }
+
+    fn type_ref_names(
+        &self,
+        document_id: &str,
+        ref_kind: &str,
+    ) -> Result<Vec<String>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT target_type_name
+                 FROM type_refs
+                 WHERE source_document_id = ?1 AND ref_kind = ?2
+                 ORDER BY source_signature_ordinal, source_parameter_ordinal, ordinal, target_type_name",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map(params![document_id, ref_kind], |row| row.get(0))
+            .map_err(|source| self.sqlite(source))?;
+        rows.collect::<Result<Vec<_>, _>>()
             .map_err(|source| self.sqlite(source))
+    }
+
+    fn signatures_for(
+        &self,
+        document: &SearchDocument,
+    ) -> Result<Vec<SearchSignature>, SearchError> {
+        let signature_texts = document.signature_text_lines();
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT signature_id, ordinal, title, description
+                 FROM signatures
+                 WHERE callable_id = ?1
+                 ORDER BY ordinal",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([document.id.as_str()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .map_err(|source| self.sqlite(source))?;
+        let rows = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        let mut signatures = Vec::new();
+        for (signature_id, ordinal, title, description) in rows {
+            signatures.push(SearchSignature {
+                text: signature_texts
+                    .get(ordinal as usize)
+                    .cloned()
+                    .unwrap_or_default(),
+                parameters: self.parameters_for(&signature_id)?,
+                title,
+                description,
+            });
+        }
+        if signatures.is_empty() {
+            signatures.extend(signature_texts.into_iter().map(|text| SearchSignature {
+                text,
+                parameters: Vec::new(),
+                title: None,
+                description: None,
+            }));
+        }
+        Ok(signatures)
+    }
+
+    fn parameters_for(&self, signature_id: &str) -> Result<Vec<SearchParameter>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT ordinal, name, required, description
+                 FROM parameters
+                 WHERE signature_id = ?1
+                 ORDER BY ordinal",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([signature_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, bool>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .map_err(|source| self.sqlite(source))?;
+        let rows = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        rows.into_iter()
+            .map(|(ordinal, name, required, description)| {
+                self.parameter_type_names(signature_id, ordinal)
+                    .map(|type_refs| SearchParameter {
+                        name,
+                        required,
+                        type_refs,
+                        description,
+                    })
+            })
+            .collect()
+    }
+
+    fn parameter_type_names(
+        &self,
+        signature_id: &str,
+        parameter_ordinal: i64,
+    ) -> Result<Vec<String>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT target_type_name
+                 FROM type_refs
+                 WHERE source_signature_id = ?1
+                   AND source_parameter_ordinal = ?2
+                   AND ref_kind = 'parameter_type'
+                 ORDER BY ordinal, target_type_name",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map(params![signature_id, parameter_ordinal], |row| row.get(0))
+            .map_err(|source| self.sqlite(source))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))
+    }
+
+    fn parameter_terms_for(&self, document: &SearchDocument) -> Result<Vec<String>, SearchError> {
+        let mut terms = BTreeSet::new();
+        for signature in &document.signatures {
+            for parameter in &signature.parameters {
+                terms.insert(parameter.name.clone());
+                terms.extend(parameter.type_refs.iter().cloned());
+            }
+        }
+        Ok(terms.into_iter().collect())
     }
 
     fn sqlite(&self, source: rusqlite::Error) -> SearchError {
@@ -1179,12 +1339,52 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  owner_primary TEXT,
                  owner_alias TEXT,
                  signature_text TEXT NOT NULL,
-                 signature_json TEXT NOT NULL,
-                 parameter_text TEXT NOT NULL,
-                 type_names TEXT NOT NULL,
-                 return_names TEXT NOT NULL,
-                 description TEXT,
-                 preview TEXT NOT NULL
+                 description TEXT
+             );
+             CREATE TABLE type_identities (
+                 type_id TEXT PRIMARY KEY,
+                 document_id TEXT NOT NULL REFERENCES documents(id),
+                 name_primary TEXT NOT NULL,
+                 name_alias TEXT
+             );
+             CREATE TABLE members (
+                 member_id TEXT PRIMARY KEY,
+                 owner_type_id TEXT NOT NULL REFERENCES type_identities(type_id),
+                 member_kind TEXT NOT NULL,
+                 name_primary TEXT NOT NULL,
+                 name_alias TEXT,
+                 document_id TEXT NOT NULL REFERENCES documents(id)
+             );
+             CREATE TABLE callables (
+                 callable_id TEXT PRIMARY KEY,
+                 document_id TEXT NOT NULL REFERENCES documents(id),
+                 callable_kind TEXT NOT NULL,
+                 owner_type_id TEXT REFERENCES type_identities(type_id)
+             );
+             CREATE TABLE signatures (
+                 signature_id TEXT PRIMARY KEY,
+                 callable_id TEXT NOT NULL REFERENCES callables(callable_id),
+                 ordinal INTEGER NOT NULL,
+                 title TEXT,
+                 description TEXT
+             );
+             CREATE TABLE parameters (
+                 parameter_id TEXT PRIMARY KEY,
+                 signature_id TEXT NOT NULL REFERENCES signatures(signature_id),
+                 ordinal INTEGER NOT NULL,
+                 name TEXT NOT NULL,
+                 required INTEGER NOT NULL,
+                 description TEXT
+             );
+             CREATE TABLE type_refs (
+                 source_document_id TEXT NOT NULL REFERENCES documents(id),
+                 ref_kind TEXT NOT NULL,
+                 ordinal INTEGER NOT NULL,
+                 source_signature_id TEXT REFERENCES signatures(signature_id),
+                 source_signature_ordinal INTEGER,
+                 source_parameter_ordinal INTEGER,
+                 target_type_name TEXT NOT NULL,
+                 target_type_id TEXT REFERENCES type_identities(type_id)
              );
              CREATE TABLE document_names (
                  key TEXT NOT NULL,
@@ -1237,6 +1437,14 @@ fn create_lookup_indexes(connection: &Connection, path: &Path) -> Result<(), Sea
         .execute_batch(
             "CREATE INDEX document_names_key_idx ON document_names(key, key_kind, document_id);
              CREATE INDEX documents_owner_member_idx ON documents(owner_primary, name_primary);
+             CREATE INDEX type_identities_name_idx ON type_identities(name_primary, name_alias, type_id);
+             CREATE INDEX members_owner_idx ON members(owner_type_id, member_kind, name_primary, document_id);
+             CREATE INDEX callables_document_idx ON callables(document_id, callable_kind);
+             CREATE INDEX signatures_callable_idx ON signatures(callable_id, ordinal);
+             CREATE INDEX parameters_signature_idx ON parameters(signature_id, ordinal);
+             CREATE INDEX type_refs_source_idx ON type_refs(source_document_id, ref_kind, ordinal);
+             CREATE INDEX type_refs_signature_idx ON type_refs(source_signature_id, source_parameter_ordinal, ordinal);
+             CREATE INDEX type_refs_target_idx ON type_refs(target_type_id, ref_kind, source_document_id);
              CREATE INDEX relations_source_idx ON relations(source_id, edge_kind, target_id);
              CREATE INDEX relations_target_idx ON relations(target_id, edge_kind, source_id);",
         )
@@ -1289,8 +1497,8 @@ fn insert_documents(
         .prepare(
             "INSERT INTO documents(
                 id, kind, kind_priority, name_primary, name_alias, owner_primary, owner_alias,
-                signature_text, signature_json, parameter_text, type_names, return_names, description, preview
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                signature_text, description
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )
         .map_err(|source| SearchError::Sqlite {
             path: path.to_path_buf(),
@@ -1318,11 +1526,6 @@ fn insert_documents(
     for (index, document) in documents.iter().enumerate() {
         let rowid = (index + 1) as i64;
         let signatures = document.signature_text_lines().join("\n");
-        let signature_json =
-            serde_json::to_string(&document.signatures).map_err(|source| SearchError::Json {
-                path: path.to_path_buf(),
-                source,
-            })?;
         let parameters = document.parameter_terms.join("\n");
         let type_names = document.type_refs.join("\n");
         let return_names = document.return_types.join("\n");
@@ -1341,12 +1544,7 @@ fn insert_documents(
                 owner_primary,
                 owner_alias,
                 signatures,
-                signature_json,
-                parameters,
-                type_names,
-                return_names,
                 document.description,
-                document.preview,
             ])
             .map_err(|source| SearchError::Sqlite {
                 path: path.to_path_buf(),
@@ -1375,6 +1573,369 @@ fn insert_documents(
             })?;
     }
     Ok(())
+}
+
+fn insert_normalized_facts(
+    connection: &Connection,
+    path: &Path,
+    documents: &[SearchDocument],
+) -> Result<(), SearchError> {
+    let by_name = relation_lookup(documents);
+    let mut type_id_by_key = BTreeMap::new();
+    let mut type_id_by_normalized_id = BTreeMap::new();
+    for document in documents
+        .iter()
+        .filter(|document| document.kind == "platform_type")
+    {
+        insert_type_lookup_key(
+            &mut type_id_by_key,
+            normalize_lookup_key(&document.name.primary),
+            &document.id,
+        );
+        if let Some(alias) = &document.name.alias {
+            insert_type_lookup_key(
+                &mut type_id_by_key,
+                normalize_lookup_key(alias),
+                &document.id,
+            );
+        }
+        type_id_by_normalized_id.insert(normalize_lookup_key(&document.id), document.id.clone());
+    }
+
+    let mut type_statement = connection
+        .prepare(
+            "INSERT INTO type_identities(type_id, document_id, name_primary, name_alias)
+             VALUES (?1, ?2, ?3, ?4)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let mut member_statement = connection
+        .prepare(
+            "INSERT INTO members(member_id, owner_type_id, member_kind, name_primary, name_alias, document_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let mut callable_statement = connection
+        .prepare(
+            "INSERT INTO callables(callable_id, document_id, callable_kind, owner_type_id)
+             VALUES (?1, ?2, ?3, ?4)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let mut signature_statement = connection
+        .prepare(
+            "INSERT INTO signatures(signature_id, callable_id, ordinal, title, description)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let mut parameter_statement = connection
+        .prepare(
+            "INSERT INTO parameters(parameter_id, signature_id, ordinal, name, required, description)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let mut type_ref_statement = connection
+        .prepare(
+            "INSERT INTO type_refs(
+                source_document_id, ref_kind, ordinal, source_signature_id,
+                source_signature_ordinal, source_parameter_ordinal, target_type_name, target_type_id
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
+    for document in documents
+        .iter()
+        .filter(|document| document.kind == "platform_type")
+    {
+        type_statement
+            .execute(params![
+                document.id,
+                document.id,
+                document.name.primary,
+                document.name.alias,
+            ])
+            .map_err(|source| SearchError::Sqlite {
+                path: path.to_path_buf(),
+                source,
+            })?;
+    }
+
+    for document in documents {
+        let owner_type_id =
+            owner_type_id(document, &by_name, &type_id_by_normalized_id).or_else(|| {
+                document
+                    .owner
+                    .as_ref()
+                    .and_then(|owner| type_id_by_key.get(&normalize_lookup_key(&owner.primary)))
+                    .and_then(|type_id| type_id.clone())
+            });
+
+        if let Some(owner_type_id) = owner_type_id.as_deref()
+            && matches!(
+                document.kind.as_str(),
+                "type_method" | "type_property" | "constructor" | "type_event"
+            )
+        {
+            member_statement
+                .execute(params![
+                    document.id,
+                    owner_type_id,
+                    document.kind,
+                    document.name.primary,
+                    document.name.alias,
+                    document.id,
+                ])
+                .map_err(|source| SearchError::Sqlite {
+                    path: path.to_path_buf(),
+                    source,
+                })?;
+        }
+
+        if is_callable_kind(&document.kind) {
+            callable_statement
+                .execute(params![
+                    document.id,
+                    document.id,
+                    document.kind,
+                    owner_type_id
+                ])
+                .map_err(|source| SearchError::Sqlite {
+                    path: path.to_path_buf(),
+                    source,
+                })?;
+            for (signature_ordinal, signature) in document.signatures.iter().enumerate() {
+                let signature_id = signature_id(&document.id, signature_ordinal);
+                signature_statement
+                    .execute(params![
+                        signature_id,
+                        document.id,
+                        signature_ordinal as i64,
+                        signature.title,
+                        signature.description,
+                    ])
+                    .map_err(|source| SearchError::Sqlite {
+                        path: path.to_path_buf(),
+                        source,
+                    })?;
+                for (parameter_ordinal, parameter) in signature.parameters.iter().enumerate() {
+                    let parameter_id = parameter_id(&signature_id, parameter_ordinal);
+                    parameter_statement
+                        .execute(params![
+                            parameter_id,
+                            signature_id,
+                            parameter_ordinal as i64,
+                            parameter.name,
+                            parameter.required,
+                            parameter.description,
+                        ])
+                        .map_err(|source| SearchError::Sqlite {
+                            path: path.to_path_buf(),
+                            source,
+                        })?;
+                    for (type_ordinal, type_name) in parameter.type_refs.iter().enumerate() {
+                        insert_type_ref(
+                            &mut type_ref_statement,
+                            path,
+                            &type_id_by_key,
+                            TypeRefRow {
+                                source_document_id: &document.id,
+                                ref_kind: "parameter_type",
+                                ordinal: type_ordinal,
+                                source_signature_id: Some(&signature_id),
+                                source_signature_ordinal: Some(signature_ordinal),
+                                source_parameter_ordinal: Some(parameter_ordinal),
+                                target_type_name: type_name,
+                            },
+                        )?;
+                    }
+                }
+            }
+        }
+
+        for (ordinal, type_name) in document.type_refs.iter().enumerate() {
+            insert_type_ref(
+                &mut type_ref_statement,
+                path,
+                &type_id_by_key,
+                TypeRefRow {
+                    source_document_id: &document.id,
+                    ref_kind: document_type_ref_kind(&document.kind),
+                    ordinal,
+                    source_signature_id: None,
+                    source_signature_ordinal: None,
+                    source_parameter_ordinal: None,
+                    target_type_name: type_name,
+                },
+            )?;
+        }
+        for (ordinal, type_name) in document.return_types.iter().enumerate() {
+            insert_type_ref(
+                &mut type_ref_statement,
+                path,
+                &type_id_by_key,
+                TypeRefRow {
+                    source_document_id: &document.id,
+                    ref_kind: "return_type",
+                    ordinal,
+                    source_signature_id: None,
+                    source_signature_ordinal: None,
+                    source_parameter_ordinal: None,
+                    target_type_name: type_name,
+                },
+            )?;
+        }
+        if document.kind == "constructor"
+            && let (Some(owner), Some(owner_type_id)) = (&document.owner, owner_type_id.as_deref())
+        {
+            insert_type_ref(
+                &mut type_ref_statement,
+                path,
+                &type_id_by_key,
+                TypeRefRow {
+                    source_document_id: &document.id,
+                    ref_kind: "constructor_result",
+                    ordinal: 0,
+                    source_signature_id: None,
+                    source_signature_ordinal: None,
+                    source_parameter_ordinal: None,
+                    target_type_name: &owner.primary,
+                },
+            )?;
+            connection
+                .execute(
+                    "UPDATE type_refs
+                     SET target_type_id = ?1
+                     WHERE source_document_id = ?2 AND ref_kind = 'constructor_result'",
+                    params![owner_type_id, document.id],
+                )
+                .map_err(|source| SearchError::Sqlite {
+                    path: path.to_path_buf(),
+                    source,
+                })?;
+        }
+    }
+    Ok(())
+}
+
+struct TypeRefRow<'a> {
+    source_document_id: &'a str,
+    ref_kind: &'a str,
+    ordinal: usize,
+    source_signature_id: Option<&'a str>,
+    source_signature_ordinal: Option<usize>,
+    source_parameter_ordinal: Option<usize>,
+    target_type_name: &'a str,
+}
+
+fn insert_type_ref(
+    statement: &mut Statement<'_>,
+    path: &Path,
+    type_id_by_key: &BTreeMap<String, Option<String>>,
+    row: TypeRefRow<'_>,
+) -> Result<(), SearchError> {
+    let target_type_id = type_id_by_key
+        .get(&normalize_lookup_key(row.target_type_name))
+        .and_then(|type_id| type_id.as_deref());
+    statement
+        .execute(params![
+            row.source_document_id,
+            row.ref_kind,
+            row.ordinal as i64,
+            row.source_signature_id,
+            row.source_signature_ordinal.map(|value| value as i64),
+            row.source_parameter_ordinal.map(|value| value as i64),
+            row.target_type_name,
+            target_type_id,
+        ])
+        .map(|_| ())
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })
+}
+
+fn insert_type_lookup_key(
+    type_id_by_key: &mut BTreeMap<String, Option<String>>,
+    key: String,
+    type_id: &str,
+) {
+    match type_id_by_key.get_mut(&key) {
+        Some(existing) if existing.as_deref() == Some(type_id) => {}
+        Some(existing) => {
+            *existing = None;
+        }
+        None => {
+            type_id_by_key.insert(key, Some(type_id.to_string()));
+        }
+    }
+}
+
+fn owner_type_id(
+    document: &SearchDocument,
+    by_name: &BTreeMap<String, (&SearchDocument, String)>,
+    type_id_by_normalized_id: &BTreeMap<String, String>,
+) -> Option<String> {
+    document
+        .owner_relation_key
+        .as_deref()
+        .and_then(|key| by_name.get(key))
+        .map(|(_, id)| id)
+        .and_then(|id| type_id_by_normalized_id.get(&normalize_lookup_key(id)))
+        .cloned()
+}
+
+fn is_callable_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "global_method"
+            | "type_method"
+            | "constructor"
+            | "module_event"
+            | "type_event"
+            | "unknown_event"
+    )
+}
+
+fn document_type_ref_kind(kind: &str) -> &'static str {
+    match kind {
+        "platform_type" => "extends",
+        "query_table_field" => "query_field_type",
+        "query_table_parameter" => "query_parameter_type",
+        _ => "property_type",
+    }
+}
+
+fn document_public_type_ref_kinds(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "platform_type" => &["extends"],
+        "query_table_field" => &["query_field_type"],
+        "query_table_parameter" => &["query_parameter_type"],
+        _ => &["property_type"],
+    }
+}
+
+fn signature_id(document_id: &str, ordinal: usize) -> String {
+    format!("{document_id}:signature:{ordinal}")
+}
+
+fn parameter_id(signature_id: &str, ordinal: usize) -> String {
+    format!("{signature_id}:parameter:{ordinal}")
 }
 
 fn rebuild_document_fts(connection: &Connection, path: &Path) -> Result<(), SearchError> {
@@ -1843,6 +2404,7 @@ fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocumen
     documents
 }
 
+#[allow(clippy::too_many_arguments)]
 fn document(
     kind: &str,
     owner: Option<&model::LocalizedName>,
@@ -1998,19 +2560,18 @@ fn relations_from_documents(documents: &[SearchDocument]) -> Vec<Relation> {
                 });
             }
         }
-        if document.kind == "constructor" {
-            if let Some(owner) = &document.owner {
-                if let Some((_, owner_id)) = by_name.get(&normalize_lookup_key(&owner.primary)) {
-                    relations.push(Relation {
-                        source_id: document.id.clone(),
-                        target_id: owner_id.clone(),
-                        edge_kind: "constructs",
-                        label: format!("constructs {}", display_name(owner)),
-                        evidence: "structured",
-                        weight: 15,
-                    });
-                }
-            }
+        if document.kind == "constructor"
+            && let Some(owner) = &document.owner
+            && let Some((_, owner_id)) = by_name.get(&normalize_lookup_key(&owner.primary))
+        {
+            relations.push(Relation {
+                source_id: document.id.clone(),
+                target_id: owner_id.clone(),
+                edge_kind: "constructs",
+                label: format!("constructs {}", display_name(owner)),
+                evidence: "structured",
+                weight: 15,
+            });
         }
         for type_name in document
             .type_refs
@@ -2074,23 +2635,7 @@ fn document_lookup_keys(document: &SearchDocument) -> Vec<String> {
 }
 
 fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument> {
-    let signature_texts = split_lines(row.get(6)?);
-    let signature_json: String = row.get(7)?;
-    let mut signatures: Vec<SearchSignature> =
-        serde_json::from_str(&signature_json).map_err(|source| {
-            rusqlite::Error::FromSqlConversionFailure(7, Type::Text, Box::new(source))
-        })?;
-    let mut signature_texts = signature_texts.into_iter();
-    for signature in &mut signatures {
-        signature.text = signature_texts.next().unwrap_or_default();
-    }
-    signatures.extend(signature_texts.map(|text| SearchSignature {
-        text,
-        parameters: Vec::new(),
-        title: None,
-        description: None,
-    }));
-
+    let description: Option<String> = row.get(7)?;
     Ok(SearchDocument {
         id: row.get(0)?,
         kind: row.get(1)?,
@@ -2099,12 +2644,23 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
             alias: row.get(3)?,
         },
         owner: optional_localized_name(row.get(4)?, row.get(5)?),
-        signatures,
-        parameter_terms: split_lines(row.get(8)?),
-        type_refs: split_lines(row.get(9)?),
-        return_types: split_lines(row.get(10)?),
-        description: row.get(11)?,
-        preview: row.get(12)?,
+        signatures: split_lines(row.get(6)?)
+            .into_iter()
+            .map(|text| SearchSignature {
+                text,
+                parameters: Vec::new(),
+                title: None,
+                description: None,
+            })
+            .collect(),
+        parameter_terms: Vec::new(),
+        type_refs: Vec::new(),
+        return_types: Vec::new(),
+        preview: description
+            .as_deref()
+            .map(|value| value.chars().take(180).collect())
+            .unwrap_or_default(),
+        description,
         relation_keys: Vec::new(),
         owner_relation_key: None,
     })
@@ -2406,7 +2962,7 @@ fn semantic_record_key(name: &str, semantic: &model::SemanticContext) -> String 
 }
 
 fn base_name_key(value: &str) -> String {
-    normalize_lookup_key(&strip_toc_duplicate_marker(value))
+    normalize_lookup_key(strip_toc_duplicate_marker(value))
 }
 
 fn clean_identity_part(value: &str) -> String {
@@ -2778,6 +3334,41 @@ mod tests {
         build_index(&path, &metadata(), &context).expect("index must build");
 
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let document_columns = table_columns(&index.connection, "documents");
+        assert!(!document_columns.contains(&"signature_json".to_string()));
+        assert!(!document_columns.contains(&"preview".to_string()));
+        assert_eq!(
+            index
+                .connection
+                .query_row(
+                    "SELECT COUNT(*)
+                     FROM parameters p
+                     JOIN type_refs r ON r.source_signature_id = p.signature_id
+                      AND r.source_parameter_ordinal = p.ordinal
+                     WHERE p.name = 'ИспользоватьАутентификациюОС'
+                       AND r.ref_kind = 'parameter_type'
+                       AND r.target_type_name = 'Булево'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("normalized parameter type ref query must work"),
+            1
+        );
+        assert_eq!(
+            index
+                .connection
+                .query_row(
+                    "SELECT COUNT(*)
+                     FROM type_refs
+                     WHERE source_document_id LIKE 'constructor:%HTTPСоединение%'
+                       AND ref_kind = 'constructor_result'
+                       AND target_type_id = 'platform_type:HTTPСоединение'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("constructor result type ref query must work"),
+            1
+        );
         let constructors = index
             .constructors_by_name("HTTPСоединение")
             .expect("constructor lookup must work");
@@ -2890,6 +3481,36 @@ mod tests {
         assert!(related.iter().any(|hit| {
             hit.document.kind == "type_property" && hit.document.name.primary == "Элементы"
         }));
+        assert_eq!(
+            index
+                .connection
+                .query_row(
+                    "SELECT COUNT(*)
+                     FROM members
+                     WHERE owner_type_id = 'platform_type:ОтборКомпоновкиДанных'
+                       AND member_kind = 'type_property'
+                       AND name_primary = 'Элементы'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("normalized member query must work"),
+            1
+        );
+        assert_eq!(
+            index
+                .connection
+                .query_row(
+                    "SELECT COUNT(*)
+                     FROM type_refs
+                     WHERE source_document_id = 'type_property:platform_type:НастройкиКомпоновкиДанных:Отбор'
+                       AND ref_kind = 'property_type'
+                       AND target_type_id = 'platform_type:ОтборКомпоновкиДанных'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("normalized property type ref query must work"),
+            1
+        );
     }
 
     #[test]
@@ -3105,6 +3726,50 @@ mod tests {
             1
         );
         assert!(!ids.iter().any(|id| id.contains("#&^@^%&*^#")));
+    }
+
+    #[test]
+    fn normalized_type_refs_do_not_choose_hidden_winner_for_duplicate_type_names() {
+        let path = temp_path("duplicate-type-ref.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![
+                platform_type_with_owner_path("ЭлементыФормы", "Форма"),
+                platform_type_with_owner_path("ЭлементыФормы", "ФормаКлиентскогоПриложения"),
+                platform_type_with_owner_path("ГруппаФормы", "Форма"),
+            ],
+            type_properties: vec![type_property_with_owner_path(
+                "ГруппаФормы",
+                "Форма",
+                "Элементы",
+                "ЭлементыФормы",
+            )],
+            ..model::PlatformContext::default()
+        };
+        build_index(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let duplicate_count: i64 = index
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM type_identities WHERE name_primary = 'ЭлементыФормы'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("duplicate type identity count must be readable");
+        assert_eq!(duplicate_count, 2);
+        let target_type_id: Option<String> = index
+            .connection
+            .query_row(
+                "SELECT target_type_id
+                 FROM type_refs
+                 WHERE source_document_id = 'type_property:platform_type:ГруппаФормы:Элементы'
+                   AND ref_kind = 'property_type'
+                   AND target_type_name = 'ЭлементыФормы'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("ambiguous type ref row must exist");
+        assert_eq!(target_type_id, None);
     }
 
     #[test]
@@ -3500,5 +4165,16 @@ mod tests {
         ));
         let _ = fs::remove_file(&path);
         path
+    }
+
+    fn table_columns(connection: &Connection, table: &str) -> Vec<String> {
+        let mut statement = connection
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .expect("table info statement must prepare");
+        statement
+            .query_map([], |row| row.get(1))
+            .expect("table info query must run")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("table info rows must parse")
     }
 }

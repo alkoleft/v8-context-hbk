@@ -1246,3 +1246,21 @@ accepted ADR-0007 and selected local CLI JSON over a prebuilt `syntax` index as 
 downstream analyzer-provider boundary. The SQLite index remains a rebuildable internal provider
 artifact, not a public table-level contract. Rust library APIs, analyzer-specific file artifacts,
 service boundaries and batch APIs require a future ADR or task with concrete consumer evidence.
+
+T56 changed the internal query-index SQLite schema to version `4` for analyzer-oriented storage
+normalization while preserving the provider CLI JSON boundary from ADR-0007. The `documents` table
+no longer stores `signature_json` or `preview`; provider facts are assembled from normalized
+relational rows. The new analyzer fact tables are `type_identities`, `members`, `callables`,
+`signatures`, `parameters` and `type_refs`. `document_search` / `document_fts` remain the lexical
+FTS projection, and `relations` remains the bounded graph traversal table.
+
+The accepted debug rebuild from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `25082`
+documents in `55459 ms` at `target/uat/t56-sh-search-ru.sqlite`. UAT-SH-017 provider assertions
+passed unchanged for `HTTPСоединение` constructor parameters, `НастройкиКомпоновкиДанных.Отбор`
+owner/member lookup and relationship traversal, accounting-register query-table discovery, and
+relationship traversal from the accepted accounting-register table id. Read-only SQL inspection
+confirmed `schema_version=4`, non-empty normalized tables, no `documents.signature_json`, no
+`documents.preview`, normalized parameter type refs for `ИспользоватьАутентификациюОС -> Булево`,
+normalized member facts for `НастройкиКомпоновкиДанных.Отбор`, and normalized property type refs to
+`ОтборКомпоновкиДанных`. Type references to duplicate platform type names keep `target_type_name`
+but leave `target_type_id` unset instead of choosing a hidden semantic variant.

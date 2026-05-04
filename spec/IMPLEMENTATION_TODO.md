@@ -17,7 +17,7 @@ export, schema, data-quality, performance, parser and query-search conclusions l
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T54. T49 retained SQLite/FTS5 after measured Tantivy comparison; T50
+No active unchecked task remains after T56. T49 retained SQLite/FTS5 after measured Tantivy comparison; T50
 defines the provider response contract, T51 was completed by the same schema-v3 structured callable
 fact mechanism as T48, T52 added analyzer-safe identity roots for query/provider traversal, and T53
 added the source-backed BSL task scenario UAT that gates storage/search experiments. The queued
@@ -422,7 +422,7 @@ Result:
 - No BSL parser, analyzer diagnostics, runtime 1C introspection, new storage selector or provider
   JSON shape change was added.
 
-### [ ] T56. Normalize query-index storage for analyzer type inference
+### [x] T56. Normalize query-index storage for analyzer type inference
 
 Spec refs:
 
@@ -491,6 +491,22 @@ Verification:
 - targeted SQL or library assertions prove that constructor signatures, parameter types,
   owner/member facts and return/property type refs are present in normalized tables
 - inspect the rebuilt schema to confirm analyzer-critical tables do not use JSON columns
+
+Result:
+
+- `syntax-helper-search` schema version `4` stores analyzer-critical facts in normalized
+  `type_identities`, `members`, `callables`, `signatures`, `parameters` and `type_refs` tables.
+- Removed `documents.signature_json` and `documents.preview`; provider output is assembled from
+  relational signature/parameter/type-reference rows, while compact preview text is generated from
+  `description` after read.
+- Kept `documents`, `document_names`, `document_search` / `document_fts` and `relations` as the
+  provider/search/graph projections. FTS text remains internal and is not exposed as public JSON.
+- No old-index migration compatibility was added; stale generated indexes are rejected by schema
+  version and must be rebuilt.
+- Verified with `cargo test -p syntax-helper-search --lib`, `cargo test --workspace`, a real RU
+  index rebuild from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` (`25082` documents in `55459 ms`),
+  unchanged UAT-SH-017 provider assertions, read-only SQL inspection of normalized tables, and a
+  regression check that duplicate type names do not receive a hidden `target_type_id` winner.
 
 ## Loop Rule
 

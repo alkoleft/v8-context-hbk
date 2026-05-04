@@ -285,6 +285,10 @@ python3 - <<'PY'
 import sqlite3
 con = sqlite3.connect("file:target/uat/sh-search-ru.sqlite?mode=ro", uri=True)
 cur = con.cursor()
+assert cur.execute("select value from meta where key='schema_version'").fetchone()[0] == "4"
+document_columns = {row[1] for row in cur.execute("pragma table_info(documents)")}
+assert "signature_json" not in document_columns
+assert "preview" not in document_columns
 assert not cur.execute(
     "select 1 from documents where id like '%.html%' or id like '%/%' or id like '%#&^@^%&*^#%' limit 1"
 ).fetchone()
@@ -297,6 +301,39 @@ assert cur.execute(
 assert cur.execute(
     "select 1 from relations where source_id like 'query_table:РегистрБухгалтерии:%' and target_id like 'query_table_field:query_table:РегистрБухгалтерии:%' limit 1"
 ).fetchone()
+for table in ["type_identities", "members", "callables", "signatures", "parameters", "type_refs"]:
+    assert cur.execute(f"select count(*) from {table}").fetchone()[0] > 0, table
+assert cur.execute("""
+select 1 from parameters p
+join type_refs r on r.source_signature_id = p.signature_id
+ and r.source_parameter_ordinal = p.ordinal
+where p.name='ИспользоватьАутентификациюОС'
+  and r.ref_kind='parameter_type'
+  and r.target_type_name='Булево'
+limit 1
+""").fetchone()
+assert cur.execute("""
+select 1 from members
+where owner_type_id='platform_type:НастройкиКомпоновкиДанных'
+  and member_kind='type_property'
+  and name_primary='Отбор'
+limit 1
+""").fetchone()
+assert cur.execute("""
+select 1 from type_refs
+where source_document_id='type_property:platform_type:НастройкиКомпоновкиДанных:Отбор'
+  and ref_kind='property_type'
+  and target_type_id='platform_type:ОтборКомпоновкиДанных'
+limit 1
+""").fetchone()
+assert not cur.execute("""
+select 1 from type_refs r
+where r.target_type_name in (
+  select name_primary from type_identities group by name_primary having count(*) > 1
+)
+and r.target_type_id is not null
+limit 1
+""").fetchone()
 PY
 ```
 
@@ -306,6 +343,11 @@ Expected result:
 - The index artifact is a SQLite database.
 - The database contains schema metadata plus deterministic document, exact-name, FTS and
   relationship-edge data.
+- The database uses search-index schema version `4`; analyzer-critical callable, parameter,
+  member and type-reference facts are present in normalized relational tables rather than
+  `documents.signature_json` or presentation-only `documents.preview` columns.
+- Type references to duplicate platform type names keep `target_type_name` but do not silently pin
+  `target_type_id` to one hidden winner.
 - The index build records locale `ru`, source locale `ru`, source HBK identity and index/extraction
   schema version.
 - The index command uses the effective index path from `V8_CONTEXT_HBK_SYNTAX_INDEX` when `--output`
