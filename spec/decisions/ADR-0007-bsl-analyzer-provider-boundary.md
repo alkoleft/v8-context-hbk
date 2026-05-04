@@ -20,8 +20,8 @@ combination of those boundaries.
 
 The current analyzer consumer is still future-facing. No concrete downstream analyzer process,
 library dependency graph, batching contract, release cadence or workspace integration rule has been
-validated yet. T56 is separately queued to normalize analyzer-relevant SQLite facts; it should not
-also choose a new integration boundary by accident.
+validated yet. T56 later normalized analyzer-relevant SQLite facts, but did not change this
+provider boundary.
 
 ## Decision
 
@@ -67,7 +67,7 @@ The boundary does not promise:
 
 ## Consequences
 
-- T56 may normalize the SQLite schema for analyzer facts, but provider JSON remains the external
+- T56 normalized the SQLite schema for analyzer facts, but provider JSON remains the external
   boundary unless a later ADR changes it.
 - The `syntax-helper-search` crate can expose Rust APIs needed by the local CLI and tests, but those
   APIs are not a public analyzer integration contract yet.
@@ -97,8 +97,8 @@ Rejected for the current stage.
 
 A file artifact could be efficient for batch import, but ADR-0001 already assigns batch platform
 fact export to `syntax export`, while ADR-0004 assigns interactive lookup to the search index and
-query commands. Adding another file contract before T56 storage normalization would duplicate
-schemas without proving a consumer need.
+query commands. T56 storage normalization made the internal index more suitable for analyzer-grade
+facts, but it did not create a concrete downstream consumer need for a second file contract.
 
 ### Add a Long-Running Provider Service
 
@@ -132,3 +132,5 @@ row layouts or internal FTS fields.
 - [x] The implementation specs point future analyzer work to CLI JSON as the current boundary.
 - [x] No BSL parser, analyzer implementation, service boundary or new storage selector is added by
       this decision.
+- [x] T56 storage normalization completed without making SQLite tables the public analyzer
+      integration contract.

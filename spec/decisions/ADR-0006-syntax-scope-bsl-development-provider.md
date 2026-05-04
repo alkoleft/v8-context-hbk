@@ -75,6 +75,22 @@ Future `syntax` work must use this decision filter:
 - README may remain user-facing CLI documentation, but durable direction and acceptance criteria
   belong in `spec/`.
 
+Implementation status after T48-T56:
+
+- T48/T51 removed the ambiguous public `parameters` array and preserved callable parameters as
+  structured `signatures[].parameters[]` facts.
+- T52 implemented the provider response envelope with explicit `status`, `diagnostics`,
+  `results[].fact` and query-only `results[].meta` fields.
+- T53 added UAT-SH-017 as the source-backed BSL task scenario corpus for constructor lookup,
+  owner/member lookup, relationship traversal and task-oriented query-table discovery.
+- T54 improved relationship traversal for the accepted SKD chain without adding prose heuristics,
+  parser scope or a new graph engine.
+- T55 accepted ADR-0007: local CLI JSON over a prebuilt `syntax` index is the first downstream
+  analyzer-provider boundary.
+- T56 normalized analyzer-critical SQLite storage into relational tables for type identities,
+  members, callables, signatures, parameters and type references. JSON fields are no longer the
+  source of truth for inference-critical facts.
+
 ## Alternatives Considered
 
 ### Treat `syntax` as a generic documentation search CLI
@@ -120,6 +136,9 @@ analysis assistance, with future analyzer-provider compatibility as a design con
    and shapes unless there is source-backed reason to add query-specific wrapper metadata.
 6. Do not change CLI behavior or index schema as part of this ADR by itself. Behavior changes must
    be done through the active task ledger and verified by tests/UAT.
+7. For analyzer-facing storage, keep inference-critical facts in relational rows rather than JSON
+   blobs or FTS text fields. Presentation/search projections may remain internal as long as provider
+   facts are assembled from typed data.
 
 ## Verification
 
@@ -132,3 +151,7 @@ analysis assistance, with future analyzer-provider compatibility as a design con
 - [x] T48 references the BSL analyzer provider direction when fixing public query JSON.
 - [x] The implementation plan records `syntax export` consumer JSON as the compatibility anchor for
       shared provider/query fact shapes.
+- [x] T53 records source-backed BSL task scenarios in UAT.
+- [x] T55 records the first downstream analyzer-provider boundary in ADR-0007.
+- [x] T56 stores analyzer-critical type/member/callable facts in normalized relational tables
+      instead of JSON fields.

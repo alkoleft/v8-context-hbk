@@ -79,6 +79,22 @@ variable or default path; it does not merge multiple index files.
 - Semantic search remains an additive extension after deterministic exact/keyword/relation search
   is useful and measured.
 
+Implementation status after T18/T48-T56:
+
+- The accepted CLI shape is implemented as `syntax export`, `syntax index`, `syntax get`,
+  `syntax constructors`, `syntax search` and `syntax related`.
+- The selected query artifact remains one local SQLite/FTS5 database. T49 measured a temporary
+  Tantivy sidecar against the accepted provider workflows and retained SQLite/FTS5 because Tantivy
+  did not preserve exact lookup, constructor lookup, deterministic provider JSON and relationship
+  traversal by itself.
+- Schema version `4` keeps the SQLite/FTS5 artifact but normalizes analyzer-critical facts into
+  relational tables: type identities, members, callables, signatures, parameters and type
+  references. Provider JSON is assembled from normalized rows, while FTS text remains a
+  presentation/search projection.
+- Relationship traversal stays bounded SQL over the local index. T54 improved accepted BSL scenario
+  coverage by prioritizing structured type-reference and return-type edges before broad owner
+  expansion.
+
 ## Alternatives Considered
 
 ### Add more subcommands under `v8-context-hbk syntax-helper`
@@ -172,16 +188,16 @@ queries need deterministic behavior, offline availability and clear acceptance t
 
 ## Verification
 
-- [ ] `spec/requirements/functional.md` contains Syntax Assistant query/search requirements.
-- [ ] `spec/requirements/non-functional.md` contains query latency expectations.
-- [ ] `spec/acceptance/uat-test-cases.md` contains black-box UAT cases for index build, exact lookup
+- [x] `spec/requirements/functional.md` contains Syntax Assistant query/search requirements.
+- [x] `spec/requirements/non-functional.md` contains query latency expectations.
+- [x] `spec/acceptance/uat-test-cases.md` contains black-box UAT cases for index build, exact lookup
       and relationship search.
-- [ ] Exact lookup for `ОтборКомпоновкиДанных` and `DataCompositionFilter` returns the same
+- [x] Exact lookup for `ОтборКомпоновкиДанных` and `DataCompositionFilter` returns the same
       platform type.
-- [ ] Owner/member lookup for `НастройкиКомпоновкиДанных.Отбор` returns a property with type
+- [x] Owner/member lookup for `НастройкиКомпоновкиДанных.Отбор` returns a property with type
       reference `ОтборКомпоновкиДанных`.
-- [ ] Relationship output for `ОтборКомпоновкиДанных` exposes constructor, `Элементы`,
+- [x] Relationship output for `ОтборКомпоновкиДанных` exposes constructor, `Элементы`,
       collection-item creation and filter item fields.
-- [ ] Query commands meet or explicitly measure against NFR-QUERY-001.
-- [ ] The index artifact is a rebuildable SQLite database with FTS5 enabled or the implementation
+- [x] Query commands meet or explicitly measure against NFR-QUERY-001.
+- [x] The index artifact is a rebuildable SQLite database with FTS5 enabled or the implementation
       records a measured blocker and updates this ADR before choosing another store.

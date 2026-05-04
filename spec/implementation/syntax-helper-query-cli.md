@@ -253,7 +253,7 @@ Key/value metadata:
 
 One row per searchable API fact:
 
-- `id` stable text key, for example `platform_type:ОтборКомпоновкиДанных`;
+- `id` stable search-index document identity, for example `platform_type:ОтборКомпоновкиДанных`;
 - `kind`;
 - `name_primary`;
 - `name_alias`;
@@ -269,10 +269,10 @@ parameter facts and type references are normalized in the analyzer-oriented tabl
 preview text, when needed by CLI text presentation, is generated from `description` after reading
 the row rather than stored as a SQLite column.
 
-Document ids are search-index identities, not parser provenance. They must not include HBK file
-paths, TOC paths, HTML paths, page titles, alias display strings such as `primary (alias)` or
-fallback source-path suffixes. Exact primary-name, alias and owner/member lookup belongs in
-`document_names`, not in `documents.id`.
+Document ids are search-index identities, not human-facing display labels, parser provenance or
+general API presentation keys. They must not include HBK file paths, TOC paths, HTML paths, page
+titles, alias display strings such as `primary (alias)` or fallback source-path suffixes. Exact
+primary-name, alias and owner/member lookup belongs in `document_names`, not in `documents.id`.
 
 Query table documents use `QueryTable.identifier` as the base identity. If real source data contains
 more than one query table with the same `QueryTable.identifier`, the index must append the minimal

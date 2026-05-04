@@ -164,6 +164,19 @@ Resolution path:
    facts live in relational tables rather than JSON fields: type identities, owned members,
    callables, signatures, parameters and typed references. Remove or confine presentation-only
    duplicates where possible.
+10. **T57: Define analyzer query primitives.** Specify provider operations for resolving type
+    identities, listing members, resolving owner/member access, retrieving callable overloads and
+    following type-reference edges without exposing SQLite tables as the public contract.
+11. **T58: Implement analyzer provider primitives.** Add the selected primitives to the CLI JSON
+    boundary over normalized storage while preserving existing `get`, `constructors`, `search` and
+    `related` workflows.
+12. **T59: Add expression-chain provider UAT.** Validate type/member inference support as a sequence
+    of provider calls over real Syntax Assistant data, without adding a BSL parser to this
+    repository.
+13. **T60: Harden ambiguity handling.** Ensure duplicate type/member cases return deterministic
+    `ambiguous` diagnostics instead of hidden winner selection.
+14. **T61: Evaluate analyzer batch lookup needs.** Decide from primitive/UAT evidence whether
+    analyzer workflows need a batch CLI JSON command or another boundary decision.
 
 ## Non-Goals for This Plan
 
