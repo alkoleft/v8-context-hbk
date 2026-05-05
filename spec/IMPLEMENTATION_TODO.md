@@ -22,10 +22,11 @@ conclusions live in `acceptance/baseline.md`, `source-evidence.md`, `requirement
 `implementation/syntax-helper-query-cli.md`, `implementation/syntax-bsl-provider-plan.md` and
 `implementation/solution-context-resolve.md`.
 
-The active open tasks are T86-T88. T66 completed the required non-platform HBK domain-analysis gate
-before T67. T67 completed the first resolver core and HBK-backed platform adapter slice. T89
+The active open tasks are T88 and T91. T66 completed the required non-platform HBK domain-analysis
+gate before T67. T67 completed the first resolver core and HBK-backed platform adapter slice. T89
 completed the first shared language-fact extraction/index fixture slice. T90 completed the remaining
-T66 follow-up for non-platform language resolver adapters. T86 is now the first unchecked task.
+T66 follow-up for non-platform language resolver adapters. T87 completed the residual
+query/provider mechanism classification. T88 is now the first unchecked task.
 
 ## Loop Rule
 
@@ -415,7 +416,7 @@ Completion notes:
   - `cargo test -p hbk-book --lib`
   - `cargo test --workspace`
 
-### [ ] T87. Classify residual duplicate query and provider mechanisms
+### [x] T87. Classify residual duplicate query and provider mechanisms
 
 Spec refs:
 
@@ -461,6 +462,31 @@ Verification:
 - If the classification creates code follow-up work, the new task names the targeted tests/UATs that
   must pass when that follow-up is implemented.
 
+Completion notes:
+
+- Classified `syntax get` root classification, lookup execution and provider status/result mapping
+  as accepted CLI-boundary separation. T71 already removed the stale duplicated classifier/lookup
+  tuple matching, so no new cleanup task is needed.
+- Classified `syntax-helper-search` lookup-key normalization as accepted search-index boundary
+  behavior. It is intentionally separate from export DTO shaping and from HBK/documentation path
+  normalization.
+- Classified provider/search DTO shaping as accepted CLI/provider boundary behavior:
+  `SearchHit`/`SearchDocument`/`RelatedHit`/`RelationStep` remain Rust query result structs, while
+  `v8-context-hbk-cli` owns the public provider JSON envelope and export-compatible fact shape.
+  T72 and T86 already covered the stale adapter/serde public-surface cleanup.
+- Classified duplicated `display_name` helpers as stale presentation duplication, not identity,
+  provider JSON or lookup contracts. Added T91 as the narrow follow-up because this exact localized
+  display rule remains duplicated in `syntax-helper-search` and `v8-context-hbk-cli`.
+- Classified HBK storage path, documentation link-target and Syntax Assistant member-link
+  normalization as distinct accepted component boundaries. T73 already consolidated only the shared
+  storage/page normalization layer.
+- No T86 follow-up was created. The only new cleanup follow-up is T91 for the stale duplicated
+  localized display-name presentation helper; all other reviewed residuals are accepted boundary
+  separation or already covered by archived cleanup evidence.
+- Verification passed:
+  - `git diff --check`
+  - `cargo test --workspace`
+
 ### [ ] T88. Fix current-toolchain clippy drift in `syntax-helper-extract`
 
 Spec refs:
@@ -487,4 +513,35 @@ Verification:
 
 - `cargo fmt --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo test --workspace`
+
+### [ ] T91. Collapse duplicated localized display-name presentation helper
+
+Spec refs:
+
+- T87
+- `spec/implementation/components.md`
+
+Problem:
+
+- T87 classified most duplicate-looking mechanisms as accepted boundary separation or already
+  covered by archived cleanup evidence.
+- The remaining stale duplication is a small localized-name `display_name` helper duplicated in
+  `syntax-helper-search` and `v8-context-hbk-cli`.
+- The helper is presentation logic only, but keeping the same rule in two crates makes later
+  presentation changes easy to drift.
+
+Scope:
+
+- Move the localized-name display rule to one narrow shared helper in an existing crate that both
+  `syntax-helper-search` and `v8-context-hbk-cli` already depend on.
+- Replace the duplicated local helpers with calls to the shared helper.
+- Preserve current human text output, search document text, relation labels and provider JSON.
+- Do not change lookup keys, search ranking, provider envelopes, export JSON, resolver facts,
+  SQLite schema or public identity rules.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test -p v8-context-hbk-cli`
 - `cargo test --workspace`

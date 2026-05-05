@@ -397,6 +397,32 @@ Implemented first slice:
   parameters as callable rows, and deriving relation rows from explicit extracted type references.
   This does not create a public SQLite table contract.
 
+T87 classifies the remaining duplicate-looking query/provider mechanisms as boundary decisions
+rather than immediate cleanup work:
+
+- `syntax get` root classification, lookup execution and provider status/result mapping are accepted
+  CLI-boundary separation. The classifier owns provider `query` JSON and lookup variant selection,
+  lookup execution owns `SearchIndex` calls and provider status/result mapping owns envelope
+  presentation. T71 already collapsed the stale duplicated classifier/lookup tuple matching.
+- `syntax-helper-search` lookup-key normalization is accepted search-index boundary behavior.
+  Exact name, owner/member, fuzzy candidate and relation-key lookups normalize through the local
+  search/index rules; this remains separate from export DTO shaping and from documentation/storage
+  path normalization.
+- Provider JSON DTO shaping is accepted CLI-boundary behavior. `SearchHit`, `SearchDocument`,
+  `RelatedHit` and `RelationStep` are Rust query result structs for in-workspace search/resolver
+  adapters, while `v8-context-hbk-cli` assembles the public provider envelope and fact JSON from
+  normalized facts using export-compatible field names. T72 removed the stale full/compact provider
+  adapter duplication, and T86 removed serde serialization from the search result structs.
+- `display_name` helpers are stale presentation duplication. The duplicate helper is not a public
+  identity, lookup or JSON contract mechanism, but the same localized-name display rule currently
+  exists in both `syntax-helper-search` and `v8-context-hbk-cli`. T91 should collapse that rule into
+  one narrow shared helper without changing search ranking, relation labels, text output or provider
+  JSON.
+- HBK storage/page path normalization, documentation link-target normalization and Syntax Assistant
+  member-link normalization are accepted distinct component boundaries. T73 consolidated shared
+  storage/page path handling in `hbk-book`, while retaining separate documentation-link and
+  member-link rules because they resolve different source syntaxes.
+
 ### Solution Context resolver
 
 Owns FR-CTX-RESOLVE-001 and NFR-RESOLVE-001.

@@ -148,6 +148,14 @@ directories are service data unless promoted here.
   fixtures for the selected `shlang_*`, `shquery_*` and `dcsui_*` pages. `syntax-helper-search`
   indexes those facts as `language_*` document kinds while keeping `syntax export` platform
   consumer JSON unchanged.
+- T87 classified the residual duplicate-looking query/provider mechanisms after the cleanup
+  sequence. The current boundary decisions require no code, CLI JSON, SQLite schema, export schema,
+  extraction or resolver behavior change: `syntax get` classifier/execution/status mapping remains
+  accepted CLI-boundary separation; search lookup-key normalization remains in
+  `syntax-helper-search`; public provider JSON shaping remains in `v8-context-hbk-cli`; storage
+  path, documentation link and Syntax Assistant member-link normalization remain distinct component
+  boundaries. The only stale duplication found is the localized display-name presentation helper,
+  queued as narrow follow-up T91.
 
 ## Post-T29 Runtime Regression To Fix
 
