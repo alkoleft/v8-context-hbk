@@ -833,18 +833,8 @@ mod tests {
         const LOCAL_FILE_HEADER_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x03, 0x04];
         const CENTRAL_DIRECTORY_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x01, 0x02];
 
-        patch_zip_u32_after_signature(
-            &mut bytes,
-            LOCAL_FILE_HEADER_SIGNATURE,
-            22,
-            reported_size,
-        );
-        patch_zip_u32_after_signature(
-            &mut bytes,
-            CENTRAL_DIRECTORY_SIGNATURE,
-            24,
-            reported_size,
-        );
+        patch_zip_u32_after_signature(&mut bytes, LOCAL_FILE_HEADER_SIGNATURE, 22, reported_size);
+        patch_zip_u32_after_signature(&mut bytes, CENTRAL_DIRECTORY_SIGNATURE, 24, reported_size);
         bytes
     }
 
