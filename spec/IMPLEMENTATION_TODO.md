@@ -1106,3 +1106,48 @@ Completion notes:
 - Consumer JSON behavior from T75 is unchanged: records without syntax omit `identifier`.
 - Search/index identity creation continues to produce deterministic non-empty internal document ids
   for missing-syntax query tables from TOC-derived semantic owner context.
+
+### [x] T83. Consolidate query-table identity and role derivation ownership
+
+Spec refs:
+
+- T74
+- T75
+- FR-SH-003
+- FR-EXPORT-001
+- `spec/implementation/components.md`
+
+Problem:
+
+- `parse_query_table` derives query-table name, identifier and role from page content, while the
+  extraction reader later overwrites name, identifier, role and semantic context with TOC-derived
+  data.
+- Two components currently own parts of the same derivation rule, which can make standalone parser
+  tests and full extraction behavior diverge.
+
+Scope:
+
+- Select one boundary for query-table identity and role derivation:
+  - parser owns page-local syntax/description only and reader assigns TOC-derived identity; or
+  - parser accepts the TOC-derived identity context explicitly.
+- Remove the duplicated assignment path that no longer owns the rule.
+- Preserve the T75 missing-syntax diagnostic and JSON contract.
+- Do not change unrelated page parsers or table field/parameter extraction.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p hbk-export --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Selected the boundary where query-table page parsers own page-local syntax/description only, and
+  `SyntaxHelperReader` owns TOC-derived display name, semantic context and `identifier` /
+  `table_role` derivation.
+- Removed parser-module ownership of query-table identifier and role helpers; reader-local tests now
+  protect primary/additional/missing-syntax derivation.
+- Preserved the T75 missing-syntax behavior: no synthesized identifier and `table_role=unknown`
+  when syntax is absent or empty.
+- Verification passed with `cargo test -p syntax-helper-extract --lib`,
+  `cargo test -p hbk-export --lib`, `cargo fmt --check` and `cargo test --workspace`.

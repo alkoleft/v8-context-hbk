@@ -209,6 +209,11 @@ Same-name global context events, event-like platform type/object pages and place
 remain distinct until an explicit source-family merge rule says otherwise. ADR-0005 owns this
 reading boundary.
 
+For query table records, page parsers own page-local syntax and description only. The extraction
+reader owns TOC-derived semantic context, display name and the derived query table `identifier` /
+`table_role` assignment. Missing or empty syntax keeps the T75 contract: no synthesized consumer
+identifier and `table_role=unknown`.
+
 The extractor must model TOC classification in two layers: branch kind and record family. Branches
 such as Automation/external API are category context for ordinary platform types, while module
 event groups produce `module_event` records. Platform type records must be able to distinguish at
@@ -278,9 +283,9 @@ unambiguous without adding a second owner field.
 
 Schema version 11 adds localized query table `syntax` and `identifier` to `query-tables.json`. The
 extractor parses the `Синтаксис` / `Syntax` section on query table pages, splits parenthesized
-source aliases into `syntax.alias`, and derives `table_role` from the `syntax.primary` shape before
-falling back to generic page names. A primary syntax with at most two dot-separated segments is a
-primary table; a longer primary syntax is an additional table. Query table identifiers are
+source aliases into `syntax.alias`, and derives `table_role` from the `syntax.primary` shape when
+syntax is present. A primary syntax with at most two dot-separated segments is a primary table; a
+longer primary syntax is an additional table. Query table identifiers are
 query-table-local consumer keys: primary tables use the first primary syntax segment, while
 additional tables use the primary identifier plus the table `name` normalized to CamelCase with
 whitespace, hyphens and punctuation treated as word separators. This does not introduce a

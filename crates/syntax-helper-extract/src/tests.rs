@@ -345,7 +345,7 @@ fn parses_query_table_field_and_parameter_pages() {
 }
 
 #[test]
-fn parses_query_table_syntax_and_identifier_from_page() {
+fn parses_query_table_syntax_without_claiming_toc_identity() {
     let toc = Toc::parse(
         r#"{
                 1
@@ -369,12 +369,12 @@ fn parses_query_table_syntax_and_identifier_from_page() {
         syntax.alias.as_deref(),
         Some("BusinessProcess.<Имя бизнес-процесса>")
     );
-    assert_eq!(table.identifier.as_deref(), Some("БизнесПроцесс"));
-    assert_eq!(table.table_role, QueryTableRole::Primary);
+    assert!(table.identifier.is_none());
+    assert_eq!(table.table_role, QueryTableRole::Unknown);
 }
 
 #[test]
-fn parses_additional_query_table_identifier_from_extended_syntax() {
+fn parses_additional_query_table_syntax_without_claiming_toc_identity() {
     let toc = Toc::parse(
         r#"{
                 1
@@ -398,11 +398,8 @@ fn parses_additional_query_table_identifier_from_extended_syntax() {
         syntax.alias.as_deref(),
         Some("BusinessProcess.<Имя бизнес-процесса>.Points")
     );
-    assert_eq!(
-        table.identifier.as_deref(),
-        Some("БизнесПроцессТаблицаТочекБизнесПроцессов")
-    );
-    assert_eq!(table.table_role, QueryTableRole::Additional);
+    assert!(table.identifier.is_none());
+    assert_eq!(table.table_role, QueryTableRole::Unknown);
 }
 
 #[test]
@@ -512,6 +509,67 @@ fn extraction_reports_missing_query_table_syntax_without_dropping_record() {
         .expect("missing syntax diagnostic must be emitted");
     assert_eq!(diagnostic.parser_stage, "query_table");
     assert_eq!(diagnostic.source.page_title, "Основная таблица");
+}
+
+#[test]
+fn extraction_assigns_query_table_identity_from_toc_context() {
+    let toc = Toc::parse(
+        r#"{
+                4
+                {1,0,3,2,3,4,{0,0,{0,0,{"ru","Универсальные коллекции значений"}},"/objects/catalog234.html"}}
+                {2,1,0,{0,0,{0,0,{"ru","Массив"}},"/objects/catalog234/Array.html"}}
+                {3,1,0,{0,0,{0,0,{"ru","Таблица точек бизнес-процессов"}},"/tables/catalog1/table2.html"}}
+                {4,1,0,{0,0,{0,0,{"ru","Наименование"}},"/tables/catalog1/table2/fields/Description.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let mut sink = RecordingSink::default();
+
+    extract_with_loader_into(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc,
+        |html_path| {
+            let html = match html_path {
+                "objects/catalog234.html" => {
+                    include_str!("../../../tests/fixtures/syntax-helper/root_catalog_types_ru.html")
+                }
+                "objects/catalog234/Array.html" => {
+                    include_str!("../../../tests/fixtures/syntax-helper/object_array_ru.html")
+                }
+                "tables/catalog1/table2.html" => {
+                    r#"<html><body><h1 class="V8SH_pagetitle">БизнесПроцесс.&lt;Имя бизнес-процесса&gt;.Точки (BusinessProcess.&lt;Имя бизнес-процесса&gt;.Points)</h1><p class="V8SH_chapter">Синтаксис</p>БизнесПроцесс.&lt;Имя бизнес-процесса&gt;.Точки (BusinessProcess.&lt;Имя бизнес-процесса&gt;.Points)<p class="V8SH_chapter">Поля</p><p class="V8SH_chapter">Описание:</p><p>Предназначена для получения точек бизнес-процессов.</p></body></html>"#
+                }
+                "tables/catalog1/table2/fields/Description.html" => {
+                    r#"<html><body><h1 class="V8SH_pagetitle">Наименование</h1><p class="V8SH_heading">Наименование</p>Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>. <br>Описание задачи.<br></body></html>"#
+                }
+                other => panic!("unexpected fixture page load: {other}"),
+            };
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_ru.hbk",
+                "ru",
+                html_path,
+                html,
+            ))
+        },
+        &mut sink,
+    )
+    .expect("fixture extraction must stream");
+
+    let table = sink
+        .query_tables
+        .iter()
+        .find(|table| table.name == "Таблица точек бизнес-процессов")
+        .expect("query table record must be kept");
+    assert_eq!(
+        table.identifier.as_deref(),
+        Some("БизнесПроцессТаблицаТочекБизнесПроцессов")
+    );
+    assert_eq!(table.table_role, QueryTableRole::Additional);
+    assert_eq!(table.semantic.record_family, RecordFamily::QueryTable);
+    assert_eq!(table.semantic.branch_kind, BranchKind::QueryTables);
+    assert!(sink.diagnostics.is_empty());
 }
 
 #[test]

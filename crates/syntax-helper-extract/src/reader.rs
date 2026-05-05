@@ -14,8 +14,7 @@ use crate::page_parser::{
     parse_global_context_for_mode, parse_global_method, parse_global_property,
     parse_platform_method, parse_platform_property, parse_platform_type_for_mode,
     parse_query_table, parse_query_table_field, parse_query_table_parameter,
-    parse_syntax_page_content_with_index_owned, query_table_identifier, query_table_role,
-    source_from_content, syntax_toc_index,
+    parse_syntax_page_content_with_index_owned, source_from_content, syntax_toc_index,
 };
 
 #[derive(Debug)]
@@ -269,6 +268,73 @@ fn missing_query_table_syntax_diagnostic(table: &QueryTable) -> SyntaxHelperDiag
     }
 }
 
+fn query_table_identifier(syntax: Option<&LocalizedName>, name: &str) -> Option<String> {
+    let Some(syntax) = syntax else {
+        return None;
+    };
+    let Some(primary) = primary_syntax_segment(syntax) else {
+        return None;
+    };
+    let identifier = if query_table_syntax_segment_count(syntax) > 2 {
+        format!("{}{}", primary, camel_case_identifier_part(name))
+    } else {
+        compact_identifier_part(primary)
+    };
+    (!identifier.is_empty()).then_some(identifier)
+}
+
+fn query_table_role(syntax: Option<&LocalizedName>) -> QueryTableRole {
+    if let Some(syntax) = syntax.filter(|syntax| !syntax.primary.trim().is_empty()) {
+        return if query_table_syntax_segment_count(syntax) <= 2 {
+            QueryTableRole::Primary
+        } else {
+            QueryTableRole::Additional
+        };
+    }
+    QueryTableRole::Unknown
+}
+
+fn query_table_syntax_segment_count(syntax: &LocalizedName) -> usize {
+    syntax
+        .primary
+        .trim()
+        .split('.')
+        .filter(|segment| !segment.trim().is_empty())
+        .count()
+}
+
+fn primary_syntax_segment(syntax: &LocalizedName) -> Option<&str> {
+    syntax
+        .primary
+        .trim()
+        .split('.')
+        .next()
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+}
+
+fn compact_identifier_part(value: &str) -> String {
+    value.split_whitespace().collect()
+}
+
+fn camel_case_identifier_part(value: &str) -> String {
+    let mut output = String::new();
+    let mut capitalize_next = true;
+    for ch in value.chars() {
+        if ch.is_alphanumeric() {
+            if capitalize_next {
+                output.extend(ch.to_uppercase());
+                capitalize_next = false;
+            } else {
+                output.push(ch);
+            }
+        } else {
+            capitalize_next = true;
+        }
+    }
+    output
+}
+
 fn module_context(semantic: &SemanticContext) -> ModuleEventContext {
     ModuleEventContext {
         kind: module_kind(&semantic.owner_path),
@@ -354,6 +420,51 @@ fn form_parameter_owner(semantic: &SemanticContext) -> Option<LocalizedName> {
 
 fn is_skipped_primitive_literal(semantic: &SemanticContext) -> bool {
     semantic.branch_kind == BranchKind::PrimitiveTypes && semantic.owner_path.len() > 2
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn name(primary: &str) -> LocalizedName {
+        LocalizedName {
+            primary: primary.to_string(),
+            alias: None,
+        }
+    }
+
+    #[test]
+    fn reader_derives_query_table_identity_from_toc_name_and_syntax() {
+        let primary = name("БизнесПроцесс.<Имя бизнес-процесса>");
+        assert_eq!(
+            query_table_identifier(Some(&primary), "Таблица бизнес-процессов").as_deref(),
+            Some("БизнесПроцесс")
+        );
+        assert_eq!(query_table_role(Some(&primary)), QueryTableRole::Primary);
+
+        let additional = name("БизнесПроцесс.<Имя бизнес-процесса>.Точки");
+        assert_eq!(
+            query_table_identifier(Some(&additional), "Таблица точек бизнес-процессов").as_deref(),
+            Some("БизнесПроцессТаблицаТочекБизнесПроцессов")
+        );
+        assert_eq!(
+            query_table_role(Some(&additional)),
+            QueryTableRole::Additional
+        );
+    }
+
+    #[test]
+    fn reader_does_not_synthesize_query_table_identity_without_syntax() {
+        assert_eq!(query_table_identifier(None, "Основная таблица"), None);
+        assert_eq!(query_table_role(None), QueryTableRole::Unknown);
+
+        let blank = name("  ");
+        assert_eq!(
+            query_table_identifier(Some(&blank), "Основная таблица"),
+            None
+        );
+        assert_eq!(query_table_role(Some(&blank)), QueryTableRole::Unknown);
+    }
 }
 
 fn apply_platform_type_semantics(platform_type: &mut PlatformType) {

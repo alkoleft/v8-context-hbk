@@ -119,14 +119,12 @@ pub(crate) fn parse_platform_type_for_mode(
 pub fn parse_query_table(content: &PageContent, source: SyntaxHelperSource) -> QueryTable {
     let syntax = query_table_syntax(content);
     let name = query_table_name(content);
-    let identifier = query_table_identifier(syntax.as_ref(), &name);
-    let table_role = query_table_role(syntax.as_ref());
     QueryTable {
         name,
         syntax,
-        identifier,
+        identifier: None,
         semantic: SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTable),
-        table_role,
+        table_role: QueryTableRole::Unknown,
         description: section_text(content, &["Описание:", "Description:"]),
         source,
     }
@@ -139,38 +137,7 @@ pub(crate) fn query_table_syntax(content: &PageContent) -> Option<LocalizedName>
 }
 
 fn query_table_name(content: &PageContent) -> String {
-    content
-        .source
-        .toc_title
-        .as_deref()
-        .map(|title| name_from_text(title).primary)
-        .unwrap_or_else(|| page_title_name(content).primary)
-}
-
-pub(crate) fn query_table_identifier(syntax: Option<&LocalizedName>, name: &str) -> Option<String> {
-    let Some(syntax) = syntax else {
-        return None;
-    };
-    let Some(primary) = primary_syntax_segment(syntax).filter(|segment| !segment.is_empty()) else {
-        return None;
-    };
-    let identifier = if query_table_syntax_segment_count(syntax) > 2 {
-        format!("{}{}", primary, camel_case_identifier_part(name))
-    } else {
-        compact_identifier_part(primary)
-    };
-    (!identifier.is_empty()).then_some(identifier)
-}
-
-pub(crate) fn query_table_role(syntax: Option<&LocalizedName>) -> QueryTableRole {
-    if let Some(syntax) = syntax.filter(|syntax| !syntax.primary.trim().is_empty()) {
-        return if query_table_syntax_segment_count(syntax) <= 2 {
-            QueryTableRole::Primary
-        } else {
-            QueryTableRole::Additional
-        };
-    }
-    QueryTableRole::Unknown
+    page_title_name(content).primary
 }
 
 pub fn parse_platform_method(content: &PageContent, source: SyntaxHelperSource) -> PlatformMethod {
@@ -684,47 +651,6 @@ fn signatures_from_section(
             variant: variant.cloned(),
         })
         .collect()
-}
-
-pub(crate) fn query_table_syntax_segment_count(syntax: &LocalizedName) -> usize {
-    syntax
-        .primary
-        .trim()
-        .split('.')
-        .filter(|segment| !segment.trim().is_empty())
-        .count()
-}
-
-fn primary_syntax_segment(syntax: &LocalizedName) -> Option<&str> {
-    syntax
-        .primary
-        .trim()
-        .split('.')
-        .next()
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-}
-
-fn compact_identifier_part(value: &str) -> String {
-    value.split_whitespace().collect()
-}
-
-fn camel_case_identifier_part(value: &str) -> String {
-    let mut output = String::new();
-    let mut capitalize_next = true;
-    for ch in value.chars() {
-        if ch.is_alphanumeric() {
-            if capitalize_next {
-                output.extend(ch.to_uppercase());
-                capitalize_next = false;
-            } else {
-                output.push(ch);
-            }
-        } else {
-            capitalize_next = true;
-        }
-    }
-    output
 }
 
 fn chapter_section_text(raw_html: &str, labels: &[&str]) -> Option<String> {
