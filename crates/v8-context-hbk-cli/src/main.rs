@@ -988,7 +988,7 @@ fn print_provider_hits_with_index(
                     add_provider_resolution_meta(search_index, &hit.document, &mut meta)?;
                 }
                 Ok(json!({
-                    "fact": document_fact(&hit.document),
+                    "fact": document_fact(&hit.document, ProviderFactDetail::Full),
                     "meta": meta,
                 }))
             })
@@ -1026,11 +1026,14 @@ fn print_provider_related_hits(
 
 fn related_result_value(hit: &RelatedHit, compact: bool) -> Value {
     json!({
-        "fact": if compact {
-            compact_document_fact(&hit.document)
-        } else {
-            document_fact(&hit.document)
-        },
+        "fact": document_fact(
+            &hit.document,
+            if compact {
+                ProviderFactDetail::Compact
+            } else {
+                ProviderFactDetail::Full
+            },
+        ),
         "meta": {
             "depth": hit.depth,
             "path": hit.via,
@@ -1139,7 +1142,13 @@ fn candidate_summary(document: &SearchDocument) -> Value {
     })
 }
 
-fn document_fact(document: &SearchDocument) -> Value {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProviderFactDetail {
+    Full,
+    Compact,
+}
+
+fn document_fact(document: &SearchDocument, detail: ProviderFactDetail) -> Value {
     let mut fact = json!({
         "id": document.id,
         "kind": document.kind,
@@ -1147,6 +1156,9 @@ fn document_fact(document: &SearchDocument) -> Value {
     });
     if let Some(owner) = &document.owner {
         fact["owner"] = json!(owner.primary);
+    }
+    if detail == ProviderFactDetail::Compact {
+        return fact;
     }
     if !document.signatures.is_empty() {
         fact["signatures"] = json!(document.signatures);
@@ -1159,18 +1171,6 @@ fn document_fact(document: &SearchDocument) -> Value {
     }
     if let Some(description) = &document.description {
         fact["description"] = json!(description);
-    }
-    fact
-}
-
-fn compact_document_fact(document: &SearchDocument) -> Value {
-    let mut fact = json!({
-        "id": document.id,
-        "kind": document.kind,
-        "name": document.name,
-    });
-    if let Some(owner) = &document.owner {
-        fact["owner"] = json!(owner.primary);
     }
     fact
 }
@@ -1432,7 +1432,7 @@ mod tests {
             owner_relation_key: None,
         };
 
-        let fact = compact_document_fact(&document);
+        let fact = document_fact(&document, ProviderFactDetail::Compact);
 
         assert_eq!(fact["id"], document.id);
         assert_eq!(fact["kind"], document.kind);
@@ -1441,6 +1441,40 @@ mod tests {
         assert!(fact.get("signatures").is_none());
         assert!(fact.get("return").is_none());
         assert!(fact.get("description").is_none());
+    }
+
+    #[test]
+    fn full_provider_fact_keeps_export_compatible_fields() {
+        let document = SearchDocument {
+            id: "type_method:platform_type:Тест:Выполнить".to_string(),
+            kind: "type_method".to_string(),
+            name: name("Выполнить"),
+            owner: Some(name("Тест")),
+            signatures: vec![syntax_helper_search::SearchSignature {
+                text: "Выполнить(Параметр)".to_string(),
+                parameters: Vec::new(),
+                title: None,
+                description: None,
+            }],
+            type_refs: vec!["Строка".to_string()],
+            return_types: vec!["Булево".to_string()],
+            description: Some("Detailed description".to_string()),
+            preview: "Detailed description".to_string(),
+            parameter_terms: Vec::new(),
+            relation_keys: Vec::new(),
+            owner_relation_key: None,
+        };
+
+        let fact = document_fact(&document, ProviderFactDetail::Full);
+
+        assert_eq!(fact["id"], document.id);
+        assert_eq!(fact["kind"], document.kind);
+        assert_eq!(fact["name"]["primary"], "Выполнить");
+        assert_eq!(fact["owner"], "Тест");
+        assert_eq!(fact["types"], json!(["Строка"]));
+        assert_eq!(fact["return"], json!(["Булево"]));
+        assert_eq!(fact["description"], "Detailed description");
+        assert_eq!(fact["signatures"].as_array().unwrap().len(), 1);
     }
 
     #[test]

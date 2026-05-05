@@ -690,7 +690,7 @@ Completion notes:
   classification.
 - Verification passed with `cargo test -p v8-context-hbk-cli` and `cargo test --workspace`.
 
-### [ ] T72. Collapse provider JSON adapter duplication
+### [x] T72. Collapse provider JSON adapter duplication
 
 Spec refs:
 
@@ -709,6 +709,15 @@ Verification:
 
 - `cargo test -p v8-context-hbk-cli`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Collapsed full and compact provider fact mapping into one `document_fact` adapter with an explicit
+  detail mode.
+- Preserved full provider JSON shape for export-compatible shared fields and compact `related`
+  output shape for identity/owner-only review results.
+- Added focused CLI tests for both compact and full provider fact shapes.
+- Verification passed with `cargo test -p v8-context-hbk-cli` and `cargo test --workspace`.
 
 ### [ ] T73. Normalize HBK/page path handling boundaries
 
