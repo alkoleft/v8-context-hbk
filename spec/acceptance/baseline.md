@@ -1444,3 +1444,15 @@ explicit fake cross-domain type relations, platform adapter lookup over a `Searc
 provider documents from the platform adapter. The adapter fixture keeps exact type resolution,
 member listing, callable lookup and relation traversal under the provisional NFR-RESOLVE-001
 `100 ms` target after source open.
+
+T90 implemented the first language-domain resolver adapter slice. `context-resolver-search` now
+exposes source-specific language adapters for `shlang`, `shquery` and `dcsui` over the prebuilt
+T89 language-fact index. `shlang` resolves under `BslLanguage`; `shquery` and `dcsui` resolve under
+`QueryLanguage` with distinct source identities. The adapter resolves exact ids/names for BSL
+`def_String`, query `STRING`, query `LitString` and SKD
+`SKD_Functions_Strings#StringLength`, reports ambiguity for unconstrained `Строка`, and traverses
+the explicit SKD string-function parameter type edge to `shlang:def_String`. The resolver core
+composition now preserves already found `ok` candidates when another source reports ambiguity, so
+cross-source ambiguity does not hide valid candidates from other active sources. T90 focused
+latency checks for exact BSL type lookup and SKD relation traversal stayed under the provisional
+NFR-RESOLVE-001 `100 ms` target after source open.

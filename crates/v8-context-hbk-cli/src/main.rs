@@ -1433,6 +1433,8 @@ mod tests {
             parameter_terms: Vec::new(),
             relation_keys: Vec::new(),
             owner_relation_key: None,
+            explicit_type_ref_ids: Vec::new(),
+            explicit_return_type_ref_ids: Vec::new(),
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Compact);
@@ -1466,6 +1468,8 @@ mod tests {
             parameter_terms: Vec::new(),
             relation_keys: Vec::new(),
             owner_relation_key: None,
+            explicit_type_ref_ids: Vec::new(),
+            explicit_return_type_ref_ids: Vec::new(),
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Full);

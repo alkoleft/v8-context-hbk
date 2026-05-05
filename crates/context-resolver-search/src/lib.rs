@@ -14,6 +14,12 @@ pub struct PlatformSearchSource {
     index: SearchIndex,
 }
 
+pub struct LanguageSearchSource {
+    source_id: SourceId,
+    domain: LanguageDomain,
+    index: SearchIndex,
+}
+
 impl PlatformSearchSource {
     pub fn new(index: SearchIndex) -> Self {
         Self {
@@ -281,6 +287,432 @@ impl PlatformSearchSource {
 
     fn domain_matches(&self, domain: Option<LanguageDomain>) -> bool {
         domain.is_none_or(|domain| domain == LanguageDomain::PlatformApi)
+    }
+}
+
+impl LanguageSearchSource {
+    pub fn shlang(index: SearchIndex) -> Self {
+        Self::new("shlang", LanguageDomain::BslLanguage, index)
+    }
+
+    pub fn shquery(index: SearchIndex) -> Self {
+        Self::new("shquery", LanguageDomain::QueryLanguage, index)
+    }
+
+    pub fn dcsui(index: SearchIndex) -> Self {
+        Self::new("dcsui", LanguageDomain::QueryLanguage, index)
+    }
+
+    pub fn new(source_id: impl Into<String>, domain: LanguageDomain, index: SearchIndex) -> Self {
+        Self {
+            source_id: SourceId::new(source_id),
+            domain,
+            index,
+        }
+    }
+
+    fn source_failure(&self, source: SearchError) -> ResolveError {
+        ResolveError::SourceFailure {
+            source_id: self.source_id.clone(),
+            message: source.to_string(),
+        }
+    }
+
+    fn fact_id(&self, kind: FactKind, local_id: impl Into<String>) -> FactId {
+        FactId::new(self.source_id.clone(), self.domain, kind, local_id)
+    }
+
+    fn type_id(&self, local_id: impl Into<String>) -> TypeId {
+        TypeId(self.fact_id(FactKind::Type, local_id))
+    }
+
+    fn callable_id(&self, local_id: impl Into<String>) -> CallableId {
+        CallableId(self.fact_id(FactKind::Callable, local_id))
+    }
+
+    fn local_id(&self, document: &SearchDocument) -> String {
+        document
+            .id
+            .strip_prefix(self.source_id.as_str())
+            .and_then(|tail| tail.strip_prefix(':'))
+            .unwrap_or(&document.id)
+            .to_string()
+    }
+
+    fn storage_id(&self, local_id: &str) -> String {
+        if local_id
+            .strip_prefix(self.source_id.as_str())
+            .is_some_and(|tail| tail.starts_with(':'))
+        {
+            local_id.to_string()
+        } else {
+            format!("{}:{local_id}", self.source_id)
+        }
+    }
+
+    fn source_matches(&self, source: Option<&SourceId>) -> bool {
+        source.is_none_or(|source| source == &self.source_id)
+    }
+
+    fn domain_matches(&self, domain: Option<LanguageDomain>) -> bool {
+        domain.is_none_or(|domain| domain == self.domain)
+    }
+
+    fn document_belongs_to_source(&self, document: &SearchDocument) -> bool {
+        document
+            .id
+            .strip_prefix(self.source_id.as_str())
+            .is_some_and(|tail| tail.starts_with(':'))
+            && is_language_document_kind(&document.kind)
+    }
+
+    fn map_context_fact(&self, hit: SearchHit) -> Option<ContextFact> {
+        let kind = language_fact_kind_for_document(&hit.document)?;
+        let info = if kind == FactKind::Type {
+            FactDetails::Type(TypeInfo {
+                description: hit.document.description.clone(),
+            })
+        } else if kind == FactKind::Callable {
+            FactDetails::Callable(self.callable_info(&hit.document))
+        } else {
+            FactDetails::Language
+        };
+        Some(ContextFact {
+            id: self.fact_id(kind, self.local_id(&hit.document)),
+            name: map_name(&hit.document),
+            owner: None,
+            details: info,
+            relations: Vec::new(),
+        })
+    }
+
+    fn map_type(&self, hit: SearchHit) -> Option<ResolvedType> {
+        if hit.document.kind != "language_type" && hit.document.kind != "language_literal" {
+            return None;
+        }
+        let info = TypeInfo {
+            description: hit.document.description.clone(),
+        };
+        let id = self.type_id(self.local_id(&hit.document));
+        let fact = ContextFact {
+            id: id.0.clone(),
+            name: map_name(&hit.document),
+            owner: None,
+            details: FactDetails::Type(info.clone()),
+            relations: Vec::new(),
+        };
+        Some(ResolvedType { id, fact, info })
+    }
+
+    fn map_callable(&self, hit: SearchHit) -> Option<ResolvedCallable> {
+        if hit.document.kind != "language_function" {
+            return None;
+        }
+        let info = self.callable_info(&hit.document);
+        let id = self.callable_id(self.local_id(&hit.document));
+        let fact = ContextFact {
+            id: id.0.clone(),
+            name: map_name(&hit.document),
+            owner: None,
+            details: FactDetails::Callable(info.clone()),
+            relations: Vec::new(),
+        };
+        Some(ResolvedCallable {
+            id,
+            owner: None,
+            fact,
+            info,
+        })
+    }
+
+    fn map_related(&self, hit: RelatedHit) -> Option<ContextFact> {
+        let id = language_fact_id_for_document(&hit.document)?;
+        let details = if id.kind == FactKind::Type {
+            FactDetails::Type(TypeInfo {
+                description: hit.document.description.clone(),
+            })
+        } else if id.kind == FactKind::Callable {
+            FactDetails::Callable(self.callable_info(&hit.document))
+        } else {
+            FactDetails::Language
+        };
+        Some(ContextFact {
+            id,
+            name: map_name(&hit.document),
+            owner: None,
+            details,
+            relations: hit
+                .via
+                .into_iter()
+                .filter_map(|step| {
+                    Some(FactRelation {
+                        kind: relation_kind_from_edge(&step.edge_kind)?,
+                        target: language_fact_id_from_storage_id(&step.to)?,
+                        evidence: Some(step.evidence),
+                    })
+                })
+                .collect(),
+        })
+    }
+
+    fn callable_info(&self, document: &SearchDocument) -> CallableInfo {
+        CallableInfo {
+            kind: CallableKind::GlobalMethod,
+            signatures: document
+                .signatures
+                .iter()
+                .map(|signature| Signature {
+                    parameters: signature
+                        .parameters
+                        .iter()
+                        .map(|parameter| Parameter {
+                            name: parameter.name.clone(),
+                            required: parameter.required,
+                            types: self.type_refs(&parameter.type_refs),
+                            description: parameter.description.clone(),
+                        })
+                        .collect(),
+                    title: signature.title.clone(),
+                    description: signature.description.clone(),
+                })
+                .collect(),
+            return_types: self.type_refs(&document.return_types),
+            description: document.description.clone(),
+        }
+    }
+
+    fn type_refs(&self, names: &[String]) -> Vec<TypeRef> {
+        names
+            .iter()
+            .map(|name| TypeRef {
+                name: name.clone(),
+                id: None,
+            })
+            .collect()
+    }
+
+    fn facts_by_name(
+        &self,
+        name: &str,
+        kind: Option<FactKind>,
+    ) -> Result<Vec<ContextFact>, ResolveError> {
+        let facts = self
+            .index
+            .get_by_name(name)
+            .map_err(|source| self.source_failure(source))?
+            .into_iter()
+            .filter(|hit| self.document_belongs_to_source(&hit.document))
+            .filter(|hit| {
+                kind.is_none_or(|kind| language_fact_kind_for_document(&hit.document) == Some(kind))
+            })
+            .filter_map(|hit| self.map_context_fact(hit))
+            .collect::<Vec<_>>();
+        Ok(facts)
+    }
+}
+
+impl ContextSource for LanguageSearchSource {
+    fn descriptor(&self) -> SourceDescriptor {
+        SourceDescriptor {
+            id: self.source_id.clone(),
+            domain: self.domain,
+            label: format!("Syntax Assistant language source {}", self.source_id),
+        }
+    }
+
+    fn capabilities(&self) -> SourceCapabilities {
+        SourceCapabilities {
+            exact_lookup: true,
+            type_lookup: true,
+            members: false,
+            callables: true,
+            relations: true,
+        }
+    }
+
+    fn resolve(
+        &self,
+        query: context_resolver_core::ResolveQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
+        if !context.is_source_active(&self.source_id) {
+            return Ok(ResolveResponse::not_found("language source is not active"));
+        }
+        match query {
+            context_resolver_core::ResolveQuery::Id(id) => {
+                if id.source != self.source_id || id.domain != self.domain {
+                    return Ok(ResolveResponse::not_found(
+                        "fact source or domain does not match",
+                    ));
+                }
+                let storage_id = self.storage_id(&id.local_id);
+                let Some(hit) = self
+                    .index
+                    .get_by_id(&storage_id)
+                    .map_err(|source| self.source_failure(source))?
+                else {
+                    return Ok(ResolveResponse::not_found("language fact not found"));
+                };
+                if !self.document_belongs_to_source(&hit.document) {
+                    return Ok(ResolveResponse::not_found("language fact not found"));
+                }
+                if language_fact_kind_for_document(&hit.document) != Some(id.kind) {
+                    return Ok(ResolveResponse::not_found(
+                        "fact kind does not match indexed language document",
+                    ));
+                }
+                let Some(fact) = self.map_context_fact(hit) else {
+                    return Ok(ResolveResponse::not_found("language fact not found"));
+                };
+                Ok(ResolveResponse::ok(vec![fact]))
+            }
+            context_resolver_core::ResolveQuery::ExactName {
+                source,
+                domain,
+                kind,
+                name,
+            } => {
+                if !self.source_matches(source) || !self.domain_matches(domain) {
+                    return Ok(ResolveResponse::not_found(
+                        "language source or domain does not match",
+                    ));
+                }
+                let facts = self.facts_by_name(name, kind)?;
+                Ok(response_from_facts(facts, "language fact not found"))
+            }
+        }
+    }
+
+    fn resolve_type(
+        &self,
+        query: TypeLookup<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedType>, ResolveError> {
+        if !context.is_source_active(&self.source_id) {
+            return Ok(ResolveResponse::not_found("language source is not active"));
+        }
+        let facts = match query {
+            TypeLookup::Id(id) => {
+                if id.0.source != self.source_id || id.0.domain != self.domain {
+                    Vec::new()
+                } else {
+                    self.index
+                        .get_by_id(&self.storage_id(&id.0.local_id))
+                        .map_err(|source| self.source_failure(source))?
+                        .into_iter()
+                        .filter(|hit| self.document_belongs_to_source(&hit.document))
+                        .filter_map(|hit| self.map_type(hit))
+                        .collect()
+                }
+            }
+            TypeLookup::ExactName {
+                source,
+                domain,
+                name,
+            } => {
+                if !self.source_matches(source) || !self.domain_matches(domain) {
+                    Vec::new()
+                } else {
+                    self.index
+                        .get_by_name(name)
+                        .map_err(|source| self.source_failure(source))?
+                        .into_iter()
+                        .filter(|hit| self.document_belongs_to_source(&hit.document))
+                        .filter_map(|hit| self.map_type(hit))
+                        .collect()
+                }
+            }
+        };
+        Ok(response_from_resolved_types(
+            facts,
+            "language type not found",
+        ))
+    }
+
+    fn members(
+        &self,
+        _owner: &TypeId,
+        _query: MemberQuery<'_>,
+        _context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedMember>, ResolveError> {
+        Ok(ResolveResponse::unsupported(
+            "language source does not expose members in this slice",
+        ))
+    }
+
+    fn callable(
+        &self,
+        query: CallableLookup<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedCallable>, ResolveError> {
+        if !context.is_source_active(&self.source_id) {
+            return Ok(ResolveResponse::not_found("language source is not active"));
+        }
+        let facts = match query {
+            CallableLookup::Id(id) => {
+                if id.0.source != self.source_id || id.0.domain != self.domain {
+                    Vec::new()
+                } else {
+                    self.index
+                        .get_by_id(&self.storage_id(&id.0.local_id))
+                        .map_err(|source| self.source_failure(source))?
+                        .into_iter()
+                        .filter(|hit| self.document_belongs_to_source(&hit.document))
+                        .filter_map(|hit| self.map_callable(hit))
+                        .collect()
+                }
+            }
+            CallableLookup::OwnerName { owner, name } => {
+                if owner.is_some() {
+                    return Ok(ResolveResponse::unsupported(
+                        "language callable lookup does not support owner in this slice",
+                    ));
+                }
+                self.index
+                    .get_by_name(name)
+                    .map_err(|source| self.source_failure(source))?
+                    .into_iter()
+                    .filter(|hit| self.document_belongs_to_source(&hit.document))
+                    .filter_map(|hit| self.map_callable(hit))
+                    .collect()
+            }
+        };
+        Ok(response_from_resolved_callables(
+            facts,
+            "language callable not found",
+        ))
+    }
+
+    fn related(
+        &self,
+        source: &FactId,
+        kind: RelationKind,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
+        if !context.is_source_active(&self.source_id)
+            || source.source != self.source_id
+            || source.domain != self.domain
+        {
+            return Ok(ResolveResponse::not_found("language source fact not found"));
+        }
+        let edge = match kind {
+            RelationKind::HasType => "has_type",
+            RelationKind::Returns => "returns",
+            _ => {
+                return Ok(ResolveResponse::unsupported(
+                    "language adapter supports has_type and returns",
+                ));
+            }
+        };
+        let storage_id = self.storage_id(&source.local_id);
+        let facts = self
+            .index
+            .related_by_id_and_edge(&storage_id, edge, 20)
+            .map_err(|source| self.source_failure(source))?
+            .into_iter()
+            .filter_map(|hit| self.map_related(hit))
+            .collect::<Vec<_>>();
+        Ok(ResolveResponse::ok(facts))
     }
 }
 
@@ -568,6 +1000,18 @@ fn is_platform_document_kind(kind: &str) -> bool {
     )
 }
 
+fn is_language_document_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "language_type"
+            | "language_construct"
+            | "language_function"
+            | "language_operator"
+            | "language_keyword"
+            | "language_literal"
+    )
+}
+
 fn fact_kind_for_document(document: &SearchDocument) -> Option<FactKind> {
     match document.kind.as_str() {
         "platform_type" => Some(FactKind::Type),
@@ -578,6 +1022,40 @@ fn fact_kind_for_document(document: &SearchDocument) -> Option<FactKind> {
         "enum_value" => Some(FactKind::EnumValue),
         _ => None,
     }
+}
+
+fn language_fact_kind_for_document(document: &SearchDocument) -> Option<FactKind> {
+    match document.kind.as_str() {
+        "language_type" | "language_literal" => Some(FactKind::Type),
+        "language_function" => Some(FactKind::Callable),
+        "language_keyword" => Some(FactKind::Keyword),
+        "language_operator" => Some(FactKind::Operator),
+        "language_construct" => Some(FactKind::Global),
+        _ => None,
+    }
+}
+
+fn language_fact_id_for_document(document: &SearchDocument) -> Option<FactId> {
+    let kind = language_fact_kind_for_document(document)?;
+    let (source, domain, local_id) = language_source_domain_and_local_id(&document.id)?;
+    Some(FactId::new(source, domain, kind, local_id))
+}
+
+fn language_fact_id_from_storage_id(storage_id: &str) -> Option<FactId> {
+    let (source, domain, local_id) = language_source_domain_and_local_id(storage_id)?;
+    Some(FactId::new(source, domain, FactKind::Type, local_id))
+}
+
+fn language_source_domain_and_local_id(
+    storage_id: &str,
+) -> Option<(SourceId, LanguageDomain, &str)> {
+    let (source, local_id) = storage_id.split_once(':')?;
+    let domain = match source {
+        "shlang" => LanguageDomain::BslLanguage,
+        "shquery" | "dcsui" => LanguageDomain::QueryLanguage,
+        _ => return None,
+    };
+    Some((SourceId::new(source), domain, local_id))
 }
 
 fn member_query_matches(query: MemberQueryKind, kind: MemberKind) -> bool {
@@ -673,8 +1151,10 @@ mod tests {
     use std::time::Instant;
 
     use context_resolver_core::{
-        ContextSource, MemberQuery, RelationKind, ResolveContext, ResolveStatus, TypeLookup,
+        CallableLookup, CompositeResolver, ContextResolver, ContextSource, MemberQuery,
+        RelationKind, ResolveContext, ResolveStatus, TypeLookup,
     };
+    use syntax_helper_language::{LanguagePageInput, LanguageSourceFamily, extract_language_facts};
     use syntax_helper_model as model;
     use syntax_helper_model::SyntaxHelperSink;
     use syntax_helper_search::{IndexMetadata, SearchIndexBuilder, build_index_from_builder};
@@ -870,6 +1350,189 @@ mod tests {
         assert_eq!(response.status, ResolveStatus::NotFound);
     }
 
+    #[test]
+    fn language_adapter_preserves_domain_identity_and_ambiguity() {
+        let path = language_fixture_index("language-resolver-ambiguity.sqlite");
+        let shlang = SourceId::new("shlang");
+        let shquery = SourceId::new("shquery");
+        let dcsui = SourceId::new("dcsui");
+        let resolver = CompositeResolver::new(vec![
+            Box::new(LanguageSearchSource::shlang(open_index(&path))),
+            Box::new(LanguageSearchSource::shquery(open_index(&path))),
+            Box::new(LanguageSearchSource::dcsui(open_index(&path))),
+        ]);
+
+        let ambiguous = resolver
+            .resolve(
+                context_resolver_core::ResolveQuery::ExactName {
+                    source: None,
+                    domain: None,
+                    kind: None,
+                    name: "Строка",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("language fact lookup must not fail");
+        assert_eq!(ambiguous.status, ResolveStatus::Ambiguous);
+        let ambiguous_ids = ambiguous
+            .candidates
+            .iter()
+            .map(|candidate| {
+                (
+                    candidate.id.source.as_str().to_string(),
+                    candidate.id.local_id.as_str().to_string(),
+                )
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(ambiguous_ids.contains(&("shlang".to_string(), "def_String".to_string())));
+        assert!(ambiguous_ids.contains(&("shquery".to_string(), "STRING".to_string())));
+        assert!(ambiguous_ids.contains(&("shquery".to_string(), "LitString".to_string())));
+
+        let ambiguous_types = resolver
+            .resolve_type(
+                TypeLookup::ExactName {
+                    source: None,
+                    domain: None,
+                    name: "Строка",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("language type lookup must not fail");
+        assert_eq!(ambiguous_types.status, ResolveStatus::Ambiguous);
+        let ambiguous_type_ids = ambiguous_types
+            .candidates
+            .iter()
+            .map(|candidate| {
+                (
+                    candidate.id.source.as_str().to_string(),
+                    candidate.id.local_id.as_str().to_string(),
+                )
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(ambiguous_type_ids.contains(&("shlang".to_string(), "def_String".to_string())));
+        assert!(ambiguous_type_ids.contains(&("shquery".to_string(), "LitString".to_string())));
+
+        let started = Instant::now();
+        let bsl_string = resolver
+            .resolve_type(
+                TypeLookup::ExactName {
+                    source: Some(&shlang),
+                    domain: Some(LanguageDomain::BslLanguage),
+                    name: "Строка",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("constrained BSL lookup must not fail");
+        assert_eq!(bsl_string.status, ResolveStatus::Ok);
+        assert_eq!(bsl_string.facts[0].id.0.local_id, "def_String");
+        assert_eq!(bsl_string.facts[0].id.0.domain, LanguageDomain::BslLanguage);
+        assert!(started.elapsed().as_millis() < 100);
+
+        let query_string = CallableId(FactId::new(
+            shquery.clone(),
+            LanguageDomain::QueryLanguage,
+            FactKind::Callable,
+            "STRING",
+        ));
+        let query_function = resolver
+            .callable(CallableLookup::Id(&query_string), &ResolveContext::all())
+            .expect("query function lookup must not fail");
+        assert_eq!(query_function.status, ResolveStatus::Ok);
+        assert_eq!(query_function.facts[0].id.0.source, shquery);
+        assert_eq!(query_function.facts[0].fact.name.primary, "СТРОКА");
+
+        let query_literal = TypeId(FactId::new(
+            SourceId::new("shquery"),
+            LanguageDomain::QueryLanguage,
+            FactKind::Type,
+            "LitString",
+        ));
+        let literal = resolver
+            .resolve_type(TypeLookup::Id(&query_literal), &ResolveContext::all())
+            .expect("query literal lookup must not fail");
+        assert_eq!(literal.status, ResolveStatus::Ok);
+        assert_eq!(literal.facts[0].id.0.local_id, "LitString");
+
+        let skd_string_length = CallableId(FactId::new(
+            dcsui,
+            LanguageDomain::QueryLanguage,
+            FactKind::Callable,
+            "SKD_Functions_Strings#StringLength",
+        ));
+        let skd_function = resolver
+            .callable(
+                CallableLookup::Id(&skd_string_length),
+                &ResolveContext::all(),
+            )
+            .expect("SKD function lookup must not fail");
+        assert_eq!(skd_function.status, ResolveStatus::Ok);
+        assert_eq!(skd_function.facts[0].fact.name.primary, "ДлинаСтроки");
+        assert_eq!(
+            skd_function.facts[0].info.signatures[0].parameters[0].name,
+            "Строка"
+        );
+    }
+
+    #[test]
+    fn language_adapter_traverses_only_explicit_extracted_type_edges() {
+        let path = language_fixture_index("language-resolver-relations.sqlite");
+        let shquery = SourceId::new("shquery");
+        let dcsui = SourceId::new("dcsui");
+        let query_adapter = LanguageSearchSource::shquery(open_index(&path));
+        let adapter = LanguageSearchSource::dcsui(open_index(&path));
+        let query_string = FactId::new(
+            shquery,
+            LanguageDomain::QueryLanguage,
+            FactKind::Callable,
+            "STRING",
+        );
+        let string_length = FactId::new(
+            dcsui,
+            LanguageDomain::QueryLanguage,
+            FactKind::Callable,
+            "SKD_Functions_Strings#StringLength",
+        );
+
+        let query_return = query_adapter
+            .related(&query_string, RelationKind::Returns, &ResolveContext::all())
+            .expect("query return traversal must not fail");
+        assert_eq!(query_return.status, ResolveStatus::Ok);
+        assert!(
+            query_return.facts.iter().any(|fact| {
+                fact.id.source.as_str() == "shquery"
+                    && fact.id.domain == LanguageDomain::QueryLanguage
+                    && fact.id.local_id == "LitString"
+            }),
+            "query STRING return must use the explicit query-language string literal/type edge"
+        );
+        assert!(
+            query_return
+                .facts
+                .iter()
+                .all(|fact| fact.id.source.as_str() != "shlang"),
+            "query STRING return must not choose the BSL string type by same-name lookup"
+        );
+
+        let started = Instant::now();
+        let related = adapter
+            .related(
+                &string_length,
+                RelationKind::HasType,
+                &ResolveContext::all(),
+            )
+            .expect("language relation traversal must not fail");
+        assert!(started.elapsed().as_millis() < 100);
+        assert_eq!(related.status, ResolveStatus::Ok);
+        assert!(
+            related.facts.iter().any(|fact| {
+                fact.id.source.as_str() == "shlang"
+                    && fact.id.domain == LanguageDomain::BslLanguage
+                    && fact.id.local_id == "def_String"
+            }),
+            "SKD parameter type must traverse to the explicit BSL string type edge"
+        );
+    }
+
     fn fixture_source() -> SourceId {
         SourceId::new("test-platform")
     }
@@ -1014,6 +1677,62 @@ mod tests {
             source_hbk: "/fixtures/shcntx_ru.hbk".to_string(),
             source_extraction_schema_version: 11,
         }
+    }
+
+    fn language_fixture_index(file_name: &str) -> PathBuf {
+        let path = temp_path(file_name);
+        let mut builder = SearchIndexBuilder::new();
+        for fact in language_fixture_facts() {
+            builder.add_language_fact(fact);
+        }
+        build_index_from_builder(&path, &metadata(), builder).expect("language index must build");
+        path
+    }
+
+    fn language_fixture_facts() -> Vec<syntax_helper_language::LanguageFact> {
+        [
+            (
+                LanguageSourceFamily::Shlang,
+                "def_String",
+                "shlang_def_string_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Shquery,
+                "STRING",
+                "shquery_string_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Shquery,
+                "LitString",
+                "shquery_lit_string_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Dcsui,
+                "SKD_Functions_Strings",
+                "dcsui_functions_strings_ru.html",
+            ),
+        ]
+        .into_iter()
+        .flat_map(|(source_family, html_path, fixture_name)| {
+            let html = std::fs::read_to_string(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/syntax-helper-language")
+                    .join(fixture_name),
+            )
+            .expect("language fixture must be readable");
+            extract_language_facts(LanguagePageInput {
+                source_hbk: "fixture.hbk",
+                source_family,
+                locale: "ru",
+                html_path,
+                html: &html,
+            })
+        })
+        .collect()
+    }
+
+    fn open_index(path: &std::path::Path) -> SearchIndex {
+        SearchIndex::open_read_only(path).expect("index must open")
     }
 
     fn temp_path(name: &str) -> PathBuf {

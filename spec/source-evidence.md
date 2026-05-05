@@ -159,6 +159,13 @@ source-qualified; examples include `shlang:def_String`, `shlang:def_Func`, `shqu
 `dcsui:SKD_ExtQueryLangv#ВЫБРАТЬ` and `dcsui:SKD_ExtQueryLangv#ГДЕ`. Same-display-name
 `Строка` facts from BSL, query function and query literal fixtures remain separate ids.
 
+T90 made those language facts resolver-usable without changing the source-neutral resolver model or
+the consumer export contract. The prebuilt search index now preserves extracted language
+type/return references as structured index facts and derives explicit relation edges from them.
+The first verified cross-source language edge is the T89 SKD string function
+`dcsui:SKD_Functions_Strings#StringLength` `Строка` parameter type resolving by relation traversal
+to the BSL language type `shlang:def_String`.
+
 ## Book and Navigation Observations
 
 Useful `hbk-reader` concepts:

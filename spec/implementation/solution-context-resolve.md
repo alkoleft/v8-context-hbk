@@ -399,6 +399,26 @@ T67 implementation notes:
   this first adapter slice; broader name search remains the CLI/search-provider concern.
 - Query-table provider documents stay hidden from the platform adapter.
 
+## First Language Adapter
+
+T90 implements the first language-domain resolver adapter slice in `context-resolver-search` over
+the T89 language-fact index shape.
+
+Mapping:
+
+- `shlang` source facts map to `LanguageDomain::BslLanguage`;
+- `shquery` and `dcsui` source facts map to `LanguageDomain::QueryLanguage`, with distinct source
+  ids so SKD expression/query-extension facts do not overwrite base query-language facts;
+- `language_type` and the current `language_literal` facts back `resolve_type`;
+- `language_function` backs callable lookup with ordered signatures, parameters and return/type
+  names where T89 extracted them;
+- `language_keyword`, `language_operator` and `language_construct` remain general context facts;
+- relation traversal is backed by explicit extracted type-reference edges in the prebuilt index,
+  not by same-name merging during resolver lookup.
+
+The language adapter does not parse HBK pages in lookup calls, does not expose query-table provider
+documents and does not add a public language export JSON contract.
+
 ## Verification Plan
 
 The first implementation task should prove the API with behavior tests:

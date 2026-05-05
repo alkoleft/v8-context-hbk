@@ -505,6 +505,7 @@ impl ContextResolver for CompositeResolver {
             }
         }
         if !candidates.is_empty() {
+            candidates.extend(facts.iter().map(CandidateView::candidate));
             return Ok(ResolveResponse::ambiguous(candidates));
         }
         if facts.is_empty() && !unsupported.is_empty() {
@@ -558,6 +559,7 @@ impl ContextResolver for CompositeResolver {
             }
         }
         if !candidates.is_empty() {
+            candidates.extend(facts.iter().map(CandidateView::candidate));
             return Ok(ResolveResponse::ambiguous(candidates));
         }
         if facts.is_empty() && !unsupported.is_empty() {
@@ -638,6 +640,7 @@ impl ContextResolver for CompositeResolver {
                     }
                 }
                 if !candidates.is_empty() {
+                    candidates.extend(facts.iter().map(CandidateView::candidate));
                     return Ok(ResolveResponse::ambiguous(candidates));
                 }
                 if facts.is_empty() && !unsupported.is_empty() {
@@ -1067,6 +1070,42 @@ mod tests {
 
         assert_eq!(response.status, ResolveStatus::Ambiguous);
         assert_eq!(response.candidates.len(), 2);
+    }
+
+    #[test]
+    fn composite_ambiguity_keeps_ok_candidates_from_other_sources() {
+        let resolver = CompositeResolver::new(vec![
+            Box::new(
+                FakeSource::new("bsl", LanguageDomain::BslLanguage)
+                    .with_type("def_String", "Строка"),
+            ),
+            Box::new(
+                FakeSource::new("query", LanguageDomain::QueryLanguage)
+                    .with_type("STRING", "Строка")
+                    .with_type("LitString", "Строка")
+                    .with_resolve_type_status(ResolveStatus::Ambiguous),
+            ),
+        ]);
+
+        let response = resolver
+            .resolve_type(
+                TypeLookup::ExactName {
+                    source: None,
+                    domain: None,
+                    name: "Строка",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ambiguous);
+        let candidate_sources = response
+            .candidates
+            .iter()
+            .map(|candidate| candidate.id.source.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(candidate_sources.contains("bsl"));
+        assert!(candidate_sources.contains("query"));
     }
 
     #[test]

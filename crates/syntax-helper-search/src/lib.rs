@@ -74,6 +74,10 @@ pub struct SearchDocument {
     pub relation_keys: Vec<String>,
     #[serde(skip)]
     pub owner_relation_key: Option<String>,
+    #[serde(skip)]
+    pub explicit_type_ref_ids: Vec<Option<String>>,
+    #[serde(skip)]
+    pub explicit_return_type_ref_ids: Vec<Option<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -848,11 +852,17 @@ impl SearchIndex {
         edge_kind: &str,
         limit: usize,
     ) -> Result<Vec<RelatedHit>, SearchError> {
-        if self.document(id)?.is_none() {
+        let Some(source_document) = self.document(id)? else {
             return Ok(Vec::new());
-        }
+        };
         if matches!(edge_kind, "has_type" | "returns" | "constructs") {
-            return self.related_type_refs_by_id_and_edge(id, edge_kind, limit);
+            let hits = self.related_type_refs_by_id_and_edge(id, edge_kind, limit)?;
+            if !hits.is_empty() {
+                return Ok(hits);
+            }
+            if !is_language_document_kind(&source_document.kind) {
+                return Ok(Vec::new());
+            }
         }
         let mut hits = Vec::new();
         for edge in self.edges_by_kind(id, edge_kind)? {
@@ -2256,6 +2266,19 @@ fn is_callable_kind(kind: &str) -> bool {
             | "module_event"
             | "type_event"
             | "unknown_event"
+            | "language_function"
+    )
+}
+
+fn is_language_document_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "language_type"
+            | "language_construct"
+            | "language_function"
+            | "language_operator"
+            | "language_keyword"
+            | "language_literal"
     )
 }
 
@@ -2463,12 +2486,16 @@ fn insert_type_reference_relations(
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
     inserted: &mut BTreeSet<(String, String, &'static str)>,
 ) -> Result<(), SearchError> {
-    for type_name in document
-        .type_refs
-        .iter()
-        .chain(document.return_types.iter())
-    {
-        let Some((_, target_id)) = by_name.get(&normalize_lookup_key(type_name)) else {
+    for (ordinal, type_name) in document.type_refs.iter().enumerate() {
+        let Some(target_key) = explicit_or_fallback_type_ref_key(
+            document,
+            &document.explicit_type_ref_ids,
+            ordinal,
+            type_name,
+        ) else {
+            continue;
+        };
+        let Some((_, target_id)) = by_name.get(&target_key) else {
             continue;
         };
         insert_relation_if_new(
@@ -2478,11 +2505,33 @@ fn insert_type_reference_relations(
             Relation {
                 source_id: document.id.clone(),
                 target_id: target_id.clone(),
-                edge_kind: if document.return_types.contains(type_name) {
-                    "returns"
-                } else {
-                    "has_type"
-                },
+                edge_kind: "has_type",
+                label: type_name.clone(),
+                evidence: "type_ref",
+                weight: TYPE_REFERENCE_RELATION_WEIGHT,
+            },
+        )?;
+    }
+    for (ordinal, type_name) in document.return_types.iter().enumerate() {
+        let Some(target_key) = explicit_or_fallback_type_ref_key(
+            document,
+            &document.explicit_return_type_ref_ids,
+            ordinal,
+            type_name,
+        ) else {
+            continue;
+        };
+        let Some((_, target_id)) = by_name.get(&target_key) else {
+            continue;
+        };
+        insert_relation_if_new(
+            statement,
+            path,
+            inserted,
+            Relation {
+                source_id: document.id.clone(),
+                target_id: target_id.clone(),
+                edge_kind: "returns",
                 label: type_name.clone(),
                 evidence: "type_ref",
                 weight: TYPE_REFERENCE_RELATION_WEIGHT,
@@ -2490,6 +2539,20 @@ fn insert_type_reference_relations(
         )?;
     }
     Ok(())
+}
+
+fn explicit_or_fallback_type_ref_key(
+    document: &SearchDocument,
+    explicit_ids: &[Option<String>],
+    ordinal: usize,
+    type_name: &str,
+) -> Option<String> {
+    explicit_ids
+        .get(ordinal)
+        .and_then(|id| id.clone())
+        .or_else(|| {
+            (!is_language_document_kind(&document.kind)).then(|| normalize_lookup_key(type_name))
+        })
 }
 
 fn insert_relation_if_new(
@@ -2587,6 +2650,8 @@ fn document(
         parameter_terms,
         relation_keys: Vec::new(),
         owner_relation_key: None,
+        explicit_type_ref_ids: Vec::new(),
+        explicit_return_type_ref_ids: Vec::new(),
     }
 }
 
@@ -2668,14 +2733,27 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         .chain(fact.type_refs.iter().cloned())
         .chain(fact.return_types.iter().cloned())
         .collect::<Vec<_>>();
+    let type_refs = fact
+        .type_refs
+        .iter()
+        .cloned()
+        .chain(
+            fact.signatures
+                .iter()
+                .flat_map(|signature| signature.parameters.iter())
+                .flat_map(|parameter| parameter.type_refs.iter().cloned()),
+        )
+        .collect::<Vec<_>>();
+    let explicit_type_ref_ids = explicit_language_type_ref_ids(fact, &type_refs);
+    let explicit_return_type_ref_ids = explicit_language_type_ref_ids(fact, &fact.return_types);
     SearchDocument {
         id: fact.id.clone(),
         kind: fact.family.document_kind().to_string(),
         name: fact.name.clone(),
         owner: None,
         signatures,
-        type_refs: Vec::new(),
-        return_types: Vec::new(),
+        type_refs,
+        return_types: fact.return_types.clone(),
         description: fact.description.clone(),
         preview: fact
             .description
@@ -2685,6 +2763,39 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         parameter_terms,
         relation_keys: vec![fact.id.clone()],
         owner_relation_key: None,
+        explicit_type_ref_ids,
+        explicit_return_type_ref_ids,
+    }
+}
+
+fn explicit_language_type_ref_ids(
+    fact: &language::LanguageFact,
+    names: &[String],
+) -> Vec<Option<String>> {
+    names
+        .iter()
+        .map(|name| explicit_language_type_ref_id(fact.source_family, name))
+        .collect()
+}
+
+fn explicit_language_type_ref_id(
+    source_family: language::LanguageSourceFamily,
+    name: &str,
+) -> Option<String> {
+    let normalized = normalize_lookup_key(name);
+    match source_family {
+        language::LanguageSourceFamily::Shlang => None,
+        language::LanguageSourceFamily::Shquery
+            if matches!(normalized.as_str(), "строка" | "string") =>
+        {
+            Some("shquery:LitString".to_string())
+        }
+        language::LanguageSourceFamily::Dcsui
+            if matches!(normalized.as_str(), "строка" | "string") =>
+        {
+            Some("shlang:def_String".to_string())
+        }
+        _ => None,
     }
 }
 
@@ -2767,20 +2878,40 @@ fn relations_from_documents(documents: &[SearchDocument]) -> Vec<Relation> {
                 weight: 15,
             });
         }
-        for type_name in document
-            .type_refs
-            .iter()
-            .chain(document.return_types.iter())
-        {
-            if let Some((_, target_id)) = by_name.get(&normalize_lookup_key(type_name)) {
+        for (ordinal, type_name) in document.type_refs.iter().enumerate() {
+            let Some(target_key) = explicit_or_fallback_type_ref_key(
+                document,
+                &document.explicit_type_ref_ids,
+                ordinal,
+                type_name,
+            ) else {
+                continue;
+            };
+            if let Some((_, target_id)) = by_name.get(&target_key) {
                 relations.push(Relation {
                     source_id: document.id.clone(),
                     target_id: target_id.clone(),
-                    edge_kind: if document.return_types.contains(type_name) {
-                        "returns"
-                    } else {
-                        "has_type"
-                    },
+                    edge_kind: "has_type",
+                    label: type_name.clone(),
+                    evidence: "type_ref",
+                    weight: TYPE_REFERENCE_RELATION_WEIGHT,
+                });
+            }
+        }
+        for (ordinal, type_name) in document.return_types.iter().enumerate() {
+            let Some(target_key) = explicit_or_fallback_type_ref_key(
+                document,
+                &document.explicit_return_type_ref_ids,
+                ordinal,
+                type_name,
+            ) else {
+                continue;
+            };
+            if let Some((_, target_id)) = by_name.get(&target_key) {
+                relations.push(Relation {
+                    source_id: document.id.clone(),
+                    target_id: target_id.clone(),
+                    edge_kind: "returns",
                     label: type_name.clone(),
                     evidence: "type_ref",
                     weight: TYPE_REFERENCE_RELATION_WEIGHT,
@@ -2857,6 +2988,8 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
         description,
         relation_keys: Vec::new(),
         owner_relation_key: None,
+        explicit_type_ref_ids: Vec::new(),
+        explicit_return_type_ref_ids: Vec::new(),
     })
 }
 
@@ -3541,6 +3674,103 @@ mod tests {
             .expect("root SKD string function must be indexed");
         assert_eq!(skd.document.kind, "language_function");
         assert_eq!(skd.document.name.primary, "StringLength");
+    }
+
+    #[test]
+    fn language_relations_use_source_qualified_targets_not_same_name_winners() {
+        let bsl_string = language_fact(
+            "shlang:def_String",
+            LanguageSourceFamily::Shlang,
+            language::LanguageDomain::BslLanguage,
+            language::LanguageFactFamily::Type,
+            name("Строка", Some("String")),
+        );
+        let query_literal = language_fact(
+            "shquery:LitString",
+            LanguageSourceFamily::Shquery,
+            language::LanguageDomain::QueryLanguage,
+            language::LanguageFactFamily::Literal,
+            name("Строка", Some("STRING")),
+        );
+        let bsl_boolean = language_fact(
+            "shlang:def_Boolean",
+            LanguageSourceFamily::Shlang,
+            language::LanguageDomain::BslLanguage,
+            language::LanguageFactFamily::Type,
+            name("Булево", Some("Boolean")),
+        );
+        let query_boolean = language_fact(
+            "shquery:LitBoolean",
+            LanguageSourceFamily::Shquery,
+            language::LanguageDomain::QueryLanguage,
+            language::LanguageFactFamily::Literal,
+            name("Булево", Some("BOOLEAN")),
+        );
+        let mut query_string = language_fact(
+            "shquery:STRING",
+            LanguageSourceFamily::Shquery,
+            language::LanguageDomain::QueryLanguage,
+            language::LanguageFactFamily::Function,
+            name("СТРОКА", Some("STRING")),
+        );
+        let mut query_boolean_fn = language_fact(
+            "shquery:BOOLEAN",
+            LanguageSourceFamily::Shquery,
+            language::LanguageDomain::QueryLanguage,
+            language::LanguageFactFamily::Function,
+            name("БУЛЕВО", Some("BOOLEAN")),
+        );
+        query_string.signatures = vec![language::LanguageSignature {
+            text: "СТРОКА(<Значение>)".to_string(),
+            parameters: vec![language::LanguageParameter {
+                name: "Значение".to_string(),
+                required: true,
+                type_refs: vec!["Строка".to_string()],
+                description: None,
+            }],
+        }];
+        query_string.return_types = vec!["Строка".to_string()];
+        query_boolean_fn.signatures = vec![language::LanguageSignature {
+            text: "БУЛЕВО(<Значение>)".to_string(),
+            parameters: vec![language::LanguageParameter {
+                name: "Значение".to_string(),
+                required: true,
+                type_refs: vec!["Булево".to_string()],
+                description: None,
+            }],
+        }];
+        query_boolean_fn.return_types = vec!["Булево".to_string()];
+
+        let documents = vec![
+            language_document(&bsl_string),
+            language_document(&bsl_boolean),
+            language_document(&query_literal),
+            language_document(&query_boolean),
+            language_document(&query_string),
+            language_document(&query_boolean_fn),
+        ];
+        let relations = relations_from_documents(&documents);
+
+        assert!(relations.iter().any(|relation| {
+            relation.source_id == "shquery:STRING"
+                && relation.target_id == "shquery:LitString"
+                && relation.edge_kind == "has_type"
+        }));
+        assert!(relations.iter().any(|relation| {
+            relation.source_id == "shquery:STRING"
+                && relation.target_id == "shquery:LitString"
+                && relation.edge_kind == "returns"
+        }));
+        assert!(!relations.iter().any(|relation| {
+            relation.source_id == "shquery:STRING" && relation.target_id == "shlang:def_String"
+        }));
+        assert!(!relations.iter().any(|relation| {
+            relation.source_id == "shquery:BOOLEAN"
+                && matches!(
+                    relation.target_id.as_str(),
+                    "shlang:def_Boolean" | "shquery:LitBoolean"
+                )
+        }));
     }
 
     #[test]
@@ -4714,6 +4944,34 @@ mod tests {
                 })
             })
             .collect()
+    }
+
+    fn language_fact(
+        id: &str,
+        source_family: LanguageSourceFamily,
+        domain: language::LanguageDomain,
+        family: language::LanguageFactFamily,
+        name: model::LocalizedName,
+    ) -> language::LanguageFact {
+        language::LanguageFact {
+            id: id.to_string(),
+            source_family,
+            domain,
+            family,
+            name,
+            syntax: None,
+            signatures: Vec::new(),
+            type_refs: Vec::new(),
+            return_types: Vec::new(),
+            description: None,
+            provenance: language::LanguageFactProvenance {
+                source_hbk: "fixture.hbk".to_string(),
+                locale: "ru".to_string(),
+                html_path: id.to_string(),
+                page_title: id.to_string(),
+                anchor: None,
+            },
+        }
     }
 
     fn fixture_context() -> model::PlatformContext {

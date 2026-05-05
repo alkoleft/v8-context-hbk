@@ -17,7 +17,7 @@ context boundaries and keeps CLI/export behavior provisional.
    lookup, keyword/fuzzy search and bounded relationship traversal.
 9. `context-resolver-core`: source-neutral Rust resolver API with typed identities, domains,
    fact kinds, response statuses, diagnostics and resolver/source traits.
-10. `context-resolver-search`: first HBK-backed platform source adapter over
+10. `context-resolver-search`: HBK-backed platform and language-domain source adapters over
    `syntax-helper-search::SearchIndex`.
 11. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
 
@@ -44,8 +44,8 @@ Solution-context Rust resolution is described in
 - `context-resolver-core` owns the generic in-process resolver model. It must not depend on HBK,
   SQLite, CLI, parser or Syntax Assistant storage crates.
 - `context-resolver-search` owns translation between `syntax-helper-search::SearchIndex` platform
-  facts and the source-neutral resolver model. It must not expose SQLite tables, FTS fields,
-  query-table provider facts or Syntax Assistant provenance as generic resolver facts.
+  and language facts and the source-neutral resolver model. It must not expose SQLite tables, FTS
+  fields, query-table provider facts or Syntax Assistant provenance as generic resolver facts.
 - `v8-context-hbk-cli` wires commands and error presentation only.
 - Syntax Assistant search/query code must not make `hbk-export` carry search-only fields in the
   lean consumer export. Use a search-specific index when structured links or provenance are required
@@ -372,8 +372,11 @@ Implemented first slice:
   schema-version change: `language_type`, `language_construct`, `language_function`,
   `language_operator`, `language_keyword` and `language_literal`. These documents are indexed by
   source-qualified ids such as `shlang:def_String`, `shquery:STRING` and
-  `dcsui:SKD_Functions_Strings#StringLength`. The current normalized platform tables remain
-  platform-oriented; language-domain resolver normalization belongs to T90.
+  `dcsui:SKD_Functions_Strings#StringLength`.
+- T90 keeps the same schema version and makes language facts resolver-usable by preserving
+  extracted language `type_refs` / `return_types`, normalizing `language_function` signatures and
+  parameters as callable rows, and deriving relation rows from explicit extracted type references.
+  This does not create a public SQLite table contract.
 
 ### Solution Context resolver
 
@@ -399,9 +402,10 @@ Expected source-neutral public concepts:
 - `FactRelation`
 
 The resolver core is implemented as `context-resolver-core`, a separate crate with no HBK, SQLite,
-CLI or parser dependencies. The first platform adapter is implemented as `context-resolver-search`,
-a sibling adapter crate over `SearchIndex`; `syntax-helper-search` remains the HBK/Syntax Assistant
-query implementation and not the generic cross-domain resolver model.
+CLI or parser dependencies. The platform and first language-domain adapters are implemented in
+`context-resolver-search`, a sibling adapter crate over `SearchIndex`; `syntax-helper-search`
+remains the HBK/Syntax Assistant query implementation and not the generic cross-domain resolver
+model.
 
 The first resolver API must keep BSL language types and query-language types separate from platform
 API types. Cross-domain links require explicit relations; same-name facts across domains or sources
@@ -412,6 +416,16 @@ callable facts only. Existing query-table documents in the search index remain o
 T66 selected current `shcntx_*` query-table documents to remain CLI/provider facts for now, not the
 first `QueryLanguage` resolver source. A later language-domain task must define an explicit mapping
 or relation shape before exposing them through the source-neutral resolver.
+
+The first language-domain adapter slice exposes T89 language facts through source-specific
+`shlang`, `shquery` and `dcsui` resolver sources. `shlang` maps to `BslLanguage`; `shquery` and
+`dcsui` map to `QueryLanguage` while keeping distinct source ids. The adapter resolves exact ids and
+exact names for language types, query/SKD functions, keywords, operators, constructs and literals
+using the existing resolver fact kinds without adding new core model variants. `language_function`
+facts are exposed as callable facts with ordered signatures and parameters; `language_type` and the
+current `language_literal` facts are exposed through type lookup. Relation traversal uses only
+explicit index edges derived from extracted language type references, for example
+`dcsui:SKD_Functions_Strings#StringLength` parameter type `Строка` to `shlang:def_String`.
 
 ## Implementation Dependencies
 

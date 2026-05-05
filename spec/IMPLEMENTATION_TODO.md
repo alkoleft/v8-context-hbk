@@ -22,12 +22,10 @@ conclusions live in `acceptance/baseline.md`, `source-evidence.md`, `requirement
 `implementation/syntax-helper-query-cli.md`, `implementation/syntax-bsl-provider-plan.md` and
 `implementation/solution-context-resolve.md`.
 
-The active open tasks are T86-T90. T66 completed the required non-platform HBK domain-analysis gate
+The active open tasks are T86-T88. T66 completed the required non-platform HBK domain-analysis gate
 before T67. T67 completed the first resolver core and HBK-backed platform adapter slice. T89
-completed the first shared language-fact extraction/index fixture slice. T90 is now the first
-unchecked task. T90 is the remaining T66 follow-up for non-platform language resolver adapters.
-T86-T88 are cleanup follow-ups from the May 2026 solution review and should not bypass the active
-first unchecked task unless explicitly selected.
+completed the first shared language-fact extraction/index fixture slice. T90 completed the remaining
+T66 follow-up for non-platform language resolver adapters. T86 is now the first unchecked task.
 
 ## Loop Rule
 
@@ -263,7 +261,7 @@ Completion notes:
   - `cargo test -p syntax-helper-search --lib`
   - `cargo test --workspace`
 
-### [ ] T90. Implement first language-domain resolver adapter slice
+### [x] T90. Implement first language-domain resolver adapter slice
 
 Spec refs:
 
@@ -319,6 +317,32 @@ Verification:
 - `cargo test --workspace`
 - NFR-RESOLVE-001 latency notes for exact language fact lookup after source open, or a recorded
   measured blocker and follow-up task.
+
+Completion notes:
+
+- Added `LanguageSearchSource` in `context-resolver-search` for source-specific `shlang`,
+  `shquery` and `dcsui` adapters over the prebuilt `syntax-helper-search::SearchIndex`.
+  `shlang` maps to `BslLanguage`; `shquery` and `dcsui` map to `QueryLanguage` while preserving
+  distinct source ids.
+- Kept the source-neutral resolver core model intact. The only core behavior change is composition
+  hygiene: when one source reports `ambiguous`, already found `ok` facts from other active sources
+  are preserved as ambiguity candidates instead of being dropped.
+- Made T89 language facts resolver-usable in the search index by preserving extracted
+  `type_refs` / `return_types`, normalizing `language_function` signatures and parameters as
+  callable rows, and deriving relation rows from explicit extracted type references. No SQLite
+  schema version, public table contract, CLI JSON, consumer export JSON or query-table resolver
+  exposure was added.
+- Focused tests prove unconstrained `Строка` ambiguity across active language sources, constrained
+  BSL `def_String` lookup, exact id distinction for query `STRING`, query `LitString` and SKD
+  `SKD_Functions_Strings#StringLength`, and explicit SKD parameter-type relation traversal to
+  `shlang:def_String`.
+- NFR-RESOLVE-001 focused checks for exact BSL type lookup and SKD relation traversal stayed under
+  `100 ms` after source open.
+- Verification passed:
+  - `cargo test -p context-resolver-core`
+  - `cargo test -p context-resolver-search`
+  - `cargo test -p syntax-helper-search --lib`
+  - `cargo test --workspace`
 
 ## Cleanup Follow-up
 

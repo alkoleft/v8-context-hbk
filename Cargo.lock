@@ -150,6 +150,7 @@ name = "context-resolver-search"
 version = "0.1.0"
 dependencies = [
  "context-resolver-core",
+ "syntax-helper-language",
  "syntax-helper-model",
  "syntax-helper-search",
 ]
