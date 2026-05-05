@@ -129,7 +129,7 @@ impl SearchIndexBuilder {
         Self::default()
     }
 
-    fn into_documents(self) -> Vec<SearchDocument> {
+    fn into_documents(self) -> Result<Vec<SearchDocument>, SearchError> {
         let identities =
             DocumentIdentities::from_inputs(&self.platform_types, &self.query_tables, &self.enums);
         let mut documents = self
@@ -142,8 +142,8 @@ impl SearchIndexBuilder {
                 .cmp(&kind_priority(&right.kind))
                 .then_with(|| left.id.cmp(&right.id))
         });
-        documents.dedup_by(|left, right| left.id == right.id);
-        documents
+        validate_document_id_collisions(&documents)?;
+        Ok(documents)
     }
 }
 
@@ -460,6 +460,10 @@ pub enum SearchError {
         expected: u32,
         actual: String,
     },
+    DuplicateDocumentId {
+        id: String,
+        count: usize,
+    },
     AmbiguousLookup {
         name: String,
         matches: usize,
@@ -504,6 +508,12 @@ impl fmt::Display for SearchError {
                     path.display()
                 )
             }
+            Self::DuplicateDocumentId { id, count } => {
+                write!(
+                    f,
+                    "duplicate Syntax Assistant search document id '{id}': {count} documents"
+                )
+            }
             Self::AmbiguousLookup { name, matches } => {
                 write!(
                     f,
@@ -522,6 +532,7 @@ impl std::error::Error for SearchError {
             Self::WriterLockTimeout { .. }
             | Self::MissingIndex { .. }
             | Self::UnsupportedSchemaVersion { .. }
+            | Self::DuplicateDocumentId { .. }
             | Self::AmbiguousLookup { .. } => None,
         }
     }
@@ -532,7 +543,7 @@ pub fn build_index_from_builder(
     metadata: &IndexMetadata,
     builder: SearchIndexBuilder,
 ) -> Result<(), SearchError> {
-    build_index_from_documents(path, metadata, builder.into_documents())
+    build_index_from_documents(path, metadata, builder.into_documents()?)
 }
 
 fn build_index_from_documents(
@@ -540,6 +551,7 @@ fn build_index_from_documents(
     metadata: &IndexMetadata,
     documents: Vec<SearchDocument>,
 ) -> Result<(), SearchError> {
+    validate_document_id_collisions(&documents)?;
     let path = path.as_ref();
     if let Some(parent) = path
         .parent()
@@ -594,6 +606,20 @@ fn build_index_file(
         source,
     })?;
     validate_index(&connection, path)
+}
+
+fn validate_document_id_collisions(documents: &[SearchDocument]) -> Result<(), SearchError> {
+    let mut counts = BTreeMap::<&str, usize>::new();
+    for document in documents {
+        *counts.entry(document.id.as_str()).or_default() += 1;
+    }
+    if let Some((id, count)) = counts.into_iter().find(|(_, count)| *count > 1) {
+        return Err(SearchError::DuplicateDocumentId {
+            id: id.to_string(),
+            count,
+        });
+    }
+    Ok(())
 }
 
 pub struct SearchIndex {
@@ -3667,7 +3693,9 @@ mod tests {
     #[test]
     fn streaming_builder_preserves_expected_document_and_relation_shape() {
         let context = fixture_context();
-        let builder_documents = builder_from_context(&context).into_documents();
+        let builder_documents = builder_from_context(&context)
+            .into_documents()
+            .expect("fixture documents must not collide");
         let ids = builder_documents
             .iter()
             .map(|document| document.id.as_str())
@@ -3765,6 +3793,80 @@ mod tests {
                 .expect("normalized property type ref query must work"),
             1
         );
+    }
+
+    #[test]
+    fn index_build_rejects_duplicate_document_ids_before_sqlite_write() {
+        let path = temp_path("duplicate-document-id.sqlite");
+        let documents = vec![
+            document(
+                "global_method",
+                None,
+                &name("Сообщить", None),
+                &[],
+                &[],
+                &[],
+                Some("first source page"),
+                "global_method:Сообщить".to_string(),
+            ),
+            document(
+                "global_method",
+                None,
+                &name("Сообщить", None),
+                &[],
+                &[],
+                &[],
+                Some("second source page"),
+                "global_method:Сообщить".to_string(),
+            ),
+        ];
+
+        let error = build_index_from_documents(&path, &metadata(), documents)
+            .expect_err("duplicate document ids must reject index build");
+
+        assert!(matches!(
+            error,
+            SearchError::DuplicateDocumentId {
+                ref id,
+                count: 2,
+            } if id == "global_method:Сообщить"
+        ));
+        assert!(
+            !path.exists(),
+            "duplicate detection must run before SQLite index creation"
+        );
+    }
+
+    #[test]
+    fn streaming_builder_reports_toc_marker_identity_collisions() {
+        let path = temp_path("builder-duplicate-document-id.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![platform_type_with_owner_path("ГруппаФормы", "Форма")],
+            type_properties: vec![
+                type_property_with_owner_path("ГруппаФормы", "Форма", "Видимость", "Булево"),
+                type_property_with_owner_path(
+                    "ГруппаФормы",
+                    "Форма",
+                    "Видимость#&^@^%&*^#1",
+                    "Булево",
+                ),
+            ],
+            ..model::PlatformContext::default()
+        };
+
+        let error = build_index_from_builder(&path, &metadata(), builder_from_context(&context))
+            .expect_err("TOC-marker duplicates must reject index build");
+
+        assert!(matches!(
+            error,
+            SearchError::DuplicateDocumentId {
+                ref id,
+                count: 2,
+            } if id == "type_property:platform_type:ГруппаФормы:Видимость"
+        ));
+        assert!(!path.exists());
+        assert!(!path.with_extension("sqlite-wal").exists());
+        assert!(!path.with_extension("sqlite-shm").exists());
     }
 
     #[test]
@@ -3909,7 +4011,9 @@ mod tests {
             ..model::PlatformContext::default()
         };
 
-        let documents = builder_from_context(&context).into_documents();
+        let documents = builder_from_context(&context)
+            .into_documents()
+            .expect("query table identities must not collide");
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -3956,7 +4060,9 @@ mod tests {
             ..model::PlatformContext::default()
         };
 
-        let documents = builder_from_context(&context).into_documents();
+        let documents = builder_from_context(&context)
+            .into_documents()
+            .expect("missing-syntax query table identities must not collide");
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -3986,17 +4092,13 @@ mod tests {
                     "Строка",
                 ),
                 type_property_with_owner_path("ГруппаФормы", "Форма", "Видимость", "Булево"),
-                type_property_with_owner_path(
-                    "ГруппаФормы",
-                    "Форма",
-                    "Видимость#&^@^%&*^#1",
-                    "Булево",
-                ),
             ],
             ..model::PlatformContext::default()
         };
 
-        let documents = builder_from_context(&context).into_documents();
+        let documents = builder_from_context(&context)
+            .into_documents()
+            .expect("semantic type variants must not collide");
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -4008,12 +4110,6 @@ mod tests {
         assert!(ids.contains(
             &"type_property:platform_type:ЭлементыФормы:ФормаКлиентскогоПриложения:ТекущийЭлемент"
         ));
-        assert_eq!(
-            ids.iter()
-                .filter(|id| **id == "type_property:platform_type:ГруппаФормы:Видимость")
-                .count(),
-            1
-        );
         assert!(!ids.iter().any(|id| id.contains("#&^@^%&*^#")));
     }
 
@@ -4163,14 +4259,13 @@ mod tests {
                     "objects/catalog1649/Form/properties/Visible.html",
                 ),
             ],
-            enum_values: vec![
-                enum_value("Видимость", "Использовать"),
-                enum_value("Видимость", "Использовать#&^@^%&*^#1"),
-            ],
+            enum_values: vec![enum_value("Видимость", "Использовать")],
             ..model::PlatformContext::default()
         };
 
-        let documents = builder_from_context(&context).into_documents();
+        let documents = builder_from_context(&context)
+            .into_documents()
+            .expect("enum semantic variants must not collide");
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())

@@ -924,3 +924,49 @@ Verification:
 - `cargo test -p syntax-helper-extract --lib`
 - `cargo test -p hbk-export --lib`
 - `cargo test --workspace`
+
+### [x] T79. Report search document identity collisions instead of dropping duplicates
+
+Spec refs:
+
+- T68
+- ADR-0004
+- ADR-0007
+- ADR-0008
+- FR-SH-PROVIDER-001
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Problem:
+
+- `SearchIndexBuilder::into_documents` sorts documents and then silently removes duplicate ids with
+  `dedup_by`.
+- Duplicate ids mean that two extracted facts collapsed to one provider identity. Silent removal can
+  hide parser, TOC-classification or identity-model bugs and conflicts with the identity-preserving
+  resolver direction in ADR-0008.
+
+Scope:
+
+- Replace silent duplicate-id removal with explicit collision detection.
+- Return an index-build error or a deterministic parser/index diagnostic before writing SQLite when
+  two distinct documents resolve to the same id.
+- Add a focused regression test that proves duplicate ids are not silently lost.
+- Preserve normal deterministic ordering and provider JSON shape for non-colliding indexes.
+- Do not redesign document identity rules in this task unless the regression exposes a concrete
+  source-backed collision.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Removed the silent `SearchIndexBuilder::into_documents` duplicate-id collapse; finalized search
+  documents are now validated for unique ids before index writes.
+- Added a typed `DuplicateDocumentId` index-build error and validate direct document-list builds as
+  well as streaming builder builds before SQLite creation.
+- Added focused regressions proving duplicate ids do not create an index file and TOC-marker
+  identity collisions are reported instead of silently dropping a document.
+- Provider JSON, normal deterministic ordering and non-colliding index behavior stayed unchanged.
+- Verification passed with `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
