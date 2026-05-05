@@ -977,6 +977,97 @@ Expected result:
 - Raw command outputs remain service data under `target/uat`; only the commands, assertions and
   conclusions are durable.
 
+## UAT-SH-019: Analyzer Provider Ambiguity Handling
+
+Related use case: UC-SH-005B, UC-SH-005D.
+
+Related requirements: FR-SH-PROVIDER-001, FR-SH-SEARCH-001.
+
+Status: implementation UAT for T60.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- A fresh schema-v4 or later provider index can be built under `target/uat/`.
+
+Steps:
+
+```bash
+rm -f target/uat/t60-sh-search-ru.sqlite target/uat/t60-*.json
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t60-sh-search-ru.sqlite
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t60-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --kind platform_type --name "ЭлементыФормы" --format json \
+  > target/uat/t60-get-type-ambiguous.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t60-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --owner "ЭлементыФормы" --member "Добавить" --format json \
+  > target/uat/t60-get-owner-member-ambiguous-owner.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t60-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --owner "ЭлементыФормы" --member "Добавить" --format json \
+  > target/uat/t60-related-owner-member-ambiguous-owner.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t60-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax constructors "ЭлементыФормы" --format json \
+  > target/uat/t60-constructors-ambiguous-type.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t60-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --name "ОтборКомпоновкиДанных" --format json \
+  > target/uat/t60-get-name-ownerless-collision.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t60-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax get --owner-type-id "platform_type:ЭлементыФормы:Форма" --member "Добавить" --format json \
+  > target/uat/t60-get-owner-type-member-ok.json
+
+jq -e '.status == "ambiguous" and (.results | length == 0)
+  and any(.diagnostics[]; .code == "AMBIGUOUS"
+    and ([.candidates[].id] | index("platform_type:ЭлементыФормы:Форма") != null)
+    and ([.candidates[].id] | index("platform_type:ЭлементыФормы:Форма клиентского приложения") != null))' \
+  target/uat/t60-get-type-ambiguous.json
+jq -e '.status == "ambiguous" and (.results | length == 0)
+  and any(.diagnostics[]; .code == "AMBIGUOUS"
+    and (.candidates | length == 2)
+    and all(.candidates[]; .kind == "platform_type"))' \
+  target/uat/t60-get-owner-member-ambiguous-owner.json
+jq -e '.status == "ambiguous" and (.results | length == 0)
+  and any(.diagnostics[]; .code == "AMBIGUOUS"
+    and (.candidates | length == 2)
+    and all(.candidates[]; .kind == "platform_type"))' \
+  target/uat/t60-related-owner-member-ambiguous-owner.json
+jq -e '.status == "ambiguous" and (.results | length == 0)
+  and any(.diagnostics[]; .code == "AMBIGUOUS"
+    and (.candidates | length == 2)
+    and all(.candidates[]; .kind == "platform_type"))' \
+  target/uat/t60-constructors-ambiguous-type.json
+jq -e '.status == "ambiguous" and (.results | length == 0)
+  and any(.diagnostics[]; .code == "AMBIGUOUS"
+    and ([.candidates[].id] | index("platform_type:ОтборКомпоновкиДанных") != null)
+    and ([.candidates[].id] | index("type_property:platform_type:БиблиотекаКартинок:ОтборКомпоновкиДанных") != null))' \
+  target/uat/t60-get-name-ownerless-collision.json
+jq -e '.status == "ok"
+  and any(.results[].fact; .id == "type_method:platform_type:ЭлементыФормы:Форма:Добавить")' \
+  target/uat/t60-get-owner-type-member-ok.json
+```
+
+Expected result:
+
+- Duplicate platform type names return `status: "ambiguous"` with deterministic candidate
+  summaries, not a hidden first match.
+- Owner-name/member and related owner-name/member lookups report owner ambiguity before filtering
+  by the requested member.
+- Constructor lookup by ambiguous type name returns a provider `ambiguous` envelope instead of a
+  non-provider error or a hidden owner selection.
+- Exact name lookup reports ownerless/owned same-name collisions as ambiguity instead of keeping
+  only the ownerless candidate.
+- The analyzer-preferred `--owner-type-id --member` path remains unambiguous when the caller has
+  already resolved the owner type id.
+- Raw command outputs remain service data under `target/uat`; only the commands, assertions and
+  conclusions are durable.
+
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 
 Related use case: UC-SH-001.

@@ -1305,3 +1305,16 @@ the `Новый HTTPСоединение(...)` constructor chain through type id
 facts and `constructs` traversal back to `HTTPСоединение`. Assertions use only provider commands and
 JSON fields; no SQLite table names, rowids, HBK paths, TOC paths, HTML paths or page titles are
 part of the scenario.
+
+T60 hardened analyzer ambiguity handling over the schema-v4 provider index. Exact-name lookup now
+returns the full deterministic candidate set instead of keeping only ownerless facts when an
+ownerless and an owned fact share the same name. Owner-name/member lookup and related traversal
+resolve the owner type identity first, so duplicate platform type names such as `ЭлементыФормы`
+return provider `status: "ambiguous"` before member filtering. Constructor lookup by ambiguous
+type name returns a provider `ambiguous` envelope instead of a non-provider error or hidden owner
+selection. The accepted debug rebuild from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced
+`25082` documents in `52737 ms` at `target/uat/t60-sh-search-ru.sqlite`. UAT-SH-019 passed for
+duplicate `ЭлементыФормы` type candidates, ambiguous `ЭлементыФормы.Добавить` owner-name/member
+and related roots, ambiguous `syntax constructors "ЭлементыФормы"`, ambiguous ownerless/owned
+`ОтборКомпоновкиДанных` exact-name collision, and unambiguous
+`--owner-type-id "platform_type:ЭлементыФормы:Форма" --member "Добавить"`.

@@ -18,7 +18,7 @@ export, schema, data-quality, performance, parser, provider, storage and query-s
 live in `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T60. The queued roadmap comes from
+Next active unchecked task is T61. The queued roadmap comes from
 `implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
 help during BSL development and code analysis, and toward a future typed local provider role for a
 BSL analyzer.
@@ -175,7 +175,7 @@ Completion notes:
   `ОтборКомпоновкиДанных`, `Элементы`, collection `Добавить` and
   `ЭлементОтбораКомпоновкиДанных` fields, plus the `Новый HTTPСоединение(...)` constructor chain.
 
-### [ ] T60. Harden ambiguity handling for analyzer type/member inference
+### [x] T60. Harden ambiguity handling for analyzer type/member inference
 
 Spec refs:
 
@@ -200,6 +200,17 @@ Verification:
 - `cargo test --workspace`
 - targeted real-index JSON assertions for ambiguous and unambiguous type/member lookups.
 - Existing provider/UAT scenarios still pass.
+
+Completion notes:
+
+- Exact-name lookup no longer collapses mixed ownerless/owned matches to the ownerless fact; `get`
+  and `related` JSON now report `ambiguous` with deterministic candidate summaries.
+- Owner-name/member roots now resolve the owner as a platform type identity first and report
+  ambiguous owner candidates before filtering by member name.
+- Constructor lookup by ambiguous type name returns the provider envelope with
+  `status: "ambiguous"` instead of a non-provider error or hidden owner selection.
+- Verification passed with a fresh RU index at `target/uat/t60-sh-search-ru.sqlite` containing
+  `25082` documents.
 
 ### [ ] T61. Evaluate analyzer batch lookup needs after primitive UAT
 

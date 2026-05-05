@@ -176,8 +176,11 @@ Resolution path:
 12. **T59: Add expression-chain provider UAT.** Completed: UAT-SH-018 validates type/member
     inference support as a sequence of provider calls over real Syntax Assistant data, without
     adding a BSL parser to this repository.
-13. **T60: Harden ambiguity handling.** Ensure duplicate type/member cases return deterministic
-    `ambiguous` diagnostics instead of hidden winner selection.
+13. **T60: Harden ambiguity handling.** Completed: duplicate type/member cases return
+    deterministic `ambiguous` diagnostics instead of hidden winner selection. Exact-name lookup no
+    longer prefers ownerless facts, owner-name/member roots report ambiguous owner type candidates
+    before member filtering, and constructor lookup by duplicate type name returns a provider
+    `ambiguous` envelope.
 14. **T61: Evaluate analyzer batch lookup needs.** Decide from primitive/UAT evidence whether
     analyzer workflows need a batch CLI JSON command or another boundary decision.
 

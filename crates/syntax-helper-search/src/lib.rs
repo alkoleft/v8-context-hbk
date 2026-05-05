@@ -717,7 +717,11 @@ impl SearchIndex {
         let Some(root) = self.root_by_name(name)? else {
             return Ok(Vec::new());
         };
-        self.owned_documents_by_kind(&root.document.id, "constructor", 100)
+        self.constructors_by_type_id(&root.document.id)
+    }
+
+    pub fn constructors_by_type_id(&self, type_id: &str) -> Result<Vec<SearchHit>, SearchError> {
+        self.owned_documents_by_kind(type_id, "constructor", 100)
     }
 
     pub fn callable_by_id(&self, callable_id: &str) -> Result<Option<SearchHit>, SearchError> {
@@ -970,17 +974,7 @@ impl SearchIndex {
         let hits = rows
             .collect::<Result<Vec<_>, _>>()
             .map_err(|source| self.sqlite(source))?;
-        let hits = self.hydrate_hits(hits)?;
-        let ownerless = hits
-            .iter()
-            .filter(|hit| hit.document.owner.is_none())
-            .cloned()
-            .collect::<Vec<_>>();
-        if ownerless.is_empty() {
-            Ok(hits)
-        } else {
-            Ok(ownerless)
-        }
+        self.hydrate_hits(hits)
     }
 
     fn type_identity_document_id(&self, type_id: &str) -> Result<Option<String>, SearchError> {
@@ -1055,14 +1049,6 @@ impl SearchIndex {
             return Ok(None);
         };
         if roots.len() > 1 {
-            let ownerless = roots
-                .iter()
-                .filter(|hit| hit.document.owner.is_none())
-                .cloned()
-                .collect::<Vec<_>>();
-            if ownerless.len() == 1 {
-                return Ok(ownerless.into_iter().next());
-            }
             return Err(SearchError::AmbiguousLookup {
                 name: name.to_string(),
                 matches: roots.len(),
@@ -3647,9 +3633,16 @@ mod tests {
             .expect("fuzzy search must work");
         assert_eq!(fuzzy[0].document.name.primary, "ОтборКомпоновкиДанных");
 
-        let related = index
+        let ambiguous_related = index
             .related_by_name("ОтборКомпоновкиДанных", 5, 20)
-            .expect("related search must work");
+            .expect_err("plain-name related root must report ambiguity");
+        assert!(matches!(
+            ambiguous_related,
+            SearchError::AmbiguousLookup { matches: 2, .. }
+        ));
+        let related = index
+            .related_by_id("platform_type:ОтборКомпоновкиДанных", 5, 20)
+            .expect("id-root related search must work");
         let names = related
             .iter()
             .map(|hit| hit.document.name.primary.as_str())
@@ -3701,9 +3694,16 @@ mod tests {
             "platform_type:ОтборКомпоновкиДанных"
         );
 
-        let constructors = index
+        let ambiguous_constructors = index
             .constructors_by_name("ОтборКомпоновкиДанных")
-            .expect("constructor lookup must work");
+            .expect_err("plain constructor type root must report ambiguity");
+        assert!(matches!(
+            ambiguous_constructors,
+            SearchError::AmbiguousLookup { matches: 2, .. }
+        ));
+        let constructors = index
+            .constructors_by_type_id("platform_type:ОтборКомпоновкиДанных")
+            .expect("type-id constructor lookup must work");
         assert_eq!(constructors.len(), 1);
         assert_eq!(
             constructors[0].document.signature_text_lines(),
@@ -3864,8 +3864,8 @@ mod tests {
         assert_eq!(exact[0].document.name.primary, "ОтборКомпоновкиДанных");
 
         let related = index
-            .related_by_name("ОтборКомпоновкиДанных", 5, 20)
-            .expect("related search must work");
+            .related_by_id("platform_type:ОтборКомпоновкиДанных", 5, 20)
+            .expect("id-root related search must work");
         assert!(related.iter().any(|hit| {
             hit.document.kind == "constructor"
                 && hit.document.name.primary == "Новый ОтборКомпоновкиДанных()"

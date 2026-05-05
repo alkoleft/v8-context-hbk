@@ -388,14 +388,33 @@ fn syntax_constructors(
     format: OutputFormat,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let index = SearchIndex::open_read_only(resolve_index_path(index))?;
-    let hits = index.constructors_by_name(name)?;
+    let query = json!({ "kind": "constructor", "name": name });
+    let type_candidates = type_identity_candidates(&index, name)?;
+    if type_candidates.len() != 1 {
+        return match format {
+            OutputFormat::Text => {
+                if type_candidates.is_empty() {
+                    println!("constructors: no matches");
+                } else {
+                    println!(
+                        "constructors: ambiguous type ({} matches)",
+                        type_candidates.len()
+                    );
+                }
+                Ok(())
+            }
+            OutputFormat::Json => print_related_root_diagnostic(
+                "constructors",
+                query,
+                type_candidates,
+                OutputFormat::Json,
+            ),
+        };
+    }
+    let hits = index.constructors_by_type_id(&type_candidates[0].document.id)?;
     match format {
         OutputFormat::Text => print_constructor_hits_text(&hits, details),
-        OutputFormat::Json => print_provider_hits(
-            "constructors",
-            json!({ "kind": "constructor", "name": name }),
-            &hits,
-        ),
+        OutputFormat::Json => print_provider_hits("constructors", query, &hits),
     }
 }
 
@@ -528,7 +547,7 @@ fn syntax_related(
             index.related_by_id(&roots[0].document.id, depth, 200)?
         }
         RootLookup::ByOwnerMember(owner, member) => {
-            let roots = index.get_by_owner_member(owner, member)?;
+            let roots = owner_member_roots(&index, owner, member)?;
             if roots.len() != 1 {
                 return print_related_root_diagnostic("related", query, roots, format);
             }
@@ -658,7 +677,12 @@ fn get_lookup(
             }
         }
         (None, None, None, None, Some(owner), None, Some(member), None, None, None) => {
-            GetLookupResult::Hits(index.get_by_owner_member(owner, member)?)
+            let roots = owner_member_roots(index, owner, member)?;
+            if roots.is_empty() {
+                GetLookupResult::NotFound
+            } else {
+                GetLookupResult::Hits(roots)
+            }
         }
         (None, None, None, None, None, None, None, None, Some(callable_id), None) => index
             .callable_by_id(callable_id)?
@@ -677,6 +701,38 @@ fn get_lookup(
         ),
     };
     Ok(result)
+}
+
+fn type_identity_candidates(
+    index: &SearchIndex,
+    name: &str,
+) -> Result<Vec<SearchHit>, Box<dyn std::error::Error>> {
+    let mut candidates = index.type_identities_by_name(name)?;
+    for alias_hit in index.type_identities_by_alias(name)? {
+        if !candidates
+            .iter()
+            .any(|hit| hit.document.id == alias_hit.document.id)
+        {
+            candidates.push(alias_hit);
+        }
+    }
+    candidates.sort_by(|left, right| left.document.id.cmp(&right.document.id));
+    Ok(candidates)
+}
+
+fn owner_member_roots(
+    index: &SearchIndex,
+    owner: &str,
+    member: &str,
+) -> Result<Vec<SearchHit>, Box<dyn std::error::Error>> {
+    let owner_candidates = type_identity_candidates(index, owner)?;
+    if owner_candidates.len() > 1 {
+        return Ok(owner_candidates);
+    }
+    if let Some(owner_type) = owner_candidates.first() {
+        return Ok(index.member_by_owner_type_id(&owner_type.document.id, member)?);
+    }
+    Ok(index.get_by_owner_member(owner, member)?)
 }
 
 fn related_query_value(
@@ -1059,6 +1115,10 @@ fn page_to_json(page: &TocPage) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use syntax_helper_model as model;
+    use syntax_helper_model::SyntaxHelperSink;
 
     #[test]
     fn provider_response_uses_versioned_envelope() {
@@ -1075,5 +1135,161 @@ mod tests {
         assert_eq!(response["status"], "unsupported");
         assert_eq!(response["results"].as_array().unwrap().len(), 0);
         assert_eq!(response["diagnostics"][0]["code"], "UNSUPPORTED_QUERY");
+    }
+
+    #[test]
+    fn owner_member_lookup_reports_ambiguous_owner_before_member_filtering() {
+        let path = temp_path("ambiguous-owner-member.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        builder
+            .platform_type(platform_type_with_owner_path("ЭлементыФормы", "Форма"))
+            .unwrap();
+        builder
+            .platform_type(platform_type_with_owner_path(
+                "ЭлементыФормы",
+                "Форма клиентского приложения",
+            ))
+            .unwrap();
+        builder
+            .type_method(type_method_with_owner_path(
+                "ЭлементыФормы",
+                "Форма",
+                "Добавить",
+            ))
+            .unwrap();
+        build_index_from_builder(&path, &metadata(), builder).unwrap();
+
+        let index = SearchIndex::open_read_only(&path).unwrap();
+        let roots = owner_member_roots(&index, "ЭлементыФормы", "Добавить").unwrap();
+
+        assert_eq!(roots.len(), 2);
+        assert!(roots.iter().all(|hit| hit.document.kind == "platform_type"));
+        assert_eq!(roots[0].document.id, "platform_type:ЭлементыФормы:Форма");
+        assert_eq!(
+            roots[1].document.id,
+            "platform_type:ЭлементыФормы:Форма клиентского приложения"
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn constructor_lookup_reports_ambiguous_type_name_before_owner_selection() {
+        let path = temp_path("ambiguous-constructor-type.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        builder
+            .platform_type(platform_type_with_owner_path("ЭлементыФормы", "Форма"))
+            .unwrap();
+        builder
+            .platform_type(platform_type_with_owner_path(
+                "ЭлементыФормы",
+                "Форма клиентского приложения",
+            ))
+            .unwrap();
+        builder.constructor(constructor("ЭлементыФормы")).unwrap();
+        build_index_from_builder(&path, &metadata(), builder).unwrap();
+
+        let index = SearchIndex::open_read_only(&path).unwrap();
+        let candidates = type_identity_candidates(&index, "ЭлементыФормы").unwrap();
+
+        assert_eq!(candidates.len(), 2);
+        assert!(
+            candidates
+                .iter()
+                .all(|hit| hit.document.kind == "platform_type")
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    fn temp_path(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("v8-context-hbk-cli-{unique}-{name}"))
+    }
+
+    fn metadata() -> IndexMetadata {
+        IndexMetadata {
+            locale: "ru".to_string(),
+            source_locale: "ru".to_string(),
+            source_hbk: "fixture.hbk".to_string(),
+            source_extraction_schema_version: 11,
+        }
+    }
+
+    fn platform_type_with_owner_path(primary: &str, owner: &str) -> model::PlatformType {
+        model::PlatformType {
+            name: name(primary),
+            semantic: semantic(model::RecordFamily::PlatformType, owner),
+            type_kind: model::PlatformTypeKind::Regular,
+            object_kind: Some(model::PlatformObjectKind::RegularPlatformType),
+            extends: Vec::new(),
+            metadata_kind: None,
+            template_parameters: Vec::new(),
+            method_links: Vec::new(),
+            constructor_links: Vec::new(),
+            description: Some("type description".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source(primary),
+        }
+    }
+
+    fn type_method_with_owner_path(
+        owner: &str,
+        owner_path: &str,
+        primary: &str,
+    ) -> model::PlatformMethod {
+        model::PlatformMethod {
+            owner: name(owner),
+            name: name(primary),
+            semantic: semantic(model::RecordFamily::TypeMethod, owner_path),
+            signatures: vec![model::Signature {
+                text: format!("{primary}()"),
+                parameters: Vec::new(),
+                variant: None,
+            }],
+            return_types: Vec::new(),
+            description: Some("method description".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source(&format!("{owner}.{primary}")),
+        }
+    }
+
+    fn constructor(owner: &str) -> model::Constructor {
+        model::Constructor {
+            owner: name(owner),
+            name: name("По умолчанию"),
+            semantic: model::SemanticContext::default(),
+            signatures: vec![model::Signature {
+                text: format!("Новый {owner}()"),
+                parameters: Vec::new(),
+                variant: None,
+            }],
+            description: None,
+            facts: model::SectionFacts::default(),
+            source: source(owner),
+        }
+    }
+
+    fn semantic(record_family: model::RecordFamily, owner_path: &str) -> model::SemanticContext {
+        model::SemanticContext::new(model::BranchKind::PlatformObjects, record_family)
+            .with_owner_path(vec![name(owner_path)])
+    }
+
+    fn name(primary: &str) -> LocalizedName {
+        LocalizedName {
+            primary: primary.to_string(),
+            alias: None,
+        }
+    }
+
+    fn source(title: &str) -> model::SyntaxHelperSource {
+        model::SyntaxHelperSource {
+            hbk_path: "fixture.hbk".into(),
+            locale: "ru".to_string(),
+            toc_path: None,
+            html_path: format!("{title}.html"),
+            page_title: title.to_string(),
+        }
     }
 }

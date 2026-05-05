@@ -667,6 +667,15 @@ reads normalized schema-v4 rows inside `syntax-helper-search`, but the public JS
 provider envelope with stable fact fields under `results[].fact` and analyzer-only resolution
 metadata under `results[].meta`.
 
+T60 implementation note: exact-name provider lookup no longer collapses mixed ownerless/owned
+matches to the ownerless fact. `syntax get --name` and `syntax related --name` now surface the full
+deterministic candidate set as `status: "ambiguous"` when more than one exact fact matches. For
+owner-name/member roots, the provider first resolves the owner as a platform type identity; if that
+owner name is ambiguous, `syntax get --owner --member` and `syntax related --owner --member` return
+the owner type candidates instead of filtering down to whichever duplicate happens to have the
+requested member. `syntax constructors <TYPE>` uses the same type identity resolution and returns a
+provider `ambiguous` envelope for duplicate type names.
+
 ### `relations`
 
 Directed relationship edges:
