@@ -291,7 +291,10 @@ The T74/T75 cleanup removes the provisional fallback that derived query-table `i
 missing or empty table syntax is observable as an omitted `syntax`, omitted `identifier`,
 `table_role="unknown"` and a parser-maintenance diagnostic with source provenance. The extractor
 must not use generic names such as `Основная таблица` / `Main table` or any other table title as a
-replacement syntax source, and no compatibility adapter should restore that old behavior.
+replacement syntax source or consumer identifier fallback, and no compatibility adapter should
+restore that old behavior. Internally, the domain model represents the missing query-table
+identifier as typed absence, not as an empty-string sentinel; search/index identity may still derive
+deterministic internal document ids from TOC-derived semantic owner context when syntax is missing.
 
 ### v8-context-hbk-cli
 

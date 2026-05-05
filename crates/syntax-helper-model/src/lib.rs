@@ -461,7 +461,7 @@ pub struct PlatformType {
 pub struct QueryTable {
     pub name: String,
     pub syntax: Option<LocalizedName>,
-    pub identifier: String,
+    pub identifier: Option<String>,
     pub semantic: SemanticContext,
     pub table_role: QueryTableRole,
     pub description: Option<String>,

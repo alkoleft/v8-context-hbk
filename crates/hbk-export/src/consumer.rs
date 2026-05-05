@@ -272,8 +272,8 @@ impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ConsumerQueryTable<'a> {
     name: &'a str,
-    #[serde(skip_serializing_if = "is_empty_str")]
-    identifier: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    identifier: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     syntax: Option<ConsumerLocalizedName<'a>>,
     table_role: model::QueryTableRole,
@@ -286,10 +286,6 @@ pub(crate) struct ConsumerQueryTable<'a> {
     parameters: Vec<ConsumerQueryTableParameter<'a>>,
 }
 
-fn is_empty_str(value: &&str) -> bool {
-    value.is_empty()
-}
-
 impl<'a> ConsumerQueryTable<'a> {
     fn new(
         table: &'a model::QueryTable,
@@ -298,7 +294,7 @@ impl<'a> ConsumerQueryTable<'a> {
     ) -> Self {
         Self {
             name: &table.name,
-            identifier: &table.identifier,
+            identifier: table.identifier.as_deref(),
             syntax: table.syntax.as_ref().map(ConsumerLocalizedName::from),
             table_role: table.table_role,
             owner_path: semantic_owner_path(&table.semantic),

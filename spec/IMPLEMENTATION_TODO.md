@@ -1064,3 +1064,45 @@ Completion notes:
 - Provider result ordering, ambiguity behavior, command names, query kinds and JSON shape remain
   unchanged.
 - Verification passed with `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
+### [x] T82. Represent missing query-table identifier as optional domain data
+
+Spec refs:
+
+- T74
+- T75
+- FR-EXPORT-001
+- FR-SH-003
+- `spec/implementation/components.md`
+
+Problem:
+
+- The T75 contract says missing query-table syntax must not synthesize a consumer `identifier`, but
+  the domain model still represents the missing identifier as `String::new()`.
+- The exporter then hides the empty string. This keeps a sentinel value in the domain model and makes
+  parser/export behavior easier to drift.
+
+Scope:
+
+- Change `QueryTable.identifier` to an optional value, or introduce an equivalent typed missing
+  state if that better matches the model.
+- Keep consumer JSON behavior from T75: omit `identifier` when syntax is missing or empty.
+- Update search-index identity creation so missing-syntax query tables still receive deterministic
+  internal document ids without treating an empty identifier as a real source fact.
+- Update focused parser/export/search tests.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p hbk-export --lib`
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- `QueryTable.identifier` now represents missing query-table syntax as typed absence rather than an
+  empty string in the domain model.
+- Parser and reader behavior still derive identifiers only from non-empty Syntax Assistant syntax;
+  missing or empty syntax keeps `identifier=None` and `table_role="unknown"`.
+- Consumer JSON behavior from T75 is unchanged: records without syntax omit `identifier`.
+- Search/index identity creation continues to produce deterministic non-empty internal document ids
+  for missing-syntax query tables from TOC-derived semantic owner context.

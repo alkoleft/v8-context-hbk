@@ -147,18 +147,19 @@ fn query_table_name(content: &PageContent) -> String {
         .unwrap_or_else(|| page_title_name(content).primary)
 }
 
-pub(crate) fn query_table_identifier(syntax: Option<&LocalizedName>, name: &str) -> String {
+pub(crate) fn query_table_identifier(syntax: Option<&LocalizedName>, name: &str) -> Option<String> {
     let Some(syntax) = syntax else {
-        return String::new();
+        return None;
     };
     let Some(primary) = primary_syntax_segment(syntax).filter(|segment| !segment.is_empty()) else {
-        return String::new();
+        return None;
     };
-    if query_table_syntax_segment_count(syntax) > 2 {
+    let identifier = if query_table_syntax_segment_count(syntax) > 2 {
         format!("{}{}", primary, camel_case_identifier_part(name))
     } else {
         compact_identifier_part(primary)
-    }
+    };
+    (!identifier.is_empty()).then_some(identifier)
 }
 
 pub(crate) fn query_table_role(syntax: Option<&LocalizedName>) -> QueryTableRole {

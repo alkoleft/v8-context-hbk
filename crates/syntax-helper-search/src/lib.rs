@@ -1563,8 +1563,11 @@ impl DocumentDraft {
                 identifier,
                 semantic,
             } => {
-                self.document.id =
-                    identities.query_table_identity_by(&name_primary, &identifier, &semantic);
+                self.document.id = identities.query_table_identity_by(
+                    &name_primary,
+                    identifier.as_deref(),
+                    &semantic,
+                );
                 self.document
                     .relation_keys
                     .push(semantic_relation_key(&semantic, &name_primary));
@@ -1617,7 +1620,7 @@ enum DraftIdentity {
     },
     QueryTable {
         name_primary: String,
-        identifier: String,
+        identifier: Option<String>,
         semantic: model::SemanticContext,
     },
     QueryMember {
@@ -1642,7 +1645,7 @@ struct PlatformTypeIdentityInput {
 #[derive(Debug)]
 struct QueryTableIdentityInput {
     name_primary: String,
-    identifier: String,
+    identifier: Option<String>,
     semantic: model::SemanticContext,
 }
 
@@ -2841,7 +2844,7 @@ impl DocumentIdentities {
                     semantic_relation_key(&record.semantic, &record.name_primary),
                     query_table_identity(
                         &record.name_primary,
-                        &record.identifier,
+                        record.identifier.as_deref(),
                         &record.semantic,
                         &query_table_counts,
                     ),
@@ -2898,13 +2901,18 @@ impl DocumentIdentities {
     fn query_table_identity_by(
         &self,
         name_primary: &str,
-        identifier: &str,
+        identifier: Option<&str>,
         semantic: &model::SemanticContext,
     ) -> String {
         self.query_table_ids
             .get(&semantic_relation_key(semantic, name_primary))
             .cloned()
-            .unwrap_or_else(|| format!("query_table:{}", clean_identity_part(identifier)))
+            .unwrap_or_else(|| {
+                format!(
+                    "query_table:{}",
+                    query_table_identity_base(name_primary, identifier, semantic)
+                )
+            })
     }
 
     fn query_member_owner_identity(
@@ -2972,7 +2980,7 @@ fn platform_type_identity(
 
 fn query_table_identity(
     name_primary: &str,
-    identifier: &str,
+    identifier: Option<&str>,
     semantic: &model::SemanticContext,
     counts: &BTreeMap<String, usize>,
 ) -> String {
@@ -2995,19 +3003,21 @@ fn query_table_identity(
 fn query_table_identity_key(record: &QueryTableIdentityInput) -> String {
     normalize_lookup_key(&query_table_identity_base(
         &record.name_primary,
-        &record.identifier,
+        record.identifier.as_deref(),
         &record.semantic,
     ))
 }
 
 fn query_table_identity_base(
     name_primary: &str,
-    identifier: &str,
+    identifier: Option<&str>,
     semantic: &model::SemanticContext,
 ) -> String {
-    let identifier = clean_identity_part(identifier);
-    if !identifier.is_empty() {
-        return identifier;
+    if let Some(identifier) = identifier {
+        let identifier = clean_identity_part(identifier);
+        if !identifier.is_empty() {
+            return identifier;
+        }
     }
     semantic_record_key(name_primary, semantic)
 }
@@ -4121,7 +4131,7 @@ mod tests {
     fn missing_syntax_query_table_identity_uses_semantic_owner_path() {
         let mut task_table = query_table("", "Таблицы задач", "Основная таблица");
         task_table.syntax = None;
-        task_table.identifier = String::new();
+        task_table.identifier = None;
         task_table.table_role = model::QueryTableRole::Unknown;
         let context = model::PlatformContext {
             query_tables: vec![task_table],
@@ -4628,7 +4638,7 @@ mod tests {
         model::QueryTable {
             name: table_name.to_string(),
             syntax: None,
-            identifier: identifier.to_string(),
+            identifier: (!identifier.is_empty()).then(|| identifier.to_string()),
             semantic: semantic(model::RecordFamily::QueryTable, owner_path),
             table_role: model::QueryTableRole::Primary,
             description: Some("table description".to_string()),

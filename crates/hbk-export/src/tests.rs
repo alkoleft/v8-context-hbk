@@ -540,7 +540,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                     "БизнесПроцесс.<Имя бизнес-процесса>",
                     "BusinessProcess.<Имя бизнес-процесса>",
                 )),
-                identifier: "БизнесПроцесс".to_string(),
+                identifier: Some("БизнесПроцесс".to_string()),
                 semantic: semantic(
                     model::BranchKind::QueryTables,
                     model::RecordFamily::QueryTable,
@@ -553,7 +553,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             model::QueryTable {
                 name: "Таблица критерия отбора".to_string(),
                 syntax: Some(name("КритерийОтбора.<Имя критерия отбора>")),
-                identifier: "КритерийОтбора".to_string(),
+                identifier: Some("КритерийОтбора".to_string()),
                 semantic: semantic(
                     model::BranchKind::QueryTables,
                     model::RecordFamily::QueryTable,
@@ -566,7 +566,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             model::QueryTable {
                 name: "Основная таблица".to_string(),
                 syntax: None,
-                identifier: String::new(),
+                identifier: None,
                 semantic: semantic(
                     model::BranchKind::QueryTables,
                     model::RecordFamily::QueryTable,
@@ -1005,7 +1005,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
         .query_table(model::QueryTable {
             name: "Основная таблица".to_string(),
             syntax: Some(name("Задача.<Имя задачи>")),
-            identifier: "Задача".to_string(),
+            identifier: Some("Задача".to_string()),
             semantic: semantic(
                 model::BranchKind::QueryTables,
                 model::RecordFamily::QueryTable,

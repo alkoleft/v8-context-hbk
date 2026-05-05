@@ -128,6 +128,10 @@ directories are service data unless promoted here.
   remain exported with their nested field/parameter facts, but omit `syntax` and `identifier`, use
   `table_role="unknown"` and add a parser-maintenance `MISSING_QUERY_TABLE_SYNTAX` diagnostic with
   source provenance.
+- T82 preserved the T75 consumer JSON contract while replacing the internal empty-string
+  query-table identifier sentinel with typed absence. Missing-syntax query tables still receive
+  deterministic search/index document ids from TOC-derived semantic owner context, not from a
+  synthesized identifier source fact.
 
 ## Post-T29 Runtime Regression To Fix
 

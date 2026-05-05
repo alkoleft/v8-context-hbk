@@ -369,7 +369,7 @@ fn parses_query_table_syntax_and_identifier_from_page() {
         syntax.alias.as_deref(),
         Some("BusinessProcess.<Имя бизнес-процесса>")
     );
-    assert_eq!(table.identifier, "БизнесПроцесс");
+    assert_eq!(table.identifier.as_deref(), Some("БизнесПроцесс"));
     assert_eq!(table.table_role, QueryTableRole::Primary);
 }
 
@@ -398,7 +398,10 @@ fn parses_additional_query_table_identifier_from_extended_syntax() {
         syntax.alias.as_deref(),
         Some("BusinessProcess.<Имя бизнес-процесса>.Points")
     );
-    assert_eq!(table.identifier, "БизнесПроцессТаблицаТочекБизнесПроцессов");
+    assert_eq!(
+        table.identifier.as_deref(),
+        Some("БизнесПроцессТаблицаТочекБизнесПроцессов")
+    );
     assert_eq!(table.table_role, QueryTableRole::Additional);
 }
 
@@ -422,7 +425,7 @@ fn query_table_without_syntax_does_not_fallback_to_display_name() {
     let table = parse_query_table(&content, source("tables/catalog1/table2.html"));
 
     assert!(table.syntax.is_none());
-    assert_eq!(table.identifier, "");
+    assert!(table.identifier.is_none());
     assert_eq!(table.table_role, QueryTableRole::Unknown);
 
     let empty_syntax_content = fixture_content_from_raw(
@@ -435,7 +438,7 @@ fn query_table_without_syntax_does_not_fallback_to_display_name() {
     let empty_syntax_table =
         parse_query_table(&empty_syntax_content, source("tables/catalog1/table2.html"));
     assert!(empty_syntax_table.syntax.is_none());
-    assert_eq!(empty_syntax_table.identifier, "");
+    assert!(empty_syntax_table.identifier.is_none());
     assert_eq!(empty_syntax_table.table_role, QueryTableRole::Unknown);
 }
 
@@ -499,7 +502,7 @@ fn extraction_reports_missing_query_table_syntax_without_dropping_record() {
         .find(|table| table.name == "Основная таблица")
         .expect("query table record must be kept");
     assert!(table.syntax.is_none());
-    assert_eq!(table.identifier, "");
+    assert!(table.identifier.is_none());
     assert_eq!(table.table_role, QueryTableRole::Unknown);
 
     let diagnostic = sink
