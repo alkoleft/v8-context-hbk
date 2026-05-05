@@ -579,6 +579,10 @@ Acceptance:
   parameter shape with `name`, `required`, `types` and optional `description`.
 - Keyword search for `отбор скд` returns data-composition filter facts ahead of unrelated filter
   facts when the Russian Syntax Assistant fixture exists.
+- Search and relationship JSON can be explicitly bounded for review-oriented use without changing
+  the default full provider output.
+- Relationship JSON offers an explicit compact mode that preserves fact identity and relationship
+  explanation while omitting bulky fact fields not needed for triage.
 - Query output is available as readable text and deterministic JSON.
 
 ## FR-SH-PROVIDER-001: Syntax Provider Contract for BSL Tooling

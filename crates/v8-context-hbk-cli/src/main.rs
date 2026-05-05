@@ -14,6 +14,9 @@ use syntax_helper_search::{
     SearchMode, build_index_from_builder,
 };
 
+const DEFAULT_SEARCH_LIMIT: usize = 20;
+const DEFAULT_RELATED_LIMIT: usize = 200;
+
 #[derive(Debug, Parser)]
 #[command(version, about = "Read and inspect 1C HBK help book containers")]
 struct Cli {
@@ -102,6 +105,8 @@ enum SyntaxCommand {
         query: String,
         #[arg(long, value_enum, default_value_t = SearchCliMode::Keywords)]
         mode: SearchCliMode,
+        #[arg(long, value_parser = parse_positive_usize)]
+        limit: Option<usize>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
@@ -120,6 +125,10 @@ enum SyntaxCommand {
         edge: Option<String>,
         #[arg(long, default_value_t = 5)]
         depth: u32,
+        #[arg(long, value_parser = parse_positive_usize)]
+        limit: Option<usize>,
+        #[arg(long)]
+        compact: bool,
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
@@ -237,8 +246,9 @@ fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
             index,
             query,
             mode,
+            limit,
             format,
-        } => syntax_search(index, &query, mode, format),
+        } => syntax_search(index, &query, mode, limit, format),
         SyntaxCommand::Related {
             index,
             id,
@@ -247,8 +257,23 @@ fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
             member,
             edge,
             depth,
+            limit,
+            compact,
             format,
-        } => syntax_related(index, id, name, owner, member, edge, depth, format),
+        } => syntax_related(
+            index,
+            RelatedArgs {
+                id,
+                name,
+                owner,
+                member,
+                edge,
+                depth,
+                limit,
+                compact,
+            },
+            format,
+        ),
     }
 }
 
@@ -422,6 +447,7 @@ fn syntax_search(
     index: Option<PathBuf>,
     query: &str,
     mode: SearchCliMode,
+    limit: Option<usize>,
     format: OutputFormat,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let index = SearchIndex::open_read_only(resolve_index_path(index))?;
@@ -429,38 +455,45 @@ fn syntax_search(
         SearchCliMode::Keywords => SearchMode::Keywords,
         SearchCliMode::Fuzzy => SearchMode::Fuzzy,
     };
-    let hits = index.search(query, mode, 20)?;
+    let effective_limit = limit.unwrap_or(DEFAULT_SEARCH_LIMIT);
+    let hits = index.search(query, mode, effective_limit)?;
+    let query_value = search_query_value(query, mode, limit);
     match format {
         OutputFormat::Text => print_hits_text("search", &hits),
-        OutputFormat::Json => print_provider_hits(
-            "search",
-            json!({ "kind": "search", "mode": search_mode_name(mode), "text": query }),
-            &hits,
-        ),
+        OutputFormat::Json => print_provider_hits("search", query_value, &hits),
     }
 }
 
-fn syntax_related(
-    index: Option<PathBuf>,
+struct RelatedArgs {
     id: Option<String>,
     name: Option<String>,
     owner: Option<String>,
     member: Option<String>,
     edge: Option<String>,
     depth: u32,
+    limit: Option<usize>,
+    compact: bool,
+}
+
+fn syntax_related(
+    index: Option<PathBuf>,
+    args: RelatedArgs,
     format: OutputFormat,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let index = SearchIndex::open_read_only(resolve_index_path(index))?;
     let query = related_query_value(
-        id.as_deref(),
-        name.as_deref(),
-        owner.as_deref(),
-        member.as_deref(),
-        depth,
-        edge.as_deref(),
+        args.id.as_deref(),
+        args.name.as_deref(),
+        args.owner.as_deref(),
+        args.member.as_deref(),
+        args.depth,
+        args.edge.as_deref(),
+        args.limit,
+        args.compact,
     );
-    if let (Some(id), Some(edge)) = (id.as_deref(), edge.as_deref()) {
-        if name.is_some() || owner.is_some() || member.is_some() {
+    let effective_limit = args.limit.unwrap_or(DEFAULT_RELATED_LIMIT);
+    if let (Some(id), Some(edge)) = (args.id.as_deref(), args.edge.as_deref()) {
+        if args.name.is_some() || args.owner.is_some() || args.member.is_some() {
             if matches!(format, OutputFormat::Json) {
                 return print_provider_response(
                     "related",
@@ -491,13 +524,13 @@ fn syntax_related(
         if index.get_by_id(id)?.is_none() {
             return print_related_root_diagnostic("related", query, Vec::new(), format);
         }
-        let hits = index.related_by_id_and_edge(id, edge, 200)?;
+        let hits = index.related_by_id_and_edge(id, edge, effective_limit)?;
         return match format {
             OutputFormat::Text => print_related_hits_text(&hits),
-            OutputFormat::Json => print_provider_related_hits(query, &hits),
+            OutputFormat::Json => print_provider_related_hits(query, &hits, args.compact),
         };
     }
-    if edge.is_some() {
+    if args.edge.is_some() {
         if matches!(format, OutputFormat::Json) {
             return print_provider_response(
                 "related",
@@ -513,7 +546,7 @@ fn syntax_related(
             "syntax related --edge requires an exact --id root in the first implementation".into(),
         );
     }
-    let root = match (id, name, owner, member) {
+    let root = match (args.id, args.name, args.owner, args.member) {
         (Some(id), None, None, None) => RootLookup::ById(id),
         (None, Some(name), None, None) => RootLookup::ByName(name),
         (None, None, Some(owner), Some(member)) => RootLookup::ByOwnerMember(owner, member),
@@ -537,26 +570,26 @@ fn syntax_related(
             if index.get_by_id(id)?.is_none() {
                 return print_related_root_diagnostic("related", query, Vec::new(), format);
             }
-            index.related_by_id(id, depth, 200)?
+            index.related_by_id(id, args.depth, effective_limit)?
         }
         RootLookup::ByName(name) => {
             let roots = index.get_by_name(name)?;
             if roots.len() != 1 {
                 return print_related_root_diagnostic("related", query, roots, format);
             }
-            index.related_by_id(&roots[0].document.id, depth, 200)?
+            index.related_by_id(&roots[0].document.id, args.depth, effective_limit)?
         }
         RootLookup::ByOwnerMember(owner, member) => {
             let roots = owner_member_roots(&index, owner, member)?;
             if roots.len() != 1 {
                 return print_related_root_diagnostic("related", query, roots, format);
             }
-            index.related_by_id(&roots[0].document.id, depth, 200)?
+            index.related_by_id(&roots[0].document.id, args.depth, effective_limit)?
         }
     };
     match format {
         OutputFormat::Text => print_related_hits_text(&hits),
-        OutputFormat::Json => print_provider_related_hits(query, &hits),
+        OutputFormat::Json => print_provider_related_hits(query, &hits, args.compact),
     }
 }
 
@@ -742,6 +775,8 @@ fn related_query_value(
     member: Option<&str>,
     depth: u32,
     edge: Option<&str>,
+    limit: Option<usize>,
+    compact: bool,
 ) -> Value {
     let root = match (id, name, owner, member) {
         (Some(id), None, None, None) => json!({ "id": id }),
@@ -753,7 +788,25 @@ fn related_query_value(
     if let Some(edge) = edge {
         query["edge"] = json!(edge);
     }
+    if let Some(limit) = limit {
+        query["limit"] = json!(limit);
+    }
+    if compact {
+        query["output"] = json!("compact");
+    }
     query
+}
+
+fn search_query_value(query: &str, mode: SearchMode, limit: Option<usize>) -> Value {
+    let mut value = json!({
+        "kind": "search",
+        "mode": search_mode_name(mode),
+        "text": query,
+    });
+    if let Some(limit) = limit {
+        value["limit"] = json!(limit);
+    }
+    value
 }
 
 fn search_mode_name(mode: SearchMode) -> &'static str {
@@ -897,20 +950,27 @@ fn add_provider_resolution_meta(
 fn print_provider_related_hits(
     query: Value,
     hits: &[RelatedHit],
+    compact: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let results = hits
         .iter()
-        .map(|hit| {
-            json!({
-                "fact": document_fact(&hit.document),
-                "meta": {
-                    "depth": hit.depth,
-                    "path": hit.via,
-                },
-            })
-        })
+        .map(|hit| related_result_value(hit, compact))
         .collect::<Vec<_>>();
     print_provider_response("related", "ok", query, results, Vec::new())
+}
+
+fn related_result_value(hit: &RelatedHit, compact: bool) -> Value {
+    json!({
+        "fact": if compact {
+            compact_document_fact(&hit.document)
+        } else {
+            document_fact(&hit.document)
+        },
+        "meta": {
+            "depth": hit.depth,
+            "path": hit.via,
+        },
+    })
 }
 
 fn print_related_root_diagnostic(
@@ -1038,6 +1098,18 @@ fn document_fact(document: &SearchDocument) -> Value {
     fact
 }
 
+fn compact_document_fact(document: &SearchDocument) -> Value {
+    let mut fact = json!({
+        "id": document.id,
+        "kind": document.kind,
+        "name": document.name,
+    });
+    if let Some(owner) = &document.owner {
+        fact["owner"] = json!(owner.primary);
+    }
+    fact
+}
+
 fn print_constructor_text_hit(hit: &SearchHit, details: bool) {
     if hit.document.signatures.is_empty() {
         println!("{}", hit.document.name.primary);
@@ -1072,6 +1144,16 @@ fn resolve_index_path(path: Option<PathBuf>) -> PathBuf {
 fn syntax_document_count(path: &std::path::Path) -> Result<i64, Box<dyn std::error::Error>> {
     let index = SearchIndex::open_read_only(path)?;
     Ok(index.document_count()?)
+}
+
+fn parse_positive_usize(value: &str) -> Result<usize, String> {
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|error| format!("invalid positive integer: {error}"))?;
+    if parsed == 0 {
+        return Err("value must be greater than 0".to_string());
+    }
+    Ok(parsed)
 }
 
 fn display_name(name: &LocalizedName) -> String {
@@ -1135,6 +1217,69 @@ mod tests {
         assert_eq!(response["status"], "unsupported");
         assert_eq!(response["results"].as_array().unwrap().len(), 0);
         assert_eq!(response["diagnostics"][0]["code"], "UNSUPPORTED_QUERY");
+    }
+
+    #[test]
+    fn search_query_records_explicit_limit() {
+        let query = search_query_value("Структура", SearchMode::Keywords, Some(3));
+
+        assert_eq!(query["kind"], "search");
+        assert_eq!(query["mode"], "keywords");
+        assert_eq!(query["text"], "Структура");
+        assert_eq!(query["limit"], 3);
+    }
+
+    #[test]
+    fn related_query_records_limit_and_compact_output() {
+        let query = related_query_value(
+            Some("platform_type:Структура"),
+            None,
+            None,
+            None,
+            7,
+            None,
+            Some(2),
+            true,
+        );
+
+        assert_eq!(query["kind"], "related");
+        assert_eq!(query["root"]["id"], "platform_type:Структура");
+        assert_eq!(query["depth"], 5);
+        assert_eq!(query["limit"], 2);
+        assert_eq!(query["output"], "compact");
+    }
+
+    #[test]
+    fn compact_related_fact_keeps_identity_and_omits_bulky_fields() {
+        let document = SearchDocument {
+            id: "type_method:platform_type:Тест:Выполнить".to_string(),
+            kind: "type_method".to_string(),
+            name: name("Выполнить"),
+            owner: Some(name("Тест")),
+            signatures: vec![syntax_helper_search::SearchSignature {
+                text: "Выполнить(Параметр)".to_string(),
+                parameters: Vec::new(),
+                title: None,
+                description: None,
+            }],
+            type_refs: Vec::new(),
+            return_types: vec!["Булево".to_string()],
+            description: Some("Detailed description".to_string()),
+            preview: "Detailed description".to_string(),
+            parameter_terms: Vec::new(),
+            relation_keys: Vec::new(),
+            owner_relation_key: None,
+        };
+
+        let fact = compact_document_fact(&document);
+
+        assert_eq!(fact["id"], document.id);
+        assert_eq!(fact["kind"], document.kind);
+        assert_eq!(fact["name"]["primary"], "Выполнить");
+        assert_eq!(fact["owner"], "Тест");
+        assert!(fact.get("signatures").is_none());
+        assert!(fact.get("return").is_none());
+        assert!(fact.get("description").is_none());
     }
 
     #[test]

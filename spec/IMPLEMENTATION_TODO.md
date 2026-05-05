@@ -297,7 +297,7 @@ Completion notes:
 - Verification passed against a fresh RU index at `target/uat/t62-sh-search-ru.sqlite` with `25082`
   documents and `52851 ms` build time.
 
-### [ ] T63. Add bounded and compact output controls for search/related
+### [x] T63. Add bounded and compact output controls for search/related
 
 Spec refs:
 
@@ -339,6 +339,15 @@ Verification:
 - Compact `related` output remains deterministic and includes fact identity plus relationship
   explanation sufficient for review.
 - Existing full-output provider/UAT assertions still pass.
+
+Completion notes:
+
+- `syntax search` and `syntax related` now accept `--limit <N>`; omitted limits preserve the
+  previous defaults of `20` search results and `200` related results.
+- `syntax related --compact` keeps stable fact identity plus `results[].meta.depth/path`, while
+  omitting bulky fact fields such as descriptions, signatures, `types` and `return`.
+- Verification passed against a fresh RU index at `target/uat/t63-sh-search-ru.sqlite` with `25082`
+  documents and `52665 ms` build time.
 
 ### [ ] T64. Align relationship edge filters with the public graph contract
 

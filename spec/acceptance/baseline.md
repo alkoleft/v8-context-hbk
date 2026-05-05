@@ -1348,3 +1348,19 @@ UAT-SH-020 passed: `syntax search --query "Структура" --mode keywords -
 kept `platform_type:ОтборКомпоновкиДанных` in the result set; and
 `таблица регистра бухгалтерии` kept the accepted top hit
 `query_table:РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии`.
+
+T63 added explicit bounded and compact output controls for review-oriented provider use without
+changing the default full provider JSON contract. `syntax search` and `syntax related` now accept
+`--limit <N>`; omitted limits preserve the previous defaults of `20` search results and `200`
+related results. `syntax related --compact` keeps stable fact identity (`id`, `kind`, `name` and
+optional `owner`) plus relationship explanation under `results[].meta.depth` and
+`results[].meta.path`, while omitting bulky fact fields such as descriptions, signatures, `types`
+and `return`.
+
+The accepted T63 verification used the current Russian schema-v4 index at
+`target/uat/t63-sh-search-ru.sqlite`. UAT-SH-021 passed: `syntax search --query "Структура"
+--mode keywords --limit 3 --format json` returned exactly three deterministic provider results and
+recorded `query.limit == 3`; `syntax related --id "type_property:platform_type:Символы:ПС"
+--limit 5 --format json` returned exactly five full provider results with relationship metadata;
+and the same command with `--compact` returned exactly five compact facts with identity and path
+metadata while omitting `description`, `signatures`, `types` and `return` from `results[].fact`.

@@ -1130,6 +1130,74 @@ Expected result:
 - Raw command outputs remain service data under `target/uat`; only the commands, assertions and
   conclusions are durable.
 
+## UAT-SH-021: Bounded and Compact Query Output
+
+Related use case: UC-SH-005C and UC-SH-005D.
+
+Related requirements: FR-SH-SEARCH-001, FR-SH-SEARCH-002, FR-SH-PROVIDER-001, NFR-QUERY-001.
+
+Status: implementation UAT for T63.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- A current schema-v4 or later provider index exists under `target/uat/` or can be rebuilt there.
+
+Steps:
+
+```bash
+rm -f target/uat/t63-search-limit.json target/uat/t63-related-limit.json target/uat/t63-related-compact.json
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t63-sh-search-ru.sqlite
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t63-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax search --query "Структура" --mode keywords --limit 3 --format json \
+  > target/uat/t63-search-limit.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t63-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "type_property:platform_type:Символы:ПС" --limit 5 --format json \
+  > target/uat/t63-related-limit.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t63-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "type_property:platform_type:Символы:ПС" --limit 5 --compact --format json \
+  > target/uat/t63-related-compact.json
+
+jq -e '.status == "ok"
+  and .query.limit == 3
+  and (.results | length) == 3
+  and all(.results[]; (.meta | has("rank")) and (.fact | has("score") | not))' \
+  target/uat/t63-search-limit.json
+jq -e '.status == "ok"
+  and .query.limit == 5
+  and (.results | length) == 5
+  and all(.results[]; (.meta | has("depth")) and (.meta | has("path")))' \
+  target/uat/t63-related-limit.json
+jq -e '.status == "ok"
+  and .query.limit == 5
+  and .query.output == "compact"
+  and (.results | length) == 5
+  and all(.results[];
+    (.fact | has("id") and has("kind") and has("name"))
+    and (.fact | has("description") | not)
+    and (.fact | has("signatures") | not)
+    and (.fact | has("types") | not)
+    and (.fact | has("return") | not)
+    and (.meta | has("depth") and has("path"))
+  )' target/uat/t63-related-compact.json
+```
+
+Expected result:
+
+- `--limit` bounds `syntax search` and `syntax related` provider result arrays deterministically.
+- `syntax related --compact` keeps stable fact identity and relationship explanation under
+  `results[].meta`, while omitting bulky fact fields not needed for review triage.
+- Full `syntax related --format json` remains the default provider fact shape when `--compact` is
+  omitted.
+- Query output continues to use the provider envelope and does not expose SQLite table names, FTS
+  tokens, HBK paths, TOC paths, HTML paths or page titles.
+
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 
 Related use case: UC-SH-001.

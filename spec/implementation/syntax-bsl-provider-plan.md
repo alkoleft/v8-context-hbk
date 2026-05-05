@@ -200,7 +200,10 @@ Resolution path:
     limiting and compacting `syntax search` and `syntax related` results, with deterministic JSON
     shape and no loss of the full default provider contract. The first accepted need is
     review-oriented use where unfiltered `related` output for a narrow fact can return hundreds of
-    results and is hard to consume manually or by an agent.
+    results and is hard to consume manually or by an agent. Implemented: `syntax search` and
+    `syntax related` accept `--limit <N>`; `syntax related --compact` keeps identity plus
+    relationship-path metadata while omitting bulky fact fields. Full provider JSON remains the
+    default.
 17. **T64: Align relationship edge filters with the public graph contract.** The schema records
     `member_of` as a supported edge kind, but the current CLI `syntax related --edge` accepts only
     `has_type`, `returns` and `constructs`. Decide whether `member_of` must be implemented as a

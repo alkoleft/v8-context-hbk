@@ -110,9 +110,11 @@ v8-context-hbk syntax get --index <index.sqlite> --owner "НастройкиКо
 v8-context-hbk syntax constructors --index <index.sqlite> "HTTPСоединение"
 v8-context-hbk syntax constructors --index <index.sqlite> "HTTPСоединение" --details
 v8-context-hbk syntax search --index <index.sqlite> --query "отбор скд" --mode keywords --format text
+v8-context-hbk syntax search --index <index.sqlite> --query "Структура" --mode keywords --limit 3 --format json
 v8-context-hbk syntax search --index <index.sqlite> --query "DataCompositionFilter" --mode fuzzy --format json
 v8-context-hbk syntax related --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
 v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --format json
+v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:Символы:ПС" --limit 5 --compact --format json
 v8-context-hbk syntax related --index <index.sqlite> --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
 ```
 
@@ -524,11 +526,19 @@ Command-specific mapping:
 - `syntax constructors <TYPE>` returns constructor facts owned by the resolved type. Constructor
   facts must expose structured `signatures` and must not expose mixed parameter/type token arrays.
 - `syntax search --query <TEXT>` returns ranked facts with `results[].meta.score` and
-  `results[].meta.rank`. Ranking metadata is not part of the fact.
+  `results[].meta.rank`. Ranking metadata is not part of the fact. It accepts `--limit <N>` to
+  bound the deterministic result array. When omitted, the default remains the first implementation's
+  `20` search results.
 - `syntax related` returns related facts with relationship traversal metadata in `results[].meta`.
   Relationship roots may be a plain name for human use, a document id, or an owner/member pair.
   Plain-name and owner/member roots must report `status: "ambiguous"` when they do not resolve to
-  exactly one root. Missing roots must report `status: "not_found"`.
+  exactly one root. Missing roots must report `status: "not_found"`. It accepts `--limit <N>` to
+  bound the deterministic result array. When omitted, the default remains the first implementation's
+  `200` relationship results. `syntax related --compact` is an explicit review/triage output mode:
+  it keeps stable fact identity fields (`id`, `kind`, `name` and optional `owner`) and relationship
+  explanation under `results[].meta.depth` / `results[].meta.path`, while omitting bulky fact fields
+  such as descriptions, signatures, `types` and `return`. Full provider JSON remains the default
+  when `--compact` is omitted.
 
 The first ranking may use FTS5 `bm25()` plus deterministic tie breakers:
 
