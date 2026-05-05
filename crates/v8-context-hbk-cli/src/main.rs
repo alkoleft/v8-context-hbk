@@ -355,6 +355,7 @@ fn syntax_stream_error(
     }
 }
 
+#[derive(Default)]
 struct GetArgs {
     kind: Option<String>,
     id: Option<String>,
@@ -374,15 +375,15 @@ fn syntax_get(
     format: OutputFormat,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let index = SearchIndex::open_read_only(resolve_index_path(index))?;
-    let query = get_query_value(&args);
-    let hits = match get_lookup(&index, &args)? {
+    let query = classify_get_query(&args);
+    let hits = match get_lookup(&index, query.lookup)? {
         GetLookupResult::Hits(hits) => hits,
         GetLookupResult::Unsupported(message) => {
             if matches!(format, OutputFormat::Json) {
                 return print_provider_response(
                     "get",
                     "unsupported",
-                    query,
+                    query.value,
                     Vec::new(),
                     unsupported_query_diagnostic(message),
                 );
@@ -395,19 +396,24 @@ fn syntax_get(
                     println!("get: no matches");
                     Ok(())
                 }
-                OutputFormat::Json => print_provider_response(
-                    "get",
-                    "not_found",
-                    query.clone(),
-                    Vec::new(),
-                    provider_diagnostics("not_found", &query, &[]),
-                ),
+                OutputFormat::Json => {
+                    let diagnostics = provider_diagnostics("not_found", &query.value, &[]);
+                    print_provider_response(
+                        "get",
+                        "not_found",
+                        query.value,
+                        Vec::new(),
+                        diagnostics,
+                    )
+                }
             };
         }
     };
     match format {
         OutputFormat::Text => print_hits_text("get", &hits),
-        OutputFormat::Json => print_provider_hits_with_index("get", query, &hits, Some(&index)),
+        OutputFormat::Json => {
+            print_provider_hits_with_index("get", query.value, &hits, Some(&index))
+        }
     }
 }
 
@@ -606,8 +612,36 @@ enum RootLookup {
     ByOwnerMember(String, String),
 }
 
-fn get_query_value(args: &GetArgs) -> Value {
-    match (
+struct ClassifiedGetQuery<'a> {
+    value: Value,
+    lookup: GetLookup<'a>,
+}
+
+enum GetLookup<'a> {
+    TypeIdentityById(&'a str),
+    TypeIdentityByName(&'a str),
+    TypeIdentityByAlias(&'a str),
+    DocumentById(&'a str),
+    ExactName(&'a str),
+    MemberList(&'a str),
+    OwnerTypeMember {
+        owner_type_id: &'a str,
+        member: &'a str,
+    },
+    OwnerMember {
+        owner: &'a str,
+        member: &'a str,
+    },
+    CallableById(&'a str),
+    CallableByOwnerType {
+        owner_type_id: &'a str,
+        callable: &'a str,
+    },
+    Unsupported(&'static str),
+}
+
+fn classify_get_query(args: &GetArgs) -> ClassifiedGetQuery<'_> {
+    let (value, lookup) = match (
         args.kind.as_deref(),
         args.id.as_deref(),
         args.name.as_deref(),
@@ -619,38 +653,66 @@ fn get_query_value(args: &GetArgs) -> Value {
         args.callable_id.as_deref(),
         args.callable.as_deref(),
     ) {
-        (Some("platform_type"), Some(id), None, None, None, None, None, None, None, None) => {
-            json!({ "kind": "type_identity", "id": id })
-        }
-        (Some("platform_type"), None, Some(name), None, None, None, None, None, None, None) => {
-            json!({ "kind": "type_identity", "name": name })
-        }
-        (Some("platform_type"), None, None, Some(alias), None, None, None, None, None, None) => {
-            json!({ "kind": "type_identity", "alias": alias })
-        }
-        (None, Some(id), None, None, None, None, None, None, None, None) => {
-            json!({ "kind": "document_id", "id": id })
-        }
-        (None, None, Some(name), None, None, None, None, None, None, None) => {
-            json!({ "kind": "exact_name", "name": name })
-        }
-        (None, None, None, None, None, None, None, Some(type_id), None, None) => {
-            json!({ "kind": "member_list", "owner_type_id": type_id })
-        }
-        (None, None, None, None, None, Some(owner_type_id), Some(member), None, None, None) => {
-            json!({ "kind": "owner_type_member", "owner_type_id": owner_type_id, "name": member })
-        }
-        (None, None, None, None, Some(owner), None, Some(member), None, None, None) => {
-            json!({ "kind": "owner_member", "owner": owner, "member": member })
-        }
-        (None, None, None, None, None, None, None, None, Some(callable_id), None) => {
-            json!({ "kind": "callable_overloads", "id": callable_id })
-        }
-        (None, None, None, None, None, Some(owner_type_id), None, None, None, Some(callable)) => {
-            json!({ "kind": "callable_overloads", "owner_type_id": owner_type_id, "name": callable })
-        }
-        _ => json!({ "kind": "invalid" }),
-    }
+        (Some("platform_type"), Some(id), None, None, None, None, None, None, None, None) => (
+            json!({ "kind": "type_identity", "id": id }),
+            GetLookup::TypeIdentityById(id),
+        ),
+        (Some("platform_type"), None, Some(name), None, None, None, None, None, None, None) => (
+            json!({ "kind": "type_identity", "name": name }),
+            GetLookup::TypeIdentityByName(name),
+        ),
+        (Some("platform_type"), None, None, Some(alias), None, None, None, None, None, None) => (
+            json!({ "kind": "type_identity", "alias": alias }),
+            GetLookup::TypeIdentityByAlias(alias),
+        ),
+        (Some(_), _, _, _, _, _, _, _, _, _) => (
+            json!({ "kind": "invalid" }),
+            GetLookup::Unsupported(
+                "syntax get --kind currently supports only platform_type with exactly one of --id, --name or --alias",
+            ),
+        ),
+        (None, Some(id), None, None, None, None, None, None, None, None) => (
+            json!({ "kind": "document_id", "id": id }),
+            GetLookup::DocumentById(id),
+        ),
+        (None, None, Some(name), None, None, None, None, None, None, None) => (
+            json!({ "kind": "exact_name", "name": name }),
+            GetLookup::ExactName(name),
+        ),
+        (None, None, None, None, None, None, None, Some(type_id), None, None) => (
+            json!({ "kind": "member_list", "owner_type_id": type_id }),
+            GetLookup::MemberList(type_id),
+        ),
+        (None, None, None, None, None, Some(owner_type_id), Some(member), None, None, None) => (
+            json!({ "kind": "owner_type_member", "owner_type_id": owner_type_id, "name": member }),
+            GetLookup::OwnerTypeMember {
+                owner_type_id,
+                member,
+            },
+        ),
+        (None, None, None, None, Some(owner), None, Some(member), None, None, None) => (
+            json!({ "kind": "owner_member", "owner": owner, "member": member }),
+            GetLookup::OwnerMember { owner, member },
+        ),
+        (None, None, None, None, None, None, None, None, Some(callable_id), None) => (
+            json!({ "kind": "callable_overloads", "id": callable_id }),
+            GetLookup::CallableById(callable_id),
+        ),
+        (None, None, None, None, None, Some(owner_type_id), None, None, None, Some(callable)) => (
+            json!({ "kind": "callable_overloads", "owner_type_id": owner_type_id, "name": callable }),
+            GetLookup::CallableByOwnerType {
+                owner_type_id,
+                callable,
+            },
+        ),
+        _ => (
+            json!({ "kind": "invalid" }),
+            GetLookup::Unsupported(
+                "syntax get requires exactly one root: --id, --name, --kind platform_type with --id/--name/--alias, --members-of, --owner-type-id with --member/--callable, --callable-id, or both --owner and --member",
+            ),
+        ),
+    };
+    ClassifiedGetQuery { value, lookup }
 }
 
 enum GetLookupResult {
@@ -661,43 +723,27 @@ enum GetLookupResult {
 
 fn get_lookup(
     index: &SearchIndex,
-    args: &GetArgs,
+    lookup: GetLookup<'_>,
 ) -> Result<GetLookupResult, Box<dyn std::error::Error>> {
-    let result = match (
-        args.kind.as_deref(),
-        args.id.as_deref(),
-        args.name.as_deref(),
-        args.alias.as_deref(),
-        args.owner.as_deref(),
-        args.owner_type_id.as_deref(),
-        args.member.as_deref(),
-        args.members_of.as_deref(),
-        args.callable_id.as_deref(),
-        args.callable.as_deref(),
-    ) {
-        (Some("platform_type"), Some(id), None, None, None, None, None, None, None, None) => index
+    let result = match lookup {
+        GetLookup::TypeIdentityById(id) => index
             .type_identity_by_id(id)?
             .map_or(GetLookupResult::NotFound, |hit| {
                 GetLookupResult::Hits(vec![hit])
             }),
-        (Some("platform_type"), None, Some(name), None, None, None, None, None, None, None) => {
+        GetLookup::TypeIdentityByName(name) => {
             GetLookupResult::Hits(index.type_identities_by_name(name)?)
         }
-        (Some("platform_type"), None, None, Some(alias), None, None, None, None, None, None) => {
+        GetLookup::TypeIdentityByAlias(alias) => {
             GetLookupResult::Hits(index.type_identities_by_alias(alias)?)
         }
-        (Some(_), _, _, _, _, _, _, _, _, _) => GetLookupResult::Unsupported(
-            "syntax get --kind currently supports only platform_type with exactly one of --id, --name or --alias",
-        ),
-        (None, Some(id), None, None, None, None, None, None, None, None) => index
+        GetLookup::DocumentById(id) => index
             .get_by_id(id)?
             .map_or(GetLookupResult::NotFound, |hit| {
                 GetLookupResult::Hits(vec![hit])
             }),
-        (None, None, Some(name), None, None, None, None, None, None, None) => {
-            GetLookupResult::Hits(index.get_by_name(name)?)
-        }
-        (None, None, None, None, None, None, None, Some(type_id), None, None) => {
+        GetLookup::ExactName(name) => GetLookupResult::Hits(index.get_by_name(name)?),
+        GetLookup::MemberList(type_id) => {
             if !type_id.starts_with("platform_type:") {
                 return Ok(GetLookupResult::Unsupported(
                     "syntax get --members-of requires an exact platform_type provider id",
@@ -709,14 +755,17 @@ fn get_lookup(
                 GetLookupResult::Hits(index.members_by_type_id(type_id)?)
             }
         }
-        (None, None, None, None, None, Some(owner_type_id), Some(member), None, None, None) => {
+        GetLookup::OwnerTypeMember {
+            owner_type_id,
+            member,
+        } => {
             if index.type_identity_by_id(owner_type_id)?.is_none() {
                 GetLookupResult::NotFound
             } else {
                 GetLookupResult::Hits(index.member_by_owner_type_id(owner_type_id, member)?)
             }
         }
-        (None, None, None, None, Some(owner), None, Some(member), None, None, None) => {
+        GetLookup::OwnerMember { owner, member } => {
             let roots = owner_member_roots(index, owner, member)?;
             if roots.is_empty() {
                 GetLookupResult::NotFound
@@ -724,21 +773,22 @@ fn get_lookup(
                 GetLookupResult::Hits(roots)
             }
         }
-        (None, None, None, None, None, None, None, None, Some(callable_id), None) => index
+        GetLookup::CallableById(callable_id) => index
             .callable_by_id(callable_id)?
             .map_or(GetLookupResult::NotFound, |hit| {
                 GetLookupResult::Hits(vec![hit])
             }),
-        (None, None, None, None, None, Some(owner_type_id), None, None, None, Some(callable)) => {
+        GetLookup::CallableByOwnerType {
+            owner_type_id,
+            callable,
+        } => {
             if index.type_identity_by_id(owner_type_id)?.is_none() {
                 GetLookupResult::NotFound
             } else {
                 GetLookupResult::Hits(index.callable_by_owner_type_id(owner_type_id, callable)?)
             }
         }
-        _ => GetLookupResult::Unsupported(
-            "syntax get requires exactly one root: --id, --name, --kind platform_type with --id/--name/--alias, --members-of, --owner-type-id with --member/--callable, --callable-id, or both --owner and --member",
-        ),
+        GetLookup::Unsupported(message) => GetLookupResult::Unsupported(message),
     };
     Ok(result)
 }
@@ -1280,6 +1330,84 @@ mod tests {
         assert!(is_supported_edge_filter("member_of"));
         assert_eq!(query["kind"], "related");
         assert_eq!(query["edge"], "member_of");
+    }
+
+    #[test]
+    fn get_query_classifier_records_type_identity_root_once() {
+        let args = GetArgs {
+            kind: Some("platform_type".to_string()),
+            name: Some("HTTPСоединение".to_string()),
+            ..GetArgs::default()
+        };
+
+        let query = classify_get_query(&args);
+
+        assert_eq!(query.value["kind"], "type_identity");
+        assert_eq!(query.value["name"], "HTTPСоединение");
+        assert!(matches!(
+            query.lookup,
+            GetLookup::TypeIdentityByName("HTTPСоединение")
+        ));
+    }
+
+    #[test]
+    fn get_query_classifier_records_owner_type_callable_root_once() {
+        let args = GetArgs {
+            owner_type_id: Some("platform_type:HTTPСоединение".to_string()),
+            callable: Some("УстановитьТелоИзСтроки".to_string()),
+            ..GetArgs::default()
+        };
+
+        let query = classify_get_query(&args);
+
+        assert_eq!(query.value["kind"], "callable_overloads");
+        assert_eq!(query.value["owner_type_id"], "platform_type:HTTPСоединение");
+        assert_eq!(query.value["name"], "УстановитьТелоИзСтроки");
+        assert!(matches!(
+            query.lookup,
+            GetLookup::CallableByOwnerType {
+                owner_type_id: "platform_type:HTTPСоединение",
+                callable: "УстановитьТелоИзСтроки"
+            }
+        ));
+    }
+
+    #[test]
+    fn get_query_classifier_preserves_unsupported_kind_message() {
+        let args = GetArgs {
+            kind: Some("query_type".to_string()),
+            name: Some("Строка".to_string()),
+            ..GetArgs::default()
+        };
+
+        let query = classify_get_query(&args);
+
+        assert_eq!(query.value["kind"], "invalid");
+        assert!(matches!(
+            query.lookup,
+            GetLookup::Unsupported(
+                "syntax get --kind currently supports only platform_type with exactly one of --id, --name or --alias"
+            )
+        ));
+    }
+
+    #[test]
+    fn get_query_classifier_preserves_invalid_root_message() {
+        let args = GetArgs {
+            id: Some("platform_type:Строка".to_string()),
+            name: Some("Строка".to_string()),
+            ..GetArgs::default()
+        };
+
+        let query = classify_get_query(&args);
+
+        assert_eq!(query.value["kind"], "invalid");
+        assert!(matches!(
+            query.lookup,
+            GetLookup::Unsupported(
+                "syntax get requires exactly one root: --id, --name, --kind platform_type with --id/--name/--alias, --members-of, --owner-type-id with --member/--callable, --callable-id, or both --owner and --member"
+            )
+        ));
     }
 
     #[test]

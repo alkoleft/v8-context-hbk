@@ -659,7 +659,7 @@ Completion notes:
   previous in-memory `PlatformContext` exporter was provisional and removed.
 - Verification passed with `cargo test -p hbk-export --lib` and `cargo test --workspace`.
 
-### [ ] T71. Collapse duplicated `syntax get` query dispatch
+### [x] T71. Collapse duplicated `syntax get` query dispatch
 
 Spec refs:
 
@@ -679,6 +679,16 @@ Verification:
 
 - `cargo test -p v8-context-hbk-cli`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Collapsed `syntax get` root classification into one typed query classifier that owns both the
+  provider `query` JSON shape and the lookup variant.
+- Preserved existing provider query kinds, unsupported-query messages, lookup behavior, status
+  behavior, text output and provider JSON fact serialization.
+- Added focused CLI unit tests for valid type/callable roots and invalid/unsupported root
+  classification.
+- Verification passed with `cargo test -p v8-context-hbk-cli` and `cargo test --workspace`.
 
 ### [ ] T72. Collapse provider JSON adapter duplication
 
