@@ -2,11 +2,15 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use hbk_book::{HbkBook, Toc};
-use hbk_docs::{DocumentationReader, PageContent};
+#[cfg(test)]
+use hbk_docs::DocumentationReader;
+use hbk_docs::PageContent;
 use syntax_helper_model::*;
 
 use crate::discovery::discover_roots_with_loader;
-use crate::error::{SyntaxHelperError, SyntaxHelperStreamError, infallible_stream_error};
+#[cfg(test)]
+use crate::error::infallible_stream_error;
+use crate::error::{SyntaxHelperError, SyntaxHelperStreamError};
 use crate::html::name_from_text;
 use crate::label_match::has_token_prefix;
 use crate::page_parser::{
@@ -27,7 +31,8 @@ impl<'a> SyntaxHelperReader<'a> {
         Self { book }
     }
 
-    pub fn discover_roots(&self) -> Result<RootDiscovery, SyntaxHelperError> {
+    #[cfg(test)]
+    pub(crate) fn discover_roots(&self) -> Result<RootDiscovery, SyntaxHelperError> {
         let mut documentation = DocumentationReader::new(self.book)
             .page_loader()
             .map_err(SyntaxHelperError::from)?;
@@ -43,7 +48,8 @@ impl<'a> SyntaxHelperReader<'a> {
         )
     }
 
-    pub fn extract(&self) -> Result<PlatformContext, SyntaxHelperError> {
+    #[cfg(test)]
+    pub(crate) fn extract(&self) -> Result<PlatformContext, SyntaxHelperError> {
         let mut context = PlatformContext::default();
         self.extract_into(&mut context)
             .map_err(infallible_stream_error)?;
@@ -87,7 +93,8 @@ impl<'a> SyntaxHelperReader<'a> {
     }
 }
 
-pub fn extract_with_loader(
+#[cfg(test)]
+pub(crate) fn extract_with_loader(
     hbk_path: &Path,
     locale: &str,
     toc: &Toc,
@@ -99,7 +106,8 @@ pub fn extract_with_loader(
     Ok(context)
 }
 
-pub fn extract_with_loader_into<S>(
+#[cfg(test)]
+pub(crate) fn extract_with_loader_into<S>(
     hbk_path: &Path,
     locale: &str,
     toc: &Toc,

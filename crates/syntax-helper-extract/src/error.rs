@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::convert::Infallible;
 use std::fmt;
 
@@ -76,6 +77,7 @@ impl<SinkError> From<SyntaxHelperError> for SyntaxHelperStreamError<SinkError> {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn infallible_stream_error(
     error: SyntaxHelperStreamError<Infallible>,
 ) -> SyntaxHelperError {

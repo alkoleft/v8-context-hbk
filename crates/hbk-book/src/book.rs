@@ -221,6 +221,7 @@ impl HbkBook {
         reader.read_page(path)
     }
 
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn read_pages<'p>(
         &self,
         paths: impl IntoIterator<Item = &'p str>,

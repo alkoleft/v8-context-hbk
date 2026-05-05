@@ -426,9 +426,10 @@ human text output and FTS input. Search-only text fields are confined to `docume
 
 ## Provider JSON Response Contract
 
-Status: provisional target contract for T50. Existing `SearchHit<SearchDocument>` JSON is a
-temporary implementation shape. Compatibility with that shape is not a goal when it conflicts with
-the provider contract below.
+Status: provisional provider contract implemented after T50-T52 and narrowed by T86. Query result
+DTOs such as `SearchHit`, `SearchDocument`, `RelatedHit` and `RelationStep` are Rust adapter structs,
+not a public JSON shape. `v8-context-hbk-cli` assembles provider JSON explicitly; compatibility with
+any older direct DTO serialization is not a goal when it conflicts with the provider contract below.
 
 `syntax get`, `syntax constructors`, `syntax search` and `syntax related` JSON output should use one
 response envelope:

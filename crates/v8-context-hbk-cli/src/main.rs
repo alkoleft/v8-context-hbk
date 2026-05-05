@@ -1039,8 +1039,18 @@ fn related_result_value(hit: &RelatedHit, compact: bool) -> Value {
         ),
         "meta": {
             "depth": hit.depth,
-            "path": hit.via,
+            "path": hit.via.iter().map(relation_step_value).collect::<Vec<_>>(),
         },
+    })
+}
+
+fn relation_step_value(step: &syntax_helper_search::RelationStep) -> Value {
+    json!({
+        "from": step.from,
+        "to": step.to,
+        "edge_kind": step.edge_kind,
+        "label": step.label,
+        "evidence": step.evidence,
     })
 }
 

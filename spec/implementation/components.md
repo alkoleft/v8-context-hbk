@@ -118,6 +118,10 @@ Implementation note: ordinary entity byte reads use a byte-only block path. Offs
 remain internal to descriptor parsing and validation/diagnostic paths that genuinely need source
 offsets.
 
+`HbkContainer::from_bytes` is test support only. Production/library callers open HBK containers
+from a path through `HbkContainer::open`; in-memory synthetic containers belong behind tests or the
+`test-utils` feature, not in the ordinary public component contract.
+
 ### hbk-book
 
 Expected public concepts:
@@ -147,6 +151,10 @@ or `FileStorage` bytes after construction. Page/file reads are path-backed: the 
 remain readable after `open` so `HbkBook` can create a short-lived `FileStorageReader` for access.
 `hbk-book` must not trust ZIP entry metadata sizes for unbounded allocation when reading `PackBlock`
 or `FileStorage` entries; entry bytes are read from the actual ZIP stream at the HBK input boundary.
+
+The supported ordinary page/file surface is `read_file`, `read_page` and `FileStorageReader`.
+`HbkBook::read_pages` is a test/support convenience for deterministic fixture checks and is not an
+ordinary public contract.
 
 ### hbk-docs
 
@@ -206,6 +214,13 @@ Expected public concept:
 - `SyntaxHelperReader`
 
 Owns FR-SH-001, FR-SH-002 and FR-SH-003.
+
+The supported extraction facade is `SyntaxHelperReader::extract_into()` over `SyntaxHelperSink`.
+Materializing helpers (`SyntaxHelperReader::extract`, `extract_with_loader`,
+`extract_with_loader_into`) and root-discovery loader helpers are internal/test-support surfaces.
+Specialized page-parser functions are parser internals, not crate-root public reexports. The crate
+root intentionally exposes only `SyntaxHelperReader` and error types; domain types should be
+imported from `syntax-helper-model`.
 
 Syntax Assistant section parsing is locale-aware for Russian and root/English books. The extractor
 recognizes root/English `Type:` and `Returned value:` type-reference sections and treats
@@ -346,6 +361,10 @@ Implemented first slice:
 - `syntax-helper-search` owns `index.sqlite` schema version `6`, read-only query opens, FTS5 keyword
   search, prefix-bounded fuzzy candidate selection, exact name/alias and owner/member lookup, and
   directed owner/type-reference relationship traversal.
+- `SearchHit`, `SearchDocument`, `RelatedHit` and `RelationStep` are Rust query result structs for
+  in-workspace search/resolver adapters, not the public provider JSON contract. They intentionally
+  do not derive serde serialization; `v8-context-hbk-cli` assembles provider JSON explicitly from
+  normalized index facts and export-compatible field shapes.
 - `v8-context-hbk syntax export/index/get/search/related` owns CLI argument parsing, index path
   resolution and text/JSON presentation.
 - `syntax index` builds a replacement index beside the target file and atomically renames it after

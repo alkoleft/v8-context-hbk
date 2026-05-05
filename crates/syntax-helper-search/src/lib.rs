@@ -30,20 +30,20 @@ pub enum SearchMode {
     Fuzzy,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchHit {
     pub document: SearchDocument,
     pub score: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelatedHit {
     pub document: SearchDocument,
     pub depth: u32,
     pub via: Vec<RelationStep>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelationStep {
     pub from: String,
     pub to: String,
@@ -52,31 +52,21 @@ pub struct RelationStep {
     pub evidence: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchDocument {
     pub id: String,
     pub kind: String,
     pub name: model::LocalizedName,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<model::LocalizedName>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub signatures: Vec<SearchSignature>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub type_refs: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub return_types: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub preview: String,
-    #[serde(skip)]
     pub parameter_terms: Vec<String>,
-    #[serde(skip)]
     pub relation_keys: Vec<String>,
-    #[serde(skip)]
     pub owner_relation_key: Option<String>,
-    #[serde(skip)]
     pub explicit_type_ref_ids: Vec<Option<String>>,
-    #[serde(skip)]
     pub explicit_return_type_ref_ids: Vec<Option<String>>,
 }
 
@@ -4156,13 +4146,9 @@ mod tests {
                 .contains(&"Булево".to_string())
         );
 
-        let json = serde_json::to_value(&constructors).expect("search hits must serialize");
-        let document = &json[0]["document"];
-        assert!(
-            document.get("parameters").is_none(),
-            "public JSON must not expose mixed parameter search terms"
-        );
-        let signatures = document["signatures"]
+        let signatures_json = serde_json::to_value(&constructors[0].document.signatures)
+            .expect("search signatures must serialize for provider JSON");
+        let signatures = signatures_json
             .as_array()
             .expect("structured signatures must be public JSON");
         assert!(

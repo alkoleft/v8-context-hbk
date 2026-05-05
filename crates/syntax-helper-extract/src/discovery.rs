@@ -7,7 +7,7 @@ use syntax_helper_model::*;
 use crate::catalog::collect_catalog_pages;
 use crate::error::SyntaxHelperError;
 
-pub fn discover_roots_with_loader(
+pub(crate) fn discover_roots_with_loader(
     hbk_path: &Path,
     locale: &str,
     toc: &Toc,

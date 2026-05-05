@@ -346,7 +346,7 @@ Completion notes:
 
 ## Cleanup Follow-up
 
-### [ ] T86. Audit and narrow stale public convenience APIs
+### [x] T86. Audit and narrow stale public convenience APIs
 
 Spec refs:
 
@@ -386,6 +386,34 @@ Verification:
   test utilities, no-op decisions or candidates intentionally left for later review, but they must
   not be the only record for retained/removed public contract decisions.
 - `cargo test --workspace`
+
+Completion notes:
+
+- Narrowed `syntax-helper-extract` crate-root exports to the supported facade:
+  `SyntaxHelperReader` plus error types. Parser functions, root discovery loader helpers,
+  `extract_with_loader*` and materializing `SyntaxHelperReader::extract` are now internal/test
+  support; production CLI/index/export flows continue to use `SyntaxHelperReader::extract_into()`
+  over `SyntaxHelperSink`.
+- Kept `syntax-helper-model` as the domain-model import surface instead of reexporting the entire
+  model through `syntax-helper-extract`.
+- Recorded thin synthetic/test convenience wrappers as outside the ordinary public contract:
+  `HbkContainer::from_bytes` already used the test/test-utils boundary, and `HbkBook::read_pages`
+  now uses the same boundary. Ordinary supported callers use `HbkContainer::open`,
+  `HbkBook::read_file`, `HbkBook::read_page` and `FileStorageReader`.
+- Removed serde serialization from `syntax-helper-search` `SearchHit`, `SearchDocument`,
+  `RelatedHit` and `RelationStep`. They remain Rust query result structs for search/resolver
+  adapters; public provider JSON continues to be assembled explicitly in `v8-context-hbk-cli` from
+  normalized index facts and export-compatible field shapes.
+- Reviewed exact lookup helpers: `get_by_owner_member`, `member_by_owner_type_id`,
+  `callable_by_owner_type_id`, `owner_type_id_for_document` and `target_type_ids_for_document`
+  remain supported component primitives because CLI/provider and resolver adapters use them.
+  Test-side `PlatformContext` to `SearchIndexBuilder` bridge helpers stay private test helpers.
+- Verification passed:
+  - `cargo test -p syntax-helper-extract --lib`
+  - `cargo test -p syntax-helper-search --lib`
+  - `cargo test -p hbk-container --lib`
+  - `cargo test -p hbk-book --lib`
+  - `cargo test --workspace`
 
 ### [ ] T87. Classify residual duplicate query and provider mechanisms
 

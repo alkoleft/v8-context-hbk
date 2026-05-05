@@ -11,7 +11,11 @@ use crate::html::{
     text_lines_from_html_fragment, title_name,
 };
 
-pub fn parse_global_context(content: &PageContent, source: SyntaxHelperSource) -> GlobalContext {
+#[cfg(test)]
+pub(crate) fn parse_global_context(
+    content: &PageContent,
+    source: SyntaxHelperSource,
+) -> GlobalContext {
     parse_global_context_for_mode(content, source, SyntaxHelperRecordDetailMode::Full)
 }
 
@@ -42,7 +46,10 @@ pub(crate) fn parse_global_context_for_mode(
     }
 }
 
-pub fn parse_global_method(content: &PageContent, source: SyntaxHelperSource) -> GlobalMethod {
+pub(crate) fn parse_global_method(
+    content: &PageContent,
+    source: SyntaxHelperSource,
+) -> GlobalMethod {
     GlobalMethod {
         name: heading_name(content),
         signatures: parse_signatures(content),
@@ -56,7 +63,10 @@ pub fn parse_global_method(content: &PageContent, source: SyntaxHelperSource) ->
     }
 }
 
-pub fn parse_global_property(content: &PageContent, source: SyntaxHelperSource) -> GlobalProperty {
+pub(crate) fn parse_global_property(
+    content: &PageContent,
+    source: SyntaxHelperSource,
+) -> GlobalProperty {
     GlobalProperty {
         name: heading_name(content),
         usage: section_text(content, &["Использование:", "Use:"]),
@@ -67,7 +77,7 @@ pub fn parse_global_property(content: &PageContent, source: SyntaxHelperSource) 
     }
 }
 
-pub fn parse_global_context_event(
+pub(crate) fn parse_global_context_event(
     content: &PageContent,
     source: SyntaxHelperSource,
 ) -> GlobalContextEvent {
@@ -82,7 +92,11 @@ pub fn parse_global_context_event(
     }
 }
 
-pub fn parse_platform_type(content: &PageContent, source: SyntaxHelperSource) -> PlatformType {
+#[cfg(test)]
+pub(crate) fn parse_platform_type(
+    content: &PageContent,
+    source: SyntaxHelperSource,
+) -> PlatformType {
     parse_platform_type_for_mode(content, source, SyntaxHelperRecordDetailMode::Full)
 }
 
@@ -116,7 +130,7 @@ pub(crate) fn parse_platform_type_for_mode(
     }
 }
 
-pub fn parse_query_table(content: &PageContent, source: SyntaxHelperSource) -> QueryTable {
+pub(crate) fn parse_query_table(content: &PageContent, source: SyntaxHelperSource) -> QueryTable {
     let syntax = query_table_syntax(content);
     let name = query_table_name(content);
     QueryTable {
@@ -140,7 +154,10 @@ fn query_table_name(content: &PageContent) -> String {
     page_title_name(content).primary
 }
 
-pub fn parse_platform_method(content: &PageContent, source: SyntaxHelperSource) -> PlatformMethod {
+pub(crate) fn parse_platform_method(
+    content: &PageContent,
+    source: SyntaxHelperSource,
+) -> PlatformMethod {
     PlatformMethod {
         owner: title_name(content),
         name: heading_name(content),
@@ -156,7 +173,7 @@ pub fn parse_platform_method(content: &PageContent, source: SyntaxHelperSource) 
     }
 }
 
-pub fn parse_platform_property(
+pub(crate) fn parse_platform_property(
     content: &PageContent,
     source: SyntaxHelperSource,
 ) -> PlatformProperty {
@@ -172,7 +189,7 @@ pub fn parse_platform_property(
     }
 }
 
-pub fn parse_query_table_field(
+pub(crate) fn parse_query_table_field(
     content: &PageContent,
     owner: LocalizedName,
     source: SyntaxHelperSource,
@@ -189,7 +206,7 @@ pub fn parse_query_table_field(
     }
 }
 
-pub fn parse_query_table_parameter(
+pub(crate) fn parse_query_table_parameter(
     content: &PageContent,
     owner: LocalizedName,
     source: SyntaxHelperSource,
@@ -206,7 +223,7 @@ pub fn parse_query_table_parameter(
     }
 }
 
-pub fn parse_constructor(content: &PageContent, source: SyntaxHelperSource) -> Constructor {
+pub(crate) fn parse_constructor(content: &PageContent, source: SyntaxHelperSource) -> Constructor {
     Constructor {
         owner: title_name(content),
         name: heading_name(content),
@@ -218,7 +235,8 @@ pub fn parse_constructor(content: &PageContent, source: SyntaxHelperSource) -> C
     }
 }
 
-pub fn parse_enum(content: &PageContent, source: SyntaxHelperSource) -> EnumDefinition {
+#[cfg(test)]
+pub(crate) fn parse_enum(content: &PageContent, source: SyntaxHelperSource) -> EnumDefinition {
     parse_enum_for_mode(content, source, SyntaxHelperRecordDetailMode::Full)
 }
 
@@ -240,7 +258,7 @@ pub(crate) fn parse_enum_for_mode(
     }
 }
 
-pub fn parse_enum_value(content: &PageContent, source: SyntaxHelperSource) -> EnumValue {
+pub(crate) fn parse_enum_value(content: &PageContent, source: SyntaxHelperSource) -> EnumValue {
     EnumValue {
         owner: title_name(content),
         name: heading_name(content),
