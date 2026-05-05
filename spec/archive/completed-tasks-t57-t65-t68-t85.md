@@ -1,0 +1,1099 @@
+# Completed Implementation Tasks T57-T65 and T68-T85
+
+This archive preserves completed task history moved out of the active implementation ledger.
+It is evidence, not active implementation scope.
+
+Raw command logs, generated exports, temporary probes and `target/...` paths are service data and
+are intentionally omitted from this archive. Durable resolver, provider, query-index, cleanup and
+contract conclusions live in `../acceptance/baseline.md`, `../source-evidence.md`,
+`../requirements/functional.md`, `../requirements/non-functional.md`, `../implementation/components.md`,
+`../implementation/syntax-helper-query-cli.md`, `../implementation/syntax-bsl-provider-plan.md` and
+`../implementation/solution-context-resolve.md`.
+
+For active task sequencing, use `../IMPLEMENTATION_TODO.md`.
+
+## T57. Define analyzer query primitives over normalized storage
+
+Spec refs:
+
+- ADR-0006
+- ADR-0007
+- UC-SH-005A
+- UC-SH-005B
+- UC-SH-005D
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Problem:
+
+- T56 normalized the storage needed for type/member inference, but the accepted provider contract
+  still exposes mostly human-oriented commands: `get`, `constructors`, `search` and `related`.
+- A future BSL analyzer needs stable primitive operations that map directly to type inference and
+  member completion: resolve type identity, list members, resolve owner/member, inspect callable
+  overloads and follow type references.
+- These primitives must preserve ADR-0007: CLI JSON is the first external boundary, while SQLite
+  table names remain internal implementation details.
+
+Scope:
+
+- Define provider-level query primitives and JSON shapes for:
+  - resolving a type by exact id/name/alias;
+  - listing members for a resolved type identity;
+  - resolving one member by `owner_type_id` or exact owner plus member name;
+  - retrieving callable overloads, ordered parameters and return/constructor result types;
+  - exposing type-reference edges needed for expression-chain inference.
+- Define ambiguity, missing-result and unsupported-query behavior for each primitive.
+- Decide whether the first implementation extends existing commands or adds new command names such
+  as `syntax type`, `syntax members` and `syntax callable`.
+- Keep the task spec-only unless the primitive contract is already clear enough to implement safely
+  in the same task; if implementation is deferred, add a follow-up task with the selected command
+  shape.
+
+Verification:
+
+- Updated implementation spec records primitive names, inputs, outputs, ambiguity behavior and
+  non-goals.
+- UAT or acceptance notes identify at least one source-backed BSL expression-chain scenario that
+  the primitives must support.
+- No BSL parser, analyzer diagnostics, Rust public API or SQLite public table contract is added.
+
+Completion notes:
+
+- `syntax get`, `syntax constructors` and `syntax related` remain the selected CLI command surface;
+  analyzer primitives are represented as normalized provider `query.kind` shapes over the same
+  CLI JSON envelope.
+- UAT-SH-018 records the SKD expression-chain and `Новый HTTPСоединение(...)` constructor-chain
+  scenarios for T58/T59 implementation and verification.
+
+## T58. Implement analyzer provider primitives in CLI JSON
+
+Spec refs:
+
+- T57
+- ADR-0007
+- FR-SH-PROVIDER-001
+- UC-SH-005A
+- UC-SH-005B
+- UC-SH-005D
+
+Scope:
+
+- Implement the provider primitives selected by T57 over the normalized schema-v4 tables.
+- Preserve existing `syntax get`, `syntax constructors`, `syntax search` and `syntax related`
+  behavior unless T57 explicitly changes their contract.
+- Return the existing provider envelope with `schema_version`, `command`, `status`, `query`,
+  `results` and `diagnostics`.
+- Keep SQLite table names internal; public JSON must expose stable provider facts and metadata, not
+  storage rows.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- rebuild a real RU index from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
+- JSON assertions cover type resolution, member listing, owner/member resolution and callable
+  overload details from normalized rows.
+- Existing UAT-SH-017 assertions still pass.
+
+Completion notes:
+
+- Implemented analyzer-oriented provider roots through the existing CLI JSON boundary:
+  `--kind platform_type --id|--name|--alias`, `--members-of`, `--owner-type-id --member`,
+  `--callable-id`, `--owner-type-id --callable` and `related --id --edge`.
+- Provider facts continue to use export-compatible `results[].fact`; analyzer-only
+  `owner_type_id` and `target_type_ids` are emitted under `results[].meta`.
+- Verification passed with a fresh RU index at `target/uat/t58-sh-search-ru.sqlite` containing
+  `25082` documents.
+
+## T59. Add expression-chain provider UAT without a BSL parser
+
+Spec refs:
+
+- UC-SH-005A
+- UC-SH-005B
+- UC-SH-005C
+- UC-SH-005D
+- UAT-SH-017
+- UAT-SH-018
+- ADR-0006
+
+Scope:
+
+- Add a black-box UAT scenario that models BSL expression-chain inference as a sequence of provider
+  calls, not by parsing BSL source inside this repository.
+- Start with the accepted SKD chain:
+  - `НастройкиКомпоновкиДанных.Отбор` resolves to `ОтборКомпоновкиДанных`;
+  - `ОтборКомпоновкиДанных.Элементы` resolves to the filter item collection type;
+  - collection item creation resolves to `ЭлементОтбораКомпоновкиДанных`;
+  - member completion for the resulting item exposes source-backed fields needed by the scenario.
+- Add one constructor-chain scenario, for example `Новый HTTPСоединение(...)`, that verifies
+  constructor result type plus callable parameter facts.
+- Promote only stable commands/assertions/conclusions into `spec/`; keep raw outputs under
+  `target/`.
+
+Verification:
+
+- Updated `spec/acceptance/uat-test-cases.md`.
+- Updated `spec/acceptance/baseline.md` after running the scenario.
+- UAT passes against a freshly rebuilt RU index.
+- The scenario uses provider commands/JSON only and does not depend on SQLite table names.
+
+Completion notes:
+
+- UAT-SH-018 now has a dedicated T59 expression-chain scenario that derives each next provider root
+  from previous provider JSON rather than parsing BSL source or querying SQLite tables.
+- Verification passed against a fresh RU index at `target/uat/t59-sh-search-ru.sqlite` with `25082`
+  documents and `52698 ms` build time.
+- The scenario verifies the SKD chain through `НастройкиКомпоновкиДанных.Отбор`,
+  `ОтборКомпоновкиДанных`, `Элементы`, collection `Добавить` and
+  `ЭлементОтбораКомпоновкиДанных` fields, plus the `Новый HTTPСоединение(...)` constructor chain.
+
+## T60. Harden ambiguity handling for analyzer type/member inference
+
+Spec refs:
+
+- ADR-0006
+- ADR-0007
+- UC-SH-005B
+- UC-SH-005D
+- FR-SH-PROVIDER-001
+
+Scope:
+
+- Audit duplicate type names, aliases, owner variants, metadata-template types and extension types
+  that can affect type/member inference.
+- Ensure analyzer primitives return `status: "ambiguous"` with deterministic candidates when a type
+  or member cannot be resolved uniquely.
+- Do not introduce hidden winner selection based on FTS rank, row order or first-seen source page.
+- Add focused fixtures or real-index assertions for at least one duplicate-name case.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- targeted real-index JSON assertions for ambiguous and unambiguous type/member lookups.
+- Existing provider/UAT scenarios still pass.
+
+Completion notes:
+
+- Exact-name lookup no longer collapses mixed ownerless/owned matches to the ownerless fact; `get`
+  and `related` JSON now report `ambiguous` with deterministic candidate summaries.
+- Owner-name/member roots now resolve the owner as a platform type identity first and report
+  ambiguous owner candidates before filtering by member name.
+- Constructor lookup by ambiguous type name returns the provider envelope with
+  `status: "ambiguous"` instead of a non-provider error or hidden owner selection.
+- Verification passed with a fresh RU index at `target/uat/t60-sh-search-ru.sqlite` containing
+  `25082` documents.
+
+## T61. Evaluate analyzer batch lookup needs after primitive UAT
+
+Spec refs:
+
+- ADR-0007
+- UC-SH-005D
+- NFR-QUERY-001
+
+Scope:
+
+- Measure or estimate the cost of expression-chain and member-completion workflows when they call
+  CLI JSON primitives one at a time.
+- Decide whether a batch command is needed for analyzer use, such as resolving many types/members
+  in one process invocation.
+- If a batch provider boundary is needed, add a follow-up ADR or task with concrete input/output
+  shapes, error handling and verification.
+- Do not add a Rust API, daemon, MCP service or SQLite public table contract in this task.
+
+Verification:
+
+- Recorded measurement or reasoned no-op conclusion in implementation/acceptance docs.
+- If batch is deferred, the reason references actual primitive/UAT usage.
+- If batch is selected, a follow-up task or ADR captures the exact boundary before implementation.
+
+Completion notes:
+
+- Measured the accepted UAT-SH-018 expression-chain and constructor-chain workflow as nine separate
+  CLI JSON calls against the prebuilt T60 Russian index
+  `target/uat/t60-sh-search-ru.sqlite`.
+- Individual debug command timings were `0.00-0.39 s`; five repeated full-chain runs took
+  `745-830 ms` total and emitted `48390` bytes across the nine JSON responses.
+- Batch lookup is deferred: the accepted primitive/UAT workflow stays within NFR-QUERY-001, and
+  ADR-0007 still keeps local CLI JSON as the first analyzer-provider boundary.
+- No Rust API, daemon, service boundary, public SQLite contract or batch command was added.
+
+## T62. Improve review-oriented search ranking
+
+Spec refs:
+
+- ADR-0006
+- ADR-0007
+- UC-SH-005C
+- FR-SH-SEARCH-001
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Problem:
+
+- A RAT code-review smoke showed that `syntax search --query "Структура" --mode keywords
+  --format json` ranks less useful SKD property facts above the exact `platform_type:Структура`
+  identity.
+- For review and code-analysis assistance, simple symbol queries should prefer exact platform type,
+  method, property or constructor identities before broader description/owner matches.
+- The ranking fix must not regress accepted task-oriented searches such as `отбор скд` and
+  `таблица регистра бухгалтерии`.
+
+Scope:
+
+- Adjust deterministic search ranking so exact primary/alias identity matches outrank partial
+  property/owner/description matches for simple symbol queries.
+- Keep ranking metadata under `results[].meta`; do not expose internal FTS tokens under
+  `results[].fact`.
+- Add focused tests or UAT assertions for `Структура` and at least one existing accepted
+  task-oriented query.
+- Do not add semantic search, project-symbol indexing or a BSL parser.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- Rebuild a real RU index from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`.
+- JSON assertions show `platform_type:Структура` ranks ahead of non-identity facts for the simple
+  `Структура` query.
+- Existing accepted `отбор скд` and `таблица регистра бухгалтерии` search assertions still pass.
+
+Completion notes:
+
+- Keyword search now applies an exact primary/alias identity tier before broader prefix, token,
+  owner and description matches; exact same-name facts are still ordered by provider kind priority.
+- `UAT-SH-020` records the real-index review-ranking scenario for `Структура` and regression checks
+  for `отбор скд` and `таблица регистра бухгалтерии`.
+- Verification passed against a fresh RU index at `target/uat/t62-sh-search-ru.sqlite` with `25082`
+  documents and `52851 ms` build time.
+
+## T63. Add bounded and compact output controls for search/related
+
+Spec refs:
+
+- ADR-0007
+- UC-SH-005C
+- UC-SH-005D
+- FR-SH-SEARCH-001
+- FR-SH-SEARCH-002
+- FR-SH-PROVIDER-001
+- NFR-QUERY-001
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Problem:
+
+- `syntax related` can return very large result sets for narrow review questions; RAT smoke against
+  `type_property:platform_type:Символы:ПС` returned 200 related facts.
+- Human reviewers and coding agents need a way to request a bounded or compact result without
+  losing deterministic provider behavior.
+
+Scope:
+
+- Define and implement explicit bounded output controls for `syntax search` and `syntax related`,
+  such as `--limit <N>`.
+- Define and implement a compact mode for `syntax related` that keeps stable fact identity and
+  enough path summary to explain relevance while omitting bulky fields that are not needed for a
+  review triage view.
+- Preserve the current full provider JSON as the default unless the spec is deliberately updated.
+- Keep SQLite table names, graph internals and FTS details out of public facts.
+- Do not add a BSL parser, project-symbol analyzer, service boundary or batch provider command.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- Rebuild or reuse a current RU index built from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`.
+- JSON assertions show `--limit` bounds result count deterministically for both `search` and
+  `related`.
+- Compact `related` output remains deterministic and includes fact identity plus relationship
+  explanation sufficient for review.
+- Existing full-output provider/UAT assertions still pass.
+
+Completion notes:
+
+- `syntax search` and `syntax related` now accept `--limit <N>`; omitted limits preserve the
+  previous defaults of `20` search results and `200` related results.
+- `syntax related --compact` keeps stable fact identity plus `results[].meta.depth/path`, while
+  omitting bulky fact fields such as descriptions, signatures, `types` and `return`.
+- Verification passed against a fresh RU index at `target/uat/t63-sh-search-ru.sqlite` with `25082`
+  documents and `52665 ms` build time.
+
+## T64. Align relationship edge filters with the public graph contract
+
+Spec refs:
+
+- ADR-0007
+- UC-SH-005B
+- UC-SH-005C
+- FR-SH-SEARCH-002
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Problem:
+
+- `spec/implementation/syntax-helper-query-cli.md` lists `member_of` as a supported first-slice
+  edge kind in the relationship model.
+- The current CLI rejects `syntax related --edge member_of` with `UNSUPPORTED_QUERY` and says only
+  `has_type`, `returns` and `constructs` are supported.
+- This mismatch is confusing during review because `member_of` is a natural inverse-navigation
+  question for owned facts.
+
+Scope:
+
+- Decide whether `member_of` is a public provider edge filter now or only an internal/storage edge
+  for the current implementation.
+- If public, implement `syntax related --edge member_of` with deterministic JSON and text behavior.
+- If not public, update the implementation spec, CLI help and unsupported-query diagnostic so the
+  supported edge list is unambiguous.
+- Add UAT or focused real-index assertions for the selected behavior.
+- Do not broaden `related --edge` into a general graph-query language.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- Real-index command against `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` demonstrates the selected
+  `member_of` behavior.
+- Provider diagnostics and help text agree with the implemented supported edge list.
+
+Completion notes:
+
+- `member_of` is public inverse owner navigation for exact `syntax related --id` roots, not a
+  storage-only edge.
+- CLI help, provider unsupported-edge diagnostics and UAT-SH-022 now agree on the supported edge
+  filter set: `has_type`, `returns`, `constructs` and `member_of`.
+- Verification passed against a fresh RU index at `target/uat/t64-sh-search-ru.sqlite` with
+  `25082` documents and `56075 ms` build time.
+
+## T65. Define Rust solution-context resolver API
+
+Spec refs:
+
+- ADR-0008
+- UC-CTX-001
+- FR-CTX-RESOLVE-001
+- NFR-RESOLVE-001
+- `spec/implementation/solution-context-resolve.md`
+- `spec/implementation/components.md`
+
+Problem:
+
+- ADR-0007 deliberately deferred Rust library APIs while the analyzer consumer was still
+  future-facing.
+- A concrete Rust application now needs to form a complete solution context for validation, review,
+  development assistance and diagnostics.
+- The resolver cannot be platform-only: it must cover platform API facts plus separate BSL-language
+  and query-language type domains, and later configuration/source-code providers.
+
+Scope:
+
+- Define the source-neutral Rust resolver boundary and domain model in `spec/`.
+- Preserve ADR-0007 CLI JSON as the first language-agnostic provider boundary.
+- Require source-qualified identities and explicit ambiguity across domains/sources.
+- Keep implementation, configuration parsing, BSL parsing, query parsing and diagnostics out of
+  this spec-only task.
+
+Verification:
+
+- ADR-0008 records the decision, alternatives, non-goals and implementation plan.
+- Requirements, use cases, non-functional requirements and component specs reference the resolver
+  boundary.
+- The implementation spec defines resolver traits, fact/request/response concepts, domain
+  separation, composition rules and the first platform adapter mapping.
+- The active ledger records a follow-up implementation task.
+
+Completion notes:
+
+- Accepted `ContextResolver` / `ContextSource` as the Rust API direction for a future
+  source-neutral resolver core.
+- `PlatformApi`, `BslLanguage`, `QueryLanguage`, `Configuration` and `SourceCode` are separate
+  domains; BSL language types and query-language types must not collapse into platform API types by
+  name.
+- `syntax-helper-search` remains the HBK/Syntax Assistant search implementation. A platform adapter
+  may wrap `SearchIndex`, but the generic resolver model belongs in a separate thin core layer.
+
+## T68. Record cleanup boundary for pre-rework legacy removal
+
+Spec refs:
+
+- `spec/implementation/components.md`
+- `spec/README.md`
+
+Scope:
+
+- Confirm the no-backward-compatibility cleanup policy is durable in spec/ and not only in task
+  text or chat.
+- Record cleanup sequencing, non-goals and implementation boundaries for T69-T78.
+- Do not remove code in this task.
+- Do not change T66/T67 ordering unless the user explicitly selected cleanup work before them.
+
+Verification:
+
+- Cleanup policy is present in durable spec/ documentation.
+- T69-T78 reference the policy and stay scoped to one cleanup concern each.
+- `git diff --check`
+
+Completion notes:
+
+- `spec/implementation/components.md` now records the pre-rework legacy cleanup boundary, narrow
+  sequencing, non-goals and the T69-T78 cleanup concerns outside the active ledger.
+- T69-T78 continue to reference T68 and the durable public-contract policy; T66/T67 ordering remains
+  unchanged except for explicitly selected cleanup work.
+- Verification passed with `git diff --check`.
+
+## T69. Remove legacy in-memory search-index path
+
+Spec refs:
+
+- T68
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Remove the duplicate `build_index(context)` / `documents_from_context` path in
+  `syntax-helper-search`.
+- Keep the streaming `SearchIndexBuilder` / `SyntaxHelperSink` path as the single index-build
+  mechanism.
+- Update tests to build indexes through the surviving path.
+- Do not change CLI query behavior, SQLite public assumptions or provider JSON shape.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Removed the provisional `build_index(context)` / `documents_from_context` path from
+  `syntax-helper-search`.
+- `SearchIndexBuilder` / `SyntaxHelperSink` is now the single index-build input path for library
+  tests and CLI wiring.
+- Verification passed with `cargo test -p syntax-helper-search --lib` and
+  `cargo test --workspace`.
+
+## T70. Remove legacy in-memory export path
+
+Spec refs:
+
+- T68
+- `spec/implementation/components.md`
+- FR-EXPORT-001
+
+Scope:
+
+- Remove duplicate in-memory export APIs such as `export_platform_context`, `export_syntax_helper`
+  and `PlatformContextExporter` when no repo-local accepted contract requires them.
+- Keep `StreamingSyntaxHelperExport` as the single canonical export path.
+- Update export tests and spec notes to reflect the surviving path.
+- Do not change consumer JSON record-family shape in this task.
+
+Verification:
+
+- `cargo test -p hbk-export --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Removed the provisional in-memory export API surface from `hbk-export`: `export_syntax_helper`,
+  `export_platform_context`, `PlatformContextExporter` and the now-unused record-envelope helper.
+- Removed the remaining `hbk-book` runtime dependency from `hbk-export`; locale inference stays at
+  the CLI/book boundary before starting the streaming export writer.
+- Kept `StreamingSyntaxHelperExport` / `SyntaxHelperSink` as the canonical export writer; repo-local
+  export tests now feed records through the streaming sink instead of materializing an export from
+  `PlatformContext`.
+- Consumer JSON shape stayed unchanged; `spec/implementation/components.md` now records that the
+  previous in-memory `PlatformContext` exporter was provisional and removed.
+- Verification passed with `cargo test -p hbk-export --lib` and `cargo test --workspace`.
+
+## T71. Collapse duplicated `syntax get` query dispatch
+
+Spec refs:
+
+- T68
+- ADR-0007
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Replace the duplicated tuple-match logic in `get_query_value` and `get_lookup` with one typed
+  query classification for `syntax get`.
+- Preserve accepted provider query kinds, status behavior and text output.
+- Do not move provider JSON fact serialization in this task.
+
+Verification:
+
+- `cargo test -p v8-context-hbk-cli`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Collapsed `syntax get` root classification into one typed query classifier that owns both the
+  provider `query` JSON shape and the lookup variant.
+- Preserved existing provider query kinds, unsupported-query messages, lookup behavior, status
+  behavior, text output and provider JSON fact serialization.
+- Added focused CLI unit tests for valid type/callable roots and invalid/unsupported root
+  classification.
+- Verification passed with `cargo test -p v8-context-hbk-cli` and `cargo test --workspace`.
+
+## T72. Collapse provider JSON adapter duplication
+
+Spec refs:
+
+- T68
+- ADR-0007
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Deduplicate CLI `document_fact` / `compact_document_fact` provider JSON mapping.
+- Keep provider JSON deterministic and export-compatible for shared platform fact fields.
+- Do not change lookup dispatch, SQLite schema or search ranking in this task.
+
+Verification:
+
+- `cargo test -p v8-context-hbk-cli`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Collapsed full and compact provider fact mapping into one `document_fact` adapter with an explicit
+  detail mode.
+- Preserved full provider JSON shape for export-compatible shared fields and compact `related`
+  output shape for identity/owner-only review results.
+- Added focused CLI tests for both compact and full provider fact shapes.
+- Verification passed with `cargo test -p v8-context-hbk-cli` and `cargo test --workspace`.
+
+## T73. Normalize HBK/page path handling boundaries
+
+Spec refs:
+
+- T68
+- FR-HBK-002
+- FR-HBK-003
+- FR-DOC-001
+- FR-SH-003
+- `spec/implementation/components.md`
+
+Scope:
+
+- Consolidate path-normalization rules currently split across `hbk-book`, `hbk-docs` and
+  `syntax-helper-extract`.
+- Keep distinct functions only where the semantics genuinely differ, such as storage path,
+  documentation link target and Syntax Assistant member link.
+- Preserve existing observable behavior unless a difference is promoted into spec/UAT first.
+- Do not remove query-table syntax fallback behavior in this task.
+
+Verification:
+
+- `cargo test -p hbk-book --lib`
+- `cargo test -p hbk-docs --lib`
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Consolidated shared storage/page path normalization in `hbk-book` and reused it from TOC lookup,
+  FileStorage reads, documentation page parsing and Syntax Assistant page-source parsing.
+- Kept documentation link-target normalization and Syntax Assistant member-link normalization as
+  distinct boundary functions because they resolve fragments, schemes, relative paths and
+  owner/member anchors with different semantics.
+- Preserved observable CLI/export/parser behavior; no UAT or acceptance baseline shape changed.
+- Verification passed with `cargo test -p hbk-book --lib`, `cargo test -p hbk-docs --lib`,
+  `cargo test -p syntax-helper-extract --lib` and `cargo test --workspace`.
+
+## T74. Specify query-table syntax fallback removal
+
+Spec refs:
+
+- T68
+- FR-EXPORT-001
+- FR-SH-003
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/acceptance/uat-test-cases.md`
+
+Scope:
+
+- Define the observable contract for pages where query table syntax is missing or empty.
+- Decide the JSON/diagnostic behavior before removing `query_table_identifier` /
+  `query_table_role` fallback-to-name behavior.
+- Add or update UAT/acceptance notes for at least one source-backed query-table scenario.
+- Do not implement parser/export changes in this task.
+
+Verification:
+
+- Updated spec/UAT notes define the selected missing-syntax behavior and non-goals.
+- Follow-up implementation scope remains limited to the selected contract.
+- `git diff --check`
+
+Completion notes:
+
+- Selected the missing/empty query-table syntax contract for T75: keep the query table record and
+  nested field/parameter facts, omit consumer `syntax` and `identifier`, set
+  `table_role="unknown"` and emit a parser-maintenance `MISSING_QUERY_TABLE_SYNTAX` diagnostic with
+  source provenance.
+- Removed the old spec allowance that generic `Основная таблица` / `Main Table` names could act as
+  role fallback when syntax is missing.
+- UAT-SH-011 and UAT-SH-012 now describe the source-backed `Таблицы задач > Основная таблица` /
+  `Task Tables > Main Table` missing-syntax behavior that T75 must implement.
+- Verification passed with `git diff --check`.
+
+## T75. Implement query-table syntax fallback removal
+
+Spec refs:
+
+- T68
+- T74
+- FR-EXPORT-001
+- FR-SH-003
+- `spec/implementation/components.md`
+
+Scope:
+
+- Remove fallback-to-name behavior in `query_table_identifier` and `query_table_role` according to
+  the T74-approved contract.
+- Emit the selected `MISSING_QUERY_TABLE_SYNTAX` diagnostic for missing/empty syntax while keeping
+  the query table record and nested field/parameter facts.
+- Update focused parser/export tests and any affected acceptance baseline notes.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p hbk-export --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Removed fallback-to-name behavior for query table `identifier` and `table_role`: missing or empty
+  syntax now keeps an empty internal identifier and `QueryTableRole::Unknown`.
+- `hbk-export` omits empty consumer `identifier`, preserving the T74 JSON contract of no synthesized
+  `syntax` or `identifier` for missing-syntax query tables.
+- The extraction stream emits one `MISSING_QUERY_TABLE_SYNTAX` parser-maintenance diagnostic per
+  affected query table while still streaming the query table record and nested field/parameter
+  facts.
+- `syntax-helper-search` keeps non-empty internal document ids for missing-syntax query tables by
+  using semantic owner-path identity, without restoring parser/export fallback identifiers.
+- Verification passed with `cargo test -p syntax-helper-extract --lib`,
+  `cargo test -p hbk-export --lib`, `cargo test -p syntax-helper-search --lib` and
+  `cargo test --workspace`.
+
+## T76. Replace in-memory type lookup scan with indexed SQL lookup
+
+Spec refs:
+
+- T68
+- ADR-0004
+- ADR-0007
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Change `type_identities_by_lookup_key` to use indexed SQLite lookup instead of loading all type
+  identities and filtering in memory.
+- Preserve deterministic ambiguity behavior and provider JSON results.
+- Do not change index schema unless a focused migration is required and recorded in spec.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- `type_identities_by_lookup_key` now uses the indexed `document_names` lookup table joined to
+  `type_identities` instead of loading every platform type identity and filtering in memory.
+- Added an internal `type_identities(document_id)` index so the lookup plan does not scan all type
+  identities after filtering the lookup key.
+- Raised the internal search-index schema to version `5`; existing schema version `4` indexes are
+  rebuildable service data and must be rebuilt before query commands open them.
+- Deterministic same-name ambiguity behavior is preserved; a focused regression test verifies that
+  same-display-name platform type variants are returned in stable identity order, and a query-plan
+  test verifies indexed lookup usage.
+- No provider JSON shape, CLI behavior or public contract changed.
+- Verification passed with `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
+
+## T77. Clean `syntax-helper-search` dependency scope
+
+Spec refs:
+
+- T68
+- `spec/implementation/components.md`
+
+Scope:
+
+- Move `syntax-helper-search` `serde_json` dependency to dev-dependencies when it is still only used
+  by tests, or remove it if no longer needed.
+- Keep dependency cleanup limited to this crate and this finding.
+- Do not include broad clippy cleanup or unrelated dependency updates.
+
+Verification:
+
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Moved `syntax-helper-search` `serde_json` from production dependencies to dev-dependencies; the
+  crate uses it only in tests that assert provider/search JSON does not expose internal search
+  terms.
+- No `syntax-helper-search` runtime dependency, SQLite schema, provider JSON shape or CLI query
+  behavior changed.
+- The required workspace clippy gate also required minimal current-toolchain lint compatibility
+  fixes in existing code paths: boxed the large `hbk-docs` documentation read source error,
+  collapsed repeated dash-normalization `replace` calls, removed one redundant closure and added
+  targeted CLI boundary lint allowances without changing command behavior.
+- Verification passed with `cargo clippy --workspace --all-targets -- -D warnings` and
+  `cargo test --workspace`.
+
+## T78. Deduplicate property usage and type-prose cleanup
+
+Spec refs:
+
+- T68
+- FR-SH-002
+- FR-EXPORT-001
+- `spec/implementation/components.md`
+
+Scope:
+
+- Remove duplicated parser/export handling for property `usage` normalization and leading type
+  prose cleanup.
+- Keep the rule at the boundary selected by spec: parser/domain if it is extraction truth,
+  exporter only if it is consumer-shape adaptation.
+- Do not perform broad parser rewrites in this task.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p hbk-export --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Kept property `usage` normalization and leading type-prose cleanup at the `hbk-export`
+  consumer-shape boundary selected by `spec/implementation/components.md`.
+- Collapsed global and type property consumer mapping through one shared property adapter so
+  `usage`, `types`, description cleanup and section facts are derived in one place.
+- Added regression coverage for Russian/raw parser property text and English `Type:` consumer
+  cleanup without changing parser/domain records or JSON shape.
+- Verification passed with `cargo test -p syntax-helper-extract --lib`,
+  `cargo test -p hbk-export --lib` and `cargo test --workspace`.
+
+## T79. Report search document identity collisions instead of dropping duplicates
+
+Spec refs:
+
+- T68
+- ADR-0004
+- ADR-0007
+- ADR-0008
+- FR-SH-PROVIDER-001
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Problem:
+
+- `SearchIndexBuilder::into_documents` sorts documents and then silently removes duplicate ids with
+  `dedup_by`.
+- Duplicate ids mean that two extracted facts collapsed to one provider identity. Silent removal can
+  hide parser, TOC-classification or identity-model bugs and conflicts with the identity-preserving
+  resolver direction in ADR-0008.
+
+Scope:
+
+- Replace silent duplicate-id removal with explicit collision detection.
+- Return an index-build error or a deterministic parser/index diagnostic before writing SQLite when
+  two distinct documents resolve to the same id.
+- Add a focused regression test that proves duplicate ids are not silently lost.
+- Preserve normal deterministic ordering and provider JSON shape for non-colliding indexes.
+- Do not redesign document identity rules in this task unless the regression exposes a concrete
+  source-backed collision.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Removed the silent `SearchIndexBuilder::into_documents` duplicate-id collapse; finalized search
+  documents are now validated for unique ids before index writes.
+- Added a typed `DuplicateDocumentId` index-build error and validate direct document-list builds as
+  well as streaming builder builds before SQLite creation.
+- Added focused regressions proving duplicate ids do not create an index file and TOC-marker
+  identity collisions are reported instead of silently dropping a document.
+- Provider JSON, normal deterministic ordering and non-colliding index behavior stayed unchanged.
+- Verification passed with `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
+
+## T80. Harden ZIP entry allocation at HBK input boundaries
+
+Spec refs:
+
+- FR-HBK-001
+- FR-HBK-002
+- NFR-RELIABILITY-001
+- `spec/implementation/components.md`
+
+Problem:
+
+- `hbk-book` currently uses ZIP entry metadata size for `Vec::with_capacity` when reading
+  `FileStorage` entries and nested ZIP entries.
+- A malformed HBK/ZIP can report an excessive uncompressed size at the file/container input
+  boundary and force unnecessary memory allocation before the real read result is known.
+
+Scope:
+
+- Avoid trusting ZIP entry metadata for unbounded preallocation, or cap it with an explicit
+  input-boundary limit.
+- If a cap is selected, add a typed `BookError` variant with path/entity/entry provenance.
+- Preserve valid HBK page reads and existing diagnostics for missing entries, invalid ZIP and UTF-8
+  failures.
+- Do not add caches, streaming reader redesign or platform-version-specific behavior.
+
+Verification:
+
+- `cargo test -p hbk-book --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Removed ZIP metadata-size-based `Vec::with_capacity` allocation from `FileStorageReader::read_file`
+  and `read_first_zip_entry`; `hbk-book` now reads entry bytes from the actual ZIP stream without
+  trusting reported uncompressed sizes for allocation.
+- Added focused `FileStorage` and `PackBlock` regressions with inflated reported uncompressed sizes
+  to preserve valid page/TOC reads and typed HBK path/entry behavior at the input boundary.
+- No new compatibility adapter, cache, streaming redesign or public JSON/export behavior was added.
+- Verification passed with `cargo test -p hbk-book --lib` and `cargo test --workspace`.
+
+## T81. Replace remaining owner-type member/callable in-memory filters with indexed SQL lookup
+
+Spec refs:
+
+- T76
+- ADR-0004
+- ADR-0007
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Problem:
+
+- T76 replaced the broad type-identity scan, but similar mechanisms remain for
+  `member_by_owner_type_id` and `callable_by_owner_type_id`: they load all rows for an owner and
+  filter member/callable names in Rust.
+- The schema already has normalized `members` and `callables` tables; provider primitives should
+  use indexed storage for exact owner/member and owner/callable lookup.
+
+Scope:
+
+- Query `members` and `callables` by owner id plus normalized primary/alias name through SQLite
+  instead of loading all owner rows and filtering in memory.
+- Add or adjust focused indexes only if query-plan tests show the current indexes are insufficient.
+- Preserve ambiguity behavior, result ordering and provider JSON shape.
+- Do not change command names, normalized provider query kinds or SQLite public-contract policy.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- `member_by_owner_type_id` and `callable_by_owner_type_id` now use exact SQLite lookup through
+  normalized `document_names` keys joined to `members` / `callables` by owner type id, instead of
+  loading all owner rows and filtering hydrated documents in Rust.
+- Added focused document/owner indexes for member and callable exact lookup, raised the internal
+  search-index schema to `6`, and added query-plan regressions to keep the lookup on indexed SQL
+  paths.
+- Provider result ordering, ambiguity behavior, command names, query kinds and JSON shape remain
+  unchanged.
+- Verification passed with `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
+
+## T82. Represent missing query-table identifier as optional domain data
+
+Spec refs:
+
+- T74
+- T75
+- FR-EXPORT-001
+- FR-SH-003
+- `spec/implementation/components.md`
+
+Problem:
+
+- The T75 contract says missing query-table syntax must not synthesize a consumer `identifier`, but
+  the domain model still represents the missing identifier as `String::new()`.
+- The exporter then hides the empty string. This keeps a sentinel value in the domain model and makes
+  parser/export behavior easier to drift.
+
+Scope:
+
+- Change `QueryTable.identifier` to an optional value, or introduce an equivalent typed missing
+  state if that better matches the model.
+- Keep consumer JSON behavior from T75: omit `identifier` when syntax is missing or empty.
+- Update search-index identity creation so missing-syntax query tables still receive deterministic
+  internal document ids without treating an empty identifier as a real source fact.
+- Update focused parser/export/search tests.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p hbk-export --lib`
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- `QueryTable.identifier` now represents missing query-table syntax as typed absence rather than an
+  empty string in the domain model.
+- Parser and reader behavior still derive identifiers only from non-empty Syntax Assistant syntax;
+  missing or empty syntax keeps `identifier=None` and `table_role="unknown"`.
+- Consumer JSON behavior from T75 is unchanged: records without syntax omit `identifier`.
+- Search/index identity creation continues to produce deterministic non-empty internal document ids
+  for missing-syntax query tables from TOC-derived semantic owner context.
+
+## T83. Consolidate query-table identity and role derivation ownership
+
+Spec refs:
+
+- T74
+- T75
+- FR-SH-003
+- FR-EXPORT-001
+- `spec/implementation/components.md`
+
+Problem:
+
+- `parse_query_table` derives query-table name, identifier and role from page content, while the
+  extraction reader later overwrites name, identifier, role and semantic context with TOC-derived
+  data.
+- Two components currently own parts of the same derivation rule, which can make standalone parser
+  tests and full extraction behavior diverge.
+
+Scope:
+
+- Select one boundary for query-table identity and role derivation:
+  - parser owns page-local syntax/description only and reader assigns TOC-derived identity; or
+  - parser accepts the TOC-derived identity context explicitly.
+- Remove the duplicated assignment path that no longer owns the rule.
+- Preserve the T75 missing-syntax diagnostic and JSON contract.
+- Do not change unrelated page parsers or table field/parameter extraction.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p hbk-export --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Selected the boundary where query-table page parsers own page-local syntax/description only, and
+  `SyntaxHelperReader` owns TOC-derived display name, semantic context and `identifier` /
+  `table_role` derivation.
+- Removed parser-module ownership of query-table identifier and role helpers; reader-local tests now
+  protect primary/additional/missing-syntax derivation.
+- Preserved the T75 missing-syntax behavior: no synthesized identifier and `table_role=unknown`
+  when syntax is absent or empty.
+- Verification passed with `cargo test -p syntax-helper-extract --lib`,
+  `cargo test -p hbk-export --lib`, `cargo fmt --check` and `cargo test --workspace`.
+
+## T84. Replace query-table member owner path rewriting with TOC-derived owner context
+
+Spec refs:
+
+- ADR-0005
+- FR-SH-003
+- `spec/implementation/components.md`
+
+Problem:
+
+- Query table fields and parameters still infer their owner by rewriting member HTML paths with
+  `/fields/` or `/params/`, then falling back to a raw path-derived string when the table page is
+  not found.
+- ADR-0005 and the component spec prefer semantic ownership from TOC context over suffix/path
+  classification when reading Syntax Assistant facts.
+
+Scope:
+
+- Carry explicit TOC-derived query-table owner context from catalog traversal into field and
+  parameter parsing.
+- Remove the raw path string fallback for owner names; missing owner context should become a
+  deterministic diagnostic or typed unsupported source condition.
+- Preserve source provenance in diagnostics: HBK path, TOC path, HTML path and page title where
+  available.
+- Do not broaden this task into non-query-table parser rewrites.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Query table field and parameter owners are now resolved from TOC traversal context: the nearest
+  query table page encountered in the current TOC branch owns subsequent member pages.
+- Removed the raw HTML-path owner fallback. Member pages without TOC-derived table owner context now
+  emit `MISSING_QUERY_TABLE_OWNER_CONTEXT` diagnostics and do not synthesize owner strings from
+  `/fields/` or `/params/` paths.
+- Verification passed with `cargo test -p syntax-helper-extract --lib`,
+  `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
+
+## T85. Decide and narrow legacy in-memory `PlatformContext` lookup helpers
+
+Spec refs:
+
+- ADR-0006
+- ADR-0007
+- ADR-0008
+- FR-SH-PROVIDER-001
+- `spec/implementation/components.md`
+- `spec/implementation/solution-context-resolve.md`
+
+Problem:
+
+- `PlatformContext` still exposes in-memory lookup helpers for global members, types,
+  owner/member lookup and constructors.
+- Current provider work resolves accepted query behavior through SQLite/provider primitives, and
+  ADR-0008 defines a future source-neutral resolver boundary instead of extending this legacy
+  in-memory lookup shape.
+
+Scope:
+
+- Decide whether these helpers are still an accepted library contract, test utility, or removable
+  legacy surface.
+- If they are test-only, move the behavior behind test/support helpers or reduce public API surface
+  without changing parser/domain records.
+- If they remain supported, record the current in-memory lookup contract and its relationship to
+  ADR-0008 in spec before further implementation.
+- Do not implement the ADR-0008 resolver in this task.
+
+Verification:
+
+- Updated spec or task notes record the decision and selected cleanup direction.
+- `cargo test -p syntax-helper-model --lib`
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Retired `FR-LOOKUP-001` as an active requirement: exact interactive lookup behavior is now owned
+  by `syntax-helper-search` provider primitives and future in-process lookup belongs to the
+  ADR-0008 resolver boundary.
+- Removed the public `PlatformContext` exact lookup helper API and lookup-specific enums/errors
+  from `syntax-helper-model`.
+- Removed extractor tests that existed only to protect the retired in-memory helper surface; parser
+  and streaming sink behavior are unchanged.
+- Updated component and baseline notes so `PlatformContext` is the provenance-rich in-memory
+  aggregate/sink, not a public lookup API.
+- Verification passed with `cargo test -p syntax-helper-model --lib`,
+  `cargo test -p syntax-helper-extract --lib` and `cargo test --workspace`.
