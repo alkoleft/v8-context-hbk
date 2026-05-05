@@ -525,18 +525,6 @@ Acceptance:
   `method_links`, `constructor_links` or `value_links`.
 - `metadata.json` does not expose source HBK paths.
 
-## FR-LOOKUP-001: Exact Lookup Helpers
-
-The system must provide exact lookup helpers for:
-
-- global member by name
-- type by name
-- type member by type/member name
-- constructors by type name
-
-Search ranking is out of scope for these in-memory lookup helpers. FR-SH-SEARCH-001 covers the
-indexed query command behavior.
-
 ## FR-SH-SEARCH-001: Fast Syntax Assistant Query Commands
 
 The system must provide a Syntax Assistant-focused command surface for interactive retrieval over

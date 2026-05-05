@@ -8,7 +8,7 @@ context boundaries and keeps CLI/export behavior provisional.
 1. `hbk-container`: binary container parsing, entity enumeration and entity byte access.
 2. `hbk-book`: book metadata, locale inference, ZIP-backed `FileStorage`, TOC parsing and page reads.
 3. `hbk-docs`: documentation HTML/page parsing, normalized text/link extraction and page diagnostics.
-4. `syntax-helper-model`: provenance-rich platform context domain model and lookup helpers.
+4. `syntax-helper-model`: provenance-rich platform context domain model and record sink boundary.
 5. `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized page parsers.
 6. `hbk-export`: canonical JSON export adapters.
 7. `syntax-helper-search`: local SQLite/FTS5 index and query library for Syntax Assistant exact
@@ -80,7 +80,9 @@ The current cleanup sequence is limited to:
   accepted;
 - narrowing `syntax-helper-search` dependencies to actual production needs;
 - deduplicating property usage normalization and leading type prose cleanup at the selected
-  parser/export boundary.
+  parser/export boundary;
+- retiring legacy in-memory `PlatformContext` lookup helpers in favor of accepted SQLite/provider
+  primitives and the future ADR-0008 resolver boundary.
 
 ## Component Requirements
 
@@ -166,14 +168,19 @@ Expected public concepts:
 - `TypeRef`
 - `SourceRef`
 
-Owns the domain model used by FR-SH-002, FR-EXPORT-001 and FR-LOOKUP-001.
+Owns the domain model used by FR-SH-002 and FR-EXPORT-001.
 
 The model remains provenance-rich for diagnostics and parser maintenance. Consumer export shape is
 owned by `hbk-export` and may intentionally omit internal provenance and navigation scaffolding.
 
-`SyntaxHelperSink` is the shared record-family boundary used both by the in-memory
-`PlatformContext` lookup path and by streaming export adapters. It must stay typed by domain record
-families rather than becoming a generic pipeline abstraction. A sink may request a narrower
+`PlatformContext` is a provenance-rich in-memory aggregate and sink for parser/tests that need the
+full domain model. It no longer owns public exact lookup helpers; accepted interactive lookup
+behavior belongs to `syntax-helper-search` provider primitives, and the future in-process API
+belongs to the ADR-0008 source-neutral resolver boundary.
+
+`SyntaxHelperSink` is the shared record-family boundary used by the in-memory `PlatformContext`
+aggregate and by streaming export/index adapters. It must stay typed by domain record families
+rather than becoming a generic pipeline abstraction. A sink may request a narrower
 `SyntaxHelperRecordDetailMode` only to avoid building fields that its concrete consumer omits; the
 default mode remains the full provenance-rich domain model.
 

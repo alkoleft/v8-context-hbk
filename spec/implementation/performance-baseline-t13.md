@@ -280,8 +280,9 @@ alone would not reduce the current `shcntx_ru.hbk` extraction peak below the pos
 ## Post-T17 Update
 
 T17 implemented Variant C: the Syntax Assistant extractor now emits typed records through a shared
-sink boundary. The in-memory `PlatformContext` remains the sink used by lookup helpers, while the
-CLI export command streams record-family events directly into canonical JSON writers.
+sink boundary. The in-memory `PlatformContext` remains the full-domain aggregate sink for
+parser/tests, while the CLI export command streams record-family events directly into canonical JSON
+writers.
 
 The T17 pass used the built debug binary under GNU `time`:
 
@@ -292,6 +293,10 @@ cargo build -p v8-context-hbk-cli --bin v8-context-hbk
 ```
 
 No fixture-backed T17 command was skipped on this host.
+
+T85 update: `PlatformContext` remains the full in-memory extraction aggregate, but its legacy public
+exact lookup-helper API was removed. Accepted lookup behavior now lives in `syntax-helper-search`
+provider primitives and the future ADR-0008 resolver boundary.
 
 | T17 command label | Exit | Elapsed, s | Peak RSS, KiB | Export bytes |
 | --- | ---: | ---: | ---: | ---: |
@@ -760,7 +765,7 @@ T15 / Variant B was implemented next.
 
 T16 attributed the remaining post-T15 memory and selected T17 / Variant C next. T17 implemented
 streaming extraction into record-family sinks for the export command path while preserving the
-in-memory `syntax-helper-model` lookup use case.
+in-memory `syntax-helper-model` full-domain aggregate.
 
 T19 completed the narrow byte-only Variant E slice. T20 evaluated the broader direct seekable
 `FileStorage` view and left it unimplemented because the remaining owned `FileStorage` vector was

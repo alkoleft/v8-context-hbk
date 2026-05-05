@@ -1188,3 +1188,53 @@ Completion notes:
 
 - Query table field and parameter owners are now resolved from TOC traversal context carried by each
   `CatalogPage`; repeated member HTML paths keep the owner from the current catalog branch instead
+
+### [x] T85. Decide and narrow legacy in-memory `PlatformContext` lookup helpers
+
+Spec refs:
+
+- ADR-0006
+- ADR-0007
+- ADR-0008
+- FR-SH-PROVIDER-001
+- `spec/implementation/components.md`
+- `spec/implementation/solution-context-resolve.md`
+
+Problem:
+
+- `PlatformContext` still exposes in-memory lookup helpers for global members, types,
+  owner/member lookup and constructors.
+- Current provider work resolves accepted query behavior through SQLite/provider primitives, and
+  ADR-0008 defines a future source-neutral resolver boundary instead of extending this legacy
+  in-memory lookup shape.
+
+Scope:
+
+- Decide whether these helpers are still an accepted library contract, test utility, or removable
+  legacy surface.
+- If they are test-only, move the behavior behind test/support helpers or reduce public API surface
+  without changing parser/domain records.
+- If they remain supported, record the current in-memory lookup contract and its relationship to
+  ADR-0008 in spec before further implementation.
+- Do not implement the ADR-0008 resolver in this task.
+
+Verification:
+
+- Updated spec or task notes record the decision and selected cleanup direction.
+- `cargo test -p syntax-helper-model --lib`
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Retired `FR-LOOKUP-001` as an active requirement: exact interactive lookup behavior is now owned
+  by `syntax-helper-search` provider primitives and future in-process lookup belongs to the
+  ADR-0008 resolver boundary.
+- Removed the public `PlatformContext` exact lookup helper API and lookup-specific enums/errors
+  from `syntax-helper-model`.
+- Removed extractor tests that existed only to protect the retired in-memory helper surface; parser
+  and streaming sink behavior are unchanged.
+- Updated component and baseline notes so `PlatformContext` is the provenance-rich in-memory
+  aggregate/sink, not a public lookup API.
+- Verification passed with `cargo test -p syntax-helper-model --lib`,
+  `cargo test -p syntax-helper-extract --lib` and `cargo test --workspace`.

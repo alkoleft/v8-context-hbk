@@ -1,5 +1,4 @@
 use std::convert::Infallible;
-use std::fmt;
 use std::path::PathBuf;
 
 use serde::Serialize;
@@ -164,73 +163,6 @@ pub struct PlatformContext {
     pub diagnostics: Vec<SyntaxHelperDiagnostic>,
 }
 
-impl PlatformContext {
-    pub fn find_global_member(
-        &self,
-        name: &str,
-    ) -> Result<Option<GlobalMemberRef<'_>>, LookupError> {
-        let mut matches = self
-            .global_methods
-            .iter()
-            .filter(|method| method.name.matches(name))
-            .map(GlobalMemberRef::Method)
-            .chain(
-                self.global_properties
-                    .iter()
-                    .filter(|property| property.name.matches(name))
-                    .map(GlobalMemberRef::Property),
-            );
-        one_or_ambiguous(&mut matches, LookupKind::GlobalMember, name)
-    }
-
-    pub fn find_type(&self, name: &str) -> Result<Option<&PlatformType>, LookupError> {
-        let mut matches = self
-            .platform_types
-            .iter()
-            .filter(|platform_type| platform_type.name.matches(name));
-        one_or_ambiguous(&mut matches, LookupKind::Type, name)
-    }
-
-    pub fn find_type_member(
-        &self,
-        type_name: &str,
-        member_name: &str,
-    ) -> Result<Option<TypeMemberRef<'_>>, LookupError> {
-        let Some(platform_type) = self.find_type(type_name)? else {
-            return Ok(None);
-        };
-        let mut matches = self
-            .type_methods
-            .iter()
-            .filter(|method| method.owner == platform_type.name && method.name.matches(member_name))
-            .map(TypeMemberRef::Method)
-            .chain(
-                self.type_properties
-                    .iter()
-                    .filter(|property| {
-                        property.owner == platform_type.name && property.name.matches(member_name)
-                    })
-                    .map(TypeMemberRef::Property),
-            );
-        one_or_ambiguous(&mut matches, LookupKind::TypeMember, member_name)
-    }
-
-    pub fn constructors_for_type(
-        &self,
-        type_name: &str,
-    ) -> Result<Option<Vec<&Constructor>>, LookupError> {
-        let Some(platform_type) = self.find_type(type_name)? else {
-            return Ok(None);
-        };
-        Ok(Some(
-            self.constructors
-                .iter()
-                .filter(|constructor| constructor.owner == platform_type.name)
-                .collect(),
-        ))
-    }
-}
-
 pub trait SyntaxHelperSink {
     type Error;
 
@@ -332,73 +264,6 @@ impl SyntaxHelperSink for PlatformContext {
         self.diagnostics.push(record);
         Ok(())
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GlobalMemberRef<'a> {
-    Method(&'a GlobalMethod),
-    Property(&'a GlobalProperty),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypeMemberRef<'a> {
-    Method(&'a PlatformMethod),
-    Property(&'a PlatformProperty),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LookupError {
-    Ambiguous { kind: LookupKind, name: String },
-}
-
-impl fmt::Display for LookupError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Ambiguous { kind, name } => {
-                write!(
-                    f,
-                    "ambiguous Syntax Assistant {} lookup for '{name}'",
-                    kind.label()
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for LookupError {}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LookupKind {
-    GlobalMember,
-    Type,
-    TypeMember,
-}
-
-impl LookupKind {
-    fn label(self) -> &'static str {
-        match self {
-            Self::GlobalMember => "global member",
-            Self::Type => "type",
-            Self::TypeMember => "type member",
-        }
-    }
-}
-
-fn one_or_ambiguous<T>(
-    matches: &mut impl Iterator<Item = T>,
-    kind: LookupKind,
-    name: &str,
-) -> Result<Option<T>, LookupError> {
-    let Some(first) = matches.next() else {
-        return Ok(None);
-    };
-    if matches.next().is_some() {
-        return Err(LookupError::Ambiguous {
-            kind,
-            name: name.to_string(),
-        });
-    }
-    Ok(Some(first))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

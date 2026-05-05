@@ -360,7 +360,7 @@ Attribution probe conclusions:
   next slice most likely to reduce the current `shcntx_ru.hbk` peak.
 
 T16 selects Variant C for T17: streaming extraction into record-family sinks for the export command
-path while keeping the in-memory model as a library lookup use case.
+path while keeping the in-memory model available when parser/tests need the full domain aggregate.
 
 ## T17 Durable Conclusions
 
@@ -393,7 +393,8 @@ Each source book produced:
 
 The CLI export path now streams typed record-family events directly into canonical JSON writers, so
 it no longer accumulates the full `PlatformContext` before export. The in-memory
-`PlatformContext` path remains available for lookup helpers and uses the same extraction core.
+`PlatformContext` path remains available as the full domain aggregate for parser/tests and uses the
+same extraction core; T85 later removed the legacy public lookup-helper API from that aggregate.
 
 The canonical export shape from FR-EXPORT-001 is preserved: consumer record-family files do not
 expose HBK navigation or per-record provenance, `global-contexts.json` is not produced, and

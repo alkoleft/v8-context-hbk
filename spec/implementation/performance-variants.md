@@ -11,7 +11,8 @@ Current status:
   extraction/export command path accumulated the full `PlatformContext` before writing record-family
   JSON.
 - Variant C was implemented in T17. It reduced the `shcntx_ru.hbk` debug export peak to
-  `386304 KiB` while preserving deterministic canonical JSON output and the in-memory lookup model.
+  `386304 KiB` while preserving deterministic canonical JSON output and the in-memory full-domain
+  aggregate model.
 - The first Variant E slice was implemented in T19. Byte-only entity reads removed the per-byte
   `source_offsets` allocation from ordinary `FileStorage` and entity-body reads while keeping
   descriptor offsets available for diagnostics.
@@ -114,7 +115,9 @@ Changes:
 - Let extraction emit typed records in stable traversal order.
 - Let `hbk-export` consume record-family streams/sinks while preserving the existing crate
   boundaries.
-- Keep lookup helpers on the in-memory model as a separate library use case.
+- Keep the in-memory model as a separate full-domain aggregate when parser/tests need it. T85 later
+  removed the legacy public exact lookup-helper API; accepted lookup behavior belongs to
+  `syntax-helper-search` provider primitives and the future ADR-0008 resolver boundary.
 
 Use first when:
 
