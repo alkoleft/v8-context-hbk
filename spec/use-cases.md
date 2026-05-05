@@ -23,6 +23,12 @@ As a developer, coding agent or future BSL analyzer, I need a fast local provide
 facts that can answer code-facing questions about available members, constructor/method signatures,
 parameter names and types, return types and related platform objects.
 
+### Solution Context Application
+
+As a Rust application that validates, reviews and assists development of a full 1C solution, I need
+one source-neutral resolver for platform API facts, BSL language types, query-language types,
+configuration metadata types and source-code declarations.
+
 ### Syntax Assistant CLI User
 
 As a developer or agent, I need to quickly find platform API facts by exact name, purpose,
@@ -149,6 +155,27 @@ against a prebuilt local platform index and receive versioned, deterministic, to
 Solution shape: define a provider response contract with explicit ambiguity and missing-result
 behavior, using `syntax export` field shapes for shared platform facts. Keep BSL parsing and
 diagnostics outside this repository.
+
+## UC-CTX-001: Resolve Complete Solution Context Facts In Process
+
+Primary user: solution context application.
+
+Outcome: a Rust application can resolve context facts from platform, BSL-language, query-language,
+configuration and source-code providers through one typed interface without conflating same-name
+facts from different domains.
+
+Examples:
+
+- Given a source-qualified platform type id, retrieve the documented platform type and list its
+  documented members from the HBK-backed provider.
+- Given the display name `Строка`, resolve the BSL-language type and query-language type separately
+  when the caller constrains the domain, or report ambiguity when the domain is omitted.
+- Given a configuration-generated type and a platform type with the same display name, return
+  source-qualified candidates instead of picking a hidden winner.
+- Given a resolved query table field, follow explicit type-reference relations to the relevant
+  BSL, query-language or platform type facts.
+
+Related requirements: FR-CTX-RESOLVE-001, NFR-RESOLVE-001 and ADR-0008.
 
 ## UC-INT-001: Consume HBK Data from v8-context Later
 

@@ -68,6 +68,34 @@ in place: write a complete temporary database beside the target, validate it, th
 the target path. Concurrent index writers must be serialized by a lock so readers observe either the
 previous complete index or the next complete index, not a partially written database.
 
+## NFR-RESOLVE-001: In-Process Resolver Latency and Determinism
+
+Rust solution-context resolution is a separate hot path from CLI query commands. It must support
+repeated type, member and callable lookups inside one Rust process without spawning the CLI or
+parsing JSON for each lookup.
+
+Requirements:
+
+- Resolver calls must use prebuilt provider indexes or in-memory provider snapshots. They must not
+  parse HBK files, configuration source files, BSL source or query text in the lookup hot path.
+- The first platform adapter should be at least as deterministic as the CLI JSON provider and should
+  preserve explicit `not_found`, `ambiguous` and `unsupported` outcomes.
+- Same input, active source set and source artifacts must produce deterministic candidate ordering.
+- Source composition must not hide ambiguity across platform, BSL-language, query-language,
+  configuration and source-code domains.
+- Do not add global caches, plugin systems, async runtimes, service lifecycles or tuning knobs until
+  measurements show a concrete bottleneck and a concrete consumer needs that mechanism.
+
+Provisional first-slice targets on the target developer workstation:
+
+- exact id/name type resolution returns in under 100 ms after the resolver source is opened;
+- member listing for a resolved owner returns in under 100 ms after the resolver source is opened;
+- callable lookup for a resolved owner or callable id returns in under 100 ms after the resolver
+  source is opened.
+
+If these targets cannot be met, the implementation task must record measured timings, source size
+and the limiting storage or translation component before adding broader optimization.
+
 ## NFR-TEST-001: Testability
 
 - Test behavior, not implementation details.

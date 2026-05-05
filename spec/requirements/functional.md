@@ -596,8 +596,9 @@ The selected first analyzer-facing provider boundary is local CLI JSON over a pr
 index. Analyzer-oriented consumers should call `syntax get`, `syntax constructors`, `syntax search`
 or `syntax related` and consume the versioned provider envelope. The SQLite index remains a
 rebuildable internal provider artifact, not a public table-level contract. Rust library APIs,
-batch-only analyzer artifacts and service boundaries require a future ADR or task with a concrete
-consumer need.
+batch-only analyzer artifacts and service boundaries for this CLI provider require a future ADR or
+task with a concrete consumer need. ADR-0008 separately defines the in-process Rust
+solution-context resolver boundary without changing this CLI JSON contract.
 
 Provider-oriented outputs must:
 
@@ -651,6 +652,57 @@ Acceptance:
 - Query/provider JSON separates provider facts from query metadata: shared platform facts are under
   result facts, while score, rank, relationship depth, relationship path, ambiguity and missing
   result diagnostics are envelope or per-result metadata.
+
+## FR-CTX-RESOLVE-001: Rust Context Resolver API
+
+The system must define a Rust API for resolving complete solution-context facts in process when a
+Rust application needs repeated low-latency lookups across platform, BSL-language, query-language,
+configuration and source-code providers.
+
+Decision record: ADR-0008.
+
+The resolver API must be source-neutral and fact-oriented:
+
+- resolve context facts by source-qualified id, exact name, owner/member pair and callable query;
+- resolve types in a requested source and language domain;
+- list members for one resolved owner identity;
+- retrieve callable overloads with ordered parameters and return or constructor result types;
+- expose explicit relation edges such as ownership, type reference, return type, construction,
+  generated-from, augments or maps-to when a provider has source-backed evidence;
+- distinguish `PlatformApi`, `BslLanguage`, `QueryLanguage`, `Configuration` and `SourceCode`
+  domains instead of folding all same-name facts into platform API types;
+- use typed id wrappers for facts, types, members and callables; display names are lookup keys, not
+  stable identities;
+- return identity-preserving typed results for type, member and callable convenience methods instead
+  of naked detail structs that drop source/domain identity;
+- return ordinary lookup outcomes as data: `ok`, `not_found`, `ambiguous` and `unsupported`;
+- reserve Rust errors for infrastructure failures such as missing indexes, unsupported schema
+  versions, unreadable source artifacts or invalid source routing.
+
+The first implementation may provide only the source-neutral core API and the HBK-backed platform
+adapter over `syntax-helper-search`. Configuration metadata extraction, BSL parser/source indexing,
+query parser/source indexing, diagnostics and code actions are out of scope for this repository
+until a later spec assigns those providers.
+
+Acceptance:
+
+- The implementation spec defines the resolver traits, request/response model, domain model,
+  source composition rules and first platform adapter mapping.
+- Same-name facts from platform, BSL-language, query-language, configuration and source-code
+  domains are source-qualified and report ambiguity unless the caller constrains the query.
+- BSL language types and query-language types remain separate domains even when their display names
+  match.
+- Member lookup by resolved owner id does not mix members from another source or language domain
+  with the same owner display name.
+- Callable lookup preserves callable identity, ordered parameters and return or constructor type
+  references.
+- Platform adapter relation traversal preserves source-backed `has_type`, `returns`, `constructs`
+  and `member_of` edges needed by resolver clients.
+- The platform adapter can be implemented without exposing SQLite tables, FTS fields, HBK paths,
+  TOC paths, HTML paths or page titles as public resolver facts.
+- Existing `query_table`, `query_table_field` and `query_table_parameter` provider facts are not
+  exposed through the platform adapter until the non-platform HBK domain analysis selects their
+  query-language resolver shape.
 
 ## FR-SH-SEARCH-002: Syntax Assistant Relationship Graph
 

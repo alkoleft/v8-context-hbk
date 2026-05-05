@@ -33,6 +33,9 @@ Otherwise reconcile the specification files before implementing.
   Assistant query/search CLI and its index/relationship model.
 - `implementation/syntax-bsl-provider-plan.md`: ADR-0006 gap analysis, BSL/code-analysis use-case
   mapping and sequenced `syntax` provider improvement plan.
+- `implementation/solution-context-resolve.md`: ADR-0008 Rust API design for resolving platform,
+  BSL-language, query-language, configuration and source-code context facts through one
+  source-neutral interface.
 - `acceptance/baseline.md`: acceptance gates, commands, durable T9/T10 conclusions and success metrics.
 - `acceptance/test-case-requirements.md`: rules for UAT and black-box test case specifications.
 - `acceptance/uat-test-cases.md`: current UAT test case catalog.

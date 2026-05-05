@@ -2,7 +2,7 @@
 
 Date: 2026-05-05.
 
-Status: Accepted.
+Status: Accepted. Extended by ADR-0008 for the separate Rust solution-context resolver boundary.
 
 ## Context
 
@@ -22,6 +22,10 @@ The current analyzer consumer is still future-facing. No concrete downstream ana
 library dependency graph, batching contract, release cadence or workspace integration rule has been
 validated yet. T56 later normalized analyzer-relevant SQLite facts, but did not change this
 provider boundary.
+
+ADR-0008 later adds a separate in-process Rust resolver boundary for a concrete full-context Rust
+application. That boundary does not replace this CLI JSON provider decision and does not make
+SQLite tables public.
 
 ## Decision
 

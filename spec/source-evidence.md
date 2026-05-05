@@ -16,6 +16,15 @@ Syntax Assistant books:
 - `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`
 - `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk`
 
+Additional syntax/domain books found in the same platform baseline:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shlang_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shlang_root.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shquery_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/shquery_root.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/dcsui_ru.hbk`
+- `/opt/1cv8/x86_64/8.5.1.1150/dcsui_root.hbk`
+
 The implementation must not hard-code only these names. `fmtdui_*` is the first fast smoke pair for
 generic HBK behavior. `shcntx_*` is reserved for Syntax Assistant stages. Broad acceptance covers all
 `*.hbk` files in the target platform directory.
@@ -40,6 +49,30 @@ Reference anchors:
 
 These local paths are evidence anchors for the current planning stage, not normative dependencies.
 Replace them with repo-local validated evidence when the Rust implementation covers the same facts.
+
+## Language and Data Composition Book Observations
+
+Verified on 2026-05-05 with `v8-context-hbk toc <book> --format text` against the local
+`8.5.1.1150` platform baseline.
+
+The current `syntax` export/index implementation is centered on `shcntx_*` platform API facts, but
+installed HBK books also contain source-backed language/domain syntax that is needed for a complete
+solution-context resolver:
+
+- `shlang_ru.hbk` / `shlang_root.hbk`: BSL language syntax, primitive language constructs and
+  language-level type facts. Representative TOC titles include `Общее описание встроенного языка`,
+  `Операторы и синтаксические конструкции`, `Процедура`, `Функция`, `Строка` and `Тип`.
+- `shquery_ru.hbk` / `shquery_root.hbk`: query-language syntax. Representative TOC titles include
+  `Работа с запросами`, `Синтаксис текста запросов`, `Функции языка запросов`, `ВЫБРАТЬ`, `ИЗ`,
+  `ГДЕ`, `СГРУППИРОВАТЬ ПО` and `ИТОГИ`.
+- `dcsui_ru.hbk` / `dcsui_root.hbk`: data composition system syntax and expression language.
+  Representative TOC titles include `Система компоновки данных`, `Язык выражений системы
+  компоновки данных`, `Функции языка выражений системы компоновки данных` and `Расширение языка
+  запросов для системы компоновки данных`.
+
+These books should be analyzed as separate source domains before their facts are merged into any
+source-neutral resolver. They must not be forced through the current `shcntx_*` platform API export
+shape unless a later requirement proves that a shared record family is correct.
 
 ## Book and Navigation Observations
 

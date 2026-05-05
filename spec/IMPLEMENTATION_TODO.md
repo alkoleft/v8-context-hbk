@@ -18,10 +18,12 @@ export, schema, data-quality, performance, parser, provider, storage and query-s
 live in `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-T62-T64 are queued from the RAT review-ergonomics smoke described in
-`implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
-help during BSL development and code analysis, and toward a future typed local provider role for a
-BSL analyzer.
+T62-T64 completed the RAT review-ergonomics slice described in
+`implementation/syntax-bsl-provider-plan.md`. T65 adds the ADR-0008 Rust solution-context resolver
+API design. T66 records the required analysis of non-platform HBK syntax domains before the first
+resolver implementation slice. All `syntax` scope work remains oriented toward successful help
+during BSL development and code analysis, and toward typed local provider roles for future analyzers
+and context-building tools.
 
 ## Loop Rule
 
@@ -396,3 +398,157 @@ Completion notes:
   filter set: `has_type`, `returns`, `constructs` and `member_of`.
 - Verification passed against a fresh RU index at `target/uat/t64-sh-search-ru.sqlite` with
   `25082` documents and `56075 ms` build time.
+
+### [x] T65. Define Rust solution-context resolver API
+
+Spec refs:
+
+- ADR-0008
+- UC-CTX-001
+- FR-CTX-RESOLVE-001
+- NFR-RESOLVE-001
+- `spec/implementation/solution-context-resolve.md`
+- `spec/implementation/components.md`
+
+Problem:
+
+- ADR-0007 deliberately deferred Rust library APIs while the analyzer consumer was still
+  future-facing.
+- A concrete Rust application now needs to form a complete solution context for validation, review,
+  development assistance and diagnostics.
+- The resolver cannot be platform-only: it must cover platform API facts plus separate BSL-language
+  and query-language type domains, and later configuration/source-code providers.
+
+Scope:
+
+- Define the source-neutral Rust resolver boundary and domain model in `spec/`.
+- Preserve ADR-0007 CLI JSON as the first language-agnostic provider boundary.
+- Require source-qualified identities and explicit ambiguity across domains/sources.
+- Keep implementation, configuration parsing, BSL parsing, query parsing and diagnostics out of
+  this spec-only task.
+
+Verification:
+
+- ADR-0008 records the decision, alternatives, non-goals and implementation plan.
+- Requirements, use cases, non-functional requirements and component specs reference the resolver
+  boundary.
+- The implementation spec defines resolver traits, fact/request/response concepts, domain
+  separation, composition rules and the first platform adapter mapping.
+- The active ledger records a follow-up implementation task.
+
+Completion notes:
+
+- Accepted `ContextResolver` / `ContextSource` as the Rust API direction for a future
+  source-neutral resolver core.
+- `PlatformApi`, `BslLanguage`, `QueryLanguage`, `Configuration` and `SourceCode` are separate
+  domains; BSL language types and query-language types must not collapse into platform API types by
+  name.
+- `syntax-helper-search` remains the HBK/Syntax Assistant search implementation. A platform adapter
+  may wrap `SearchIndex`, but the generic resolver model belongs in a separate thin core layer.
+
+### [ ] T66. Analyze non-platform Syntax Assistant domains from HBK books
+
+Spec refs:
+
+- ADR-0008
+- UC-CTX-001
+- FR-CTX-RESOLVE-001
+- `spec/source-evidence.md`
+- `spec/implementation/solution-context-resolve.md`
+
+Problem:
+
+- The current `syntax` export/index implementation extracts primarily platform API facts from
+  `shcntx_*`.
+- Installed HBK sources also contain BSL language syntax, query-language syntax and data
+  composition system expression/query-extension syntax:
+  - `shlang_ru.hbk` / `shlang_root.hbk`;
+  - `shquery_ru.hbk` / `shquery_root.hbk`;
+  - `dcsui_ru.hbk` / `dcsui_root.hbk`.
+- A source-neutral resolver cannot correctly distinguish platform, BSL-language and query-language
+  facts until these books are analyzed as separate source domains.
+
+Scope:
+
+- Inspect the TOC and representative pages of `shlang_*`, `shquery_*` and `dcsui_*` on the current
+  platform baseline.
+- Define which fact families should be extracted for:
+  - BSL language constructs and language-level types;
+  - query-language keywords, clauses, functions, operators and type/value facts;
+  - data composition system expression language and query-language extension constructs.
+- Decide whether these facts need new domain-specific model crates/export families/index document
+  kinds, or whether a minimal shared language-fact model is enough.
+- Record source-domain identity rules so same-display-name facts such as `Строка` remain distinct
+  across platform API, BSL language and query language.
+- Decide whether current `query_table`, `query_table_field` and `query_table_parameter` facts from
+  `shcntx_*` become the first `QueryLanguage` resolver source, remain CLI-only provider facts for
+  now, or require a separate domain-specific extraction/index shape after `shquery_*` and `dcsui_*`
+  analysis.
+- Add follow-up implementation tasks for the selected first extraction/indexing slice and for the
+  first resolver adapter work that depends on those facts.
+- Do not implement parsers, exports, resolver adapters, diagnostics or a public Rust API in this
+  analysis task.
+
+Verification:
+
+- Updated requirements/implementation notes describe the selected source-domain boundaries and
+  first extractable fact families.
+- The model/export/index decision is explicit: domain-specific model crates/export families/index
+  document kinds versus a minimal shared language-fact model.
+- Updated UAT or acceptance notes name at least one real page from each source book family.
+- Follow-up implementation task(s) are added with exact HBK fixtures, expected outputs and
+  non-goals.
+- No code changes are required for this task unless needed for read-only inspection tooling.
+
+### [ ] T67. Implement first Rust resolver core and platform adapter slice
+
+Spec refs:
+
+- ADR-0008
+- UC-CTX-001
+- FR-CTX-RESOLVE-001
+- NFR-RESOLVE-001
+- `spec/implementation/solution-context-resolve.md`
+- `spec/implementation/components.md`
+
+Scope:
+
+- Add the source-neutral resolver core crate with typed ids, domains, fact kinds, query/response
+  types, diagnostics, identity-preserving resolved wrappers and traits described by ADR-0008.
+- Implement the first HBK-backed platform source adapter over `syntax-helper-search::SearchIndex`.
+- Include explicit relation traversal in the platform adapter for `has_type`, `returns`,
+  `constructs` and `member_of`.
+- Add focused behavior tests proving source/domain ambiguity, BSL-vs-query type separation using
+  fake providers, owner-id member lookup isolation, callable identity preservation and platform
+  adapter lookup over an existing search-index fixture.
+- Add an explicit platform callable adapter check for a constructor or method with ordered
+  parameters and return or constructor type references, using a source-backed fixture selected by
+  T66 or an existing stable search-index fixture.
+- Do not expose existing `query_table`, `query_table_field` or `query_table_parameter` documents
+  through the platform adapter unless T66 explicitly selected them as a query-language resolver
+  source.
+- Keep CLI JSON, SQLite public contracts, BSL parsing, query parsing, configuration/source parsing,
+  diagnostics and service boundaries out of this task.
+
+Verification:
+
+- `cargo test -p <new-resolver-core-crate>`
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- Tests demonstrate no hidden winner selection for same-name facts across domains or sources.
+- BSL `Строка` and query-language `Строка` are separate `TypeId`s.
+- Member listing by resolved owner id does not mix members from another source/domain with the same
+  owner display name.
+- Callable lookup preserves callable identity, ordered parameters and return or constructor type
+  references.
+- Platform adapter relation traversal preserves source-backed edges, including
+  `НастройкиКомпоновкиДанных.Отбор` -> `ОтборКомпоновкиДанных` through `has_type` and one selected
+  callable `returns` or `constructs` edge when the selected source fixture exposes it.
+- A fake query table field can reference a BSL/query/platform type through an explicit relation.
+- The platform adapter resolves `platform_type:ОтборКомпоновкиДанных`, lists its members and
+  resolves the selected callable using a test index built through existing `syntax-helper-search`
+  fixtures.
+- NFR-RESOLVE-001 latency check measures exact type resolution, member listing, callable lookup and
+  relation traversal after source open. Each operation should stay under the provisional `100 ms`
+  target; if not, record the measured value, environment/input, suspected blocker and a follow-up
+  task instead of adding cache/config work outside this task.

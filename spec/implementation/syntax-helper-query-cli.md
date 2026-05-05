@@ -173,6 +173,10 @@ questions without parsing JSON blobs, but that storage revision does not by itse
 contract, file artifact contract, service boundary or analyzer implementation. Any new boundary
 requires a separate ADR or task with a concrete consumer and verification path.
 
+ADR-0008 adds a separate Rust solution-context resolver boundary for an in-process full-context
+application. That boundary composes platform, BSL-language, query-language, configuration and
+source-code providers; it does not change the CLI JSON contract or make the SQLite index public.
+
 ### Index Path Resolution
 
 `syntax index`, `syntax get`, `syntax constructors`, `syntax search` and `syntax related` resolve
@@ -561,6 +565,9 @@ prebuilt-index envelope, not a Rust API, SQLite table contract, daemon or analyz
 They read the normalized schema-v4 facts added by T56, but table names and row shapes stay
 internal.
 
+For the separate in-process resolver API accepted later, see
+[`solution-context-resolve.md`](solution-context-resolve.md) and ADR-0008.
+
 Selected command shape:
 
 ```bash
@@ -666,7 +673,8 @@ Diagnostics:
 Non-goals:
 
 - no BSL parsing, expression parser, linter, diagnostics or code actions;
-- no Rust public analyzer API, daemon, MCP service, network search or storage selector;
+- no Rust public analyzer API through this CLI provider primitive, daemon, MCP service, network
+  search or storage selector;
 - no compatibility with older provisional query JSON when it conflicts with this provider shape;
 - no public SQLite table, column or index schema contract.
 

@@ -18,6 +18,9 @@ context boundaries and keeps CLI/export behavior provisional.
 Search/query components are described in
 [`syntax-helper-query-cli.md`](syntax-helper-query-cli.md).
 
+Solution-context Rust resolution is described in
+[`solution-context-resolve.md`](solution-context-resolve.md). ADR-0008 owns this boundary.
+
 ## Dependency Rules
 
 - `hbk-container` must not depend on book, docs, extraction or export concerns.
@@ -32,6 +35,10 @@ Search/query components are described in
 - Syntax Assistant search/query code must not make `hbk-export` carry search-only fields in the
   lean consumer export. Use a search-specific index when structured links or provenance are required
   for query workflows.
+- The future solution-context resolver core must be a thin source-neutral integration layer above
+  platform/search crates. It must not live inside `syntax-helper-search` and must not force BSL
+  language, query-language, configuration or source-code providers to depend on HBK or SQLite
+  implementation details.
 
 ## Public Contract Policy
 
@@ -283,6 +290,42 @@ Implemented first slice:
   `type_identities`, `members`, `callables`, `signatures`, `parameters` and `type_refs`. Provider
   JSON is assembled from those rows; `documents.signature_json` and `documents.preview` are no
   longer part of the SQLite schema.
+
+### Solution Context resolver
+
+Owns FR-CTX-RESOLVE-001 and NFR-RESOLVE-001 after implementation.
+
+Expected source-neutral public concepts:
+
+- `ContextResolver`
+- `ContextSource`
+- `ResolveContext`
+- `ResolveQuery`
+- `ResolveResponse`
+- `ResolveStatus`
+- `ResolveDiagnostic`
+- `SourceId`
+- `FactId`
+- `TypeId`
+- `MemberId`
+- `CallableId`
+- `LanguageDomain`
+- `FactKind`
+- `ContextFact`
+- `FactRelation`
+
+The resolver core should be a separate crate with no HBK, SQLite, CLI or parser dependencies.
+`syntax-helper-search` may provide a platform adapter over `SearchIndex`, but it remains the
+HBK/Syntax Assistant query implementation and not the generic cross-domain resolver model.
+
+The first resolver API must keep BSL language types and query-language types separate from platform
+API types. Cross-domain links require explicit relations; same-name facts across domains or sources
+must not be silently merged.
+
+The platform adapter over `syntax-helper-search` should initially expose platform API type, member
+and callable facts only. Existing query-table documents in the search index remain outside that
+adapter until the `shquery_*` / `dcsui_*` source-domain analysis selects their query-language
+resolver model.
 
 ## Implementation Dependencies
 

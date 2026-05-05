@@ -189,7 +189,9 @@ Resolution path:
     That stays within NFR-QUERY-001 for the accepted analyzer primitive workflow, so no batch
     command, Rust API, service boundary or SQLite public contract is added now. Revisit batching
     only when a concrete analyzer scenario proves that many-symbol lookup volume makes the current
-    one-process-per-query CLI JSON boundary insufficient.
+    one-process-per-query CLI JSON boundary insufficient. ADR-0008 later adds a separate Rust
+    solution-context resolver boundary for a broader full-context application; that boundary does
+    not change the T61 no-batch conclusion for CLI JSON provider calls.
 15. **T62: Improve review-oriented search ranking.** Completed: source-backed review smoke against
     RAT showed that `syntax search --query "Структура" --mode keywords` could rank SKD property
     facts above the exact `platform_type:Структура` identity. Keyword search now applies an exact
@@ -209,6 +211,11 @@ Resolution path:
     provider diagnostics and UAT now list `has_type`, `returns`, `constructs` and `member_of` as
     the supported edge filters. `member_of` remains a bounded related-edge filter, not a general
     graph-query language or storage-table contract.
+18. **T65: Define Rust solution-context resolver API.** Completed as a spec-only ADR-0008 decision:
+    the future in-process Rust resolver is source-neutral, fact-oriented and explicitly separates
+    platform API, BSL-language, query-language, configuration and source-code domains. The platform
+    provider may wrap `syntax-helper-search`, but the generic resolver model is a thin layer above
+    search and must not live in the HBK search crate.
 
 ## Non-Goals for This Plan
 

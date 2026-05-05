@@ -1378,3 +1378,11 @@ The accepted T64 verification used a fresh Russian schema-v4 index at
 member_of --format json` returned the owning fact `platform_type:НастройкиКомпоновкиДанных` with a
 `member_of` relationship path; text output included the same owner fact; unsupported-edge provider
 diagnostics and CLI help both listed the supported edge set including `member_of`.
+
+T65 accepted ADR-0008 and the Rust solution-context resolver API design. This is a spec-only
+decision and does not change CLI behavior, provider JSON, SQLite schema or parser output. ADR-0008
+adds a future in-process Rust boundary for a concrete full-context application that needs fast
+resolution across platform API, BSL-language, query-language, configuration and source-code
+providers. The design keeps BSL language types and query-language types in separate domains, uses
+source-qualified identities, and requires ambiguity instead of hidden winner selection for same-name
+facts across domains or sources.
