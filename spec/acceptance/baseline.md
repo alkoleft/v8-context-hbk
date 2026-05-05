@@ -1335,3 +1335,16 @@ accepted analyzer primitive workflow within NFR-QUERY-001 and do not prove a nee
 command, Rust API, daemon/service boundary or public SQLite table contract. Batch lookup remains a
 future task only if a concrete analyzer scenario proves many-symbol lookup volume that the current
 CLI JSON boundary cannot satisfy.
+
+T62 improved review-oriented keyword ranking without changing the provider JSON envelope, the
+schema-v4 SQLite artifact or the accepted CLI boundary. The ranking path now promotes exact
+primary/alias identity matches before broader prefix, owner, description and FTS-score matches, and
+keeps ranking details under `results[].meta`.
+
+The accepted debug rebuild from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `25082`
+documents in `52851 ms` at `target/uat/t62-sh-search-ru.sqlite` with peak RSS `305516 KiB`.
+UAT-SH-020 passed: `syntax search --query "Структура" --mode keywords --format json` ranked
+`platform_type:Структура` first; `отбор скд` still ranked an SKD/data-composition fact first and
+kept `platform_type:ОтборКомпоновкиДанных` in the result set; and
+`таблица регистра бухгалтерии` kept the accepted top hit
+`query_table:РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии`.

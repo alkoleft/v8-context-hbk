@@ -3444,11 +3444,12 @@ fn fuzzy_threshold(query: &str) -> usize {
     }
 }
 
-fn keyword_order(query: &str, document: &SearchDocument) -> usize {
+fn keyword_order(query: &str, document: &SearchDocument) -> (usize, i64) {
     let tokens = searchable_text(query)
         .split_whitespace()
         .map(ToOwned::to_owned)
         .collect::<Vec<_>>();
+    let query_key = tokens.join(" ");
     let first = tokens.first().map(String::as_str).unwrap_or_default();
     let name = searchable_name(&document.name.primary);
     let alias = document
@@ -3457,16 +3458,31 @@ fn keyword_order(query: &str, document: &SearchDocument) -> usize {
         .as_deref()
         .map(searchable_name)
         .unwrap_or_default();
-    if !first.is_empty() && name.starts_with(first) {
-        0
+    let owner_member = document
+        .owner
+        .as_ref()
+        .map(|owner| {
+            searchable_name(&format!(
+                "{}.{}",
+                display_name(owner),
+                document.name.primary
+            ))
+        })
+        .unwrap_or_default();
+    if !query_key.is_empty() && (name == query_key || alias == query_key) {
+        (0, kind_priority(&document.kind))
+    } else if !query_key.is_empty() && owner_member == query_key {
+        (1, kind_priority(&document.kind))
+    } else if !first.is_empty() && name.starts_with(first) {
+        (2, 0)
     } else if !first.is_empty() && alias.starts_with(first) {
-        1
+        (3, 0)
     } else if tokens.iter().all(|token| name.contains(token)) {
-        2
+        (4, 0)
     } else if tokens.iter().all(|token| alias.contains(token)) {
-        3
+        (5, 0)
     } else {
-        10
+        (10, 0)
     }
 }
 
@@ -3708,6 +3724,80 @@ mod tests {
         assert_eq!(
             constructors[0].document.signature_text_lines(),
             ["Новый ОтборКомпоновкиДанных()"]
+        );
+    }
+
+    #[test]
+    fn keyword_search_prefers_exact_identity_for_simple_symbol() {
+        let path = temp_path("simple-symbol-ranking.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![
+                platform_type("Структура", Some("Structure"), "Коллекция значений."),
+                platform_type(
+                    "СтруктураНастроекКомпоновкиДанных",
+                    None,
+                    "Структура настроек компоновки данных.",
+                ),
+                platform_type(
+                    "НастройкиКомпоновкиДанных",
+                    None,
+                    "Настройки системы компоновки данных.",
+                ),
+            ],
+            type_properties: vec![
+                type_property("НастройкиКомпоновкиДанных", "Структура", "Структура"),
+                type_property(
+                    "СтруктураНастроекКомпоновкиДанных",
+                    "Структура",
+                    "Структура",
+                ),
+            ],
+            ..model::PlatformContext::default()
+        };
+        build_index(&path, &metadata(), &context).expect("index must build");
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+
+        let hits = index
+            .search("Структура", SearchMode::Keywords, 10)
+            .expect("keyword search must work");
+        assert_eq!(hits[0].document.id, "platform_type:Структура");
+        assert!(hits.iter().skip(1).any(|hit| {
+            hit.document.kind == "type_property" && hit.document.name.primary == "Структура"
+        }));
+    }
+
+    #[test]
+    fn keyword_search_keeps_task_oriented_query_table_ranking() {
+        let path = temp_path("task-query-ranking.sqlite");
+        let context = model::PlatformContext {
+            query_tables: vec![
+                query_table(
+                    "РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии",
+                    "Работа с запросами.Таблицы запросов.РегистрБухгалтерии.Таблица изменений",
+                    "РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии",
+                ),
+                query_table(
+                    "РегистрБухгалтерииОсновнаяТаблица",
+                    "Работа с запросами.Таблицы запросов.РегистрБухгалтерии.Основная таблица",
+                    "РегистрБухгалтерииОсновнаяТаблица",
+                ),
+            ],
+            table_fields: vec![query_table_field(
+                "РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии",
+                "Работа с запросами.Таблицы запросов.РегистрБухгалтерии.Таблица изменений",
+                "Регистратор",
+            )],
+            ..model::PlatformContext::default()
+        };
+        build_index(&path, &metadata(), &context).expect("index must build");
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+
+        let hits = index
+            .search("таблица регистра бухгалтерии", SearchMode::Keywords, 10)
+            .expect("keyword search must work");
+        assert_eq!(
+            hits[0].document.id,
+            "query_table:РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии"
         );
     }
 

@@ -247,7 +247,7 @@ Completion notes:
   ADR-0007 still keeps local CLI JSON as the first analyzer-provider boundary.
 - No Rust API, daemon, service boundary, public SQLite contract or batch command was added.
 
-### [ ] T62. Improve review-oriented search ranking
+### [x] T62. Improve review-oriented search ranking
 
 Spec refs:
 
@@ -287,6 +287,15 @@ Verification:
 - JSON assertions show `platform_type:Структура` ranks ahead of non-identity facts for the simple
   `Структура` query.
 - Existing accepted `отбор скд` and `таблица регистра бухгалтерии` search assertions still pass.
+
+Completion notes:
+
+- Keyword search now applies an exact primary/alias identity tier before broader prefix, token,
+  owner and description matches; exact same-name facts are still ordered by provider kind priority.
+- `UAT-SH-020` records the real-index review-ranking scenario for `Структура` and regression checks
+  for `отбор скд` and `таблица регистра бухгалтерии`.
+- Verification passed against a fresh RU index at `target/uat/t62-sh-search-ru.sqlite` with `25082`
+  documents and `52851 ms` build time.
 
 ### [ ] T63. Add bounded and compact output controls for search/related
 

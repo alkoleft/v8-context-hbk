@@ -1068,6 +1068,68 @@ Expected result:
 - Raw command outputs remain service data under `target/uat`; only the commands, assertions and
   conclusions are durable.
 
+## UAT-SH-020: Review-Oriented Search Ranking
+
+Related use case: UC-SH-005C.
+
+Related requirements: FR-SH-SEARCH-001, FR-SH-PROVIDER-001.
+
+Status: implementation UAT for T62.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- A fresh schema-v4 or later provider index can be built under `target/uat/`.
+
+Steps:
+
+```bash
+rm -f target/uat/t62-sh-search-ru.sqlite target/uat/t62-search-*.json
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t62-sh-search-ru.sqlite
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t62-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax search --query "Структура" --mode keywords --format json \
+  > target/uat/t62-search-structure.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t62-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax search --query "отбор скд" --mode keywords --format json \
+  > target/uat/t62-search-skd-filter.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t62-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax search --query "таблица регистра бухгалтерии" --mode keywords --format json \
+  > target/uat/t62-search-accounting-register-table.json
+
+jq -e '.status == "ok"
+  and .results[0].fact.id == "platform_type:Структура"
+  and .results[0].fact.kind == "platform_type"
+  and (.results[0].meta | has("rank"))
+  and (.results[0].fact | has("score") | not)' \
+  target/uat/t62-search-structure.json
+jq -e '.status == "ok"
+  and (.results[0].fact.id | test("КомпоновкиДанных"))
+  and any(.results[].fact; .id == "platform_type:ОтборКомпоновкиДанных")' \
+  target/uat/t62-search-skd-filter.json
+jq -e '.status == "ok"
+  and .results[0].fact.id == "query_table:РегистрБухгалтерииТаблицаИзмененийРегистраБухгалтерии"' \
+  target/uat/t62-search-accounting-register-table.json
+```
+
+Expected result:
+
+- The simple symbol query `Структура` ranks the exact platform type identity first, ahead of
+  broader owned properties, owners, descriptions or prefix matches.
+- Ranking metadata stays under `results[].meta`; provider facts do not expose internal search
+  scores or FTS tokens.
+- The accepted task-oriented search `отбор скд` still ranks an SKD/data-composition fact first and
+  keeps the platform type identity in the result set.
+- The accepted task-oriented search `таблица регистра бухгалтерии` keeps its previously accepted
+  top hit.
+- Raw command outputs remain service data under `target/uat`; only the commands, assertions and
+  conclusions are durable.
+
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 
 Related use case: UC-SH-001.

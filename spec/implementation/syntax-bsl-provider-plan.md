@@ -190,11 +190,12 @@ Resolution path:
     command, Rust API, service boundary or SQLite public contract is added now. Revisit batching
     only when a concrete analyzer scenario proves that many-symbol lookup volume makes the current
     one-process-per-query CLI JSON boundary insufficient.
-15. **T62: Improve review-oriented search ranking.** Source-backed review smoke against RAT showed
-    that `syntax search --query "Структура" --mode keywords` can rank SKD property facts above the
-    exact `platform_type:Структура` identity. Adjust deterministic ranking so exact primary/alias
-    platform type matches are preferred for simple symbol queries without regressing accepted
-    task-oriented searches such as `отбор скд` and `таблица регистра бухгалтерии`.
+15. **T62: Improve review-oriented search ranking.** Completed: source-backed review smoke against
+    RAT showed that `syntax search --query "Структура" --mode keywords` could rank SKD property
+    facts above the exact `platform_type:Структура` identity. Keyword search now applies an exact
+    primary/alias identity tier before broader prefix, token, owner and description matches. The
+    real-index UAT keeps `Структура` first while preserving accepted task-oriented searches such as
+    `отбор скд` and `таблица регистра бухгалтерии`.
 16. **T63: Add bounded and compact query output controls.** Add provider-level controls for
     limiting and compacting `syntax search` and `syntax related` results, with deterministic JSON
     shape and no loss of the full default provider contract. The first accepted need is
