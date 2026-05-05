@@ -18,10 +18,10 @@ export, schema, data-quality, performance, parser, provider, storage and query-s
 live in `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-No active unchecked task remains after T61. The queued roadmap comes from
-`implementation/syntax-bsl-provider-plan.md`; add the next concrete task there and in this ledger
-before implementing new scope. All `syntax` scope work is oriented toward successful help during BSL
-development and code analysis, and toward a future typed local provider role for a BSL analyzer.
+T62-T64 are queued from the RAT review-ergonomics smoke described in
+`implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
+help during BSL development and code analysis, and toward a future typed local provider role for a
+BSL analyzer.
 
 ## Loop Rule
 
@@ -246,3 +246,126 @@ Completion notes:
 - Batch lookup is deferred: the accepted primitive/UAT workflow stays within NFR-QUERY-001, and
   ADR-0007 still keeps local CLI JSON as the first analyzer-provider boundary.
 - No Rust API, daemon, service boundary, public SQLite contract or batch command was added.
+
+### [ ] T62. Improve review-oriented search ranking
+
+Spec refs:
+
+- ADR-0006
+- ADR-0007
+- UC-SH-005C
+- FR-SH-SEARCH-001
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Problem:
+
+- A RAT code-review smoke showed that `syntax search --query "Структура" --mode keywords
+  --format json` ranks less useful SKD property facts above the exact `platform_type:Структура`
+  identity.
+- For review and code-analysis assistance, simple symbol queries should prefer exact platform type,
+  method, property or constructor identities before broader description/owner matches.
+- The ranking fix must not regress accepted task-oriented searches such as `отбор скд` and
+  `таблица регистра бухгалтерии`.
+
+Scope:
+
+- Adjust deterministic search ranking so exact primary/alias identity matches outrank partial
+  property/owner/description matches for simple symbol queries.
+- Keep ranking metadata under `results[].meta`; do not expose internal FTS tokens under
+  `results[].fact`.
+- Add focused tests or UAT assertions for `Структура` and at least one existing accepted
+  task-oriented query.
+- Do not add semantic search, project-symbol indexing or a BSL parser.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- Rebuild a real RU index from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`.
+- JSON assertions show `platform_type:Структура` ranks ahead of non-identity facts for the simple
+  `Структура` query.
+- Existing accepted `отбор скд` and `таблица регистра бухгалтерии` search assertions still pass.
+
+### [ ] T63. Add bounded and compact output controls for search/related
+
+Spec refs:
+
+- ADR-0007
+- UC-SH-005C
+- UC-SH-005D
+- FR-SH-SEARCH-001
+- FR-SH-SEARCH-002
+- FR-SH-PROVIDER-001
+- NFR-QUERY-001
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Problem:
+
+- `syntax related` can return very large result sets for narrow review questions; RAT smoke against
+  `type_property:platform_type:Символы:ПС` returned 200 related facts.
+- Human reviewers and coding agents need a way to request a bounded or compact result without
+  losing deterministic provider behavior.
+
+Scope:
+
+- Define and implement explicit bounded output controls for `syntax search` and `syntax related`,
+  such as `--limit <N>`.
+- Define and implement a compact mode for `syntax related` that keeps stable fact identity and
+  enough path summary to explain relevance while omitting bulky fields that are not needed for a
+  review triage view.
+- Preserve the current full provider JSON as the default unless the spec is deliberately updated.
+- Keep SQLite table names, graph internals and FTS details out of public facts.
+- Do not add a BSL parser, project-symbol analyzer, service boundary or batch provider command.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- Rebuild or reuse a current RU index built from `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`.
+- JSON assertions show `--limit` bounds result count deterministically for both `search` and
+  `related`.
+- Compact `related` output remains deterministic and includes fact identity plus relationship
+  explanation sufficient for review.
+- Existing full-output provider/UAT assertions still pass.
+
+### [ ] T64. Align relationship edge filters with the public graph contract
+
+Spec refs:
+
+- ADR-0007
+- UC-SH-005B
+- UC-SH-005C
+- FR-SH-SEARCH-002
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/implementation/syntax-bsl-provider-plan.md`
+
+Problem:
+
+- `spec/implementation/syntax-helper-query-cli.md` lists `member_of` as a supported first-slice
+  edge kind in the relationship model.
+- The current CLI rejects `syntax related --edge member_of` with `UNSUPPORTED_QUERY` and says only
+  `has_type`, `returns` and `constructs` are supported.
+- This mismatch is confusing during review because `member_of` is a natural inverse-navigation
+  question for owned facts.
+
+Scope:
+
+- Decide whether `member_of` is a public provider edge filter now or only an internal/storage edge
+  for the current implementation.
+- If public, implement `syntax related --edge member_of` with deterministic JSON and text behavior.
+- If not public, update the implementation spec, CLI help and unsupported-query diagnostic so the
+  supported edge list is unambiguous.
+- Add UAT or focused real-index assertions for the selected behavior.
+- Do not broaden `related --edge` into a general graph-query language.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- Real-index command against `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` demonstrates the selected
+  `member_of` behavior.
+- Provider diagnostics and help text agree with the implemented supported edge list.

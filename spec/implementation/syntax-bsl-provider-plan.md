@@ -41,6 +41,7 @@ export-compatible typed facts or the provider envelope implemented by T52.
 | Callable details | T48/T51 preserve structured signatures in the query index through schema version `3` `signature_json`; signature text remains presentation/FTS data. T53 validates `HTTPСоединение` constructor-call parameters through UAT-SH-017. | Additional callable gaps should now come from failed accepted BSL scenarios, not isolated DTO review. | T54 adds only scenario-driven relationship or parser improvements. |
 | Exact identity | T52 adds document-id lookup and relationship roots by document id and owner/member. | Additional analyzer-oriented batch APIs are not defined yet. | Use exact ids and owner/member roots through the CLI JSON provider boundary selected by ADR-0007. |
 | Relationship traversal | Graph covers owner/member/type-reference/return/constructor edges and accepted SKD flow. | Code-facing workflows need reliable paths for creation/configuration tasks, not only nearby docs. | Add UAT scenarios and edge coverage for selected BSL development tasks before adding new graph features. |
+| Review ergonomics | A RAT smoke test showed the provider can resolve real platform calls such as `ТабличныйДокумент.Прочитать`, `ДвоичныеДанные.ОткрытьПотокДляЧтения` and `ХранилищеВнешнихДанныхНавигационныхСсылок.Выбрать`. | The CLI is still inconvenient for code review: broad `related` output is noisy, `search "Структура"` ranks exact platform type identity after less useful facts, and CLI help/behavior around edge filters is not self-explanatory. | Improve ranking, result limiting/compact relationship output and supported edge-filter behavior as provider ergonomics tasks. Do not add a BSL parser or project-symbol analyzer in this plan. |
 | Provider contract | T50 defines and T52 implements a provisional provider schema/envelope for CLI JSON outputs. ADR-0007 keeps CLI JSON as the first analyzer-facing boundary. | Rust/library/file/service boundaries are intentionally not selected without a concrete downstream consumer. | Treat the CLI JSON envelope as the current provider boundary while storage and query capabilities continue to evolve. |
 | Evidence from real BSL | T53 adds UAT-SH-017 for source-backed BSL development scenarios: constructor call, SKD owner/member access and accounting-register query-table discovery. | The scenario set is intentionally small and should expand only when real workflow gaps are found. | Use UAT-SH-017 as the acceptance corpus for T49/T54 before broad search/storage changes. |
 | Storage evaluation | T49 plans Tantivy comparison. | Storage speed alone does not prove analyzer usefulness. | Run T49 against UAT-SH-017 plus the existing exact, constructor, provider JSON and relationship workflows. |
@@ -189,10 +190,27 @@ Resolution path:
     command, Rust API, service boundary or SQLite public contract is added now. Revisit batching
     only when a concrete analyzer scenario proves that many-symbol lookup volume makes the current
     one-process-per-query CLI JSON boundary insufficient.
+15. **T62: Improve review-oriented search ranking.** Source-backed review smoke against RAT showed
+    that `syntax search --query "Структура" --mode keywords` can rank SKD property facts above the
+    exact `platform_type:Структура` identity. Adjust deterministic ranking so exact primary/alias
+    platform type matches are preferred for simple symbol queries without regressing accepted
+    task-oriented searches such as `отбор скд` and `таблица регистра бухгалтерии`.
+16. **T63: Add bounded and compact query output controls.** Add provider-level controls for
+    limiting and compacting `syntax search` and `syntax related` results, with deterministic JSON
+    shape and no loss of the full default provider contract. The first accepted need is
+    review-oriented use where unfiltered `related` output for a narrow fact can return hundreds of
+    results and is hard to consume manually or by an agent.
+17. **T64: Align relationship edge filters with the public graph contract.** The schema records
+    `member_of` as a supported edge kind, but the current CLI `syntax related --edge` accepts only
+    `has_type`, `returns` and `constructs`. Decide whether `member_of` must be implemented as a
+    first-class edge filter or explicitly documented as storage-only/internal for now; update
+    CLI behavior/help, provider diagnostics and UAT accordingly.
 
 ## Non-Goals for This Plan
 
 - Implement a BSL parser, linter or diagnostics engine in this repository.
+- Add project-symbol analysis for local modules such as `РатСервис`; the current provider indexes
+  platform API facts from Syntax Assistant, not repository-defined BSL symbols.
 - Add network-hosted semantic search.
 - Replace SQLite/FTS5 before T49 produces measured evidence.
 - Stabilize all public contracts before the real BSL task scenarios are accepted.
