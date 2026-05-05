@@ -132,6 +132,16 @@ directories are service data unless promoted here.
   query-table identifier sentinel with typed absence. Missing-syntax query tables still receive
   deterministic search/index document ids from TOC-derived semantic owner context, not from a
   synthesized identifier source fact.
+- T66 completed the non-platform HBK domain-analysis gate for ADR-0008 without code changes.
+  Real-source inspection of `/opt/1cv8/x86_64/8.5.1.1150/shlang_ru.hbk`,
+  `shquery_ru.hbk` and `dcsui_ru.hbk` selected a minimal shared language-fact model instead of
+  platform-style record families. Representative anchors are `shlang:def_String` and
+  `shlang:def_Func` for BSL language types/constructs, `shquery:SELECTStatement`,
+  `shquery:SUM`, `shquery:STRING` and `shquery:LitString` for query clauses/functions/literals,
+  and `dcsui:SKD_Functions_Strings`, `dcsui:SKD_ExtQueryLangv` and `dcsui:SKD_Lang` for data
+  composition expression/query-extension syntax. Existing `shcntx_*` `query_table`,
+  `query_table_field` and `query_table_parameter` index facts remain CLI/provider facts for now;
+  they are not selected as the first `QueryLanguage` resolver source.
 
 ## Post-T29 Runtime Regression To Fix
 

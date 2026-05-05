@@ -109,10 +109,10 @@ The boundary does not promise:
   or platform value types through explicit type-reference edges, but they are not owned members of a
   platform API type unless a source-backed rule says so.
 - Existing `query_table`, `query_table_field` and `query_table_parameter` facts from the current
-  `shcntx_*` index are not automatically part of the first platform adapter. The required
-  `shquery_*` / `dcsui_*` analysis must decide whether they become an initial `QueryLanguage`
-  resolver source, stay CLI-only provider facts temporarily, or need a separate domain-specific
-  extraction/index shape.
+  `shcntx_*` index are not part of the first platform adapter. T66 selected them to remain
+  CLI/provider facts for now, not the first `QueryLanguage` resolver source. A later
+  language-domain task must define an explicit mapping or relation shape before exposing them
+  through the source-neutral resolver.
 - Configuration metadata and source-code declarations may generate or augment types. That
   generation or augmentation must be represented by explicit source-qualified identities and
   relations, not by replacing same-name platform facts.

@@ -685,10 +685,27 @@ adapter over `syntax-helper-search`. Configuration metadata extraction, BSL pars
 query parser/source indexing, diagnostics and code actions are out of scope for this repository
 until a later spec assigns those providers.
 
+Non-platform HBK language sources are separate resolver sources, not platform API extensions.
+`shlang_*` is the first BSL language source. `shquery_*` is the first query-language source.
+`dcsui_*` is a data-composition language source that should participate in the query-language
+resolver domain through a distinct source identity. The first extractable source-backed facts are
+language constructs, language/value types, language functions, operators, keywords and literals.
+Same-display-name facts across these sources, such as BSL `Строка`, query `СТРОКА` and SKD string
+expression functions, must remain source-qualified and domain-qualified until explicit relations
+connect them.
+
+The existing `query_table`, `query_table_field` and `query_table_parameter` facts extracted from
+`shcntx_*` remain CLI/provider facts until a language-domain extraction/index task defines how they
+map into the source-neutral resolver. They must not be silently exposed as platform adapter facts or
+as the first query-language resolver provider.
+
 Acceptance:
 
 - The implementation spec defines the resolver traits, request/response model, domain model,
   source composition rules and first platform adapter mapping.
+- The non-platform language-domain evidence names representative pages from `shlang_*`,
+  `shquery_*` and `dcsui_*`, selects first extractable fact families and defines identity rules for
+  same-display-name facts across BSL, query and SKD sources.
 - Same-name facts from platform, BSL-language, query-language, configuration and source-code
   domains are source-qualified and report ambiguity unless the caller constrains the query.
 - BSL language types and query-language types remain separate domains even when their display names
@@ -702,8 +719,8 @@ Acceptance:
 - The platform adapter can be implemented without exposing SQLite tables, FTS fields, HBK paths,
   TOC paths, HTML paths or page titles as public resolver facts.
 - Existing `query_table`, `query_table_field` and `query_table_parameter` provider facts are not
-  exposed through the platform adapter until the non-platform HBK domain analysis selects their
-  query-language resolver shape.
+  exposed through the platform adapter. T66 selected them to remain CLI/provider facts until a later
+  language-domain task defines an explicit resolver mapping or relation shape.
 
 ## FR-SH-SEARCH-002: Syntax Assistant Relationship Graph
 

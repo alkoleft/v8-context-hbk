@@ -387,8 +387,9 @@ must not be silently merged.
 
 The platform adapter over `syntax-helper-search` should initially expose platform API type, member
 and callable facts only. Existing query-table documents in the search index remain outside that
-adapter until the `shquery_*` / `dcsui_*` source-domain analysis selects their query-language
-resolver model.
+adapter. T66 selected current `shcntx_*` query-table documents to remain CLI/provider facts for
+now, not the first `QueryLanguage` resolver source. A later language-domain task must define an
+explicit mapping or relation shape before exposing them through the source-neutral resolver.
 
 ## Implementation Dependencies
 

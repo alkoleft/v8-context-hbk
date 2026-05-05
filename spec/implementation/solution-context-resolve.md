@@ -323,9 +323,42 @@ and page shapes from:
   extension constructs.
 
 That analysis must choose domain-specific fact families and identity rules before any facts are
-merged into the resolver. T66 is the active ledger gate before T67: complete the non-platform HBK
-domain analysis first, then implement the resolver core and the first platform adapter slice. Real
-BSL/query providers need source-backed fact-family decisions before implementation.
+merged into the resolver. T66 completed this non-platform HBK domain-analysis gate before T67, so
+T67 can implement the resolver core and first platform adapter slice without treating BSL/query
+providers as implementation-ready. Real BSL/query providers still need the source-backed
+fact-family decisions selected below.
+
+T66 selected a minimal shared language-fact model for the first non-platform HBK slice. The current
+source evidence does not justify platform-style model crates or export families for `shlang_*`,
+`shquery_*` and `dcsui_*`; their pages are language reference pages, not platform API object/member
+pages. The selected shared fact families are:
+
+- `language_construct` for declarations, statements and grammar clauses;
+- `language_type` for BSL primitive types and query/SKD value type facts;
+- `language_function` for query and SKD expression functions;
+- `language_operator` for BSL/query/SKD operators;
+- `language_keyword` for keyword and keyword-modifier facts;
+- `language_literal` for constants and literal forms.
+
+The first implementation should add a small source-domain model crate or module for those language
+facts and a search/index document kind family for language facts. It should not extend
+`syntax-helper-model` platform record families with non-platform language records unless a later
+task proves a shared internal crate boundary is cleaner. Consumer export JSON for existing
+`syntax export` platform facts must remain unchanged until a task defines a language export surface.
+
+Resolver identity rules for this slice:
+
+- `LanguageDomain::BslLanguage` owns `shlang_*` facts.
+- `LanguageDomain::QueryLanguage` owns `shquery_*` facts.
+- `dcsui_*` facts use the resolver `QueryLanguage` domain with a distinct source family, because
+  data composition expression/query-extension syntax participates in query-analysis workflows but
+  must remain distinguishable from base query-language pages.
+- Display names are never identities. `Строка` from `shlang:def_String`, `Строка`/`STRING` from
+  query conversion and string-literal pages, and `Строка` parameter/return facts in SKD expression
+  functions remain separate facts unless explicit relations connect them.
+- Existing `shcntx_*` `query_table`, `query_table_field` and `query_table_parameter` index
+  documents stay outside the first platform adapter and outside the first language resolver source.
+  They may be related to future language facts only through explicit follow-up work.
 
 ## First Platform Adapter
 
@@ -346,9 +379,10 @@ or page titles through generic facts.
 
 Current `SearchIndex` also contains `query_table`, `query_table_field` and `query_table_parameter`
 documents extracted from `shcntx_*`. T67 must not expose them through the first platform adapter as
-generic platform facts. T66 owns the decision whether those current facts become the first
-`QueryLanguage` resolver provider, remain CLI-only provider facts for now, or need a new
-domain-specific extraction/index shape after `shquery_*` and `dcsui_*` analysis.
+generic platform facts. T66 selected the current decision: those facts remain CLI/provider facts for
+now and are not the first `QueryLanguage` resolver provider. A later language-domain task must
+define an explicit mapping or relation shape before exposing them through the source-neutral
+resolver.
 
 ## Verification Plan
 

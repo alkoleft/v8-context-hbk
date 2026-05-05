@@ -22,10 +22,11 @@ conclusions live in `acceptance/baseline.md`, `source-evidence.md`, `requirement
 `implementation/syntax-helper-query-cli.md`, `implementation/syntax-bsl-provider-plan.md` and
 `implementation/solution-context-resolve.md`.
 
-The active open tasks are T66, T67 and T86-T88. T66 is the first unchecked task and remains the
-required non-platform HBK domain-analysis gate before T67. T67 is the first resolver implementation
-slice. T86-T88 are cleanup follow-ups from the May 2026 solution review and should not bypass the
-T66/T67 resolver sequence unless explicitly selected.
+The active open tasks are T67 and T86-T90. T66 completed the required non-platform HBK
+domain-analysis gate before T67. T67 is now the first unchecked task and remains the first resolver
+implementation slice. T89-T90 are T66 follow-ups for non-platform language facts and resolver
+adapters. T86-T88 are cleanup follow-ups from the May 2026 solution review and should not bypass the
+T67 resolver slice unless explicitly selected.
 
 ## Loop Rule
 
@@ -42,7 +43,7 @@ T66/T67 resolver sequence unless explicitly selected.
   `git diff --cached --name-only`.
 - Do not create empty commits.
 
-### [ ] T66. Analyze non-platform Syntax Assistant domains from HBK books
+### [x] T66. Analyze non-platform Syntax Assistant domains from HBK books
 
 Spec refs:
 
@@ -121,8 +122,8 @@ Scope:
   parameters and return or constructor type references, using a source-backed fixture selected by
   T66 or an existing stable search-index fixture.
 - Do not expose existing `query_table`, `query_table_field` or `query_table_parameter` documents
-  through the platform adapter unless T66 explicitly selected them as a query-language resolver
-  source.
+  through the platform adapter. T66 selected them to remain CLI/provider facts for now; later
+  language-domain work must define an explicit resolver mapping or relation shape first.
 - Keep CLI JSON, SQLite public contracts, BSL parsing, query parsing, configuration/source parsing,
   diagnostics and service boundaries out of this task.
 
@@ -148,6 +149,132 @@ Verification:
   relation traversal after source open. Each operation should stay under the provisional `100 ms`
   target; if not, record the measured value, environment/input, suspected blocker and a follow-up
   task instead of adding cache/config work outside this task.
+
+## Language Domain Follow-up
+
+### [ ] T89. Implement first shared language-fact extraction/index fixture slice
+
+Spec refs:
+
+- ADR-0008
+- UC-CTX-001
+- FR-CTX-RESOLVE-001
+- `spec/source-evidence.md`
+- `spec/implementation/solution-context-resolve.md`
+
+Depends on:
+
+- T66
+
+Scope:
+
+- Add a minimal shared language-fact model for non-platform HBK books with fact families selected
+  by T66: `language_construct`, `language_type`, `language_function`, `language_operator`,
+  `language_keyword` and `language_literal`.
+- Add real-source parser fixtures from the current 8.5.1.1150 HBK pages:
+  - `shlang_ru.hbk` `def_String` and `def_Func`;
+  - `shlang_root.hbk` `def_String` and `def_Func`;
+  - `shquery_ru.hbk` `SELECTStatement`, `SUM`, `STRING` and `LitString`;
+  - `shquery_root.hbk` `SELECTStatement`, `SUM` and `STRING`;
+  - `dcsui_ru.hbk` `SKD_Functions_Strings` and `SKD_ExtQueryLangv`;
+  - `dcsui_root.hbk` `SKD_Functions_Strings` and `SKD_ExtQueryLangv`.
+- Extract deterministic language facts from those fixtures, including source family, resolver
+  language domain, fact family, localized name/alias when present, syntax text when present,
+  parameters/return or type references when source-backed, description text and explicit source
+  links as internal provenance.
+- Add search/index document kinds for language facts so later resolver adapters can open a prebuilt
+  local artifact without parsing HBK pages in lookup hot paths.
+- Keep the existing `syntax export` platform consumer JSON unchanged.
+
+Expected outputs:
+
+- Behavior tests or snapshot assertions prove:
+  - `shlang:def_String` is a `BslLanguage` `language_type`;
+  - `shlang:def_Func` is a `BslLanguage` `language_construct` with syntax text;
+  - `shquery:SELECTStatement` is a `QueryLanguage` `language_construct` or `language_keyword`
+    root for the `ВЫБРАТЬ` / `SELECT` clause;
+  - `shquery:STRING` is a `QueryLanguage` `language_function`;
+  - `shquery:LitString` is a `QueryLanguage` `language_literal` or `language_type` according to
+    the implemented source-backed classifier;
+  - `dcsui:SKD_Functions_Strings#ДлинаСтроки` or the equivalent root-source anchor is a
+    `QueryLanguage` language function under the distinct `dcsui` source family;
+  - `dcsui:SKD_ExtQueryLangv` exposes query-extension constructs such as `{ВЫБРАТЬ}` and `{ГДЕ}`
+    without overwriting base `shquery` clauses.
+- Identity assertions prove same-display-name `Строка` / `String` facts from BSL, query and SKD
+  sources remain separate ids.
+
+Non-goals:
+
+- Do not expose a new public language export JSON contract unless a spec update in this task
+  explicitly defines it.
+- Do not implement a BSL parser, query parser, analyzer diagnostics, runtime 1C introspection,
+  MCP, network search, graph database or storage-selection knobs.
+- Do not expose raw HBK path, TOC path, HTML path or page title in consumer export JSON.
+- Do not move existing `shcntx_*` `query_table` facts into the resolver in this task.
+
+Verification:
+
+- `cargo test -p <language-fact-model-or-extract-crate>`
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+- Spec/baseline updated with implemented schema/fact-family conclusions and fixture anchors.
+
+### [ ] T90. Implement first language-domain resolver adapter slice
+
+Spec refs:
+
+- ADR-0008
+- UC-CTX-001
+- FR-CTX-RESOLVE-001
+- NFR-RESOLVE-001
+- `spec/implementation/solution-context-resolve.md`
+
+Depends on:
+
+- T67
+- T89
+
+Scope:
+
+- Add resolver source adapter(s) for the T89 language-fact index shape without changing the
+  source-neutral resolver core model selected by T67.
+- Resolve exact ids and exact names for at least BSL primitive language types, query-language
+  functions/literals and SKD expression/query-extension facts.
+- Preserve source-family identity for `shlang`, `shquery` and `dcsui` facts under resolver
+  `LanguageDomain::BslLanguage` and `LanguageDomain::QueryLanguage`.
+- Add explicit relation traversal only for source-backed links extracted in T89, such as query
+  function parameter/return type links to BSL/query language type facts.
+- Leave existing `shcntx_*` `query_table`, `query_table_field` and `query_table_parameter`
+  documents outside the resolver unless this task adds an explicit source-backed relation from a
+  language fact to a query-table provider fact.
+
+Expected outputs:
+
+- Resolver tests prove:
+  - unconstrained exact-name lookup for `Строка` returns `ambiguous` when BSL, query and SKD/source
+    candidates are active;
+  - constraining to `BslLanguage` resolves the BSL `def_String` type;
+  - constraining to `QueryLanguage` can distinguish `shquery:STRING`, `shquery:LitString` and SKD
+    string-function facts by exact id or fact family;
+  - relation traversal from a query/SKD function parameter or return type uses explicit extracted
+    edges instead of same-name merging.
+
+Non-goals:
+
+- Do not implement BSL/source-code parsing, query-text parsing, analyzer diagnostics or project
+  metadata extraction.
+- Do not add a public service boundary, async runtime, global cache, MCP server or downstream
+  analyzer implementation.
+- Do not expose SQLite tables, FTS tokens or raw HBK/TOC/HTML/page-title provenance as public
+  resolver facts.
+
+Verification:
+
+- `cargo test -p <resolver-core-crate>`
+- `cargo test -p <language-adapter-or-search-crate>`
+- `cargo test --workspace`
+- NFR-RESOLVE-001 latency notes for exact language fact lookup after source open, or a recorded
+  measured blocker and follow-up task.
 
 ## Cleanup Follow-up
 

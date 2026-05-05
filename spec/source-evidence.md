@@ -74,6 +74,82 @@ These books should be analyzed as separate source domains before their facts are
 source-neutral resolver. They must not be forced through the current `shcntx_*` platform API export
 shape unless a later requirement proves that a shared record family is correct.
 
+T66 rechecked the same local baseline with `target/release/v8-context-hbk toc` and representative
+`page` reads. The durable source-domain conclusions are:
+
+- `shlang_ru.hbk` / `shlang_root.hbk` is the `BslLanguage` source domain. It contains BSL language
+  constructs, operators, preprocessor/pragma/annotation sections and primitive language-level type
+  pages. Representative pages:
+  - `def_String`: `Строка (String)` / `String` describes the BSL language primitive string type,
+    literals, availability and XDTO mapping.
+  - `def_Func`: `Функция (Function)` / `Function` describes a BSL function declaration syntax,
+    parameters, export modifier and return statement.
+  - `operator_await.html`: `Ждать` / `Wait` is a language operator page, not a platform callable.
+- `shquery_ru.hbk` / `shquery_root.hbk` is the `QueryLanguage` source domain. It contains query
+  clauses, keywords, functions, operators, literal/value facts and grammar pages. Representative
+  pages:
+  - `SELECTStatement`: `Предложение ВЫБРАТЬ` / `SELECT clause` describes the query `ВЫБРАТЬ`
+    clause and links to subordinate keywords such as `РАЗРЕШЕННЫЕ`, `РАЗЛИЧНЫЕ` and `ПЕРВЫЕ`.
+  - `SUM`: `Агрегатная функция СУММА` / `SUM` describes an aggregate query-language function.
+  - `STRING`: `Функция Строка (String)` / `ROW` describes a query-language conversion function
+    named like the BSL `Строка` type but living in the query domain.
+  - `LitString`: `Литерал типа СТРОКА` / string literal page describes the query-language string
+    literal/type-value fact.
+- `dcsui_ru.hbk` / `dcsui_root.hbk` is a `DataCompositionLanguage` source family that should map
+  into the resolver's `QueryLanguage` domain only through explicit source identity. It contains the
+  data composition expression language, its functions and the data-composition query-language
+  extension syntax. Representative pages:
+  - `SKD_Functions_Strings`: `Работа со строками` / `String operations` contains multiple
+    expression-language functions with syntax, parameters and return types in one HTML page.
+  - `SKD_ExtQueryLangv`: `Расширение языка запросов для системы компоновки данных` / query
+    language extension page describes brace-delimited SKD query-extension constructs such as
+    `{ВЫБРАТЬ ...}`, `{ГДЕ ...}` and `ХАРАКТЕРИСТИКИ`.
+  - `SKD_Lang`: `Язык выражений системы компоновки данных` / `Data Composition System Expression
+    Language` is the expression-language root.
+
+These page shapes are not the same as the current `shcntx_*` platform API pages. `shlang_*` pages
+mix language syntax, primitive types and declarations; `shquery_*` pages mix grammar clauses,
+keywords, functions, operators and literals; `dcsui_*` pages often group many callable-like
+expression functions under one page heading. The first non-platform extractor should therefore use a
+small shared language-fact model with source-domain-specific classification rules instead of adding
+new platform-style record families or reusing `platform_type` / `type_method` semantics.
+
+Selected first shared language-fact families:
+
+- `language_construct`: BSL declarations/operators and query/SKD grammar clauses.
+- `language_type`: BSL primitive types and query/SKD value/literal type facts.
+- `language_function`: query and SKD expression functions with syntax, parameters and return/type
+  facts when available.
+- `language_operator`: BSL, query and SKD operators.
+- `language_keyword`: keywords and keyword modifiers such as `ВЫБРАТЬ`, `РАЗРЕШЕННЫЕ`, `ИЗ`,
+  `ГДЕ`, `{ВЫБРАТЬ}` and `{ГДЕ}`.
+- `language_literal`: literal and constant facts such as `СТРОКА`, `NULL`, `ИСТИНА` and `ЛОЖЬ`
+  when the source book models them as values rather than primitive type pages.
+
+Identity rules:
+
+- Identity is source-qualified by HBK book family, locale-independent local page path or page anchor,
+  language domain and fact family. Display name is only a lookup key.
+- Same-display-name facts remain distinct across domains and source families. Examples:
+  `shlang:def_String` BSL `Строка`, `shquery:STRING` query function `Строка`, `shquery:LitString`
+  query string literal/type fact and `dcsui:SKD_Functions_Strings#StringLength` SKD expression
+  function facts must not collapse into one `Строка` or `String` fact.
+- `dcsui_*` facts that extend query text use a distinct source family under the resolver's
+  `QueryLanguage` domain so SKD query-extension constructs do not overwrite base `shquery_*`
+  clauses with the same display name.
+- Cross-domain references must be explicit relations such as `uses_type`, `returns`, `parameter`,
+  `maps_to` or future source-backed relation kinds. Links from `shquery_*` to
+  `SyntaxHelperLanguage/def_Boolean` show that query facts may reference BSL language facts, but do
+  not make query and BSL types identical.
+
+Current `query_table`, `query_table_field` and `query_table_parameter` facts from the `shcntx_*`
+index remain CLI/provider facts for now. They are query-language metadata facts derived from
+platform Syntax Assistant context, but T66 does not select them as the first `QueryLanguage`
+resolver source because `shquery_*` and `dcsui_*` have different grammar/function source shapes and
+need the shared language-fact model first. A later adapter may relate query-table fields to BSL,
+query or platform types through explicit relations after the non-platform language-fact slice is
+implemented.
+
 ## Book and Navigation Observations
 
 Useful `hbk-reader` concepts:
