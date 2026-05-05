@@ -310,12 +310,8 @@ pub(crate) fn query_table_member_owner(semantic: &SemanticContext) -> Option<Loc
 }
 
 fn query_table_identifier(syntax: Option<&LocalizedName>, name: &str) -> Option<String> {
-    let Some(syntax) = syntax else {
-        return None;
-    };
-    let Some(primary) = primary_syntax_segment(syntax) else {
-        return None;
-    };
+    let syntax = syntax?;
+    let primary = primary_syntax_segment(syntax)?;
     let identifier = if query_table_syntax_segment_count(syntax) > 2 {
         format!("{}{}", primary, camel_case_identifier_part(name))
     } else {
@@ -463,51 +459,6 @@ fn is_skipped_primitive_literal(semantic: &SemanticContext) -> bool {
     semantic.branch_kind == BranchKind::PrimitiveTypes && semantic.owner_path.len() > 2
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn name(primary: &str) -> LocalizedName {
-        LocalizedName {
-            primary: primary.to_string(),
-            alias: None,
-        }
-    }
-
-    #[test]
-    fn reader_derives_query_table_identity_from_toc_name_and_syntax() {
-        let primary = name("БизнесПроцесс.<Имя бизнес-процесса>");
-        assert_eq!(
-            query_table_identifier(Some(&primary), "Таблица бизнес-процессов").as_deref(),
-            Some("БизнесПроцесс")
-        );
-        assert_eq!(query_table_role(Some(&primary)), QueryTableRole::Primary);
-
-        let additional = name("БизнесПроцесс.<Имя бизнес-процесса>.Точки");
-        assert_eq!(
-            query_table_identifier(Some(&additional), "Таблица точек бизнес-процессов").as_deref(),
-            Some("БизнесПроцессТаблицаТочекБизнесПроцессов")
-        );
-        assert_eq!(
-            query_table_role(Some(&additional)),
-            QueryTableRole::Additional
-        );
-    }
-
-    #[test]
-    fn reader_does_not_synthesize_query_table_identity_without_syntax() {
-        assert_eq!(query_table_identifier(None, "Основная таблица"), None);
-        assert_eq!(query_table_role(None), QueryTableRole::Unknown);
-
-        let blank = name("  ");
-        assert_eq!(
-            query_table_identifier(Some(&blank), "Основная таблица"),
-            None
-        );
-        assert_eq!(query_table_role(Some(&blank)), QueryTableRole::Unknown);
-    }
-}
-
 fn apply_platform_type_semantics(platform_type: &mut PlatformType) {
     platform_type.type_kind = platform_type_kind(platform_type);
     platform_type.object_kind = platform_object_kind(platform_type);
@@ -576,4 +527,49 @@ fn template_parameters(name: &str) -> Vec<String> {
         rest = &after_start[end + 1..];
     }
     parameters
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn name(primary: &str) -> LocalizedName {
+        LocalizedName {
+            primary: primary.to_string(),
+            alias: None,
+        }
+    }
+
+    #[test]
+    fn reader_derives_query_table_identity_from_toc_name_and_syntax() {
+        let primary = name("БизнесПроцесс.<Имя бизнес-процесса>");
+        assert_eq!(
+            query_table_identifier(Some(&primary), "Таблица бизнес-процессов").as_deref(),
+            Some("БизнесПроцесс")
+        );
+        assert_eq!(query_table_role(Some(&primary)), QueryTableRole::Primary);
+
+        let additional = name("БизнесПроцесс.<Имя бизнес-процесса>.Точки");
+        assert_eq!(
+            query_table_identifier(Some(&additional), "Таблица точек бизнес-процессов").as_deref(),
+            Some("БизнесПроцессТаблицаТочекБизнесПроцессов")
+        );
+        assert_eq!(
+            query_table_role(Some(&additional)),
+            QueryTableRole::Additional
+        );
+    }
+
+    #[test]
+    fn reader_does_not_synthesize_query_table_identity_without_syntax() {
+        assert_eq!(query_table_identifier(None, "Основная таблица"), None);
+        assert_eq!(query_table_role(None), QueryTableRole::Unknown);
+
+        let blank = name("  ");
+        assert_eq!(
+            query_table_identifier(Some(&blank), "Основная таблица"),
+            None
+        );
+        assert_eq!(query_table_role(Some(&blank)), QueryTableRole::Unknown);
+    }
 }

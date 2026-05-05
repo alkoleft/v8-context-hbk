@@ -487,7 +487,7 @@ Completion notes:
   - `git diff --check`
   - `cargo test --workspace`
 
-### [ ] T88. Fix current-toolchain clippy drift in `syntax-helper-extract`
+### [x] T88. Fix current-toolchain clippy drift in `syntax-helper-extract`
 
 Spec refs:
 
@@ -514,6 +514,18 @@ Verification:
 - `cargo fmt --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Reproduced the current-toolchain clippy drift in `syntax-helper-extract`: `question_mark` warnings
+  for `query_table_identifier` and `items_after_test_module` in `reader.rs`.
+- Replaced the behavior-preserving `let...else` early `None` returns with `?` and moved the
+  `reader.rs` test module after non-test helpers. Parser behavior, public contracts, fixtures,
+  provider JSON, export JSON and resolver facts were unchanged.
+- Verification passed:
+  - `cargo fmt --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
 
 ### [ ] T91. Collapse duplicated localized display-name presentation helper
 
