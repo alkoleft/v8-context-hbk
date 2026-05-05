@@ -1,0 +1,11 @@
+[package]
+name = "context-resolver-search"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+context-resolver-core.workspace = true
+syntax-helper-search.workspace = true
+
+[dev-dependencies]
+syntax-helper-model.workspace = true

@@ -13,7 +13,11 @@ context boundaries and keeps CLI/export behavior provisional.
 6. `hbk-export`: canonical JSON export adapters.
 7. `syntax-helper-search`: local SQLite/FTS5 index and query library for Syntax Assistant exact
    lookup, keyword/fuzzy search and bounded relationship traversal.
-8. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
+8. `context-resolver-core`: source-neutral Rust resolver API with typed identities, domains,
+   fact kinds, response statuses, diagnostics and resolver/source traits.
+9. `context-resolver-search`: first HBK-backed platform source adapter over
+   `syntax-helper-search::SearchIndex`.
+10. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
 
 Search/query components are described in
 [`syntax-helper-query-cli.md`](syntax-helper-query-cli.md).
@@ -31,6 +35,11 @@ Solution-context Rust resolution is described in
 - `hbk-export` owns output adapters for the Rust domain model.
 - `syntax-helper-search` owns search-index schema, ranking and relationship traversal. It must not
   parse HBK files or perform CLI presentation.
+- `context-resolver-core` owns the generic in-process resolver model. It must not depend on HBK,
+  SQLite, CLI, parser or Syntax Assistant storage crates.
+- `context-resolver-search` owns translation between `syntax-helper-search::SearchIndex` platform
+  facts and the source-neutral resolver model. It must not expose SQLite tables, FTS fields,
+  query-table provider facts or Syntax Assistant provenance as generic resolver facts.
 - `v8-context-hbk-cli` wires commands and error presentation only.
 - Syntax Assistant search/query code must not make `hbk-export` carry search-only fields in the
   lean consumer export. Use a search-specific index when structured links or provenance are required
@@ -356,7 +365,7 @@ Implemented first slice:
 
 ### Solution Context resolver
 
-Owns FR-CTX-RESOLVE-001 and NFR-RESOLVE-001 after implementation.
+Owns FR-CTX-RESOLVE-001 and NFR-RESOLVE-001.
 
 Expected source-neutral public concepts:
 
@@ -377,19 +386,20 @@ Expected source-neutral public concepts:
 - `ContextFact`
 - `FactRelation`
 
-The resolver core should be a separate crate with no HBK, SQLite, CLI or parser dependencies.
-`syntax-helper-search` may provide a platform adapter over `SearchIndex`, but it remains the
-HBK/Syntax Assistant query implementation and not the generic cross-domain resolver model.
+The resolver core is implemented as `context-resolver-core`, a separate crate with no HBK, SQLite,
+CLI or parser dependencies. The first platform adapter is implemented as `context-resolver-search`,
+a sibling adapter crate over `SearchIndex`; `syntax-helper-search` remains the HBK/Syntax Assistant
+query implementation and not the generic cross-domain resolver model.
 
 The first resolver API must keep BSL language types and query-language types separate from platform
 API types. Cross-domain links require explicit relations; same-name facts across domains or sources
 must not be silently merged.
 
-The platform adapter over `syntax-helper-search` should initially expose platform API type, member
-and callable facts only. Existing query-table documents in the search index remain outside that
-adapter. T66 selected current `shcntx_*` query-table documents to remain CLI/provider facts for
-now, not the first `QueryLanguage` resolver source. A later language-domain task must define an
-explicit mapping or relation shape before exposing them through the source-neutral resolver.
+The platform adapter over `syntax-helper-search` initially exposes platform API type, member and
+callable facts only. Existing query-table documents in the search index remain outside that adapter.
+T66 selected current `shcntx_*` query-table documents to remain CLI/provider facts for now, not the
+first `QueryLanguage` resolver source. A later language-domain task must define an explicit mapping
+or relation shape before exposing them through the source-neutral resolver.
 
 ## Implementation Dependencies
 

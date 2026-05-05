@@ -1,6 +1,7 @@
 # Solution Context Resolve Rust API
 
-Status: design target accepted by ADR-0008. Implementation has not started.
+Status: design target accepted by ADR-0008. T67 implemented the first resolver core and
+HBK-backed platform adapter slice.
 
 ## Purpose
 
@@ -362,7 +363,8 @@ Resolver identity rules for this slice:
 
 ## First Platform Adapter
 
-The first platform adapter should be implemented over `syntax-helper-search::SearchIndex`.
+The first platform adapter is implemented in `context-resolver-search` over
+`syntax-helper-search::SearchIndex`.
 
 Mapping:
 
@@ -383,6 +385,19 @@ generic platform facts. T66 selected the current decision: those facts remain CL
 now and are not the first `QueryLanguage` resolver provider. A later language-domain task must
 define an explicit mapping or relation shape before exposing them through the source-neutral
 resolver.
+
+T67 implementation notes:
+
+- `context-resolver-core` owns the source-neutral model, synchronous traits and composite resolver.
+- `context-resolver-search` owns the platform adapter translation from `SearchIndex` hits and
+  relation traversal into resolver facts.
+- The platform adapter uses `type_identity_by_id`, `type_identities_by_name`,
+  `members_by_type_id`, `member_by_owner_type_id`, `callable_by_id`,
+  `callable_by_owner_type_id`, `constructors_by_type_id` and `related_by_id_and_edge` /
+  bounded relation traversal.
+- Exact-name generic resolver lookup is intentionally limited to platform type identity lookup in
+  this first adapter slice; broader name search remains the CLI/search-provider concern.
+- Query-table provider documents stay hidden from the platform adapter.
 
 ## Verification Plan
 

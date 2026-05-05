@@ -22,11 +22,11 @@ conclusions live in `acceptance/baseline.md`, `source-evidence.md`, `requirement
 `implementation/syntax-helper-query-cli.md`, `implementation/syntax-bsl-provider-plan.md` and
 `implementation/solution-context-resolve.md`.
 
-The active open tasks are T67 and T86-T90. T66 completed the required non-platform HBK
-domain-analysis gate before T67. T67 is now the first unchecked task and remains the first resolver
-implementation slice. T89-T90 are T66 follow-ups for non-platform language facts and resolver
+The active open tasks are T86-T90. T66 completed the required non-platform HBK domain-analysis gate
+before T67. T67 completed the first resolver core and HBK-backed platform adapter slice. T89 is now
+the first unchecked task. T89-T90 are T66 follow-ups for non-platform language facts and resolver
 adapters. T86-T88 are cleanup follow-ups from the May 2026 solution review and should not bypass the
-T67 resolver slice unless explicitly selected.
+active first unchecked task unless explicitly selected.
 
 ## Loop Rule
 
@@ -97,7 +97,7 @@ Verification:
   non-goals.
 - No code changes are required for this task unless needed for read-only inspection tooling.
 
-### [ ] T67. Implement first Rust resolver core and platform adapter slice
+### [x] T67. Implement first Rust resolver core and platform adapter slice
 
 Spec refs:
 
@@ -149,6 +149,28 @@ Verification:
   relation traversal after source open. Each operation should stay under the provisional `100 ms`
   target; if not, record the measured value, environment/input, suspected blocker and a follow-up
   task instead of adding cache/config work outside this task.
+
+Completion notes:
+
+- Added `context-resolver-core` as the source-neutral resolver core crate with typed ids, domains,
+  fact kinds, query/response types, diagnostics, identity-preserving resolved wrappers and
+  synchronous `ContextResolver` / `ContextSource` traits.
+- Added `context-resolver-search` as the first HBK-backed platform adapter crate over
+  `syntax-helper-search::SearchIndex`, keeping `syntax-helper-search` as the local index/query
+  implementation rather than the generic resolver model.
+- The adapter exposes platform type/member/callable facts and relation traversal for `has_type`,
+  `returns`, `constructs` and `member_of`; existing `query_table`, `query_table_field` and
+  `query_table_parameter` documents remain hidden from the platform adapter.
+- Focused tests cover same-name ambiguity, preservation of source-level `ambiguous`/`unsupported`
+  responses, BSL/query `Строка` type separation, owner-id member isolation, callable identity with
+  ordered parameters and return/constructor type refs, explicit fake cross-domain type relation,
+  platform adapter lookup over a `SearchIndex` fixture and the provisional `100 ms` latency target
+  on exact type resolution, member listing, callable lookup and relation traversal.
+- Verification passed:
+  - `cargo test -p context-resolver-core`
+  - `cargo test -p context-resolver-search`
+  - `cargo test -p syntax-helper-search --lib`
+  - `cargo test --workspace`
 
 ## Language Domain Follow-up
 

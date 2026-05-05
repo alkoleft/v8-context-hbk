@@ -1,5 +1,7 @@
 [workspace]
 members = [
+    "crates/context-resolver-core",
+    "crates/context-resolver-search",
     "crates/hbk-book",
     "crates/hbk-container",
     "crates/hbk-docs",
@@ -21,6 +23,8 @@ hbk-book = { path = "crates/hbk-book" }
 hbk-container = { path = "crates/hbk-container" }
 hbk-docs = { path = "crates/hbk-docs" }
 hbk-export = { path = "crates/hbk-export" }
+context-resolver-core = { path = "crates/context-resolver-core" }
+context-resolver-search = { path = "crates/context-resolver-search" }
 memmap2 = "0.9.9"
 scraper = "0.26.0"
 rusqlite = { version = "0.32.1", features = ["bundled"] }

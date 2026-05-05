@@ -1418,3 +1418,23 @@ resolution across platform API, BSL-language, query-language, configuration and 
 providers. The design keeps BSL language types and query-language types in separate domains, uses
 source-qualified identities, and requires ambiguity instead of hidden winner selection for same-name
 facts across domains or sources.
+
+T67 implemented the first Rust solution-context resolver slice without changing CLI behavior,
+provider JSON, SQLite schema, parser output or consumer export JSON. The new `context-resolver-core`
+crate contains the source-neutral resolver API, typed ids, domains, fact kinds, response statuses,
+diagnostics, resolved wrappers and synchronous source/resolver traits without HBK, SQLite, CLI or
+parser dependencies. The new `context-resolver-search` crate adapts
+`syntax-helper-search::SearchIndex` as the first HBK-backed platform source while keeping
+`syntax-helper-search` as the local index/query implementation rather than the generic resolver
+model.
+
+T67 verification passed `cargo test -p context-resolver-core`, `cargo test -p
+context-resolver-search`, `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
+Focused resolver tests cover same-name ambiguity, preservation of source-level
+`ambiguous`/`unsupported` responses, BSL/query `Строка` type separation, resolved owner-id member
+isolation, callable identity with ordered parameters and return/constructor type references,
+explicit fake cross-domain type relations, platform adapter lookup over a `SearchIndex` fixture,
+`has_type`, `returns`, `constructs` and `member_of` traversal, and hiding existing `query_table*`
+provider documents from the platform adapter. The adapter fixture keeps exact type resolution,
+member listing, callable lookup and relation traversal under the provisional NFR-RESOLVE-001
+`100 ms` target after source open.
