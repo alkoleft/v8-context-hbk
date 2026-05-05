@@ -1,0 +1,55 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link href="v8help://service_book/service_style" type="text/css"
+      rel="stylesheet">
+    <meta content="MSHTML 6.00.2900.3492" name="GENERATOR">
+    <title></title>
+  </head>
+  <body>
+    <h1 class="">SELECT clause</h1>
+    <blockquote dir="ltr" style="MARGIN-RIGHT: 0px">
+      <p><a href="v8help://SyntaxHelperQueries/SELECTStatement">SELECT</a>
+        [<a href="v8help://SyntaxHelperQueries/KeyWordsALLOWED">ALLOWED</a>]
+        [<a href="v8help://SyntaxHelperQueries/KeyWordsDISTINCT">DISTINCT</a>]
+        [<a href="v8help://SyntaxHelperQueries/KeyWordsTOP">TOP
+          &lt;Count&gt;</a>] <br>
+        &nbsp;&nbsp;&nbsp;&nbsp; &lt;<a
+          href="v8help://SyntaxHelperQueries/SelectionFieldsList">Selection
+
+          field list</a>&gt;</p>
+    </blockquote>
+    <p>The query description begins with the required <strong>SELECT</strong>
+      keyword.</p>
+    <p>The <strong>ALLOWED</strong> keyword means that the query
+      selects only records allowed by the current user access rights. </p>
+    <p>This keyword can only be included in the top level <strong>SELECT</strong>
+      clause and is applied throughout the entire query, including the
+      nested queries.</p>
+    <p>If you do not specify this keyword and the query selects records
+      for which the user does not have rights, an error occurs. </p>
+    <p><a name="DISTINCT">Using</a> the <strong>DISTINCT</strong>
+      keyword, you can indicate that duplicate rows should not be
+      included in the result.</p>
+    <p>You can use <a
+        href="v8help://SyntaxHelperQueries/condition_expressions.html">logical
+        expressions</a> in this clause.<br>
+    </p>
+    <blockquote dir="ltr" style="MARGIN-RIGHT: 0px">
+      <p><strong>See also:<br>
+        </strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a
+          href="v8help://SyntaxHelperQueries/COUNT">Quantity Function</a></p>
+    </blockquote>
+    <p>The <strong>TOP &lt;Count&gt;</strong> clause allows you to set
+      the maximum number of rows in the query result. The first rows
+      will be shown (according to the ordering rules for query results).
+      &lt;Count&gt; is always an integer.</p>
+    <p>The query text includes a <a
+        href="v8help://SyntaxHelperQueries/SelectionFieldsList">selection
+
+        field list</a> after the <strong>SELECT</strong> keyword (and
+      the following qualifying words: <strong>ALLOWED</strong>, <strong>DISTINCT</strong>
+      and <strong>TOP</strong>).</p>
+  </body>
+</html>

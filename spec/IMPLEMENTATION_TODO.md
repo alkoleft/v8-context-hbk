@@ -23,10 +23,11 @@ conclusions live in `acceptance/baseline.md`, `source-evidence.md`, `requirement
 `implementation/solution-context-resolve.md`.
 
 The active open tasks are T86-T90. T66 completed the required non-platform HBK domain-analysis gate
-before T67. T67 completed the first resolver core and HBK-backed platform adapter slice. T89 is now
-the first unchecked task. T89-T90 are T66 follow-ups for non-platform language facts and resolver
-adapters. T86-T88 are cleanup follow-ups from the May 2026 solution review and should not bypass the
-active first unchecked task unless explicitly selected.
+before T67. T67 completed the first resolver core and HBK-backed platform adapter slice. T89
+completed the first shared language-fact extraction/index fixture slice. T90 is now the first
+unchecked task. T90 is the remaining T66 follow-up for non-platform language resolver adapters.
+T86-T88 are cleanup follow-ups from the May 2026 solution review and should not bypass the active
+first unchecked task unless explicitly selected.
 
 ## Loop Rule
 
@@ -174,7 +175,7 @@ Completion notes:
 
 ## Language Domain Follow-up
 
-### [ ] T89. Implement first shared language-fact extraction/index fixture slice
+### [x] T89. Implement first shared language-fact extraction/index fixture slice
 
 Spec refs:
 
@@ -240,6 +241,27 @@ Verification:
 - `cargo test -p syntax-helper-search --lib`
 - `cargo test --workspace`
 - Spec/baseline updated with implemented schema/fact-family conclusions and fixture anchors.
+
+Completion notes:
+
+- Added `syntax-helper-language` as the first shared language-fact model/parser crate for
+  non-platform HBK pages. It extracts source-qualified language facts from committed real-source
+  fixtures without adding those facts to `PlatformContext` or `syntax export` consumer JSON.
+- Added T89 fixtures from current `8.5.1.1150` HBK pages for `shlang_ru/root` `def_String` and
+  `def_Func`, `shquery_ru/root` `SELECTStatement`, `SUM` and `STRING`, `shquery_ru` `LitString`,
+  and `dcsui_ru/root` `SKD_Functions_Strings` and `SKD_ExtQueryLangv`.
+- Added language document kinds to `syntax-helper-search`: `language_type`, `language_construct`,
+  `language_function`, `language_operator`, `language_keyword` and `language_literal`. The first
+  tests cover `shlang:def_String`, `shlang:def_Func`, `shquery:SELECTStatement`, `shquery:STRING`,
+  `shquery:LitString`, `dcsui:SKD_Functions_Strings#StringLength` and SKD query-extension keywords
+  `{ВЫБРАТЬ}` / `{ГДЕ}`.
+- Same-display-name `Строка` facts from BSL, query function and query literal fixtures stay
+  separate source-qualified ids. Existing `shcntx_*` `query_table`, `query_table_field` and
+  `query_table_parameter` provider facts remain outside the resolver/language source.
+- Verification passed:
+  - `cargo test -p syntax-helper-language`
+  - `cargo test -p syntax-helper-search --lib`
+  - `cargo test --workspace`
 
 ### [ ] T90. Implement first language-domain resolver adapter slice
 

@@ -341,11 +341,11 @@ pages. The selected shared fact families are:
 - `language_keyword` for keyword and keyword-modifier facts;
 - `language_literal` for constants and literal forms.
 
-The first implementation should add a small source-domain model crate or module for those language
-facts and a search/index document kind family for language facts. It should not extend
-`syntax-helper-model` platform record families with non-platform language records unless a later
-task proves a shared internal crate boundary is cleaner. Consumer export JSON for existing
-`syntax export` platform facts must remain unchanged until a task defines a language export surface.
+T89 adds `syntax-helper-language` as the first small source-domain model/parser crate for those
+language facts and wires them into `syntax-helper-search` as language document kinds. It does not
+extend `syntax-helper-model` platform record families with non-platform language records. Consumer
+export JSON for existing `syntax export` platform facts remains unchanged until a task defines a
+language export surface.
 
 Resolver identity rules for this slice:
 

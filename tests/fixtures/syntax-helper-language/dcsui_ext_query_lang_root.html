@@ -1,0 +1,55 @@
+﻿<HTML><HEAD>
+<META content="text/html; charset=UTF-8" http-equiv=Content-Type><LINK rel=stylesheet type=text/css href="v8help://service_book/service_style">
+<META name=GENERATOR content="MSHTML 8.00.6001.19120">
+</HEAD>
+<BODY>
+<H1>Query language extension for data composition system</H1>
+<P>The query language extension for the data composition system adds syntax instructions that must be enclosed in braces and added directly&nbsp;to the query text.</P>
+<H4>Keywords of query language extension for data composition system</H4>
+<H5>SELECT</H5>
+<P>This clause defines the&nbsp;fields to be selected. This keyword is followed by comma-separated field aliases from the main query selection list. You can&nbsp;apply additional settings to these fields. </P>
+<P>Example: </P>
+<BLOCKQUOTE style="MARGIN-RIGHT: 0px" dir=ltr>
+<P><FONT face="Courier New">{SELECT Products, Warehouse}</FONT></P></BLOCKQUOTE>
+<P>A field alias can be followed by a combination of ".*" characters, it means that subordinate fields of this field can be used.</P>
+<P>For example, <FONT face="Courier New">Products.*</FONT> means that subordinate fields of Products&nbsp;feld (such as Products.Code) can be used.</P>
+<P>The <B>SELECT</B> element can only be included in the first query of a union.</P>
+<H5>WHERE</H5>
+<P>This clause defines a filter applied to the fields. It uses table fields. Selection list field aliases are not allowed. Each union part can contain its own <STRONG>WHERE</STRONG> element.</P>
+<P>Examples:</P>
+<BLOCKQUOTE style="MARGIN-RIGHT: 0px" dir=ltr>
+<P><FONT face="Courier New">{WHERE Products.*, Warehouse }</FONT></P>
+<P><FONT face="Courier New">{WHERE Document.Date &gt;= &amp;BeginDate, Document.Date &lt;= &amp;EndDate}</FONT></P></BLOCKQUOTE>
+<P>If no parameter values are specified, the <STRONG>WHERE</STRONG> clause is not included in the resulting query.</P>
+<H5>Properties (characteristics) and categories</H5>
+<P>You can use the query language extension for data composition system&nbsp;to specify where to search for types and values of characteristics for a specific database object. </P>
+<DIV section-id="CONFIG">
+<P>Also you can specify this using <A href="v8help://frntend/form_AdditCharateristicsEditorDlg">additional characteristics of metadata object</A>.</P></DIV>
+<P>If&nbsp;characteristics data is specified both in the query (using CHARACTERISTICS structure) and using the metadata object&nbsp;dialog box,&nbsp;the CHARACTERISTICS structure has the priority.</P>
+<P><STRONG>Syntax:</STRONG></P>
+<P><FONT face="Courier New">CHARACTERISTICS<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TYPE(&lt;Type name&gt;)<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; CHARACTERISTICTYPES &lt;Table name&gt; | (&lt;Query union&gt;)<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;KEYFIELD &lt;Field&gt;<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;NAMEFIELD &lt;Field&gt;<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[VALUETYPEFIELD &lt;Field&gt;]<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CHARACTERISTICVALUES &lt;Table name&gt; | (&lt;Query union&gt;)<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;OBJECTFIELD &lt;Field&gt;<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TYPEFIELD &lt;Field&gt;<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[VALUEFIELD &lt;Field&gt;]</FONT></P>
+<P>TYPE is followed by &lt;Type name&gt;, the name of the type whose characteristics are described.</P>
+<P>CHARACTERISTICTYPES is followed by &lt;Table name&gt; | (&lt;Query union&gt;), a table name or a query for getting a list of characteristics.</P>
+<P>KEYFIELD is followed by &lt;Field&gt;, the name of a field from a table or a CHARACTERISTICTYPES query&nbsp;that contains&nbsp;the key of characteristic type.</P>
+<P>NAMEFIELD is followed by &lt;Field&gt;, the name of a field from a table or a CHARACTERISTICTYPES query that contains the characteristic name.</P>
+<P>VALUETYPEFIELD is followed by &lt;Field&gt;, the name of a field from a table or a CHARACTERISTICTYPES query that contains&nbsp;the characteristic value type.</P>
+<P>CHARACTERICTICVALUES is followed by &lt;Table name&gt; | (&lt;Query union&gt;), a table name or a query for getting characteristic values.</P>
+<P>OBJECTFIELD is followed by &lt;Field&gt;, the name of a field from a table or a CHARACTERISTICVALUES query that contains an object for which the characteristic is specified.</P>
+<P>TYPEFIELD is followed by &lt;Field&gt;, the name of a field from a table or CHARACTERISTICVALUES query that contains a characteristic type.</P>
+<P>VALUEFIELD is followed by &lt;Field&gt;, the name of a field from a table or CHARACTERISTICVALUES query&nbsp;that contains a characteristic value.</P>
+<P>Example:</P>
+<BLOCKQUOTE style="MARGIN-RIGHT: 0px" dir=ltr>
+<P><FONT face="Courier New">{CHARACTERISTICS TYPE(Catalog.Products)<BR>CHARACTERISTICTYPES (SELECT<BR>&nbsp;&nbsp;&nbsp; AddPropertyTypes.Ref,<BR>&nbsp;&nbsp;&nbsp; AddPropertyTypes.Description,<BR>&nbsp;&nbsp;&nbsp; AddPropertyTypes.ValueType<BR>FROM<BR>&nbsp;&nbsp;&nbsp; ChartOfCharacteristicTypes.AddPropertyTypes AS AddPropertyTypes)<BR>KEYFIELD </FONT><FONT face="Courier New">Ref<BR>NAMEFIELD Description<BR>VALUETYPEFIELD ValueType<BR>CHARACTERISTICVALUES&nbsp;InformationRegister.AddProperties<BR>OBJECTFIELD Products<BR>TYPEFIELD&nbsp;PropertyType<BR>VALUEFIELD Property<BR>}</FONT></P></BLOCKQUOTE>
+<P>In this example characteristics are described for fields of reference to the Products catalog type.</P>
+<H5>Parameters</H5>
+<P>Besides the main elements, the data composition system accepts elements written in virtual table parameters. In this case the field type depends on the type of the parameter that contains the elements.</P>
+<P>Example: </P><FONT face="Courier New">
+<BLOCKQUOTE style="MARGIN-RIGHT: 0px" dir=ltr>
+<P>SELECT<BR>ProductsAccountingTurnovers.Product AS Product,<BR>ProductsAccountingTurnovers.Warehouse AS Warehouse,<BR>ProductsAccountingTurnovers.QuantityReceipt AS QuantityReceipt,<BR>ProductsAccountingTurnovers.QuantityExpense AS QuantityExpense,<BR>FROM<BR>AccumulationRegister.ProductsAccounting.Turnovers({&amp;BeginDate}, {&amp;EndDate}, , {Products.*, Warehouse.*}) AS ProductsAccountingTurnovers</P></BLOCKQUOTE></FONT>
+<P>BeginDate, EndDate, Product, and Warehouse fields in this example are available for filtering.</P>
+<H4>Automatic filling of available fields</H4>
+<P>When available query fields are filled automatically:</P>
+<UL>
+<LI>All selection list fields and their subordinate fields become available for filtering ordering, grouping, selecting,&nbsp;and so on.&nbsp;
+<LI>Virtual table parameters become available for filtering. </LI></UL>
+</BODY></HTML>

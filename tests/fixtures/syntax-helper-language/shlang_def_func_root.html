@@ -1,0 +1,31 @@
+﻿<html dir="ltr"><head>
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type"><link rel="stylesheet" type="text/css" href="v8help://service_book/service_style">
+<meta name="GENERATOR" content="MSHTML 11.00.10570.1001"></head>
+<body>
+<h1 class="V8SH_pagetitle">Function</h1>
+<div class="V8SH_title">Function</div>
+<p class="Usual"><strong>Syntax:<br></strong>[Async] Function &lt;Function_name&gt;([[Val] &lt;Parameter1&gt;[=&lt;DefaultValue&gt;], ... ,[Val] &lt;ParameterN&gt;[=&lt;DefaultValue&gt;]])[Export]&#160;<br><br>//Declarations of local variable;<br>// Operators ;<br>...<br>Return &lt;Return value&gt;;<br>// Operators ;<br>...<br>EndFunction</p>
+<p class="Usual"><strong></strong>&nbsp;</p>
+<p class="Usual"><b>Parameters:</b></p>
+<p class="Usual"><u>Async<br></u></p>
+<p>The modifier is applicable only to a function executed on the client. It shows whether a function is asynchronous. An asynchronous function always returns an object of the Promise type. An asynchronous function runs synchronously until the first <a href="v8help://SyntaxHelperLanguage/operator_await.html">Await</a> operator. Then the function returns a value of the <strong>Promise</strong> type and the caller resumes control. Then the current function runs asynchronously. When the result is received, <strong>Promise</strong> is filled with the received value. If the function throws an exception, it can be caught by the caller.<br>Asynchronous function parameters are passed as values only (Val is added implicitly).</p>
+<p class="Usual"><u>&lt;Function name&gt;</u><br>The function name.</p>
+<p class="Usual"><u>Val</u><br>An optional keyword. The parameter that follows the keyword is passed as a value (changing the value of the formal parameter during the function execution does not affect the actual parameter that is passed at the function call). If this keyword is not specified, the function parameter is passed as a reference (changing the formal parameter value inside the function changes the actual parameter value).</p>
+<p class="Usual"><u>&lt;Parameter1&gt;, ..., &lt;ParameterN&gt;</u><br>An optional comma-separated list of formal parameters. Formal parameter values must match the values of actual parameters that are passed to the function. This list contains the parameter names that are used in the function text. The list of formal parameters can be empty.</p>
+<p class="Usual"><u>=&lt;DefaultValue&gt;</u><br>An optional default parameter value. You can include parameters with default values anywhere in the list of formal parameters. For more information, see <a href="v8help://SyntaxHelperCommonLanguage/hints_params.html">Passing procedure and function parameters</a>.</p>
+<p class="Usual"><u>Export</u><br>An optional keyword that specifies that this function is accessible from other modules.</p>
+<p class="Usual"><u>// Declarations of local variables</u><br>Declations of local variables that can be referenced in this function only (see <a href="v8help://SyntaxHelperLanguage/def_Var">Var</a> operator description).</p>
+<p class="Usual"><u>// Operators</u><br>Executable function operators.</p>
+<p class="Usual"><u>Return &lt;Return value&gt;</u><br>A keyword that ends the function and returns the specified value to the expression where the function is used.&#160;<br>A return value can be an expression or a variable whose value contains the function call result.</p>
+<p class="Usual"><u>EndFunction</u><br>A mandatory keyword that denotes the end of the function.</p>
+<p class="Usual"><b>Description<br></b>The <strong class="ControlElement">Function</strong> keyword denotes the beginning of code fragment that can be called from any point of the module using the &lt;Function name&gt; operator with a list of parameters (parentheses are mandatory even if no parameters are passed). If an ordinary application module, managed application module, external connection module, session module, or common module contains the <strong class="ControlElement">Export</strong> keyword in the function declaration, it means that the function is accessible from all other configuration modules.</p>
+<p class="Usual">The only difference between functions and procedures is that functions return &lt;Return value&gt;. The <strong class="ControlElement">EndFunction</strong> keyword denotes the end of the function.</p>
+<p class="Usual">A call to any function in the module text can be registered as a procedure call. It means that it is allowed not to accept a return value from the function.</p>
+<p class="Usual">The variables declared in the &quot;Declarations of local variables&quot; section of the function body are local variables and therefore accessible in this function only (except when they are used as parameters for calling other procedures, functions, or methods).</p>
+<hr>
+
+<p class="Usual">
+<p class="Usual">
+<p class="Usual">
+<p class="Usual">
+<p>&#160;&#160;&#160;&#160; <a href='http://www.1centerprise.com/devlinks?C="id=00029L00015;lan=ru"' target="_blank">Methodical information</a></p></body></html>

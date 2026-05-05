@@ -781,6 +781,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntax-helper-language"
+version = "0.1.0"
+dependencies = [
+ "scraper",
+ "serde",
+ "syntax-helper-model",
+]
+
+[[package]]
 name = "syntax-helper-model"
 version = "0.1.0"
 dependencies = [
@@ -795,6 +804,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strsim",
+ "syntax-helper-language",
  "syntax-helper-model",
 ]
 

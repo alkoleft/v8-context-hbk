@@ -1,0 +1,22 @@
+﻿<html><head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link rel="stylesheet" type="text/css" href="v8help://service_book/service_style">
+</head>
+<body>
+
+<h1>Функция Строка (String)</h1><pre>СТРОКА (&lt;Значение&gt;)</pre>
+<p>Данная функция преобразует значение примитивного типа в строку с учетом национальных установок.</p>
+<p>При применении к не примитивному типу выдается ошибка при попытке выполнения запроса. Если в качестве параметра будет использовано значение <a href="v8help://SyntaxHelperQueries/NULL">NULL</a>, то результатом функции также будет значение <a href="v8help://SyntaxHelperQueries/NULL">NULL</a>. </p>
+<blockquote style="MARGIN-RIGHT: 0px" dir="ltr">
+<p><strong>Значение</strong> - преобразуемое значение типа <a href="v8help://SyntaxHelperQueries/LitHum">Число</a>, <a href="v8help://SyntaxHelperLanguage/def_Boolean">Булево</a>, <a href="v8help://SyntaxHelperQueries/LitString">Строка</a>, <a href="v8help://SyntaxHelperQueries/LitDate">Дата</a>, <a href="v8help://SyntaxHelperQueries/NULL">NULL</a>, <a href="v8help://SyntaxHelperQueries/Undefined">Неопределено</a>.</p></blockquote>
+<p><strong>Возвращаемое значение:</strong> <a href="v8help://SyntaxHelperQueries/LitString">Строка</a>. <br>Длина результирующей строки определяется на основании значения:</p>
+<ul>
+<li>Для <a href="v8help://SyntaxHelperQueries/LitHum">Числа</a> - длина строки равна длине числа умноженной на 2.&nbsp;
+</li>
+<li>Для&nbsp;<a href="v8help://SyntaxHelperQueries/LitDate">Дата</a>&nbsp;и <a href="v8help://SyntaxHelperLanguage/def_Boolean">Булево</a>&nbsp;длина строки&nbsp;равна 32.
+</li>
+<li>Для <a href="v8help://SyntaxHelperQueries/NULL">NULL</a> и <a href="v8help://SyntaxHelperQueries/Undefined">Неопределено</a> длина строки&nbsp;равна 1.</li></ul>
+<blockquote style="MARGIN-RIGHT: 0px" dir="ltr">
+<p><strong>см. также:</strong> <a href="v8help://SyntaxHelperQueries/builtin_functions.html">Функции языка запросов</a></p></blockquote>
+
+</body></html>

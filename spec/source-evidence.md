@@ -150,6 +150,15 @@ need the shared language-fact model first. A later adapter may relate query-tabl
 query or platform types through explicit relations after the non-platform language-fact slice is
 implemented.
 
+T89 implemented the first fixture-backed shared language-fact slice for the selected anchors. The
+committed real-source fixtures cover `shlang_ru/root` `def_String` and `def_Func`, `shquery_ru/root`
+`SELECTStatement`, `SUM` and `STRING`, `shquery_ru` `LitString`, and `dcsui_ru/root`
+`SKD_Functions_Strings` and `SKD_ExtQueryLangv`. Extracted ids are locale-independent and
+source-qualified; examples include `shlang:def_String`, `shlang:def_Func`, `shquery:STRING`,
+`shquery:LitString`, `dcsui:SKD_Functions_Strings#StringLength`,
+`dcsui:SKD_ExtQueryLangv#ВЫБРАТЬ` and `dcsui:SKD_ExtQueryLangv#ГДЕ`. Same-display-name
+`Строка` facts from BSL, query function and query literal fixtures remain separate ids.
+
 ## Book and Navigation Observations
 
 Useful `hbk-reader` concepts:

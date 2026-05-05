@@ -10,6 +10,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Statement, params};
 use serde::{Deserialize, Serialize};
 use strsim::levenshtein;
+use syntax_helper_language as language;
 use syntax_helper_model as model;
 
 pub const INDEX_SCHEMA_VERSION: u32 = 6;
@@ -127,6 +128,13 @@ pub struct SearchIndexBuilder {
 impl SearchIndexBuilder {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn add_language_fact(&mut self, fact: language::LanguageFact) {
+        self.drafts.push(DocumentDraft::new(
+            language_document(&fact),
+            DraftIdentity::Immediate(fact.id),
+        ));
     }
 
     fn into_documents(self) -> Result<Vec<SearchDocument>, SearchError> {
@@ -2619,6 +2627,67 @@ impl From<&model::Parameter> for SearchParameter {
     }
 }
 
+fn language_document(fact: &language::LanguageFact) -> SearchDocument {
+    let mut signatures = fact
+        .signatures
+        .iter()
+        .map(|signature| SearchSignature {
+            text: signature.text.clone(),
+            parameters: signature
+                .parameters
+                .iter()
+                .map(|parameter| SearchParameter {
+                    name: parameter.name.clone(),
+                    required: parameter.required,
+                    type_refs: parameter.type_refs.clone(),
+                    description: parameter.description.clone(),
+                })
+                .collect(),
+            title: None,
+            description: None,
+        })
+        .collect::<Vec<_>>();
+    if signatures.is_empty()
+        && let Some(syntax) = &fact.syntax
+        && !syntax.is_empty()
+    {
+        signatures.push(SearchSignature {
+            text: syntax.clone(),
+            parameters: Vec::new(),
+            title: None,
+            description: None,
+        });
+    }
+    let parameter_terms = fact
+        .signatures
+        .iter()
+        .flat_map(|signature| signature.parameters.iter())
+        .flat_map(|parameter| {
+            std::iter::once(parameter.name.clone()).chain(parameter.type_refs.iter().cloned())
+        })
+        .chain(fact.type_refs.iter().cloned())
+        .chain(fact.return_types.iter().cloned())
+        .collect::<Vec<_>>();
+    SearchDocument {
+        id: fact.id.clone(),
+        kind: fact.family.document_kind().to_string(),
+        name: fact.name.clone(),
+        owner: None,
+        signatures,
+        type_refs: Vec::new(),
+        return_types: Vec::new(),
+        description: fact.description.clone(),
+        preview: fact
+            .description
+            .as_deref()
+            .map(|value| value.chars().take(180).collect())
+            .unwrap_or_default(),
+        parameter_terms,
+        relation_keys: vec![fact.id.clone()],
+        owner_relation_key: None,
+    }
+}
+
 fn type_ref_from_name(name: &model::LocalizedName) -> model::TypeRef {
     model::TypeRef {
         name: display_name(name),
@@ -3134,8 +3203,14 @@ fn kind_priority(kind: &str) -> i64 {
         "query_table" => 100,
         "query_table_field" => 110,
         "query_table_parameter" => 120,
-        "enum" => 130,
-        "enum_value" => 140,
+        "language_type" => 125,
+        "language_construct" => 126,
+        "language_function" => 127,
+        "language_operator" => 128,
+        "language_keyword" => 129,
+        "language_literal" => 130,
+        "enum" => 140,
+        "enum_value" => 150,
         _ => 999,
     }
 }
@@ -3357,6 +3432,116 @@ impl Drop for WriterLock {
 mod tests {
     use super::*;
     use model::SyntaxHelperSink;
+    use syntax_helper_language::{LanguagePageInput, LanguageSourceFamily, extract_language_facts};
+
+    #[test]
+    fn index_accepts_language_facts_with_distinct_source_qualified_ids() {
+        let path = temp_path("language.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        for fact in language_fixture_facts("ru") {
+            builder.add_language_fact(fact);
+        }
+        build_index_from_builder(&path, &metadata(), builder).expect("language index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let bsl = index
+            .get_by_id("shlang:def_String")
+            .expect("id lookup must work")
+            .expect("BSL string type must be indexed");
+        assert_eq!(bsl.document.kind, "language_type");
+        assert_eq!(bsl.document.name.primary, "Строка");
+
+        let function_construct = index
+            .get_by_id("shlang:def_Func")
+            .expect("id lookup must work")
+            .expect("BSL function construct must be indexed");
+        assert_eq!(function_construct.document.kind, "language_construct");
+        assert!(
+            function_construct
+                .document
+                .signatures
+                .iter()
+                .any(|signature| signature.text.contains("Функция"))
+        );
+
+        let select = index
+            .get_by_id("shquery:SELECTStatement")
+            .expect("id lookup must work")
+            .expect("query SELECT construct must be indexed");
+        assert_eq!(select.document.kind, "language_construct");
+        assert!(
+            select
+                .document
+                .signatures
+                .iter()
+                .any(|signature| signature.text.contains("ВЫБРАТЬ"))
+        );
+
+        let sum = index
+            .get_by_id("shquery:SUM")
+            .expect("id lookup must work")
+            .expect("query SUM function must be indexed");
+        assert_eq!(sum.document.kind, "language_function");
+        assert_eq!(sum.document.name.primary, "СУММА");
+
+        let query = index
+            .get_by_id("shquery:STRING")
+            .expect("id lookup must work")
+            .expect("query STRING function must be indexed");
+        assert_eq!(query.document.kind, "language_function");
+        assert_eq!(query.document.name.primary, "СТРОКА");
+
+        let skd = index
+            .get_by_id("dcsui:SKD_Functions_Strings#StringLength")
+            .expect("id lookup must work")
+            .expect("SKD string function must be indexed");
+        assert_eq!(skd.document.kind, "language_function");
+        assert_eq!(skd.document.name.primary, "ДлинаСтроки");
+
+        let string_hits = index
+            .get_by_name("Строка")
+            .expect("same-display lookup must work");
+        let ids = string_hits
+            .iter()
+            .map(|hit| hit.document.id.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(ids.contains("shlang:def_String"));
+        assert!(ids.contains("shquery:STRING"));
+        assert!(ids.contains("shquery:LitString"));
+    }
+
+    #[test]
+    fn index_accepts_root_language_facts_with_same_logical_ids() {
+        let path = temp_path("language-root.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        for fact in language_fixture_facts("root") {
+            builder.add_language_fact(fact);
+        }
+        build_index_from_builder(&path, &metadata(), builder)
+            .expect("root language index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let bsl = index
+            .get_by_id("shlang:def_String")
+            .expect("id lookup must work")
+            .expect("root BSL string type must be indexed");
+        assert_eq!(bsl.document.kind, "language_type");
+        assert_eq!(bsl.document.name.primary, "String");
+
+        let sum = index
+            .get_by_id("shquery:SUM")
+            .expect("id lookup must work")
+            .expect("root query SUM function must be indexed");
+        assert_eq!(sum.document.kind, "language_function");
+        assert_eq!(sum.document.name.primary, "SUM");
+
+        let skd = index
+            .get_by_id("dcsui:SKD_Functions_Strings#StringLength")
+            .expect("id lookup must work")
+            .expect("root SKD string function must be indexed");
+        assert_eq!(skd.document.kind, "language_function");
+        assert_eq!(skd.document.name.primary, "StringLength");
+    }
 
     #[test]
     fn index_supports_exact_keyword_fuzzy_and_related_queries() {
@@ -4465,6 +4650,70 @@ mod tests {
             source_hbk: "fixture.hbk".to_string(),
             source_extraction_schema_version: 11,
         }
+    }
+
+    fn language_fixture_facts(locale: &str) -> Vec<language::LanguageFact> {
+        let suffix = match locale {
+            "root" => "root",
+            _ => "ru",
+        };
+        let mut fixtures = vec![
+            (
+                LanguageSourceFamily::Shlang,
+                "def_String",
+                format!("shlang_def_string_{suffix}.html"),
+            ),
+            (
+                LanguageSourceFamily::Shlang,
+                "def_Func",
+                format!("shlang_def_func_{suffix}.html"),
+            ),
+            (
+                LanguageSourceFamily::Shquery,
+                "SELECTStatement",
+                format!("shquery_select_statement_{suffix}.html"),
+            ),
+            (
+                LanguageSourceFamily::Shquery,
+                "SUM",
+                format!("shquery_sum_{suffix}.html"),
+            ),
+            (
+                LanguageSourceFamily::Shquery,
+                "STRING",
+                format!("shquery_string_{suffix}.html"),
+            ),
+            (
+                LanguageSourceFamily::Dcsui,
+                "SKD_Functions_Strings",
+                format!("dcsui_functions_strings_{suffix}.html"),
+            ),
+        ];
+        if locale == "ru" {
+            fixtures.push((
+                LanguageSourceFamily::Shquery,
+                "LitString",
+                "shquery_lit_string_ru.html".to_string(),
+            ));
+        }
+        fixtures
+            .into_iter()
+            .flat_map(|(source_family, html_path, fixture_name)| {
+                let html = std::fs::read_to_string(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../tests/fixtures/syntax-helper-language")
+                        .join(&fixture_name),
+                )
+                .expect("language fixture must be readable");
+                extract_language_facts(LanguagePageInput {
+                    source_hbk: "fixture.hbk",
+                    source_family,
+                    locale,
+                    html_path,
+                    html: &html,
+                })
+            })
+            .collect()
     }
 
     fn fixture_context() -> model::PlatformContext {

@@ -1,0 +1,9 @@
+[package]
+name = "syntax-helper-language"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+scraper.workspace = true
+serde.workspace = true
+syntax-helper-model.workspace = true

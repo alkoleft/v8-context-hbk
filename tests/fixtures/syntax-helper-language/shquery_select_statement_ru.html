@@ -1,0 +1,17 @@
+﻿<HTML><HEAD>
+<META content="text/html; charset=utf-8" http-equiv=Content-Type><LINK rel=stylesheet type=text/css href="v8help://service_book/service_style">
+<META name=GENERATOR content="MSHTML 9.00.8112.16563"></HEAD>
+<BODY>
+<H1>Предложение ВЫБРАТЬ</H1>
+<BLOCKQUOTE style="MARGIN-RIGHT: 0px" dir=ltr>
+<P><A href="v8help://SyntaxHelperQueries/SELECTStatement">ВЫБРАТЬ</A> [<A href="v8help://SyntaxHelperQueries/KeyWordsALLOWED">РАЗРЕШЕННЫЕ</A>] [<A href="v8help://SyntaxHelperQueries/KeyWordsDISTINCT">РАЗЛИЧНЫЕ</A>] [<A href="v8help://SyntaxHelperQueries/KeyWordsTOP">ПЕРВЫЕ &lt;Количество&gt;</A>] <BR>&nbsp;&nbsp;&nbsp;&nbsp; &lt;<A href="v8help://SyntaxHelperQueries/SelectionFieldsList">Список полей выборки</A>&gt;</P></BLOCKQUOTE>
+<P>Описание запроса начинается с обязательного ключевого слова <STRONG>ВЫБРАТЬ</STRONG>.</P>
+<P>Ключевое слово <STRONG>РАЗРЕШЕННЫЕ</STRONG> означает, что запрос выберет только те записи, на которые у текущего пользователя есть права. </P>
+<P>Данное ключевое слово может присутствовать только в предложении <STRONG>ВЫБРАТЬ</STRONG>&nbsp;верхнего уровня и распространяется на весь запрос, включая вложенные запросы.</P>
+<P>Если данное слово не указать, то в случае, когда запрос выберет записи, на которые у пользователя нет прав, запрос отработает с ошибкой. </P>
+<P><A name=DISTINCT>С помощью</A> ключевого слова <STRONG>РАЗЛИЧНЫЕ</STRONG> можно указать, что в результат не должны попадать повторяющиеся строки.</P>
+<P>В предложении можно использовать <A href="v8help://SyntaxHelperQueries/condition_expressions.html">логические выражения</A>.</P>
+<BLOCKQUOTE style="MARGIN-RIGHT: 0px" dir=ltr>
+<P><STRONG>см. также:<BR></STRONG>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<A href="v8help://SyntaxHelperQueries/COUNT">Функция Количество</A></P></BLOCKQUOTE>
+<P>Предложение&nbsp;<STRONG>ПЕРВЫЕ &lt;Количество&gt;</STRONG> позволяет задать предельное количество строк в результате запроса. Будут отобраны самые первые (в соответствии с правилами упорядочивания результатов запроса) строки. &lt;Количество&gt; задается целым числом.</P>
+<P>После обязательного ключевого слова <STRONG>ВЫБРАТЬ</STRONG> (и уточняющих слов <STRONG>РАЗРЕШЕННЫЕ</STRONG>, <STRONG>РАЗЛИЧНЫЕ</STRONG>&nbsp;и <STRONG>ПЕРВЫЕ</STRONG>) в тексте запроса задается <A href="v8help://SyntaxHelperQueries/SelectionFieldsList">список полей выборки</A>.</P></BODY></HTML>

@@ -10,14 +10,16 @@ context boundaries and keeps CLI/export behavior provisional.
 3. `hbk-docs`: documentation HTML/page parsing, normalized text/link extraction and page diagnostics.
 4. `syntax-helper-model`: provenance-rich platform context domain model and record sink boundary.
 5. `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized page parsers.
-6. `hbk-export`: canonical JSON export adapters.
-7. `syntax-helper-search`: local SQLite/FTS5 index and query library for Syntax Assistant exact
+6. `syntax-helper-language`: shared non-platform HBK language-fact model and fixture-backed parsers
+   for `shlang_*`, `shquery_*` and `dcsui_*` pages.
+7. `hbk-export`: canonical JSON export adapters.
+8. `syntax-helper-search`: local SQLite/FTS5 index and query library for Syntax Assistant exact
    lookup, keyword/fuzzy search and bounded relationship traversal.
-8. `context-resolver-core`: source-neutral Rust resolver API with typed identities, domains,
+9. `context-resolver-core`: source-neutral Rust resolver API with typed identities, domains,
    fact kinds, response statuses, diagnostics and resolver/source traits.
-9. `context-resolver-search`: first HBK-backed platform source adapter over
+10. `context-resolver-search`: first HBK-backed platform source adapter over
    `syntax-helper-search::SearchIndex`.
-10. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
+11. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
 
 Search/query components are described in
 [`syntax-helper-query-cli.md`](syntax-helper-query-cli.md).
@@ -32,9 +34,13 @@ Solution-context Rust resolution is described in
 - `hbk-docs` may depend on book-level page/TOC abstractions but must not know export schema details.
 - `syntax-helper-model` must not depend on HBK container, HTML parsing or CLI code.
 - `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages.
+- `syntax-helper-language` owns the first shared language-fact model and source-family parsers for
+  non-platform HBK language pages. It must not add language facts to `PlatformContext` or
+  `syntax export` consumer JSON.
 - `hbk-export` owns output adapters for the Rust domain model.
 - `syntax-helper-search` owns search-index schema, ranking and relationship traversal. It must not
-  parse HBK files or perform CLI presentation.
+  parse HBK files or perform CLI presentation. It may accept `syntax-helper-language` facts as
+  pre-parsed documents for the T89 language-index fixture slice.
 - `context-resolver-core` owns the generic in-process resolver model. It must not depend on HBK,
   SQLite, CLI, parser or Syntax Assistant storage crates.
 - `context-resolver-search` owns translation between `syntax-helper-search::SearchIndex` platform
@@ -362,6 +368,12 @@ Implemented first slice:
 - Schema version `6` adds internal document/owner indexes for exact owner-type member and callable
   lookup. Older schema version `5` indexes are rebuildable service data and are rejected by
   read-only query opens with a rebuild instruction.
+- T89 adds language-fact document kinds to the existing SQLite document/search projection without a
+  schema-version change: `language_type`, `language_construct`, `language_function`,
+  `language_operator`, `language_keyword` and `language_literal`. These documents are indexed by
+  source-qualified ids such as `shlang:def_String`, `shquery:STRING` and
+  `dcsui:SKD_Functions_Strings#StringLength`. The current normalized platform tables remain
+  platform-oriented; language-domain resolver normalization belongs to T90.
 
 ### Solution Context resolver
 

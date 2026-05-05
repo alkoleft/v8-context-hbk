@@ -142,6 +142,12 @@ directories are service data unless promoted here.
   composition expression/query-extension syntax. Existing `shcntx_*` `query_table`,
   `query_table_field` and `query_table_parameter` index facts remain CLI/provider facts for now;
   they are not selected as the first `QueryLanguage` resolver source.
+- T89 implemented the first shared language-fact extraction/index fixture slice. The new
+  `syntax-helper-language` crate extracts `language_type`, `language_construct`,
+  `language_function`, `language_keyword` and `language_literal` facts from committed real-source
+  fixtures for the selected `shlang_*`, `shquery_*` and `dcsui_*` pages. `syntax-helper-search`
+  indexes those facts as `language_*` document kinds while keeping `syntax export` platform
+  consumer JSON unchanged.
 
 ## Post-T29 Runtime Regression To Fix
 

@@ -31,6 +31,10 @@ fn syntax_assistant_fixture_manifest_covers_required_parser_kinds() {
         "constructor",
         "enum",
         "enum_value",
+        "language_construct",
+        "language_function",
+        "language_literal",
+        "language_type",
         "root_catalog",
     ]);
 
@@ -59,6 +63,14 @@ fn syntax_assistant_fixture_manifest_covers_required_parser_kinds() {
             .all(|entry| entry.reason.contains("TOC records")),
         "root/catalog HTML fixtures must document that catalog children are represented by TOC records"
     );
+    for source in ["shlang", "shquery", "dcsui"] {
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.source_hbk.contains(source)),
+            "manifest must include T89 {source} language-domain fixtures"
+        );
+    }
 }
 
 #[test]
@@ -116,8 +128,9 @@ fn syntax_assistant_fixture_manifest_points_to_real_html_fragments() {
         let path = workspace_root.join(entry.fixture_path);
         let html = fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("{} must be readable: {error}", path.display()));
+        let lower_html = html.to_ascii_lowercase();
         assert!(
-            html.contains("<html") || html.contains("<body") || html.contains("V8SH_"),
+            lower_html.contains("<html") || lower_html.contains("<body") || html.contains("V8SH_"),
             "{} must look like a real Syntax Assistant HTML fragment",
             path.display()
         );

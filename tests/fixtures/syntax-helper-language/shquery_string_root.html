@@ -1,0 +1,20 @@
+﻿<html dir="ltr"><head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link rel="stylesheet" type="text/css" href="v8help://service_book/service_style">
+</head>
+<body>
+
+<h1>String function</h1><pre>STRING (&lt;Value&gt;)</pre>
+<p>Converts a primitive type value into a string according to locale.</p>
+<p>If you apply it to a non-primitive type, an error occurs when you attempt to run a query. If the parameter is <a href="v8help://SyntaxHelperQueries/NULL">NULL</a>, the function result is also <a href="v8help://SyntaxHelperQueries/NULL">NULL</a>. </p>
+<blockquote style="MARGIN-RIGHT: 0px" dir="ltr">
+<p><strong>Value</strong>. The value to convert of the following type: <a href="v8help://SyntaxHelperQueries/LitHum">Number</a>, <a href="v8help://SyntaxHelperLanguage/def_Boolean">Boolean</a>, <a href="v8help://SyntaxHelperQueries/LitString">String</a>, <a href="v8help://SyntaxHelperQueries/LitDate">Date</a>, <a href="v8help://SyntaxHelperQueries/NULL">NULL</a>, or <a href="v8help://SyntaxHelperQueries/Undefined">Undefined</a>.</p></blockquote>
+<p><strong>Return value:</strong> <a href="v8help://SyntaxHelperQueries/LitString">String</a>. <br>The length of the resulting string is based on the value:</p>
+<ul>
+<li>For <a href="v8help://SyntaxHelperQueries/LitHum">Number</a>, the string length is the number length multiplied by 2.&#160; </li>
+<li>For <a href="v8help://SyntaxHelperQueries/LitDate">Date</a> and <a href="v8help://SyntaxHelperLanguage/def_Boolean">Boolean</a>, the string length is 32. </li>
+<li>For <a href="v8help://SyntaxHelperQueries/NULL">NULL</a> and <a href="v8help://SyntaxHelperQueries/Undefined">Undefined</a>, the string length is 1.</li></ul>
+<blockquote style="MARGIN-RIGHT: 0px" dir="ltr">
+<p><strong>See also:</strong> <a href="v8help://SyntaxHelperQueries/builtin_functions.html">Functions of query language</a></p></blockquote>
+
+</body></html>
