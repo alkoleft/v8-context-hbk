@@ -361,6 +361,16 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 facts: model::SectionFacts::default(),
                 source: source.clone(),
             },
+            model::GlobalProperty {
+                name: name("Presentation"),
+                usage: Some("Read only.".to_string()),
+                type_refs: vec![model::TypeRef {
+                    name: "String".to_string(),
+                }],
+                description: Some("Type: String.\nObject presentation.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source.clone(),
+            },
         ],
         global_context_events: vec![
             model::GlobalContextEvent {
@@ -763,6 +773,15 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         .expect("type-only property must be exported");
     assert_eq!(type_only_property["usage"], "Unknown");
     assert!(type_only_property.get("description").is_none());
+    let english_property = global_properties["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|record| record["name"]["primary"] == "Presentation")
+        .expect("English property must be exported");
+    assert_eq!(english_property["usage"], "Read");
+    assert_eq!(english_property["types"], serde_json::json!(["String"]));
+    assert_eq!(english_property["description"], "Object presentation.");
 
     let type_methods = read_json(dir.join("type-methods.json"));
     let type_method = &type_methods["records"][0];

@@ -59,6 +59,12 @@ impl<'a> From<&'a model::GlobalMethod> for ConsumerGlobalMethod<'a> {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ConsumerGlobalProperty<'a> {
     name: ConsumerLocalizedName<'a>,
+    #[serde(flatten)]
+    property: ConsumerPropertyShape<'a>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConsumerPropertyShape<'a> {
     usage: &'static str,
     #[serde(rename = "types")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -69,14 +75,32 @@ pub(crate) struct ConsumerGlobalProperty<'a> {
     facts: ConsumerSectionFacts<'a>,
 }
 
+impl<'a> ConsumerPropertyShape<'a> {
+    fn new(
+        usage: &'a Option<String>,
+        type_refs: &'a [model::TypeRef],
+        description: &'a Option<String>,
+        facts: &'a model::SectionFacts,
+    ) -> Self {
+        Self {
+            usage: property_usage(usage),
+            type_refs: type_ref_names(type_refs),
+            description: property_description(description, type_refs),
+            facts: ConsumerSectionFacts::from(facts),
+        }
+    }
+}
+
 impl<'a> From<&'a model::GlobalProperty> for ConsumerGlobalProperty<'a> {
     fn from(property: &'a model::GlobalProperty) -> Self {
         Self {
             name: ConsumerLocalizedName::from(&property.name),
-            usage: property_usage(&property.usage),
-            type_refs: type_ref_names(&property.type_refs),
-            description: property_description(&property.description, &property.type_refs),
-            facts: ConsumerSectionFacts::from(&property.facts),
+            property: ConsumerPropertyShape::new(
+                &property.usage,
+                &property.type_refs,
+                &property.description,
+                &property.facts,
+            ),
         }
     }
 }
@@ -226,14 +250,8 @@ impl<'a> From<&'a model::PlatformMethod> for ConsumerPlatformMethod<'a> {
 pub(crate) struct ConsumerPlatformProperty<'a> {
     owner: &'a str,
     name: ConsumerLocalizedName<'a>,
-    usage: &'static str,
-    #[serde(rename = "types")]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    type_refs: Vec<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
     #[serde(flatten)]
-    facts: ConsumerSectionFacts<'a>,
+    property: ConsumerPropertyShape<'a>,
 }
 
 impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
@@ -241,10 +259,12 @@ impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
         Self {
             owner: &property.owner.primary,
             name: ConsumerLocalizedName::from(&property.name),
-            usage: property_usage(&property.usage),
-            type_refs: type_ref_names(&property.type_refs),
-            description: property_description(&property.description, &property.type_refs),
-            facts: ConsumerSectionFacts::from(&property.facts),
+            property: ConsumerPropertyShape::new(
+                &property.usage,
+                &property.type_refs,
+                &property.description,
+                &property.facts,
+            ),
         }
     }
 }

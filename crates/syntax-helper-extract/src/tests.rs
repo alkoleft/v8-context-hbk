@@ -1026,6 +1026,12 @@ fn parses_representative_specialized_fixture_pages() {
     assert_eq!(global_property.name.primary, "Справочники");
     assert_eq!(global_property.name.alias.as_deref(), Some("Catalogs"));
     assert_eq!(global_property.usage.as_deref(), Some("Только чтение."));
+    assert_eq!(
+        global_property.description.as_deref(),
+        Some(
+            "Тип: СправочникиМенеджер. Используется для доступа к определенным в конфигурации справочникам."
+        )
+    );
     assert!(
         global_property
             .type_refs
@@ -1077,6 +1083,10 @@ fn parses_representative_specialized_fixture_pages() {
     );
     assert_eq!(property.owner.primary, "ГруппаФормы");
     assert_eq!(property.name.alias.as_deref(), Some("Visible"));
+    assert_eq!(
+        property.description.as_deref(),
+        Some("Тип: Булево. Определяет видимость группы.")
+    );
     assert!(
         property
             .type_refs

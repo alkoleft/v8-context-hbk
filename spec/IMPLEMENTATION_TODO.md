@@ -902,7 +902,7 @@ Completion notes:
 - Verification passed with `cargo clippy --workspace --all-targets -- -D warnings` and
   `cargo test --workspace`.
 
-### [ ] T78. Deduplicate property usage and type-prose cleanup
+### [x] T78. Deduplicate property usage and type-prose cleanup
 
 Spec refs:
 
@@ -924,6 +924,17 @@ Verification:
 - `cargo test -p syntax-helper-extract --lib`
 - `cargo test -p hbk-export --lib`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Kept property `usage` normalization and leading type-prose cleanup at the `hbk-export`
+  consumer-shape boundary selected by `spec/implementation/components.md`.
+- Collapsed global and type property consumer mapping through one shared property adapter so
+  `usage`, `types`, description cleanup and section facts are derived in one place.
+- Added regression coverage for Russian/raw parser property text and English `Type:` consumer
+  cleanup without changing parser/domain records or JSON shape.
+- Verification passed with `cargo test -p syntax-helper-extract --lib`,
+  `cargo test -p hbk-export --lib` and `cargo test --workspace`.
 
 ### [x] T79. Report search document identity collisions instead of dropping duplicates
 
