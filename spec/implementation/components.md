@@ -52,6 +52,36 @@ Solution-context Rust resolution is described in
 - Validation belongs at file/container input, external command input, parsing boundaries,
   serialization/export boundaries and public API boundaries.
 
+## Pre-Rework Legacy Cleanup Boundary
+
+Before the resolver and non-platform Syntax Assistant rework expands the implementation surface, the
+project may remove provisional legacy paths that duplicate the accepted streaming export, streaming
+indexing, provider JSON and boundary-normalization directions. These removals are intentionally
+breaking when no accepted ADR or requirement has stabilized the old path.
+
+Cleanup work must stay narrow:
+
+- remove the legacy path instead of adding a compatibility shim or adapter;
+- keep one cleanup concern per task and preserve unrelated CLI, JSON, parser and export behavior;
+- update spec or UAT first when a cleanup changes observable behavior;
+- keep downstream analyzer behavior out of scope unless an accepted resolver/provider task selects
+  it explicitly;
+- avoid broad clippy cleanup, dependency updates, storage knobs, caches or service boundaries.
+
+The current cleanup sequence is limited to:
+
+- removing duplicate in-memory search-index construction in favor of `SearchIndexBuilder` /
+  `SyntaxHelperSink`;
+- removing duplicate in-memory export APIs in favor of `StreamingSyntaxHelperExport`;
+- collapsing duplicated `syntax get` dispatch and provider JSON adapter mapping;
+- normalizing HBK/page path handling at the owning component boundaries;
+- specifying and then removing query-table syntax fallback-to-name behavior;
+- replacing in-memory type lookup scans with indexed SQL lookup where the query contract is already
+  accepted;
+- narrowing `syntax-helper-search` dependencies to actual production needs;
+- deduplicating property usage normalization and leading type prose cleanup at the selected
+  parser/export boundary.
+
 ## Component Requirements
 
 ### hbk-container

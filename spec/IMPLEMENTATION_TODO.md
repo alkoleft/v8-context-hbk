@@ -565,7 +565,7 @@ Execution guard:
   `spec/implementation/components.md`: provisional legacy paths may be removed without
   compatibility fallback when no accepted ADR or requirement stabilizes them.
 
-### [ ] T68. Record cleanup boundary for pre-rework legacy removal
+### [x] T68. Record cleanup boundary for pre-rework legacy removal
 
 Spec refs:
 
@@ -585,6 +585,14 @@ Verification:
 - Cleanup policy is present in durable spec/ documentation.
 - T69-T78 reference the policy and stay scoped to one cleanup concern each.
 - `git diff --check`
+
+Completion notes:
+
+- `spec/implementation/components.md` now records the pre-rework legacy cleanup boundary, narrow
+  sequencing, non-goals and the T69-T78 cleanup concerns outside the active ledger.
+- T69-T78 continue to reference T68 and the durable public-contract policy; T66/T67 ordering remains
+  unchanged except for explicitly selected cleanup work.
+- Verification passed with `git diff --check`.
 
 ### [ ] T69. Remove legacy in-memory search-index path
 
