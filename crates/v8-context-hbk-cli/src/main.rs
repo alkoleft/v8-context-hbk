@@ -25,6 +25,7 @@ struct Cli {
 }
 
 #[derive(Debug, Subcommand)]
+#[allow(clippy::large_enum_variant)]
 enum Command {
     Inspect {
         #[arg(value_name = "HBK_FILE")]
@@ -606,6 +607,7 @@ fn syntax_related(
     }
 }
 
+#[allow(clippy::enum_variant_names)]
 enum RootLookup {
     ById(String),
     ByName(String),
@@ -825,6 +827,7 @@ fn owner_member_roots(
     Ok(index.get_by_owner_member(owner, member)?)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn related_query_value(
     id: Option<&str>,
     name: Option<&str>,

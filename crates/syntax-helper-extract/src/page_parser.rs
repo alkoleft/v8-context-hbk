@@ -319,8 +319,7 @@ fn normalize_availability_token(value: &str) -> String {
     value
         .trim()
         .to_lowercase()
-        .replace('\u{2011}', "-")
-        .replace('\u{2013}', "-")
+        .replace(['\u{2011}', '\u{2013}'], "-")
 }
 
 const AVAILABILITY_CONTEXT_LABELS: &[(AvailabilityContext, &[&str])] = &[
@@ -849,7 +848,7 @@ fn parameter_name_from_rubric(value: &str) -> Option<String> {
 }
 
 fn parse_parameters_from_text(section: &str) -> Vec<Parameter> {
-    let ranges = bracketed_name_ranges(&section);
+    let ranges = bracketed_name_ranges(section);
     ranges
         .iter()
         .enumerate()

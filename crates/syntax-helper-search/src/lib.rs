@@ -2786,11 +2786,7 @@ impl DocumentIdentities {
                 .iter()
                 .map(|record| base_name_key(&record.name_primary)),
         );
-        let query_table_counts = count_by(
-            query_tables
-                .iter()
-                .map(|record| query_table_identity_key(record)),
-        );
+        let query_table_counts = count_by(query_tables.iter().map(query_table_identity_key));
         let platform_type_ids = platform_types
             .iter()
             .map(|record| {

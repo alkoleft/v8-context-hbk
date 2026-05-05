@@ -869,7 +869,7 @@ Completion notes:
 - No provider JSON shape, CLI behavior or public contract changed.
 - Verification passed with `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
 
-### [ ] T77. Clean `syntax-helper-search` dependency scope
+### [x] T77. Clean `syntax-helper-search` dependency scope
 
 Spec refs:
 
@@ -887,6 +887,20 @@ Verification:
 
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Moved `syntax-helper-search` `serde_json` from production dependencies to dev-dependencies; the
+  crate uses it only in tests that assert provider/search JSON does not expose internal search
+  terms.
+- No `syntax-helper-search` runtime dependency, SQLite schema, provider JSON shape or CLI query
+  behavior changed.
+- The required workspace clippy gate also required minimal current-toolchain lint compatibility
+  fixes in existing code paths: boxed the large `hbk-docs` documentation read source error,
+  collapsed repeated dash-normalization `replace` calls, removed one redundant closure and added
+  targeted CLI boundary lint allowances without changing command behavior.
+- Verification passed with `cargo clippy --workspace --all-targets -- -D warnings` and
+  `cargo test --workspace`.
 
 ### [ ] T78. Deduplicate property usage and type-prose cleanup
 

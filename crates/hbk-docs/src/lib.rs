@@ -30,7 +30,7 @@ impl<'a> DocumentationReader<'a> {
                 .map_err(|source| DocumentationError::PageRead {
                     path: self.book.path().to_path_buf(),
                     html_path: String::new(),
-                    source,
+                    source: Box::new(source),
                 })?;
         Ok(DocumentationPageLoader {
             book: self.book,
@@ -53,7 +53,7 @@ impl DocumentationPageLoader<'_> {
                 .map_err(|source| DocumentationError::PageRead {
                     path: self.book.path().to_path_buf(),
                     html_path: normalize_storage_path_owned(html_path),
-                    source,
+                    source: Box::new(source),
                 })?;
         Ok(parse_page_html(
             self.book.path(),
@@ -123,7 +123,7 @@ pub enum DocumentationError {
     PageRead {
         path: PathBuf,
         html_path: String,
-        source: BookError,
+        source: Box<BookError>,
     },
 }
 
@@ -146,7 +146,7 @@ impl fmt::Display for DocumentationError {
 impl std::error::Error for DocumentationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::PageRead { source, .. } => Some(source),
+            Self::PageRead { source, .. } => Some(source.as_ref()),
         }
     }
 }

@@ -667,8 +667,7 @@ fn property_usage(usage: &Option<String>) -> &'static str {
         .trim_matches('.')
         .trim()
         .to_lowercase()
-        .replace('\u{2011}', "-")
-        .replace('\u{2013}', "-");
+        .replace(['\u{2011}', '\u{2013}'], "-");
     match usage.as_str() {
         "только чтение" | "read only" | "read" | "чтение" => "Read",
         "только запись" | "write only" | "write" | "запись" => "Write",
