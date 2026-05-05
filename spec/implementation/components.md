@@ -128,6 +128,8 @@ boundary, but it must not expose Syntax Assistant extraction, export or CLI conc
 the `FileStorage` entity body during open, but must not retain the lower-level `HbkContainer` mmap
 or `FileStorage` bytes after construction. Page/file reads are path-backed: the source HBK file must
 remain readable after `open` so `HbkBook` can create a short-lived `FileStorageReader` for access.
+`hbk-book` must not trust ZIP entry metadata sizes for unbounded allocation when reading `PackBlock`
+or `FileStorage` entries; entry bytes are read from the actual ZIP stream at the HBK input boundary.
 
 ### hbk-docs
 

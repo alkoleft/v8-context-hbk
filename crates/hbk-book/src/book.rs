@@ -310,7 +310,7 @@ impl FileStorageReader {
                     source,
                 },
             })?;
-        let mut bytes = Vec::with_capacity(zip_entry_capacity(entry.size()));
+        let mut bytes = Vec::new();
         entry
             .read_to_end(&mut bytes)
             .map_err(|source| BookError::Io {
@@ -363,7 +363,7 @@ fn read_first_zip_entry(
             entity_name,
             source,
         })?;
-    let mut output = Vec::with_capacity(zip_entry_capacity(entry.size()));
+    let mut output = Vec::new();
     entry
         .read_to_end(&mut output)
         .map_err(|source| BookError::Io {
@@ -372,10 +372,6 @@ fn read_first_zip_entry(
             source,
         })?;
     Ok(output)
-}
-
-fn zip_entry_capacity(size: u64) -> usize {
-    usize::try_from(size).unwrap_or(0)
 }
 
 fn list_storage_page_paths(path: &Path, bytes: &[u8]) -> Result<Vec<String>, BookError> {
@@ -722,6 +718,82 @@ mod tests {
         }
     }
 
+    #[test]
+    fn zip_entry_metadata_size_does_not_drive_page_read() {
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Страница"}},"/docs/page.html"}}
+        }"#;
+        let file_storage = zip_with_reported_uncompressed_size(
+            zip_bytes("docs/page.html", b"<html>page</html>"),
+            u32::MAX,
+        );
+        let fixture = TempHbk::new(
+            "fmtdui_ru.hbk",
+            fixture_container(vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", Some(zip_bytes("toc.txt", toc.as_bytes()))),
+                ("FileStorage", Some(file_storage)),
+            ]),
+        )
+        .expect("fixture must be written");
+        let book = HbkBook::open(fixture.path()).expect("book must open");
+
+        let page = book
+            .read_page("/docs/page.html")
+            .expect("page read must use actual ZIP data, not reported entry size");
+
+        assert_eq!(page, "<html>page</html>");
+    }
+
+    #[test]
+    fn zip_entry_metadata_size_does_not_drive_pack_block_read() {
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Страница"}},"/docs/page.html"}}
+        }"#;
+        let pack_block =
+            zip_with_reported_uncompressed_size(zip_bytes("toc.txt", toc.as_bytes()), u32::MAX);
+        let fixture = TempHbk::new(
+            "fmtdui_ru.hbk",
+            fixture_container(vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", Some(pack_block)),
+                (
+                    "FileStorage",
+                    Some(zip_bytes("docs/page.html", b"<html>page</html>")),
+                ),
+            ]),
+        )
+        .expect("fixture must be written");
+
+        let book = HbkBook::open(fixture.path())
+            .expect("TOC read must use actual ZIP data, not reported entry size");
+
+        assert_eq!(
+            book.toc()
+                .find_by_html_path("/docs/page.html")
+                .unwrap()
+                .title
+                .display(),
+            "Страница"
+        );
+    }
+
     struct TempHbk {
         path: PathBuf,
     }
@@ -755,5 +827,37 @@ mod tests {
                 let _ = fs::remove_dir_all(dir);
             }
         }
+    }
+
+    fn zip_with_reported_uncompressed_size(mut bytes: Vec<u8>, reported_size: u32) -> Vec<u8> {
+        const LOCAL_FILE_HEADER_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x03, 0x04];
+        const CENTRAL_DIRECTORY_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x01, 0x02];
+
+        patch_zip_u32_after_signature(
+            &mut bytes,
+            LOCAL_FILE_HEADER_SIGNATURE,
+            22,
+            reported_size,
+        );
+        patch_zip_u32_after_signature(
+            &mut bytes,
+            CENTRAL_DIRECTORY_SIGNATURE,
+            24,
+            reported_size,
+        );
+        bytes
+    }
+
+    fn patch_zip_u32_after_signature(
+        bytes: &mut [u8],
+        signature: [u8; 4],
+        offset: usize,
+        value: u32,
+    ) {
+        let position = bytes
+            .windows(signature.len())
+            .position(|window| window == signature)
+            .expect("ZIP signature must be present");
+        bytes[position + offset..position + offset + 4].copy_from_slice(&value.to_le_bytes());
     }
 }

@@ -981,3 +981,43 @@ Completion notes:
   identity collisions are reported instead of silently dropping a document.
 - Provider JSON, normal deterministic ordering and non-colliding index behavior stayed unchanged.
 - Verification passed with `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
+
+### [x] T80. Harden ZIP entry allocation at HBK input boundaries
+
+Spec refs:
+
+- FR-HBK-001
+- FR-HBK-002
+- NFR-RELIABILITY-001
+- `spec/implementation/components.md`
+
+Problem:
+
+- `hbk-book` currently uses ZIP entry metadata size for `Vec::with_capacity` when reading
+  `FileStorage` entries and nested ZIP entries.
+- A malformed HBK/ZIP can report an excessive uncompressed size at the file/container input
+  boundary and force unnecessary memory allocation before the real read result is known.
+
+Scope:
+
+- Avoid trusting ZIP entry metadata for unbounded preallocation, or cap it with an explicit
+  input-boundary limit.
+- If a cap is selected, add a typed `BookError` variant with path/entity/entry provenance.
+- Preserve valid HBK page reads and existing diagnostics for missing entries, invalid ZIP and UTF-8
+  failures.
+- Do not add caches, streaming reader redesign or platform-version-specific behavior.
+
+Verification:
+
+- `cargo test -p hbk-book --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Removed ZIP metadata-size-based `Vec::with_capacity` allocation from `FileStorageReader::read_file`
+  and `read_first_zip_entry`; `hbk-book` now reads entry bytes from the actual ZIP stream without
+  trusting reported uncompressed sizes for allocation.
+- Added focused `FileStorage` and `PackBlock` regressions with inflated reported uncompressed sizes
+  to preserve valid page/TOC reads and typed HBK path/entry behavior at the input boundary.
+- No new compatibility adapter, cache, streaming redesign or public JSON/export behavior was added.
+- Verification passed with `cargo test -p hbk-book --lib` and `cargo test --workspace`.
