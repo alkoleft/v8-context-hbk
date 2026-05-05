@@ -527,14 +527,6 @@ impl std::error::Error for SearchError {
     }
 }
 
-pub fn build_index(
-    path: impl AsRef<Path>,
-    metadata: &IndexMetadata,
-    context: &model::PlatformContext,
-) -> Result<(), SearchError> {
-    build_index_from_documents(path, metadata, documents_from_context(context))
-}
-
 pub fn build_index_from_builder(
     path: impl AsRef<Path>,
     metadata: &IndexMetadata,
@@ -2506,228 +2498,6 @@ fn validate_index(connection: &Connection, path: &Path) -> Result<(), SearchErro
     Ok(())
 }
 
-fn documents_from_context(context: &model::PlatformContext) -> Vec<SearchDocument> {
-    let mut documents = Vec::new();
-    let identities = DocumentIdentities::new(context);
-    for record in &context.global_methods {
-        documents.push(document(
-            "global_method",
-            None,
-            &record.name,
-            &record.signatures,
-            &record.return_types,
-            &[],
-            record.description.as_deref(),
-            document_identity("global_method", None, &record.name),
-        ));
-    }
-    for record in &context.global_properties {
-        documents.push(document(
-            "global_property",
-            None,
-            &record.name,
-            &[],
-            &[],
-            &record.type_refs,
-            record.description.as_deref(),
-            document_identity("global_property", None, &record.name),
-        ));
-    }
-    for record in &context.global_context_events {
-        let owner = event_owner(record);
-        let kind = match record.semantic.record_family {
-            model::RecordFamily::ModuleEvent => "module_event",
-            model::RecordFamily::TypeEvent => "type_event",
-            _ => "unknown_event",
-        };
-        documents.push(document(
-            kind,
-            owner.as_ref(),
-            &record.name,
-            &record.signatures,
-            &[],
-            &[],
-            record.description.as_deref(),
-            document_identity(kind, owner.as_ref(), &record.name),
-        ));
-    }
-    for record in &context.platform_types {
-        let mut platform_type = document(
-            "platform_type",
-            None,
-            &record.name,
-            &[],
-            &[],
-            &record
-                .extends
-                .iter()
-                .map(type_ref_from_name)
-                .collect::<Vec<_>>(),
-            record.description.as_deref(),
-            identities.platform_type_identity(record),
-        );
-        platform_type
-            .relation_keys
-            .push(identity_relation_key(&platform_type.id));
-        documents.push(platform_type);
-    }
-    for record in &context.type_methods {
-        let owner_identity = identities.type_owner_identity(&record.owner, &record.semantic);
-        let mut method = document(
-            "type_method",
-            Some(&record.owner),
-            &record.name,
-            &record.signatures,
-            &record.return_types,
-            &[],
-            record.description.as_deref(),
-            owned_document_identity("type_method", &owner_identity, &record.name.primary),
-        );
-        method.owner_relation_key = Some(identity_relation_key(&owner_identity));
-        documents.push(method);
-    }
-    for record in &context.type_properties {
-        let owner_identity = identities.type_owner_identity(&record.owner, &record.semantic);
-        let mut property = document(
-            "type_property",
-            Some(&record.owner),
-            &record.name,
-            &[],
-            &[],
-            &record.type_refs,
-            record.description.as_deref(),
-            owned_document_identity("type_property", &owner_identity, &record.name.primary),
-        );
-        property.owner_relation_key = Some(identity_relation_key(&owner_identity));
-        documents.push(property);
-    }
-    for record in &context.constructors {
-        let name = model::LocalizedName {
-            primary: record
-                .signatures
-                .first()
-                .map(|signature| signature.text.clone())
-                .unwrap_or_else(|| format!("Новый {}", record.owner.primary)),
-            alias: record.name.alias.clone(),
-        };
-        let owner_identity = identities.type_owner_identity(&record.owner, &record.semantic);
-        let mut constructor = document(
-            "constructor",
-            Some(&record.owner),
-            &name,
-            &record.signatures,
-            &[],
-            &[],
-            record.description.as_deref(),
-            owned_document_identity("constructor", &owner_identity, &name.primary),
-        );
-        constructor.owner_relation_key = Some(identity_relation_key(&owner_identity));
-        documents.push(constructor);
-    }
-    for record in &context.query_tables {
-        let name = model::LocalizedName {
-            primary: record.name.clone(),
-            alias: record
-                .syntax
-                .as_ref()
-                .and_then(|syntax| syntax.alias.clone()),
-        };
-        let mut table = document(
-            "query_table",
-            None,
-            &name,
-            &[],
-            &[],
-            &[],
-            record.description.as_deref(),
-            identities.query_table_identity(record),
-        );
-        table
-            .relation_keys
-            .push(semantic_relation_key(&record.semantic, &name.primary));
-        table.relation_keys.push(identity_relation_key(&table.id));
-        documents.push(table);
-    }
-    for record in &context.table_fields {
-        let name = model::LocalizedName {
-            primary: record.name.clone(),
-            alias: None,
-        };
-        let owner_identity =
-            identities.query_member_owner_identity(&record.owner, &record.semantic);
-        let mut field = document(
-            "query_table_field",
-            Some(&record.owner),
-            &name,
-            &[],
-            &[],
-            &record.type_refs,
-            record.description.as_deref(),
-            owned_document_identity("query_table_field", &owner_identity, &name.primary),
-        );
-        field.owner_relation_key = Some(identity_relation_key(&owner_identity));
-        documents.push(field);
-    }
-    for record in &context.table_parameters {
-        let name = model::LocalizedName {
-            primary: record.name.clone(),
-            alias: None,
-        };
-        let owner_identity =
-            identities.query_member_owner_identity(&record.owner, &record.semantic);
-        let mut parameter = document(
-            "query_table_parameter",
-            Some(&record.owner),
-            &name,
-            &[],
-            &[],
-            &record.type_refs,
-            record.description.as_deref(),
-            owned_document_identity("query_table_parameter", &owner_identity, &name.primary),
-        );
-        parameter.owner_relation_key = Some(identity_relation_key(&owner_identity));
-        documents.push(parameter);
-    }
-    for record in &context.enums {
-        let mut enum_document = document(
-            "enum",
-            None,
-            &record.name,
-            &[],
-            &[],
-            &[],
-            record.description.as_deref(),
-            identities.enum_identity(record),
-        );
-        enum_document
-            .relation_keys
-            .push(identity_relation_key(&enum_document.id));
-        documents.push(enum_document);
-    }
-    for record in &context.enum_values {
-        let owner_identity = identities.enum_owner_identity(&record.owner);
-        let mut value = document(
-            "enum_value",
-            Some(&record.owner),
-            &record.name,
-            &[],
-            &[],
-            &[],
-            record.description.as_deref(),
-            owned_document_identity("enum_value", &owner_identity, &record.name.primary),
-        );
-        value.owner_relation_key = Some(identity_relation_key(&owner_identity));
-        documents.push(value);
-    }
-    documents.sort_by(|left, right| {
-        kind_priority(&left.kind)
-            .cmp(&kind_priority(&right.kind))
-            .then_with(|| left.id.cmp(&right.id))
-    });
-    documents.dedup_by(|left, right| left.id == right.id);
-    documents
-}
-
 #[allow(clippy::too_many_arguments)]
 fn document(
     kind: &str,
@@ -3012,35 +2782,6 @@ struct DocumentIdentities {
 }
 
 impl DocumentIdentities {
-    fn new(context: &model::PlatformContext) -> Self {
-        let platform_types = context
-            .platform_types
-            .iter()
-            .map(|record| PlatformTypeIdentityInput {
-                name_primary: record.name.primary.clone(),
-                semantic: record.semantic.clone(),
-            })
-            .collect::<Vec<_>>();
-        let query_tables = context
-            .query_tables
-            .iter()
-            .map(|record| QueryTableIdentityInput {
-                name_primary: record.name.clone(),
-                identifier: record.identifier.clone(),
-                semantic: record.semantic.clone(),
-            })
-            .collect::<Vec<_>>();
-        let enums = context
-            .enums
-            .iter()
-            .map(|record| EnumIdentityInput {
-                name_primary: record.name.primary.clone(),
-                source_html_path: record.source.html_path.clone(),
-            })
-            .collect::<Vec<_>>();
-        Self::from_inputs(&platform_types, &query_tables, &enums)
-    }
-
     fn from_inputs(
         platform_types: &[PlatformTypeIdentityInput],
         query_tables: &[QueryTableIdentityInput],
@@ -3095,10 +2836,6 @@ impl DocumentIdentities {
         }
     }
 
-    fn platform_type_identity(&self, record: &model::PlatformType) -> String {
-        self.platform_type_identity_by(&record.name.primary, &record.semantic)
-    }
-
     fn platform_type_identity_by(
         &self,
         name_primary: &str,
@@ -3129,10 +2866,6 @@ impl DocumentIdentities {
             .unwrap_or_else(|| document_identity("platform_type", None, owner))
     }
 
-    fn query_table_identity(&self, record: &model::QueryTable) -> String {
-        self.query_table_identity_by(&record.name, &record.identifier, &record.semantic)
-    }
-
     fn query_table_identity_by(
         &self,
         name_primary: &str,
@@ -3154,10 +2887,6 @@ impl DocumentIdentities {
             .get(&semantic_relation_key(semantic, &owner.primary))
             .cloned()
             .unwrap_or_else(|| format!("query_table:{}", clean_identity_part(&owner.primary)))
-    }
-
-    fn enum_identity(&self, record: &model::EnumDefinition) -> String {
-        self.enum_identity_by(&record.name.primary, &record.source.html_path)
     }
 
     fn enum_identity_by(&self, name_primary: &str, source_html_path: &str) -> String {
@@ -3572,7 +3301,8 @@ mod tests {
     #[test]
     fn index_supports_exact_keyword_fuzzy_and_related_queries() {
         let path = temp_path("query.sqlite");
-        build_index(&path, &metadata(), &fixture_context()).expect("index must build");
+        build_test_index_from_context(&path, &metadata(), &fixture_context())
+            .expect("index must build");
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
 
         let exact = index
@@ -3768,7 +3498,7 @@ mod tests {
             ],
             ..model::PlatformContext::default()
         };
-        build_index(&path, &metadata(), &context).expect("index must build");
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
 
         let hits = index
@@ -3803,7 +3533,7 @@ mod tests {
             )],
             ..model::PlatformContext::default()
         };
-        build_index(&path, &metadata(), &context).expect("index must build");
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
 
         let hits = index
@@ -3827,7 +3557,7 @@ mod tests {
             constructors: vec![http_connection_constructor()],
             ..model::PlatformContext::default()
         };
-        build_index(&path, &metadata(), &context).expect("index must build");
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
 
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
         let document_columns = table_columns(&index.connection, "documents");
@@ -3919,21 +3649,33 @@ mod tests {
     }
 
     #[test]
-    fn streaming_builder_preserves_context_document_and_relation_shape() {
+    fn streaming_builder_preserves_expected_document_and_relation_shape() {
         let context = fixture_context();
-        let context_documents = documents_from_context(&context);
         let builder_documents = builder_from_context(&context).into_documents();
-
-        assert_eq!(builder_documents, context_documents);
-        let context_relations = relations_from_documents(&context_documents)
-            .into_iter()
-            .map(|relation| (relation.source_id, relation.target_id, relation.edge_kind))
+        let ids = builder_documents
+            .iter()
+            .map(|document| document.id.as_str())
             .collect::<Vec<_>>();
+
+        assert!(ids.contains(&"platform_type:ОтборКомпоновкиДанных"));
+        assert!(ids.contains(&"type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"));
+        assert!(ids.contains(
+            &"constructor:platform_type:ОтборКомпоновкиДанных:Новый ОтборКомпоновкиДанных()"
+        ));
         let builder_relations = relations_from_documents(&builder_documents)
             .into_iter()
             .map(|relation| (relation.source_id, relation.target_id, relation.edge_kind))
             .collect::<Vec<_>>();
-        assert_eq!(builder_relations, context_relations);
+        assert!(builder_relations.iter().any(|(source, target, edge)| {
+            source == "platform_type:ОтборКомпоновкиДанных"
+                && target == "type_property:platform_type:ОтборКомпоновкиДанных:Элементы"
+                && *edge == "owns"
+        }));
+        assert!(builder_relations.iter().any(|(source, target, edge)| {
+            source == "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"
+                && target == "platform_type:ОтборКомпоновкиДанных"
+                && *edge == "has_type"
+        }));
     }
 
     #[test]
@@ -4012,7 +3754,8 @@ mod tests {
     #[test]
     fn read_only_open_rejects_stale_schema_version() {
         let path = temp_path("stale-schema.sqlite");
-        build_index(&path, &metadata(), &fixture_context()).expect("index must build");
+        build_test_index_from_context(&path, &metadata(), &fixture_context())
+            .expect("index must build");
         {
             let connection = Connection::open(&path).expect("index must open for fixture mutation");
             connection
@@ -4043,7 +3786,8 @@ mod tests {
     #[test]
     fn query_connections_are_read_only_and_repeatable() {
         let path = temp_path("readonly.sqlite");
-        build_index(&path, &metadata(), &fixture_context()).expect("index must build");
+        build_test_index_from_context(&path, &metadata(), &fixture_context())
+            .expect("index must build");
         let left = SearchIndex::open_read_only(&path).expect("first reader must open");
         let right = SearchIndex::open_read_only(&path).expect("second reader must open");
         assert_eq!(
@@ -4061,13 +3805,15 @@ mod tests {
     fn rebuild_replaces_previous_complete_index() {
         let path = temp_path("replace.sqlite");
         let mut context = fixture_context();
-        build_index(&path, &metadata(), &context).expect("first index must build");
+        build_test_index_from_context(&path, &metadata(), &context)
+            .expect("first index must build");
         fs::write(path.with_extension("sqlite-wal"), b"stale wal")
             .expect("stale wal sidecar must be writable");
         fs::write(path.with_extension("sqlite-shm"), b"stale shm")
             .expect("stale shm sidecar must be writable");
         context.platform_types[0].description = Some("updated description".to_string());
-        build_index(&path, &metadata(), &context).expect("replacement index must build");
+        build_test_index_from_context(&path, &metadata(), &context)
+            .expect("replacement index must build");
         assert!(!path.with_extension("sqlite-wal").exists());
         assert!(!path.with_extension("sqlite-shm").exists());
         let index = SearchIndex::open_read_only(&path).expect("index must open");
@@ -4088,7 +3834,7 @@ mod tests {
         fs::write(temp_path.with_extension("sqlite-shm"), b"stale temp shm")
             .expect("stale temp shm must be writable");
 
-        build_index(&path, &metadata(), &fixture_context())
+        build_test_index_from_context(&path, &metadata(), &fixture_context())
             .expect("index build must clean stale temp artifacts first");
 
         assert!(!temp_path.exists());
@@ -4102,10 +3848,12 @@ mod tests {
         let path = temp_path("writers.sqlite");
         let left_path = path.clone();
         let right_path = path.clone();
-        let left =
-            std::thread::spawn(move || build_index(left_path, &metadata(), &fixture_context()));
-        let right =
-            std::thread::spawn(move || build_index(right_path, &metadata(), &fixture_context()));
+        let left = std::thread::spawn(move || {
+            build_test_index_from_context(left_path, &metadata(), &fixture_context())
+        });
+        let right = std::thread::spawn(move || {
+            build_test_index_from_context(right_path, &metadata(), &fixture_context())
+        });
         left.join()
             .expect("left writer must not panic")
             .expect("left writer must build");
@@ -4145,7 +3893,7 @@ mod tests {
             ..model::PlatformContext::default()
         };
 
-        let documents = documents_from_context(&context);
+        let documents = builder_from_context(&context).into_documents();
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -4203,7 +3951,7 @@ mod tests {
             ..model::PlatformContext::default()
         };
 
-        let documents = documents_from_context(&context);
+        let documents = builder_from_context(&context).into_documents();
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -4241,7 +3989,7 @@ mod tests {
             )],
             ..model::PlatformContext::default()
         };
-        build_index(&path, &metadata(), &context).expect("index must build");
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
 
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
         let duplicate_count: i64 = index
@@ -4297,7 +4045,7 @@ mod tests {
             ..model::PlatformContext::default()
         };
 
-        let documents = documents_from_context(&context);
+        let documents = builder_from_context(&context).into_documents();
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -4430,6 +4178,14 @@ mod tests {
             builder.diagnostic(record).unwrap();
         }
         builder
+    }
+
+    fn build_test_index_from_context(
+        path: impl AsRef<Path>,
+        metadata: &IndexMetadata,
+        context: &model::PlatformContext,
+    ) -> Result<(), SearchError> {
+        build_index_from_builder(path, metadata, builder_from_context(context))
     }
 
     fn platform_type(primary: &str, alias: Option<&str>, description: &str) -> model::PlatformType {

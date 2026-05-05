@@ -60,7 +60,7 @@ Implemented library crate.
 
 Responsibilities:
 
-- build in-memory or on-disk search indexes from extracted Syntax Assistant API facts;
+- build on-disk search indexes from streamed extracted Syntax Assistant API facts;
 - define `SearchDocument`, `SearchIndex`, `SearchQuery`, `SearchHit` and `RelationshipGraph`;
 - own the SQLite schema, migrations for provisional schema versions and FTS5 query construction;
 - normalize names, aliases and owner/member identifiers;

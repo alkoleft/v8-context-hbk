@@ -594,7 +594,7 @@ Completion notes:
   unchanged except for explicitly selected cleanup work.
 - Verification passed with `git diff --check`.
 
-### [ ] T69. Remove legacy in-memory search-index path
+### [x] T69. Remove legacy in-memory search-index path
 
 Spec refs:
 
@@ -615,6 +615,15 @@ Verification:
 
 - `cargo test -p syntax-helper-search --lib`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Removed the provisional `build_index(context)` / `documents_from_context` path from
+  `syntax-helper-search`.
+- `SearchIndexBuilder` / `SyntaxHelperSink` is now the single index-build input path for library
+  tests and CLI wiring.
+- Verification passed with `cargo test -p syntax-helper-search --lib` and
+  `cargo test --workspace`.
 
 ### [ ] T70. Remove legacy in-memory export path
 
