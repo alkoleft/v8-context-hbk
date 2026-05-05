@@ -642,6 +642,8 @@ Acceptance:
 - `syntax related --id <document-id> --format json` and `syntax related --owner
   "НастройкиКомпоновкиДанных" --member "Отбор" --format json` can traverse relationships from an
   analyzer-safe exact root without relying on a plain-name lookup.
+- `syntax related --id <document-id> --edge member_of --format json` exposes deterministic
+  inverse owner navigation for owned facts that have a source-backed owner relationship.
 - Search-only token fields used to populate FTS are not exposed as misleading public fields in the
   provider JSON contract.
 - Query/provider JSON that returns constructor, method or event signatures uses field names
@@ -678,6 +680,8 @@ Acceptance:
 - Relationship output for `ОтборКомпоновкиДанных` includes its properties, methods and constructor.
 - Relationship output for `НастройкиКомпоновкиДанных.Отбор` includes the target type
   `ОтборКомпоновкиДанных`.
+- Edge-filtered relationship output supports `member_of` as public inverse navigation from an owned
+  fact to its owning platform type or object.
 - Relationship output remains deterministic and does not depend on query-time HBK parsing.
 
 ## FR-CLI-001: Verification-Oriented CLI

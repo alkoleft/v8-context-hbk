@@ -121,7 +121,11 @@ enum SyntaxCommand {
         owner: Option<String>,
         #[arg(long)]
         member: Option<String>,
-        #[arg(long)]
+        #[arg(
+            long,
+            value_name = "EDGE",
+            help = "Filter related traversal by edge kind: has_type, returns, constructs or member_of"
+        )]
         edge: Option<String>,
         #[arg(long, default_value_t = 5)]
         depth: u32,
@@ -515,11 +519,13 @@ fn syntax_related(
                     query,
                     Vec::new(),
                     unsupported_query_diagnostic(
-                        "syntax related --edge supports has_type, returns or constructs",
+                        "syntax related --edge supports has_type, returns, constructs or member_of",
                     ),
                 );
             }
-            return Err("syntax related --edge supports has_type, returns or constructs".into());
+            return Err(
+                "syntax related --edge supports has_type, returns, constructs or member_of".into(),
+            );
         }
         if index.get_by_id(id)?.is_none() {
             return print_related_root_diagnostic("related", query, Vec::new(), format);
@@ -784,7 +790,8 @@ fn related_query_value(
         (None, None, Some(owner), Some(member)) => json!({ "owner": owner, "member": member }),
         _ => json!({ "invalid": true }),
     };
-    let mut query = json!({ "kind": if edge.is_some() { "type_references" } else { "related" }, "root": root, "depth": depth.min(5) });
+    let mut query =
+        json!({ "kind": related_query_kind(edge), "root": root, "depth": depth.min(5) });
     if let Some(edge) = edge {
         query["edge"] = json!(edge);
     }
@@ -817,7 +824,14 @@ fn search_mode_name(mode: SearchMode) -> &'static str {
 }
 
 fn is_supported_edge_filter(edge: &str) -> bool {
-    matches!(edge, "has_type" | "returns" | "constructs")
+    matches!(edge, "has_type" | "returns" | "constructs" | "member_of")
+}
+
+fn related_query_kind(edge: Option<&str>) -> &'static str {
+    match edge {
+        Some("has_type" | "returns" | "constructs") => "type_references",
+        _ => "related",
+    }
 }
 
 fn print_hits_text(command: &str, hits: &[SearchHit]) -> Result<(), Box<dyn std::error::Error>> {
@@ -1247,6 +1261,24 @@ mod tests {
         assert_eq!(query["depth"], 5);
         assert_eq!(query["limit"], 2);
         assert_eq!(query["output"], "compact");
+    }
+
+    #[test]
+    fn related_member_of_edge_stays_related_query_kind() {
+        let query = related_query_value(
+            Some("type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"),
+            None,
+            None,
+            None,
+            5,
+            Some("member_of"),
+            Some(1),
+            false,
+        );
+
+        assert!(is_supported_edge_filter("member_of"));
+        assert_eq!(query["kind"], "related");
+        assert_eq!(query["edge"], "member_of");
     }
 
     #[test]

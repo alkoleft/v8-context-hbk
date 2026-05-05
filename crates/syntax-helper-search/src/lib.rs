@@ -3710,6 +3710,20 @@ mod tests {
             "platform_type:ОтборКомпоновкиДанных"
         );
 
+        let owner_refs = index
+            .related_by_id_and_edge(
+                "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор",
+                "member_of",
+                20,
+            )
+            .expect("member_of edge-filtered related search must work");
+        assert_eq!(owner_refs.len(), 1);
+        assert_eq!(
+            owner_refs[0].document.id,
+            "platform_type:НастройкиКомпоновкиДанных"
+        );
+        assert_eq!(owner_refs[0].via[0].edge_kind, "member_of");
+
         let ambiguous_constructors = index
             .constructors_by_name("ОтборКомпоновкиДанных")
             .expect_err("plain constructor type root must report ambiguity");

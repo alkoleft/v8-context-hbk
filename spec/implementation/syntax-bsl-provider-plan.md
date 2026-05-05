@@ -204,11 +204,11 @@ Resolution path:
     `syntax related` accept `--limit <N>`; `syntax related --compact` keeps identity plus
     relationship-path metadata while omitting bulky fact fields. Full provider JSON remains the
     default.
-17. **T64: Align relationship edge filters with the public graph contract.** The schema records
-    `member_of` as a supported edge kind, but the current CLI `syntax related --edge` accepts only
-    `has_type`, `returns` and `constructs`. Decide whether `member_of` must be implemented as a
-    first-class edge filter or explicitly documented as storage-only/internal for now; update
-    CLI behavior/help, provider diagnostics and UAT accordingly.
+17. **T64: Align relationship edge filters with the public graph contract.** Completed:
+    `member_of` is public inverse owner navigation for exact `syntax related --id` roots. CLI help,
+    provider diagnostics and UAT now list `has_type`, `returns`, `constructs` and `member_of` as
+    the supported edge filters. `member_of` remains a bounded related-edge filter, not a general
+    graph-query language or storage-table contract.
 
 ## Non-Goals for This Plan
 

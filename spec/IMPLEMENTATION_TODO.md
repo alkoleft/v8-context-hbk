@@ -349,7 +349,7 @@ Completion notes:
 - Verification passed against a fresh RU index at `target/uat/t63-sh-search-ru.sqlite` with `25082`
   documents and `52665 ms` build time.
 
-### [ ] T64. Align relationship edge filters with the public graph contract
+### [x] T64. Align relationship edge filters with the public graph contract
 
 Spec refs:
 
@@ -387,3 +387,12 @@ Verification:
 - Real-index command against `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` demonstrates the selected
   `member_of` behavior.
 - Provider diagnostics and help text agree with the implemented supported edge list.
+
+Completion notes:
+
+- `member_of` is public inverse owner navigation for exact `syntax related --id` roots, not a
+  storage-only edge.
+- CLI help, provider unsupported-edge diagnostics and UAT-SH-022 now agree on the supported edge
+  filter set: `has_type`, `returns`, `constructs` and `member_of`.
+- Verification passed against a fresh RU index at `target/uat/t64-sh-search-ru.sqlite` with
+  `25082` documents and `56075 ms` build time.

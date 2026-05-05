@@ -1364,3 +1364,17 @@ recorded `query.limit == 3`; `syntax related --id "type_property:platform_type:�
 --limit 5 --format json` returned exactly five full provider results with relationship metadata;
 and the same command with `--compact` returned exactly five compact facts with identity and path
 metadata while omitting `description`, `signatures`, `types` and `return` from `results[].fact`.
+
+T64 aligned public relationship edge filters with the graph contract. `member_of` is now accepted
+as public inverse owner navigation for exact `syntax related --id` roots, alongside `has_type`,
+`returns` and `constructs`. Type-reference edges keep `query.kind == "type_references"`; the
+ownership edge reports `query.kind == "related"` because it explains the graph owner relationship,
+not a type reference.
+
+The accepted T64 verification used a fresh Russian schema-v4 index at
+`target/uat/t64-sh-search-ru.sqlite` with `25082` documents, `56075 ms` build time and peak RSS
+`310016 KiB`. UAT-SH-022 passed:
+`syntax related --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --edge
+member_of --format json` returned the owning fact `platform_type:НастройкиКомпоновкиДанных` with a
+`member_of` relationship path; text output included the same owner fact; unsupported-edge provider
+diagnostics and CLI help both listed the supported edge set including `member_of`.

@@ -1198,6 +1198,73 @@ Expected result:
 - Query output continues to use the provider envelope and does not expose SQLite table names, FTS
   tokens, HBK paths, TOC paths, HTML paths or page titles.
 
+## UAT-SH-022: Public Relationship Edge Filters
+
+Related use case: UC-SH-005B and UC-SH-005C.
+
+Related requirements: FR-SH-SEARCH-002, FR-SH-PROVIDER-001.
+
+Status: implementation UAT for T64.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- A current schema-v4 or later provider index exists under `target/uat/` or can be rebuilt there.
+
+Steps:
+
+```bash
+rm -f target/uat/t64-related-member-of.json target/uat/t64-related-member-of.txt \
+  target/uat/t64-related-unsupported-edge.json target/uat/t64-related-help.txt
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t64-sh-search-ru.sqlite
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t64-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" \
+  --edge member_of --format json \
+  > target/uat/t64-related-member-of.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t64-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" \
+  --edge member_of \
+  > target/uat/t64-related-member-of.txt
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t64-sh-search-ru.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" \
+  --edge unknown_edge --format json \
+  > target/uat/t64-related-unsupported-edge.json
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax related --help \
+  > target/uat/t64-related-help.txt
+
+jq -e '.status == "ok"
+  and .query.kind == "related"
+  and .query.edge == "member_of"
+  and (.results | length) == 1
+  and .results[0].fact.id == "platform_type:НастройкиКомпоновкиДанных"
+  and .results[0].meta.path[0].edge_kind == "member_of"' \
+  target/uat/t64-related-member-of.json
+grep -q "НастройкиКомпоновкиДанных" target/uat/t64-related-member-of.txt
+jq -e '.status == "unsupported"
+  and (.results | length) == 0
+  and any(.diagnostics[]; .code == "UNSUPPORTED_QUERY"
+    and (.message | contains("member_of")))' \
+  target/uat/t64-related-unsupported-edge.json
+grep -q "member_of" target/uat/t64-related-help.txt
+```
+
+Expected result:
+
+- `member_of` is accepted as a public `syntax related --edge` filter for exact `--id` roots.
+- JSON output uses the provider envelope, records `query.edge == "member_of"` and returns the owning
+  platform fact through relationship metadata rather than storage rows.
+- Text output uses the normal related presentation and includes the owner fact.
+- Unsupported edge diagnostics and CLI help list the same supported edge set:
+  `has_type`, `returns`, `constructs` and `member_of`.
+- The command remains bounded to exact `--id` roots for edge-filtered traversal and does not become
+  a general graph-query language.
+
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 
 Related use case: UC-SH-001.

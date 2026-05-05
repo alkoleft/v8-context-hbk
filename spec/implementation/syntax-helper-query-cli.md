@@ -114,6 +114,7 @@ v8-context-hbk syntax search --index <index.sqlite> --query "Структура"
 v8-context-hbk syntax search --index <index.sqlite> --query "DataCompositionFilter" --mode fuzzy --format json
 v8-context-hbk syntax related --index <index.sqlite> --name "ОтборКомпоновкиДанных" --format json
 v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --format json
+v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --edge member_of --format json
 v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:Символы:ПС" --limit 5 --compact --format json
 v8-context-hbk syntax related --index <index.sqlite> --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
 ```
@@ -685,6 +686,14 @@ owner name is ambiguous, `syntax get --owner --member` and `syntax related --own
 the owner type candidates instead of filtering down to whichever duplicate happens to have the
 requested member. `syntax constructors <TYPE>` uses the same type identity resolution and returns a
 provider `ambiguous` envelope for duplicate type names.
+
+T64 implementation note: `member_of` is a public provider edge filter, not storage-only service
+data. `syntax related --id <owned-fact-id> --edge member_of` traverses the existing directed
+inverse owner edge from an owned fact to its owning fact and returns the normal provider envelope.
+Type-reference edge filters keep `query.kind: "type_references"`; `member_of` remains
+`query.kind: "related"` because it explains graph ownership rather than a property, return or
+constructor type reference. The first public edge-filter surface remains bounded to exact `--id`
+roots and is not a general graph-query language.
 
 ### `relations`
 
