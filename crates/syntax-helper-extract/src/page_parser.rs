@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use hbk_book::Toc;
+use hbk_book::{Toc, normalize_storage_path_owned};
 use hbk_docs::{PageContent, PageSource};
 use syntax_helper_model::*;
 
@@ -522,7 +522,7 @@ pub(crate) fn parse_syntax_page_content_with_index_owned(
     html_path: &str,
     raw_html: String,
 ) -> PageContent {
-    let normalized_page_path = html_path.trim_start_matches('/').to_string();
+    let normalized_page_path = normalize_storage_path_owned(html_path);
     let toc_page = toc_index.get(&normalized_page_path);
     let toc_path = toc_page.and_then(|page| page.toc_path.clone());
     let toc_title = toc_page.and_then(|page| page.toc_title.clone());

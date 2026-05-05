@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use zip::ZipArchive;
 
+use super::path::normalize_storage_path_owned;
 use super::toc::{Toc, TocError};
 use super::tokens::{TokenError, TokenParser, tokenize};
 use hbk_container::{ContainerError, HbkContainer};
@@ -227,7 +228,7 @@ impl HbkBook {
         let mut pages = BTreeMap::new();
         let mut reader = self.file_storage_reader()?;
         for path in paths {
-            let entry_name = normalize_storage_path(path).to_string();
+            let entry_name = normalize_storage_path_owned(path);
             if pages.contains_key(&entry_name) {
                 continue;
             }
@@ -288,7 +289,7 @@ impl FileStorageReader {
     }
 
     pub fn read_file(&mut self, path: &str) -> Result<Vec<u8>, BookError> {
-        let entry_name = normalize_storage_path(path).to_string();
+        let entry_name = normalize_storage_path_owned(path);
         if entry_name.is_empty() {
             return Err(BookError::MissingZipEntry {
                 path: self.path.clone(),
@@ -395,14 +396,10 @@ fn list_storage_page_paths(path: &Path, bytes: &[u8]) -> Result<Vec<String>, Boo
             })?;
         let name = entry.name();
         if !entry.is_dir() && !name.starts_with("__") {
-            paths.push(name.trim_start_matches('/').to_string());
+            paths.push(normalize_storage_path_owned(name));
         }
     }
     Ok(paths)
-}
-
-pub fn normalize_storage_path(path: &str) -> &str {
-    path.trim_start_matches('/')
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -515,12 +512,6 @@ mod tests {
         assert_eq!(meta.book_name, "Interface");
         assert_eq!(meta.description, "fmtdui");
         assert_eq!(meta.tags, vec!["tag1", "tag2"]);
-    }
-
-    #[test]
-    fn normalizes_storage_paths() {
-        assert_eq!(normalize_storage_path("/docs/page.html"), "docs/page.html");
-        assert_eq!(normalize_storage_path("docs/page.html"), "docs/page.html");
     }
 
     #[test]

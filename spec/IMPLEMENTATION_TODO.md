@@ -719,7 +719,7 @@ Completion notes:
 - Added focused CLI tests for both compact and full provider fact shapes.
 - Verification passed with `cargo test -p v8-context-hbk-cli` and `cargo test --workspace`.
 
-### [ ] T73. Normalize HBK/page path handling boundaries
+### [x] T73. Normalize HBK/page path handling boundaries
 
 Spec refs:
 
@@ -745,6 +745,17 @@ Verification:
 - `cargo test -p hbk-docs --lib`
 - `cargo test -p syntax-helper-extract --lib`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Consolidated shared storage/page path normalization in `hbk-book` and reused it from TOC lookup,
+  FileStorage reads, documentation page parsing and Syntax Assistant page-source parsing.
+- Kept documentation link-target normalization and Syntax Assistant member-link normalization as
+  distinct boundary functions because they resolve fragments, schemes, relative paths and
+  owner/member anchors with different semantics.
+- Preserved observable CLI/export/parser behavior; no UAT or acceptance baseline shape changed.
+- Verification passed with `cargo test -p hbk-book --lib`, `cargo test -p hbk-docs --lib`,
+  `cargo test -p syntax-helper-extract --lib` and `cargo test --workspace`.
 
 ### [ ] T74. Specify query-table syntax fallback removal
 

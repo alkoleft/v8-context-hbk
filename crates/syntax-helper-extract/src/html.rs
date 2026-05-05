@@ -1,3 +1,4 @@
+use hbk_book::normalize_storage_path_owned;
 use hbk_docs::PageContent;
 use scraper::{Html, Selector};
 use syntax_helper_model::{LocalizedName, MemberLink};
@@ -492,7 +493,7 @@ fn normalize_member_href(current_html_path: &str, href: &str) -> String {
         .unwrap_or(href);
     let path = without_scheme.split(['#', '?']).next().unwrap_or_default();
     if path.starts_with('/') || path.starts_with("objects/") {
-        return path.trim_start_matches('/').to_string();
+        return normalize_storage_path_owned(path);
     }
     let base = current_html_path
         .rsplit_once('/')

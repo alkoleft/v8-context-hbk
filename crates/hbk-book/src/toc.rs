@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::normalize_storage_path_owned;
+
 use super::tokens::{TokenError, TokenParser, tokenize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,7 +99,7 @@ impl Toc {
     }
 
     pub fn find_by_html_path(&self, html_path: &str) -> Option<&TocPage> {
-        let normalized = html_path.trim_start_matches('/');
+        let normalized = normalize_storage_path_owned(html_path);
         self.flat_pages()
             .find(|page| page.page.html_path == normalized)
             .map(|page| page.page)
@@ -199,10 +201,8 @@ fn parse_chunk(parser: &mut TokenParser) -> Result<TocChunk, TocError> {
     parser.number("Properties: expected first number")?;
     parser.number("Properties: expected second number")?;
     let title = parse_title(parser)?;
-    let html_path = parser
-        .string("Properties: expected HTML path")?
-        .trim_start_matches('/')
-        .to_string();
+    let raw_html_path = parser.string("Properties: expected HTML path")?;
+    let html_path = normalize_storage_path_owned(&raw_html_path);
     parser.expect("}", "Properties: expected closing '}'")?;
     parser.expect("}", "Chunk: expected closing '}'")?;
     Ok(TocChunk {

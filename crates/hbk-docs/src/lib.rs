@@ -4,7 +4,10 @@ use std::path::{Path, PathBuf};
 use scraper::node::Node;
 use scraper::{ElementRef, Html, Selector};
 
-use hbk_book::{BookError, FileStorageReader, HbkBook, Toc, normalize_storage_path};
+use hbk_book::{
+    BookError, FileStorageReader, HbkBook, Toc, normalize_storage_path_owned,
+    normalize_storage_path_segments,
+};
 
 #[derive(Debug)]
 pub struct DocumentationReader<'a> {
@@ -49,7 +52,7 @@ impl DocumentationPageLoader<'_> {
                 .read_page(html_path)
                 .map_err(|source| DocumentationError::PageRead {
                     path: self.book.path().to_path_buf(),
-                    html_path: normalize_storage_path(html_path).to_string(),
+                    html_path: normalize_storage_path_owned(html_path),
                     source,
                 })?;
         Ok(parse_page_html(
@@ -156,7 +159,7 @@ pub fn parse_page_html(
     raw_html: &str,
     mut storage_contains: impl FnMut(&str) -> bool,
 ) -> PageContent {
-    let normalized_page_path = normalize_storage_path(html_path).to_string();
+    let normalized_page_path = normalize_storage_path_owned(html_path);
     let toc_page = toc
         .flat_pages()
         .find(|flat_page| flat_page.page.html_path == normalized_page_path);
@@ -427,25 +430,11 @@ fn normalize_link_target(current_html_path: &str, href: &str) -> Option<String> 
             _ => path_part.to_string(),
         }
     };
-    normalize_path_segments(&candidate)
+    normalize_storage_path_segments(&candidate)
 }
 
 fn is_unsupported_scheme(href: &str) -> bool {
     href.contains(':') && !href.starts_with("v8help://")
-}
-
-fn normalize_path_segments(path: &str) -> Option<String> {
-    let mut segments = Vec::new();
-    for segment in path.trim_start_matches('/').split('/') {
-        match segment {
-            "" | "." => {}
-            ".." => {
-                segments.pop()?;
-            }
-            value => segments.push(value),
-        }
-    }
-    (!segments.is_empty()).then(|| segments.join("/"))
 }
 
 #[cfg(test)]
