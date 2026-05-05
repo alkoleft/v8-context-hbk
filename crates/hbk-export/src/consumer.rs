@@ -15,15 +15,6 @@ pub(crate) struct ExportMetadata<'a> {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct RecordsEnvelope<'a, T: Serialize> {
-    pub(crate) schema_version: u32,
-    pub(crate) locale: &'a str,
-    pub(crate) source_locale: &'a str,
-    pub(crate) record_kind: &'static str,
-    pub(crate) records: &'a [T],
-}
-
-#[derive(Debug, Clone, Serialize)]
 struct ConsumerLocalizedName<'a> {
     primary: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]

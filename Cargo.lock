@@ -312,7 +312,6 @@ dependencies = [
 name = "hbk-export"
 version = "0.1.0"
 dependencies = [
- "hbk-book",
  "serde",
  "serde_json",
  "syntax-helper-model",

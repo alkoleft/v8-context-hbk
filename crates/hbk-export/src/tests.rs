@@ -1,19 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use hbk_book::BookLocale;
 use serde_json::Value;
 use syntax_helper_model::{self as model, PlatformContext};
 
 use super::*;
-
-#[test]
-fn root_locale_maps_to_export_locale_en() {
-    assert_eq!(
-        BookLocale::infer_from_path(Path::new("shcntx_root.hbk")).export_code(),
-        "en"
-    );
-}
 
 fn source() -> model::SyntaxHelperSource {
     model::SyntaxHelperSource {
@@ -120,6 +111,90 @@ fn assert_no_null_or_empty_array(value: &Value) {
     }
 }
 
+fn export_context_streaming(
+    dir: impl Into<PathBuf>,
+    locale: &str,
+    source_locale: &str,
+    context: PlatformContext,
+) -> JsonExportSummary {
+    use syntax_helper_model::SyntaxHelperSink as _;
+
+    let mut export = JsonExporter::new(dir)
+        .start_platform_context_stream(locale, source_locale)
+        .expect("streaming export must start");
+    for record in context.global_contexts {
+        export
+            .global_context(record)
+            .expect("global context must be accepted");
+    }
+    for record in context.global_methods {
+        export
+            .global_method(record)
+            .expect("global method must be writable");
+    }
+    for record in context.global_properties {
+        export
+            .global_property(record)
+            .expect("global property must be writable");
+    }
+    for record in context.global_context_events {
+        export
+            .global_context_event(record)
+            .expect("event must be writable");
+    }
+    for record in context.platform_types {
+        export
+            .platform_type(record)
+            .expect("platform type must be writable");
+    }
+    for record in context.query_tables {
+        export
+            .query_table(record)
+            .expect("query table must be accepted");
+    }
+    for record in context.type_methods {
+        export
+            .type_method(record)
+            .expect("type method must be writable");
+    }
+    for record in context.type_properties {
+        export
+            .type_property(record)
+            .expect("type property must be writable");
+    }
+    for record in context.table_fields {
+        export
+            .table_field(record)
+            .expect("table field must be accepted");
+    }
+    for record in context.table_parameters {
+        export
+            .table_parameter(record)
+            .expect("table parameter must be accepted");
+    }
+    for record in context.constructors {
+        export
+            .constructor(record)
+            .expect("constructor must be writable");
+    }
+    for record in context.enums {
+        export
+            .enum_definition(record)
+            .expect("enum definition must be accepted");
+    }
+    for record in context.enum_values {
+        export
+            .enum_value(record)
+            .expect("enum value must be accepted");
+    }
+    for record in context.diagnostics {
+        export
+            .diagnostic(record)
+            .expect("diagnostic must be writable");
+    }
+    export.finish().expect("streaming export must finish")
+}
+
 #[test]
 fn platform_context_serializes_with_source_provenance() {
     let source = source();
@@ -173,36 +248,6 @@ fn export_file_manifest_documents_canonical_json_files() {
 }
 
 #[test]
-fn records_envelope_json_is_parseable_and_non_empty() {
-    let dir =
-        std::env::temp_dir().join(format!("v8-context-hbk-export-test-{}", std::process::id()));
-    if dir.exists() {
-        fs::remove_dir_all(&dir).expect("stale export test dir must be removable");
-    }
-    fs::create_dir_all(&dir).expect("export test dir must be creatable");
-    let exporter = JsonExporter::new(&dir);
-    let path = exporter
-        .write_records(
-            "global-methods.json",
-            "en",
-            "root",
-            "global_method",
-            &Vec::<Value>::new(),
-        )
-        .expect("record envelope must be writable");
-
-    let json = fs::read_to_string(&path).expect("record envelope must be readable");
-    assert!(!json.is_empty());
-    let parsed: Value = serde_json::from_str(&json).expect("record envelope must be valid JSON");
-    assert_eq!(parsed["schema_version"], 11);
-    assert_eq!(parsed["locale"], "en");
-    assert_eq!(parsed["source_locale"], "root");
-    assert!(parsed.get("source_hbk").is_none());
-
-    fs::remove_dir_all(&dir).expect("export test dir must be removable");
-}
-
-#[test]
 fn exporter_writes_full_canonical_file_set() {
     let dir = std::env::temp_dir().join(format!(
         "v8-context-hbk-export-full-test-{}",
@@ -218,9 +263,7 @@ fn exporter_writes_full_canonical_file_set() {
     fs::write(dir.join("table-parameters.json"), "{}")
         .expect("stale table-parameters file must be writable");
 
-    let summary = JsonExporter::new(&dir)
-        .export_platform_context("en", "root", "shcntx_root.hbk", &PlatformContext::default())
-        .expect("full canonical export must be writable");
+    let summary = export_context_streaming(&dir, "en", "root", PlatformContext::default());
 
     assert_eq!(summary.files.len(), EXPORT_FILES.len() + 1);
     assert!(!dir.join("global-contexts.json").exists());
@@ -607,9 +650,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         ..PlatformContext::default()
     };
 
-    JsonExporter::new(&dir)
-        .export_platform_context("ru", "ru", "shcntx_ru.hbk", &context)
-        .expect("lean export must be writable");
+    export_context_streaming(&dir, "ru", "ru", context);
 
     assert!(!dir.join("global-contexts.json").exists());
     let metadata = read_json(dir.join("metadata.json"));

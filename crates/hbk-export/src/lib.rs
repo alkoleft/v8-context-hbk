@@ -5,7 +5,7 @@ mod manifest;
 mod stream;
 mod writer;
 
-pub use context::{JsonExportCounts, JsonExportSummary, JsonExporter, PlatformContextExporter};
+pub use context::{JsonExportCounts, JsonExportSummary, JsonExporter};
 pub use error::ExportError;
 pub use manifest::{EXPORT_FILES, ExportFile};
 pub use stream::StreamingSyntaxHelperExport;

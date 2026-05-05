@@ -219,7 +219,6 @@ pages are not ordinary platform types.
 Expected public concepts:
 
 - `JsonExporter`
-- `PlatformContextExporter`
 - `StreamingSyntaxHelperExport`
 - lean consumer export DTOs derived from the provenance-rich domain model
 - optional separate diagnostic/debug adapters when a concrete maintenance workflow requires them
@@ -227,9 +226,10 @@ Expected public concepts:
 Owns FR-EXPORT-001.
 
 The streaming export adapter consumes the `SyntaxHelperSink` boundary and writes canonical
-record-family JSON without retaining the full `PlatformContext`. The existing `PlatformContext`
-exporter remains available for in-memory model consumers and tests. Streaming export may use the
-lean sink detail mode to skip consumer-omitted navigation fields, but omission from JSON remains an
+record-family JSON without retaining the full `PlatformContext`. The previous in-memory
+`PlatformContext` exporter was provisional and is removed; repo-local exports and tests use the
+streaming `SyntaxHelperSink` path as the canonical writer. Streaming export may use the lean sink
+detail mode to skip consumer-omitted navigation fields, but omission from JSON remains an
 `hbk-export` adapter concern rather than an internal model constraint.
 
 Schema version 7 record-family JSON exposes structured `availability`, `examples`, `see_also`,

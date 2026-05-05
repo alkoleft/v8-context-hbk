@@ -283,7 +283,8 @@ fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
 
 fn syntax_export(book_path: PathBuf, output: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let book = HbkBook::open(book_path)?;
-    let mut export = JsonExporter::new(output).start_syntax_helper_stream(&book)?;
+    let mut export = JsonExporter::new(output)
+        .start_platform_context_stream(book.locale().export_code(), book.locale().source_code())?;
     if let Err(error) = SyntaxHelperReader::new(&book).extract_into(&mut export) {
         let _ = export.abort();
         return Err(Box::new(error));

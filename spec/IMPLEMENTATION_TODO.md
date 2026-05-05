@@ -625,7 +625,7 @@ Completion notes:
 - Verification passed with `cargo test -p syntax-helper-search --lib` and
   `cargo test --workspace`.
 
-### [ ] T70. Remove legacy in-memory export path
+### [x] T70. Remove legacy in-memory export path
 
 Spec refs:
 
@@ -645,6 +645,19 @@ Verification:
 
 - `cargo test -p hbk-export --lib`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Removed the provisional in-memory export API surface from `hbk-export`: `export_syntax_helper`,
+  `export_platform_context`, `PlatformContextExporter` and the now-unused record-envelope helper.
+- Removed the remaining `hbk-book` runtime dependency from `hbk-export`; locale inference stays at
+  the CLI/book boundary before starting the streaming export writer.
+- Kept `StreamingSyntaxHelperExport` / `SyntaxHelperSink` as the canonical export writer; repo-local
+  export tests now feed records through the streaming sink instead of materializing an export from
+  `PlatformContext`.
+- Consumer JSON shape stayed unchanged; `spec/implementation/components.md` now records that the
+  previous in-memory `PlatformContext` exporter was provisional and removed.
+- Verification passed with `cargo test -p hbk-export --lib` and `cargo test --workspace`.
 
 ### [ ] T71. Collapse duplicated `syntax get` query dispatch
 
