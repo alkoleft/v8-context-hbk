@@ -1276,6 +1276,12 @@ T76 changed the internal search-index schema to `schema_version=5` by adding the
 CLI contract did not change; existing schema version `4` search indexes are rebuildable service data
 and must be rebuilt before query commands open them.
 
+T81 changed the internal search-index schema to `schema_version=6` by adding
+`members_document_owner_idx` and `callables_document_owner_idx` for exact owner-type member and
+callable lookup through normalized `document_names` keys. The provider JSON and CLI contract did
+not change; existing schema version `5` search indexes are rebuildable service data and must be
+rebuilt before query commands open them.
+
 T57 defined analyzer query primitives as a spec-only contract over the existing CLI JSON provider
 boundary. The selected shape extends `syntax get`, `syntax constructors` and `syntax related` with
 analyzer-oriented query kinds for exact type identity resolution, member listing, owner/member

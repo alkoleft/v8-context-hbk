@@ -285,7 +285,7 @@ python3 - <<'PY'
 import sqlite3
 con = sqlite3.connect("file:target/uat/sh-search-ru.sqlite?mode=ro", uri=True)
 cur = con.cursor()
-assert cur.execute("select value from meta where key='schema_version'").fetchone()[0] == "5"
+assert cur.execute("select value from meta where key='schema_version'").fetchone()[0] == "6"
 document_columns = {row[1] for row in cur.execute("pragma table_info(documents)")}
 assert "signature_json" not in document_columns
 assert "preview" not in document_columns
@@ -309,6 +309,12 @@ where type='index'
   and name='type_identities_document_idx'
 limit 1
 """).fetchone()
+for index_name in ["members_document_owner_idx", "callables_document_owner_idx"]:
+    assert cur.execute("""
+    select 1 from sqlite_master
+    where type='index' and name=?
+    limit 1
+    """, (index_name,)).fetchone()
 assert cur.execute("""
 select 1 from parameters p
 join type_refs r on r.source_signature_id = p.signature_id
@@ -349,10 +355,11 @@ Expected result:
 - The index artifact is a SQLite database.
 - The database contains schema metadata plus deterministic document, exact-name, FTS and
   relationship-edge data.
-- The database uses search-index schema version `5`; analyzer-critical callable, parameter,
+- The database uses search-index schema version `6`; analyzer-critical callable, parameter,
   member and type-reference facts are present in normalized relational tables rather than
   `documents.signature_json` or presentation-only `documents.preview` columns.
-- Type identity lookup has an indexed join from lookup keys back to normalized type identities.
+- Type identity and exact owner-type member/callable lookup have indexed joins from lookup keys back
+  to normalized rows.
 - Type references to duplicate platform type names keep `target_type_name` but do not silently pin
   `target_type_id` to one hidden winner.
 - The index build records locale `ru`, source locale `ru`, source HBK identity and index/extraction

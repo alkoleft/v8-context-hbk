@@ -1021,3 +1021,46 @@ Completion notes:
   to preserve valid page/TOC reads and typed HBK path/entry behavior at the input boundary.
 - No new compatibility adapter, cache, streaming redesign or public JSON/export behavior was added.
 - Verification passed with `cargo test -p hbk-book --lib` and `cargo test --workspace`.
+
+### [x] T81. Replace remaining owner-type member/callable in-memory filters with indexed SQL lookup
+
+Spec refs:
+
+- T76
+- ADR-0004
+- ADR-0007
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Problem:
+
+- T76 replaced the broad type-identity scan, but similar mechanisms remain for
+  `member_by_owner_type_id` and `callable_by_owner_type_id`: they load all rows for an owner and
+  filter member/callable names in Rust.
+- The schema already has normalized `members` and `callables` tables; provider primitives should
+  use indexed storage for exact owner/member and owner/callable lookup.
+
+Scope:
+
+- Query `members` and `callables` by owner id plus normalized primary/alias name through SQLite
+  instead of loading all owner rows and filtering in memory.
+- Add or adjust focused indexes only if query-plan tests show the current indexes are insufficient.
+- Preserve ambiguity behavior, result ordering and provider JSON shape.
+- Do not change command names, normalized provider query kinds or SQLite public-contract policy.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- `member_by_owner_type_id` and `callable_by_owner_type_id` now use exact SQLite lookup through
+  normalized `document_names` keys joined to `members` / `callables` by owner type id, instead of
+  loading all owner rows and filtering hydrated documents in Rust.
+- Added focused document/owner indexes for member and callable exact lookup, raised the internal
+  search-index schema to `6`, and added query-plan regressions to keep the lookup on indexed SQL
+  paths.
+- Provider result ordering, ambiguity behavior, command names, query kinds and JSON shape remain
+  unchanged.
+- Verification passed with `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.

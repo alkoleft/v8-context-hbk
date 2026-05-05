@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use strsim::levenshtein;
 use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 5;
+pub const INDEX_SCHEMA_VERSION: u32 = 6;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 #[derive(Debug, Clone)]
@@ -716,19 +716,33 @@ impl SearchIndex {
         member: &str,
     ) -> Result<Vec<SearchHit>, SearchError> {
         let normalized_member = normalize_lookup_key(member);
-        let members = self.members_by_type_id(owner_type_id)?;
-        Ok(members
-            .into_iter()
-            .filter(|hit| {
-                normalize_lookup_key(&hit.document.name.primary) == normalized_member
-                    || hit
-                        .document
-                        .name
-                        .alias
-                        .as_deref()
-                        .is_some_and(|alias| normalize_lookup_key(alias) == normalized_member)
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
+                 d.owner_alias, d.signature_text, d.description \
+                 FROM document_names n \
+                 JOIN members m INDEXED BY members_document_owner_idx \
+                   ON m.document_id = n.document_id \
+                  AND m.owner_type_id = ?1 \
+                 JOIN documents d ON d.id = m.document_id \
+                 WHERE n.key = ?2 \
+                   AND n.key_kind IN ('primary', 'alias') \
+                 ORDER BY d.kind_priority, m.name_primary, d.id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map(params![owner_type_id, normalized_member], |row| {
+                Ok(SearchHit {
+                    document: document_from_row(row)?,
+                    score: 0,
+                })
             })
-            .collect())
+            .map_err(|source| self.sqlite(source))?;
+        let hits = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        self.hydrate_hits(hits)
     }
 
     pub fn constructors_by_name(&self, name: &str) -> Result<Vec<SearchHit>, SearchError> {
@@ -760,14 +774,18 @@ impl SearchIndex {
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
                  d.owner_alias, d.signature_text, d.description \
-                 FROM callables c \
+                 FROM document_names n \
+                 JOIN callables c INDEXED BY callables_document_owner_idx \
+                   ON c.document_id = n.document_id \
+                  AND c.owner_type_id = ?1 \
                  JOIN documents d ON d.id = c.document_id \
-                 WHERE c.owner_type_id = ?1 \
+                 WHERE n.key = ?2 \
+                   AND n.key_kind IN ('primary', 'alias') \
                  ORDER BY d.kind_priority, d.name_primary, d.id",
             )
             .map_err(|source| self.sqlite(source))?;
         let rows = statement
-            .query_map([owner_type_id], |row| {
+            .query_map(params![owner_type_id, normalized_callable], |row| {
                 Ok(SearchHit {
                     document: document_from_row(row)?,
                     score: 0,
@@ -777,19 +795,7 @@ impl SearchIndex {
         let hits = rows
             .collect::<Result<Vec<_>, _>>()
             .map_err(|source| self.sqlite(source))?;
-        let hits = self.hydrate_hits(hits)?;
-        Ok(hits
-            .into_iter()
-            .filter(|hit| {
-                normalize_lookup_key(&hit.document.name.primary) == normalized_callable
-                    || hit
-                        .document
-                        .name
-                        .alias
-                        .as_deref()
-                        .is_some_and(|alias| normalize_lookup_key(alias) == normalized_callable)
-            })
-            .collect())
+        self.hydrate_hits(hits)
     }
 
     pub fn search(
@@ -1767,7 +1773,9 @@ fn create_lookup_indexes(connection: &Connection, path: &Path) -> Result<(), Sea
              CREATE INDEX type_identities_name_idx ON type_identities(name_primary, name_alias, type_id);
              CREATE INDEX type_identities_document_idx ON type_identities(document_id);
              CREATE INDEX members_owner_idx ON members(owner_type_id, member_kind, name_primary, document_id);
+             CREATE INDEX members_document_owner_idx ON members(document_id, owner_type_id);
              CREATE INDEX callables_document_idx ON callables(document_id, callable_kind);
+             CREATE INDEX callables_document_owner_idx ON callables(document_id, owner_type_id);
              CREATE INDEX signatures_callable_idx ON signatures(callable_id, ordinal);
              CREATE INDEX parameters_signature_idx ON parameters(signature_id, ordinal);
              CREATE INDEX type_refs_source_idx ON type_refs(source_document_id, ref_kind, ordinal);
@@ -3514,6 +3522,71 @@ mod tests {
     }
 
     #[test]
+    fn owner_type_member_and_callable_lookup_match_primary_and_alias_names() {
+        let path = temp_path("owner-type-primary-alias-lookup.sqlite");
+        let mut context = fixture_context();
+        context.type_properties.push(model::PlatformProperty {
+            owner: name("НастройкиКомпоновкиДанных", None),
+            name: name("ПользовательскийОтбор", Some("CustomFilter")),
+            semantic: model::SemanticContext::default(),
+            usage: None,
+            type_refs: vec![model::TypeRef {
+                name: "ОтборКомпоновкиДанных".to_string(),
+            }],
+            description: Some("ПользовательскийОтбор description".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source("НастройкиКомпоновкиДанных.ПользовательскийОтбор"),
+        });
+        context.type_methods.push(model::PlatformMethod {
+            owner: name("ОтборКомпоновкиДанных", None),
+            name: name("Найти", Some("Find")),
+            semantic: model::SemanticContext::default(),
+            signatures: vec![model::Signature {
+                text: "Найти()".to_string(),
+                parameters: Vec::new(),
+                variant: None,
+            }],
+            return_types: vec![model::TypeRef {
+                name: "ЭлементОтбораКомпоновкиДанных".to_string(),
+            }],
+            description: Some("Найти description".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source("ОтборКомпоновкиДанных.Найти"),
+        });
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let member_by_primary = index
+            .member_by_owner_type_id(
+                "platform_type:НастройкиКомпоновкиДанных",
+                "ПользовательскийОтбор",
+            )
+            .expect("member primary lookup must work");
+        let member_by_alias = index
+            .member_by_owner_type_id("platform_type:НастройкиКомпоновкиДанных", "CustomFilter")
+            .expect("member alias lookup must work");
+        assert_eq!(member_by_primary, member_by_alias);
+        assert_eq!(member_by_alias.len(), 1);
+        assert_eq!(
+            member_by_alias[0].document.id,
+            "type_property:platform_type:НастройкиКомпоновкиДанных:ПользовательскийОтбор"
+        );
+
+        let callable_by_primary = index
+            .callable_by_owner_type_id("platform_type:ОтборКомпоновкиДанных", "Найти")
+            .expect("callable primary lookup must work");
+        let callable_by_alias = index
+            .callable_by_owner_type_id("platform_type:ОтборКомпоновкиДанных", "Find")
+            .expect("callable alias lookup must work");
+        assert_eq!(callable_by_primary, callable_by_alias);
+        assert_eq!(callable_by_alias.len(), 1);
+        assert_eq!(
+            callable_by_alias[0].document.id,
+            "type_method:platform_type:ОтборКомпоновкиДанных:Найти"
+        );
+    }
+
+    #[test]
     fn keyword_search_prefers_exact_identity_for_simple_symbol() {
         let path = temp_path("simple-symbol-ranking.sqlite");
         let context = model::PlatformContext {
@@ -4246,6 +4319,100 @@ mod tests {
         assert!(
             !plan.iter().any(|detail| detail == "SCAN t"),
             "type identity lookup must not scan all type identities: {plan:?}"
+        );
+    }
+
+    #[test]
+    fn owner_type_exact_lookups_use_indexed_sql_plan() {
+        let path = temp_path("owner-type-lookup-query-plan.sqlite");
+        build_test_index_from_context(&path, &metadata(), &fixture_context())
+            .expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let mut member_statement = index
+            .connection
+            .prepare(
+                "EXPLAIN QUERY PLAN
+                 SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary,
+                 d.owner_alias, d.signature_text, d.description
+                 FROM document_names n
+                 JOIN members m INDEXED BY members_document_owner_idx
+                   ON m.document_id = n.document_id
+                  AND m.owner_type_id = ?1
+                 JOIN documents d ON d.id = m.document_id
+                 WHERE n.key = ?2
+                   AND n.key_kind IN ('primary', 'alias')
+                 ORDER BY d.kind_priority, m.name_primary, d.id",
+            )
+            .expect("member query plan must prepare");
+        let member_plan = member_statement
+            .query_map(
+                params![
+                    "platform_type:НастройкиКомпоновкиДанных",
+                    normalize_lookup_key("Отбор")
+                ],
+                |row| row.get::<_, String>(3),
+            )
+            .expect("member query plan must run")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("member query plan rows must be readable");
+        assert!(
+            member_plan
+                .iter()
+                .any(|detail| detail.contains("document_names_key_idx"))
+        );
+        assert!(
+            member_plan
+                .iter()
+                .any(|detail| detail.contains("members_document_owner_idx")),
+            "member lookup must use document/owner index: {member_plan:?}"
+        );
+        assert!(
+            !member_plan.iter().any(|detail| detail == "SCAN m"),
+            "member lookup must not scan all member rows: {member_plan:?}"
+        );
+
+        let mut callable_statement = index
+            .connection
+            .prepare(
+                "EXPLAIN QUERY PLAN
+                 SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary,
+                 d.owner_alias, d.signature_text, d.description
+                 FROM document_names n
+                 JOIN callables c INDEXED BY callables_document_owner_idx
+                   ON c.document_id = n.document_id
+                  AND c.owner_type_id = ?1
+                 JOIN documents d ON d.id = c.document_id
+                 WHERE n.key = ?2
+                   AND n.key_kind IN ('primary', 'alias')
+                 ORDER BY d.kind_priority, d.name_primary, d.id",
+            )
+            .expect("callable query plan must prepare");
+        let callable_plan = callable_statement
+            .query_map(
+                params![
+                    "platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных",
+                    normalize_lookup_key("Добавить")
+                ],
+                |row| row.get::<_, String>(3),
+            )
+            .expect("callable query plan must run")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("callable query plan rows must be readable");
+        assert!(
+            callable_plan
+                .iter()
+                .any(|detail| detail.contains("document_names_key_idx"))
+        );
+        assert!(
+            callable_plan
+                .iter()
+                .any(|detail| detail.contains("callables_document_owner_idx")),
+            "callable lookup must use document/owner index: {callable_plan:?}"
+        );
+        assert!(
+            !callable_plan.iter().any(|detail| detail == "SCAN c"),
+            "callable lookup must not scan all callable rows: {callable_plan:?}"
         );
     }
 
