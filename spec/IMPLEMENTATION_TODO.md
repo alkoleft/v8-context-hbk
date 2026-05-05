@@ -1151,3 +1151,40 @@ Completion notes:
   when syntax is absent or empty.
 - Verification passed with `cargo test -p syntax-helper-extract --lib`,
   `cargo test -p hbk-export --lib`, `cargo fmt --check` and `cargo test --workspace`.
+
+### [x] T84. Replace query-table member owner path rewriting with TOC-derived owner context
+
+Spec refs:
+
+- ADR-0005
+- FR-SH-003
+- `spec/implementation/components.md`
+
+Problem:
+
+- Query table fields and parameters still infer their owner by rewriting member HTML paths with
+  `/fields/` or `/params/`, then falling back to a raw path-derived string when the table page is
+  not found.
+- ADR-0005 and the component spec prefer semantic ownership from TOC context over suffix/path
+  classification when reading Syntax Assistant facts.
+
+Scope:
+
+- Carry explicit TOC-derived query-table owner context from catalog traversal into field and
+  parameter parsing.
+- Remove the raw path string fallback for owner names; missing owner context should become a
+  deterministic diagnostic or typed unsupported source condition.
+- Preserve source provenance in diagnostics: HBK path, TOC path, HTML path and page title where
+  available.
+- Do not broaden this task into non-query-table parser rewrites.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Query table field and parameter owners are now resolved from TOC traversal context carried by each
+  `CatalogPage`; repeated member HTML paths keep the owner from the current catalog branch instead

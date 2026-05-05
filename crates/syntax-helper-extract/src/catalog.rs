@@ -3,6 +3,7 @@ use std::path::Path;
 use hbk_book::{FlatTocPage, TocPage};
 use syntax_helper_model::*;
 
+use crate::html::name_from_text;
 use crate::label_match::has_token_prefix;
 
 pub(crate) fn collect_catalog_pages(
@@ -18,13 +19,16 @@ pub(crate) fn collect_catalog_pages(
         source: source_from_toc(hbk_path, locale, root_flat_page),
     });
     let ancestors = vec![root_page];
+    let mut current_query_table_owner = is_query_table_page_path(&root_page.html_path)
+        .then(|| semantic_page_name(locale, root_page));
     for (index, child) in root_page.children.iter().enumerate() {
-        collect_child_catalog_pages(
+        current_query_table_owner = collect_child_catalog_pages(
             hbk_path,
             locale,
             child,
             &ancestors,
             root_flat_page.index_path.child(index),
+            current_query_table_owner,
             &mut pages,
         );
     }
@@ -37,13 +41,24 @@ fn collect_child_catalog_pages(
     page: &TocPage,
     ancestors: &[&TocPage],
     toc_path: hbk_book::TocPath,
+    current_query_table_owner: Option<LocalizedName>,
     pages: &mut Vec<CatalogPage>,
-) {
+) -> Option<LocalizedName> {
     let branch = branch_kind(page, ancestors);
     let class = classify_catalog_page(page, ancestors, branch);
+    let page_query_table_owner = (class == PageClass::QueryTable)
+        .then(|| semantic_page_name(locale, page))
+        .or_else(|| current_query_table_owner.clone());
     pages.push(CatalogPage {
         class,
-        semantic: semantic_context(locale, branch, class, page, ancestors),
+        semantic: semantic_context(
+            locale,
+            branch,
+            class,
+            page,
+            ancestors,
+            page_query_table_owner.as_ref(),
+        ),
         source: SyntaxHelperSource {
             hbk_path: hbk_path.to_path_buf(),
             locale: locale.to_string(),
@@ -54,15 +69,22 @@ fn collect_child_catalog_pages(
     });
     let mut child_ancestors = ancestors.to_vec();
     child_ancestors.push(page);
+    let mut child_query_table_owner = page_query_table_owner.clone();
     for (index, child) in page.children.iter().enumerate() {
-        collect_child_catalog_pages(
+        child_query_table_owner = collect_child_catalog_pages(
             hbk_path,
             locale,
             child,
             &child_ancestors,
             toc_path.child(index),
+            child_query_table_owner,
             pages,
         );
+    }
+    if class == PageClass::QueryTable {
+        page_query_table_owner
+    } else {
+        current_query_table_owner
     }
 }
 
@@ -150,9 +172,10 @@ fn semantic_context(
     class: PageClass,
     page: &TocPage,
     ancestors: &[&TocPage],
+    query_table_owner: Option<&LocalizedName>,
 ) -> SemanticContext {
     let family = record_family(class);
-    let owner_path = owner_path(locale, class, page, ancestors);
+    let owner_path = owner_path(locale, class, page, ancestors, query_table_owner);
     SemanticContext::new(branch, family).with_owner_path(owner_path)
 }
 
@@ -234,6 +257,7 @@ fn owner_path(
     class: PageClass,
     page: &TocPage,
     ancestors: &[&TocPage],
+    query_table_owner: Option<&LocalizedName>,
 ) -> Vec<LocalizedName> {
     match class {
         PageClass::QueryTable => ancestors
@@ -241,11 +265,18 @@ fn owner_path(
             .filter(|ancestor| include_query_owner_path_node(ancestor))
             .map(|ancestor| semantic_page_name(locale, ancestor))
             .collect(),
-        PageClass::QueryTableField | PageClass::QueryTableParameter => ancestors
-            .iter()
-            .filter(|ancestor| include_query_owner_path_node(ancestor))
-            .map(|ancestor| semantic_page_name(locale, ancestor))
-            .collect(),
+        PageClass::QueryTableField | PageClass::QueryTableParameter => {
+            let Some(owner) = query_table_owner else {
+                return Vec::new();
+            };
+            let mut owner_path = ancestors
+                .iter()
+                .filter(|ancestor| include_query_owner_path_node(ancestor))
+                .map(|ancestor| semantic_page_name(locale, ancestor))
+                .collect::<Vec<_>>();
+            owner_path.push(owner.clone());
+            owner_path
+        }
         PageClass::ModuleEvent
         | PageClass::TypeEvent
         | PageClass::UnknownEvent
@@ -280,6 +311,13 @@ fn include_query_owner_path_node(page: &TocPage) -> bool {
         || label.contains("register")
 }
 
+fn is_query_table_page_path(path: &str) -> bool {
+    path.starts_with("tables/")
+        && path.ends_with(".html")
+        && !path.contains("/fields/")
+        && !path.contains("/params/")
+}
+
 fn semantic_page_name(locale: &str, page: &TocPage) -> LocalizedName {
     let title = if matches!(locale, "root" | "en") && !page.title.en.is_empty() {
         &page.title.en
@@ -288,10 +326,7 @@ fn semantic_page_name(locale: &str, page: &TocPage) -> LocalizedName {
     } else {
         page.title.display()
     };
-    LocalizedName {
-        primary: title.trim().to_string(),
-        alias: None,
-    }
+    name_from_text(title)
 }
 
 fn normalized_title(page: &TocPage) -> String {

@@ -1,7 +1,7 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::path::Path;
 
-use hbk_book::{HbkBook, Toc, TocPage};
+use hbk_book::{HbkBook, Toc};
 use hbk_docs::{DocumentationReader, PageContent};
 use syntax_helper_model::*;
 
@@ -121,10 +121,10 @@ fn extraction_discovery(mut discovery: RootDiscovery) -> RootDiscovery {
     discovery
 }
 
-fn parse_extraction_pages_into<S>(
+pub(crate) fn parse_extraction_pages_into<S>(
     _hbk_path: &Path,
-    locale: &str,
-    toc: &Toc,
+    _locale: &str,
+    _toc: &Toc,
     discovery: RootDiscovery,
     mut load_page: impl FnMut(&str) -> Result<PageContent, SyntaxHelperError>,
     sink: &mut S,
@@ -134,7 +134,6 @@ where
 {
     let mut visited = BTreeSet::new();
     let record_detail_mode = sink.record_detail_mode();
-    let query_table_owners = QueryTableOwnerIndex::new(toc, locale);
     let RootDiscovery { roots, diagnostics } = discovery;
 
     for diagnostic in diagnostics {
@@ -215,18 +214,32 @@ where
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
                 PageClass::QueryTableField => {
-                    let owner = query_table_owners.owner(&catalog_page.source.html_path);
-                    let mut field = parse_query_table_field(&content, owner, source);
-                    field.semantic = catalog_page.semantic.clone();
-                    sink.table_field(field)
-                        .map_err(SyntaxHelperStreamError::Sink)?
+                    if let Some(owner) = query_table_member_owner(&catalog_page.semantic) {
+                        let mut field = parse_query_table_field(&content, owner, source);
+                        field.semantic = catalog_page.semantic.clone();
+                        sink.table_field(field)
+                            .map_err(SyntaxHelperStreamError::Sink)?;
+                    } else {
+                        sink.diagnostic(missing_query_table_owner_diagnostic(
+                            source,
+                            "query_table_field",
+                        ))
+                        .map_err(SyntaxHelperStreamError::Sink)?;
+                    }
                 }
                 PageClass::QueryTableParameter => {
-                    let owner = query_table_owners.owner(&catalog_page.source.html_path);
-                    let mut parameter = parse_query_table_parameter(&content, owner, source);
-                    parameter.semantic = catalog_page.semantic.clone();
-                    sink.table_parameter(parameter)
-                        .map_err(SyntaxHelperStreamError::Sink)?
+                    if let Some(owner) = query_table_member_owner(&catalog_page.semantic) {
+                        let mut parameter = parse_query_table_parameter(&content, owner, source);
+                        parameter.semantic = catalog_page.semantic.clone();
+                        sink.table_parameter(parameter)
+                            .map_err(SyntaxHelperStreamError::Sink)?;
+                    } else {
+                        sink.diagnostic(missing_query_table_owner_diagnostic(
+                            source,
+                            "query_table_parameter",
+                        ))
+                        .map_err(SyntaxHelperStreamError::Sink)?;
+                    }
                 }
                 PageClass::Constructor => {
                     let mut constructor = parse_constructor(&content, source);
@@ -266,6 +279,26 @@ fn missing_query_table_syntax_diagnostic(table: &QueryTable) -> SyntaxHelperDiag
         parser_stage: "query_table",
         message: "Query table page has no source Syntax section or has an empty Syntax section; syntax and identifier are not synthesized from the table display name".to_string(),
     }
+}
+
+fn missing_query_table_owner_diagnostic(
+    source: SyntaxHelperSource,
+    parser_stage: &'static str,
+) -> SyntaxHelperDiagnostic {
+    SyntaxHelperDiagnostic {
+        severity: DiagnosticSeverity::Warning,
+        code: "MISSING_QUERY_TABLE_OWNER_CONTEXT",
+        source,
+        parser_stage,
+        message: "Query table member page has no TOC-derived query table owner context; owner is not synthesized from the member HTML path".to_string(),
+    }
+}
+
+pub(crate) fn query_table_member_owner(semantic: &SemanticContext) -> Option<LocalizedName> {
+    if semantic.branch_kind != BranchKind::QueryTables {
+        return None;
+    }
+    semantic.owner_path.last().cloned()
 }
 
 fn query_table_identifier(syntax: Option<&LocalizedName>, name: &str) -> Option<String> {
@@ -535,51 +568,4 @@ fn template_parameters(name: &str) -> Vec<String> {
         rest = &after_start[end + 1..];
     }
     parameters
-}
-
-pub(crate) struct QueryTableOwnerIndex<'a> {
-    locale: &'a str,
-    pages_by_html_path: HashMap<&'a str, &'a TocPage>,
-}
-
-impl<'a> QueryTableOwnerIndex<'a> {
-    pub(crate) fn new(toc: &'a Toc, locale: &'a str) -> Self {
-        let pages_by_html_path = toc
-            .flat_pages()
-            .map(|flat_page| (flat_page.page.html_path.as_str(), flat_page.page))
-            .collect();
-        Self {
-            locale,
-            pages_by_html_path,
-        }
-    }
-
-    pub(crate) fn owner(&self, member_html_path: &str) -> LocalizedName {
-        query_table_html_path(member_html_path)
-            .and_then(|table_html_path| self.pages_by_html_path.get(table_html_path.as_str()))
-            .map(|page| self.page_name(page))
-            .unwrap_or_else(|| LocalizedName {
-                primary: query_table_html_path(member_html_path)
-                    .unwrap_or_else(|| member_html_path.to_string()),
-                alias: None,
-            })
-    }
-
-    fn page_name(&self, page: &TocPage) -> LocalizedName {
-        let title = if matches!(self.locale, "root" | "en") && !page.title.en.is_empty() {
-            &page.title.en
-        } else if self.locale == "ru" && !page.title.ru.is_empty() {
-            &page.title.ru
-        } else {
-            page.title.display()
-        };
-        name_from_text(title)
-    }
-}
-
-fn query_table_html_path(member_html_path: &str) -> Option<String> {
-    member_html_path
-        .split_once("/fields/")
-        .or_else(|| member_html_path.split_once("/params/"))
-        .map(|(table_path, _)| format!("{table_path}.html"))
 }

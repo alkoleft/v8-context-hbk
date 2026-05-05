@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::catalog::collect_catalog_pages;
-use crate::reader::QueryTableOwnerIndex;
+use crate::reader::{parse_extraction_pages_into, query_table_member_owner};
 use hbk_book::HbkBook;
 use hbk_book::Toc;
 use hbk_docs::{PageContent, parse_page_html};
@@ -218,10 +218,11 @@ fn supports_event_and_table_audit_families_and_keeps_toc_only_gap_diagnostic() {
     assert!(classes.contains(&PageClass::QueryTableParameter));
 
     let mut sink = RecordingSink::default();
-    extract_with_loader_into(
+    parse_extraction_pages_into(
         Path::new("shcntx_ru.hbk"),
         "ru",
         &toc,
+        discovery,
         |html_path| {
             Ok(fixture_content_from_raw(
                 &toc,
@@ -453,10 +454,31 @@ fn extraction_reports_missing_query_table_syntax_without_dropping_record() {
     .expect("fixture TOC must parse");
     let mut sink = RecordingSink::default();
 
-    extract_with_loader_into(
+    let discovery = RootDiscovery {
+        roots: vec![RootSection {
+            kind: RootSectionKind::TypeObjectCatalog,
+            source: SyntaxHelperSource {
+                hbk_path: PathBuf::from("shcntx_ru.hbk"),
+                locale: "ru".to_string(),
+                toc_path: Some("0".to_string()),
+                html_path: "objects/catalog234.html".to_string(),
+                page_title: "Универсальные коллекции значений".to_string(),
+            },
+            pages: collect_catalog_pages(
+                Path::new("shcntx_ru.hbk"),
+                "ru",
+                &toc.pages()[0],
+                &toc.flat_pages().next().expect("root flat page must exist"),
+            ),
+        }],
+        diagnostics: Vec::new(),
+    };
+
+    parse_extraction_pages_into(
         Path::new("shcntx_ru.hbk"),
         "ru",
         &toc,
+        discovery,
         |html_path| {
             let html = match html_path {
                 "objects/catalog234.html" => {
@@ -525,10 +547,31 @@ fn extraction_assigns_query_table_identity_from_toc_context() {
     .expect("fixture TOC must parse");
     let mut sink = RecordingSink::default();
 
-    extract_with_loader_into(
+    let discovery = RootDiscovery {
+        roots: vec![RootSection {
+            kind: RootSectionKind::TypeObjectCatalog,
+            source: SyntaxHelperSource {
+                hbk_path: PathBuf::from("shcntx_ru.hbk"),
+                locale: "ru".to_string(),
+                toc_path: Some("0".to_string()),
+                html_path: "objects/catalog234.html".to_string(),
+                page_title: "Универсальные коллекции значений".to_string(),
+            },
+            pages: collect_catalog_pages(
+                Path::new("shcntx_ru.hbk"),
+                "ru",
+                &toc.pages()[0],
+                &toc.flat_pages().next().expect("root flat page must exist"),
+            ),
+        }],
+        diagnostics: Vec::new(),
+    };
+
+    parse_extraction_pages_into(
         Path::new("shcntx_ru.hbk"),
         "ru",
         &toc,
+        discovery,
         |html_path| {
             let html = match html_path {
                 "objects/catalog234.html" => {
@@ -573,7 +616,7 @@ fn extraction_assigns_query_table_identity_from_toc_context() {
 }
 
 #[test]
-fn resolves_query_table_owner_from_single_toc_index_for_ru_and_root_sources() {
+fn resolves_query_table_member_owner_from_toc_semantic_context() {
     let toc = Toc::parse(
         r#"{
                 5
@@ -586,30 +629,181 @@ fn resolves_query_table_owner_from_single_toc_index_for_ru_and_root_sources() {
     )
     .expect("fixture TOC must parse");
 
-    let ru_index = QueryTableOwnerIndex::new(&toc, "ru");
-    let root_index = QueryTableOwnerIndex::new(&toc, "root");
-
-    let ru_field_owner = ru_index.owner("tables/table58/fields/Presentation464.html");
+    let ru_pages = collect_catalog_pages(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc.pages()[0],
+        &toc.flat_pages().next().expect("root flat page must exist"),
+    );
+    let ru_field_owner = ru_pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("Presentation464.html"))
+        .and_then(|page| query_table_member_owner(&page.semantic))
+        .expect("field owner must resolve");
     assert_eq!(ru_field_owner.primary, "Таблица бизнес-процессов");
     assert_eq!(
         ru_field_owner.alias.as_deref(),
         Some("Business Process Table")
     );
 
-    let root_field_owner = root_index.owner("tables/table58/fields/Presentation464.html");
+    let root_pages = collect_catalog_pages(
+        Path::new("shcntx_root.hbk"),
+        "root",
+        &toc.pages()[0],
+        &toc.flat_pages().next().expect("root flat page must exist"),
+    );
+    let root_field_owner = root_pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("Presentation464.html"))
+        .and_then(|page| query_table_member_owner(&page.semantic))
+        .expect("field owner must resolve");
     assert_eq!(root_field_owner.primary, "Business Process Table");
     assert_eq!(root_field_owner.alias, None);
 
-    let ru_parameter_owner = ru_index.owner("tables/catalog36/table42/params/param82.html");
+    let nested_flat = toc
+        .flat_pages()
+        .find(|page| page.page.html_path.ends_with("table42.html"))
+        .expect("nested table flat page must exist");
+    let ru_nested_pages = collect_catalog_pages(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc.pages()[1],
+        &nested_flat,
+    );
+    let ru_parameter_owner = ru_nested_pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("param82.html"))
+        .and_then(|page| query_table_member_owner(&page.semantic))
+        .expect("parameter owner must resolve");
     assert_eq!(ru_parameter_owner.primary, "Таблица критерия отбора");
     assert_eq!(
         ru_parameter_owner.alias.as_deref(),
         Some("Filter Criterion Table")
     );
 
-    let root_parameter_owner = root_index.owner("tables/catalog36/table42/params/param82.html");
+    let root_nested_pages = collect_catalog_pages(
+        Path::new("shcntx_root.hbk"),
+        "root",
+        &toc.pages()[1],
+        &nested_flat,
+    );
+    let root_parameter_owner = root_nested_pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("param82.html"))
+        .and_then(|page| query_table_member_owner(&page.semantic))
+        .expect("parameter owner must resolve");
     assert_eq!(root_parameter_owner.primary, "Filter Criterion Table");
     assert_eq!(root_parameter_owner.alias, None);
+}
+
+#[test]
+fn query_table_member_owner_does_not_fallback_to_rewritten_html_path() {
+    let toc = Toc::parse(
+        r#"{
+                2
+                {1,0,1,2,{0,0,{0,0,{"ru","Универсальные коллекции значений"}},"/objects/catalog234.html"}}
+                {2,1,0,{0,0,{0,0,{"ru","Поле без таблицы"}},"/tables/missing/fields/Field1.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+
+    let pages = collect_catalog_pages(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc.pages()[0],
+        &toc.flat_pages().next().expect("root flat page must exist"),
+    );
+    let field = pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("Field1.html"))
+        .expect("field page must be collected");
+
+    assert!(query_table_member_owner(&field.semantic).is_none());
+}
+
+#[test]
+fn extraction_reports_missing_query_table_member_owner_without_synthesizing_path_owner() {
+    let toc = Toc::parse(
+        r#"{
+                2
+                {1,0,1,2,{0,0,{0,0,{"ru","Универсальные коллекции значений"}},"/objects/catalog234.html"}}
+                {2,1,0,{0,0,{0,0,{"ru","Поле без таблицы"}},"/tables/missing/fields/Field1.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let mut sink = RecordingSink::default();
+
+    let discovery = RootDiscovery {
+        roots: vec![RootSection {
+            kind: RootSectionKind::TypeObjectCatalog,
+            source: SyntaxHelperSource {
+                hbk_path: PathBuf::from("shcntx_ru.hbk"),
+                locale: "ru".to_string(),
+                toc_path: Some("0".to_string()),
+                html_path: "objects/catalog234.html".to_string(),
+                page_title: "Универсальные коллекции значений".to_string(),
+            },
+            pages: collect_catalog_pages(
+                Path::new("shcntx_ru.hbk"),
+                "ru",
+                &toc.pages()[0],
+                &toc.flat_pages().next().expect("root flat page must exist"),
+            ),
+        }],
+        diagnostics: Vec::new(),
+    };
+
+    parse_extraction_pages_into(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc,
+        discovery,
+        |html_path| {
+            let html = match html_path {
+                "objects/catalog234.html" => {
+                    include_str!("../../../tests/fixtures/syntax-helper/root_catalog_types_ru.html")
+                }
+                "tables/missing/fields/Field1.html" => {
+                    r#"<html><body><h1 class="V8SH_pagetitle">Поле без таблицы</h1><p class="V8SH_heading">Поле без таблицы</p>Тип: Строка. Описание.</body></html>"#
+                }
+                other => panic!("unexpected fixture page load: {other}"),
+            };
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_ru.hbk",
+                "ru",
+                html_path,
+                html,
+            ))
+        },
+        &mut sink,
+    )
+    .expect("fixture extraction must stream");
+
+    assert!(
+        !sink
+            .seen
+            .iter()
+            .any(|record| record.starts_with("table_field:"))
+    );
+    let diagnostic = sink
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "MISSING_QUERY_TABLE_OWNER_CONTEXT")
+        .unwrap_or_else(|| {
+            panic!(
+                "missing owner diagnostic must be emitted; seen={:?}",
+                sink.seen
+            )
+        });
+    assert_eq!(diagnostic.parser_stage, "query_table_field");
+    assert_eq!(diagnostic.source.hbk_path, PathBuf::from("shcntx_ru.hbk"));
+    assert_eq!(diagnostic.source.toc_path.as_deref(), Some("0.0"));
+    assert_eq!(
+        diagnostic.source.html_path,
+        "tables/missing/fields/Field1.html"
+    );
+    assert_eq!(diagnostic.source.page_title, "Поле без таблицы");
 }
 
 #[test]
