@@ -181,8 +181,14 @@ Resolution path:
     longer prefers ownerless facts, owner-name/member roots report ambiguous owner type candidates
     before member filtering, and constructor lookup by duplicate type name returns a provider
     `ambiguous` envelope.
-14. **T61: Evaluate analyzer batch lookup needs.** Decide from primitive/UAT evidence whether
-    analyzer workflows need a batch CLI JSON command or another boundary decision.
+14. **T61: Evaluate analyzer batch lookup needs.** Completed as a measured no-batch decision for
+    the current accepted scenarios. The UAT-SH-018 expression-chain and constructor-chain workflow
+    used nine separate CLI JSON calls against the prebuilt T60 Russian index. Individual debug
+    command timings were `0.00-0.39 s`, and five repeated full-chain runs took `745-830 ms` total.
+    That stays within NFR-QUERY-001 for the accepted analyzer primitive workflow, so no batch
+    command, Rust API, service boundary or SQLite public contract is added now. Revisit batching
+    only when a concrete analyzer scenario proves that many-symbol lookup volume makes the current
+    one-process-per-query CLI JSON boundary insufficient.
 
 ## Non-Goals for This Plan
 

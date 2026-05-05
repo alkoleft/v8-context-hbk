@@ -1318,3 +1318,20 @@ duplicate `ЭлементыФормы` type candidates, ambiguous `Элемен�
 and related roots, ambiguous `syntax constructors "ЭлементыФормы"`, ambiguous ownerless/owned
 `ОтборКомпоновкиДанных` exact-name collision, and unambiguous
 `--owner-type-id "platform_type:ЭлементыФормы:Форма" --member "Добавить"`.
+
+T61 evaluated analyzer batch lookup needs after the primitive UAT and deferred a batch boundary.
+The accepted measurement used the prebuilt T60 Russian schema-v4 index at
+`target/uat/t60-sh-search-ru.sqlite`, so only the query path was measured. The UAT-SH-018
+expression-chain and constructor-chain flow was executed as nine separate CLI JSON calls:
+owner-type/member lookup for `НастройкиКомпоновкиДанных.Отбор`, member listing for
+`ОтборКомпоновкиДанных`, `has_type` traversal from `Элементы`, member listing for
+`КоллекцияЭлементовОтбораКомпоновкиДанных`, callable lookup for `Добавить`, member listing for
+`ЭлементОтбораКомпоновкиДанных`, type identity for `HTTPСоединение`, constructor lookup for
+`HTTPСоединение` and `constructs` traversal from the constructor fact. Individual debug command
+timings were `0.00 s`, `0.04 s`, `0.00 s`, `0.04 s`, `0.00 s`, `0.04 s`, `0.20 s`, `0.39 s` and
+`0.00 s`; five repeated full-chain runs took `828 ms`, `782 ms`, `762 ms`, `830 ms` and `745 ms`.
+The combined output size for the nine JSON responses was `48390` bytes. These measurements keep the
+accepted analyzer primitive workflow within NFR-QUERY-001 and do not prove a need for a batch CLI
+command, Rust API, daemon/service boundary or public SQLite table contract. Batch lookup remains a
+future task only if a concrete analyzer scenario proves many-symbol lookup volume that the current
+CLI JSON boundary cannot satisfy.

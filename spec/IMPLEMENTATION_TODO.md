@@ -18,10 +18,10 @@ export, schema, data-quality, performance, parser, provider, storage and query-s
 live in `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md` and
 `implementation/syntax-bsl-provider-plan.md`.
-Next active unchecked task is T61. The queued roadmap comes from
-`implementation/syntax-bsl-provider-plan.md`. All `syntax` scope work is oriented toward successful
-help during BSL development and code analysis, and toward a future typed local provider role for a
-BSL analyzer.
+No active unchecked task remains after T61. The queued roadmap comes from
+`implementation/syntax-bsl-provider-plan.md`; add the next concrete task there and in this ledger
+before implementing new scope. All `syntax` scope work is oriented toward successful help during BSL
+development and code analysis, and toward a future typed local provider role for a BSL analyzer.
 
 ## Loop Rule
 
@@ -212,7 +212,7 @@ Completion notes:
 - Verification passed with a fresh RU index at `target/uat/t60-sh-search-ru.sqlite` containing
   `25082` documents.
 
-### [ ] T61. Evaluate analyzer batch lookup needs after primitive UAT
+### [x] T61. Evaluate analyzer batch lookup needs after primitive UAT
 
 Spec refs:
 
@@ -235,3 +235,14 @@ Verification:
 - Recorded measurement or reasoned no-op conclusion in implementation/acceptance docs.
 - If batch is deferred, the reason references actual primitive/UAT usage.
 - If batch is selected, a follow-up task or ADR captures the exact boundary before implementation.
+
+Completion notes:
+
+- Measured the accepted UAT-SH-018 expression-chain and constructor-chain workflow as nine separate
+  CLI JSON calls against the prebuilt T60 Russian index
+  `target/uat/t60-sh-search-ru.sqlite`.
+- Individual debug command timings were `0.00-0.39 s`; five repeated full-chain runs took
+  `745-830 ms` total and emitted `48390` bytes across the nine JSON responses.
+- Batch lookup is deferred: the accepted primitive/UAT workflow stays within NFR-QUERY-001, and
+  ADR-0007 still keeps local CLI JSON as the first analyzer-provider boundary.
+- No Rust API, daemon, service boundary, public SQLite contract or batch command was added.
