@@ -757,7 +757,7 @@ Completion notes:
 - Verification passed with `cargo test -p hbk-book --lib`, `cargo test -p hbk-docs --lib`,
   `cargo test -p syntax-helper-extract --lib` and `cargo test --workspace`.
 
-### [ ] T74. Specify query-table syntax fallback removal
+### [x] T74. Specify query-table syntax fallback removal
 
 Spec refs:
 
@@ -782,6 +782,18 @@ Verification:
 - Follow-up implementation scope remains limited to the selected contract.
 - `git diff --check`
 
+Completion notes:
+
+- Selected the missing/empty query-table syntax contract for T75: keep the query table record and
+  nested field/parameter facts, omit consumer `syntax` and `identifier`, set
+  `table_role="unknown"` and emit a parser-maintenance `MISSING_QUERY_TABLE_SYNTAX` diagnostic with
+  source provenance.
+- Removed the old spec allowance that generic `Основная таблица` / `Main Table` names could act as
+  role fallback when syntax is missing.
+- UAT-SH-011 and UAT-SH-012 now describe the source-backed `Таблицы задач > Основная таблица` /
+  `Task Tables > Main Table` missing-syntax behavior that T75 must implement.
+- Verification passed with `git diff --check`.
+
 ### [ ] T75. Implement query-table syntax fallback removal
 
 Spec refs:
@@ -796,7 +808,8 @@ Scope:
 
 - Remove fallback-to-name behavior in `query_table_identifier` and `query_table_role` according to
   the T74-approved contract.
-- Emit the selected diagnostic or unsupported result for missing/empty syntax.
+- Emit the selected `MISSING_QUERY_TABLE_SYNTAX` diagnostic for missing/empty syntax while keeping
+  the query table record and nested field/parameter facts.
 - Update focused parser/export tests and any affected acceptance baseline notes.
 
 Verification:

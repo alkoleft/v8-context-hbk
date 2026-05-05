@@ -369,18 +369,21 @@ pages under the same owner family. The shape is:
   `БизнесПроцесс.<Имя бизнес-процесса> (BusinessProcess.<Имя бизнес-процесса>)`; the Russian form
   is `syntax.primary` and the parenthesized English form is `syntax.alias`.
 - `identifier`: a deterministic table identifier derived from the Syntax Assistant syntax and table
-  page name. Primary table identifiers use the leading syntax segment before the first dot, such as
-  `БизнесПроцесс` for `БизнесПроцесс.<Имя бизнес-процесса>`. Additional table identifiers use the
-  primary table identifier plus the table `name` normalized to CamelCase. Whitespace, hyphens and
-  other punctuation are word separators and are not copied into the identifier.
+  page name when a non-empty Syntax Assistant syntax section exists. Primary table identifiers use
+  the leading syntax segment before the first dot, such as `БизнесПроцесс` for
+  `БизнесПроцесс.<Имя бизнес-процесса>`. Additional table identifiers use the primary table
+  identifier plus the table `name` normalized to CamelCase. Whitespace, hyphens and other
+  punctuation are word separators and are not copied into the identifier. If the table page has no
+  syntax or an empty syntax section, the exporter must omit `identifier` instead of deriving it from
+  the table display name.
 - `owner_path`: deterministic semantic owner labels for the table family, such as
   `["Таблицы задач"]`, not raw TOC indexes, HBK paths or HTML paths.
 - `table_role`: `primary`, `additional` or `unknown`. A query table page whose syntax has at most
   two dot-separated semantic segments, such as `БизнесПроцесс.<Имя бизнес-процесса>` or
   `Task.<Task name>`, maps to `primary`. A page with a longer syntax, such as
-  `БизнесПроцесс.<Имя бизнес-процесса>.Точки`, maps to `additional`. Generic
-  "Основная таблица" / "Main table" page names remain a fallback primary signal when syntax is not
-  available.
+  `БизнесПроцесс.<Имя бизнес-процесса>.Точки`, maps to `additional`. If the table page has no
+  syntax or an empty syntax section, the role is `unknown`; generic "Основная таблица" /
+  "Main table" page names must not be used as a role fallback.
 - `description`: optional table description when parsed from the table page.
 - `fields`: array of table fields with string `name`, `types`, optional `description` and optional
   `note`.
@@ -390,7 +393,11 @@ pages under the same owner family. The shape is:
 
 If the table page can be identified from TOC but its HTML description cannot be parsed safely, the
 export must still emit the table record with `name`, `owner_path`, `table_role`, `fields` and
-`parameters`, and report parser gaps through diagnostics when appropriate.
+`parameters`, and report parser gaps through diagnostics when appropriate. If the table page is
+otherwise parsed but its syntax is missing or empty, the export must still emit the table record,
+omit `syntax` and `identifier`, set `table_role` to `unknown`, and add a parser-maintenance
+diagnostic with source provenance. This is a missing-source-fact diagnostic, not a reason to
+synthesize a consumer key from the page title.
 
 The export adapter writes the current contract files and `metadata.json.files` is the authoritative
 file inventory for that export. The exporter must not delete stale files from earlier schema versions
@@ -482,12 +489,18 @@ requirement must be specified in the event task without weakening the schema ver
 derivative-record omission rule.
 
 Schema version 11 promotes query table syntax and identifier to the consumer JSON contract and fixes
-query table role classification to prefer the `syntax.primary` shape over table page title. Tables such as
-`Таблица бизнес-процессов` / `Business Process Table`, whose syntax is
+query table role classification to prefer the `syntax.primary` shape over table page title. Tables
+such as `Таблица бизнес-процессов` / `Business Process Table`, whose syntax is
 `БизнесПроцесс.<Имя бизнес-процесса>` / `BusinessProcess.<Business process name>`, are primary
 tables even though their page title is not "Основная таблица" / "Main table". Additional tables such
 as `БизнесПроцесс.<Имя бизнес-процесса>.Точки` derive their identifier from the primary table
 identifier plus the CamelCase-normalized page `name`.
+
+The next query-table cleanup schema removes the provisional page-name fallback for missing or empty
+query-table syntax. A missing syntax section must produce `table_role="unknown"`, omit `syntax` and
+`identifier` from the consumer record, and add a diagnostic record with parser provenance. This
+cleanup deliberately avoids backward-compatible fallback because no accepted ADR stabilizes
+page-title-derived query-table identifiers.
 
 Owner classification belongs to the owner object/type model, not to a local event-only
 `owner.kind` field. Platform type/object records should expose a source-backed owner/object

@@ -284,6 +284,13 @@ additional tables use the primary identifier plus the table `name` normalized to
 whitespace, hyphens and punctuation treated as word separators. This does not introduce a
 cross-family semantic ID or cross-file reference model.
 
+The T74/T75 cleanup removes the provisional fallback that derived query-table `identifier` and
+`table_role` from the display page name when syntax was missing or empty. After that cleanup,
+missing or empty table syntax is observable as an omitted `syntax`, omitted `identifier`,
+`table_role="unknown"` and a parser-maintenance diagnostic with source provenance. The extractor
+must not use generic names such as `Основная таблица` / `Main table` or any other table title as a
+replacement syntax source, and no compatibility adapter should restore that old behavior.
+
 ### v8-context-hbk-cli
 
 Owns FR-CLI-001.

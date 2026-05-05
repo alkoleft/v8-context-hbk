@@ -525,6 +525,14 @@ example, `РегистрРасчета.<Имя регистра расчета>.
 (CalculationRegister.<Имя регистра расчета>.<Имя перерасчета>.Changes)` should be split into
 localized `syntax.primary` and `syntax.alias` instead of exported as one combined string.
 
+T74 selected the cleanup contract for query table pages where the source syntax is missing or empty.
+`Таблицы задач > Основная таблица` / `Task Tables > Main Table` is the source-backed regression
+anchor: the page title is generic and owner-path dependent, so using the title as fallback syntax or
+as a primary-table role signal creates a provisional consumer key that is not source-backed by a
+`Синтаксис` / `Syntax` section. The cleanup contract keeps the table record and its nested
+field/parameter facts, but omits `syntax` and `identifier`, sets `table_role` to `unknown`, and
+requires a parser-maintenance diagnostic with HBK/TOC/HTML/page-title provenance.
+
 ## Event File Split Findings
 
 T37 implemented the schema version 9 event file split on 2026-05-04. Fresh CLI exports for

@@ -1378,21 +1378,23 @@ Steps:
 ```bash
 jq -e '
   def counts: reduce .records[].code as $code ({}; .[$code] = (.[$code] // 0) + 1);
-  counts == {
-    "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE": 4
-  }
+  counts.UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE == 4
+  and (counts.MISSING_QUERY_TABLE_SYNTAX // 0) >= 1
+  and all(counts | keys[]; . == "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE" or . == "MISSING_QUERY_TABLE_SYNTAX")
 ' target/uat/shcntx-ru/diagnostics.json
 jq -e '
   def counts: reduce .records[].code as $code ({}; .[$code] = (.[$code] // 0) + 1);
-  counts == {
-    "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE": 4
-  }
+  counts.UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE == 4
+  and (counts.MISSING_QUERY_TABLE_SYNTAX // 0) >= 1
+  and all(counts | keys[]; . == "UNSUPPORTED_GLOBAL_CONTEXT_METHOD_PAGE" or . == "MISSING_QUERY_TABLE_SYNTAX")
 ' target/uat/shcntx-en/diagnostics.json
 ```
 
 Expected result:
 
-- The export keeps deterministic diagnostic counts for both locales.
+- The export keeps deterministic unsupported global-context method diagnostics for both locales.
+- Missing or empty query-table syntax is reported through `MISSING_QUERY_TABLE_SYNTAX`
+  diagnostics, not by synthesizing syntax or identifiers from table display names.
 - Direct global-context method-like TOC-only pages remain classified with a family-specific
   diagnostic code.
 - `UNKNOWN_PAGE_CLASS`, `OUT_OF_SCOPE_GLOBAL_CONTEXT_EVENT`, `OUT_OF_SCOPE_TABLE_FIELD` and
@@ -1437,9 +1439,13 @@ jq -e '.records[] | select(.name == "Business Process Table" and .table_role == 
 jq -e '.records[] | select(.syntax.primary == "БизнесПроцесс.<Имя бизнес-процесса>.Точки" and .syntax.alias == "BusinessProcess.<Имя бизнес-процесса>.Points") | .table_role == "additional" and .identifier == "БизнесПроцессТаблицаТочекБизнесПроцессов"' target/uat/shcntx-ru/query-tables.json
 jq -e '.records[] | select(.syntax.primary == "BusinessProcess.<Business process name>.Points" and (.syntax | has("alias") | not)) | .table_role == "additional" and .identifier == "BusinessProcessBusinessProcessPointTable"' target/uat/shcntx-en/query-tables.json
 jq -e '.records[] | select(.name == "Таблица изменений бизнес-процессов") | .identifier == "БизнесПроцессТаблицаИзмененийБизнесПроцессов"' target/uat/shcntx-ru/query-tables.json
+jq -e '.records[] | select(.name == "Основная таблица" and (.owner_path | index("Таблицы задач"))) | .table_role == "unknown" and (has("syntax") | not) and (has("identifier") | not) and any(.fields[]; .name == "Наименование")' target/uat/shcntx-ru/query-tables.json
+jq -e '.records[] | select(.name == "Main Table" and (.owner_path | index("Task Tables"))) | .table_role == "unknown" and (has("syntax") | not) and (has("identifier") | not) and any(.fields[]; .name == "Description")' target/uat/shcntx-en/query-tables.json
 
 jq -e '.records[] | select(.name == "Таблица критерия отбора") | any(.parameters[]; .name == "Значение" and (has("required") | not) and (.description | test("отбор")))' target/uat/shcntx-ru/query-tables.json
 jq -e '.records[] | select(.name == "Filter Criterion Table") | any(.parameters[]; .name == "Value" and (has("required") | not) and (.description | test("filtering")))' target/uat/shcntx-en/query-tables.json
+jq -e 'any(.records[]; .code == "MISSING_QUERY_TABLE_SYNTAX" and (.source.page_title == "Основная таблица"))' target/uat/shcntx-ru/diagnostics.json
+jq -e 'any(.records[]; .code == "MISSING_QUERY_TABLE_SYNTAX" and (.source.page_title == "Main Table"))' target/uat/shcntx-en/diagnostics.json
 ```
 
 Expected result:
@@ -1449,7 +1455,12 @@ Expected result:
   and `type-events.json` is the required adapter filename for `type_event` records.
 - Event signatures and parameters are parsed structurally.
 - Query table records preserve table name, semantic owner path, table role, field names, field type
-  references, field descriptions, localized syntax and deterministic identifier.
+  references and field descriptions. Records with source syntax also preserve localized syntax and a
+  deterministic identifier.
+- Query table records whose source page has no syntax section remain exported with their nested
+  field/parameter facts, but do not synthesize `syntax` or `identifier` from the table display name;
+  their `table_role` is `unknown` and `diagnostics.json` contains a source-provenance
+  `MISSING_QUERY_TABLE_SYNTAX` diagnostic.
 - Query table parameter records are nested under their owning table, preserve parameter names, type
   references when present, descriptions and default values when present, and do not expose
   `required`.
@@ -1541,8 +1552,8 @@ jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/constructo
 jq -e 'all(.records[]; has("owner_path") | not)' target/uat/shcntx-en/type-events.json
 jq -e 'all(.records[]; (.fields // [] | all(.[]; (has("owner_path") | not) and (.name | type == "string"))) and (.parameters // [] | all(.[]; (has("owner_path") | not) and (has("required") | not) and (.name | type == "string"))))' target/uat/shcntx-ru/query-tables.json
 jq -e 'all(.records[]; (.fields // [] | all(.[]; (has("owner_path") | not) and (.name | type == "string"))) and (.parameters // [] | all(.[]; (has("owner_path") | not) and (has("required") | not) and (.name | type == "string"))))' target/uat/shcntx-en/query-tables.json
-jq -e 'all(.records[]; (.syntax.primary | type == "string") and ((.syntax.alias? // "" | type) == "string") and (.identifier | type == "string") and (.identifier | test("[\\s-]") | not))' target/uat/shcntx-ru/query-tables.json
-jq -e 'all(.records[]; (.syntax.primary | type == "string") and ((.syntax.alias? // "" | type) == "string") and (.identifier | type == "string") and (.identifier | test("[\\s-]") | not))' target/uat/shcntx-en/query-tables.json
+jq -e 'all(.records[]; if has("syntax") then (.syntax.primary | type == "string") and ((.syntax.alias? // "" | type) == "string") and (.identifier | type == "string") and (.identifier | test("[\\s-]") | not) else (has("identifier") | not) and .table_role == "unknown" end)' target/uat/shcntx-ru/query-tables.json
+jq -e 'all(.records[]; if has("syntax") then (.syntax.primary | type == "string") and ((.syntax.alias? // "" | type) == "string") and (.identifier | type == "string") and (.identifier | test("[\\s-]") | not) else (has("identifier") | not) and .table_role == "unknown" end)' target/uat/shcntx-en/query-tables.json
 jq -e '.records[] | select(.owner == "ТабличноеПоле" and .name.primary == "СоздатьКолонки") | .examples[0].text == "ЭлементыФормы.ТабличноеПоле1.Значение = ТаблицаДанных;\nЭлементыФормы.ТабличноеПоле1.СоздатьКолонки();"' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "ЗадачаОбъект.<Имя задачи>" and .name.primary == "Записать") | (.examples[0].text | contains("ОписаниеОшибки ( )") | not) and (.examples[0].text | contains("ОписаниеОшибки(), 60);"))' target/uat/shcntx-ru/type-methods.json
 jq -e '.records[] | select(.owner == "Расширение поля формы для поля ввода" and .name.primary == "ПараметрыВыбора") | (.examples[0].text | startswith("НовыйПараметр = Новый ПараметрВыбора")) and (.examples[0].text | contains("Тонкий клиент") | not)' target/uat/shcntx-ru/type-properties.json
@@ -1563,9 +1574,10 @@ Expected result:
 - Type event, derivative type member and constructor records do not emit `owner_path`.
 - Query table fields and parameters are nested under `query-tables.json` table records, use string
   `name` values, do not repeat `owner_path` and do not expose parameter `required`.
-- Query table records include localized `syntax` objects and string `identifier` values without
-  whitespace or hyphens; additional table identifier suffixes are CamelCase-normalized from page
-  `name`.
+- Query table records with a source syntax section include localized `syntax` objects and string
+  `identifier` values without whitespace or hyphens; additional table identifier suffixes are
+  CamelCase-normalized from page `name`. Query table records without source syntax omit both
+  `syntax` and `identifier`, keep nested field/parameter facts, and use `table_role="unknown"`.
 - `usage` is a stable enum string.
 - Property descriptions do not keep leading type-reference prose that already appears in `types`.
 - Type-reference facts are exposed as `types`; method return facts are exposed as `return`; legacy

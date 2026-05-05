@@ -122,6 +122,12 @@ directories are service data unless promoted here.
   `Таблица изменений бизнес-процессов` becomes `ТаблицаИзмененийБизнесПроцессов`. Russian query
   table syntax splits parenthesized English syntax into `syntax.alias`; root-source English syntax
   remains `syntax.primary` without an alias when the source has no parenthesized variant.
+- T74 selected the pre-rework cleanup contract for query-table pages with missing or empty syntax.
+  The next implementation slice must stop deriving `identifier` and `table_role` from table display
+  names. Source-backed pages such as `Таблицы задач > Основная таблица` / `Task Tables > Main Table`
+  remain exported with their nested field/parameter facts, but omit `syntax` and `identifier`, use
+  `table_role="unknown"` and add a parser-maintenance `MISSING_QUERY_TABLE_SYNTAX` diagnostic with
+  source provenance.
 
 ## Post-T29 Runtime Regression To Fix
 
