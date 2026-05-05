@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use strsim::levenshtein;
 use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 4;
+pub const INDEX_SCHEMA_VERSION: u32 = 5;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 #[derive(Debug, Clone)]
@@ -985,18 +985,25 @@ impl SearchIndex {
         key: &str,
         lookup: TypeIdentityLookup,
     ) -> Result<Vec<SearchHit>, SearchError> {
+        let key_kind = match lookup {
+            TypeIdentityLookup::Primary => "primary",
+            TypeIdentityLookup::Alias => "alias",
+        };
         let mut statement = self
             .connection
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
                  d.owner_alias, d.signature_text, d.description \
-                 FROM type_identities t \
+                 FROM document_names n \
+                 JOIN type_identities t ON t.document_id = n.document_id \
                  JOIN documents d ON d.id = t.document_id \
+                 WHERE n.key = ?1 \
+                   AND n.key_kind = ?2 \
                  ORDER BY d.kind_priority, d.id",
             )
             .map_err(|source| self.sqlite(source))?;
         let rows = statement
-            .query_map([], |row| {
+            .query_map([key, key_kind], |row| {
                 Ok(SearchHit {
                     document: document_from_row(row)?,
                     score: 0,
@@ -1006,21 +1013,7 @@ impl SearchIndex {
         let hits = rows
             .collect::<Result<Vec<_>, _>>()
             .map_err(|source| self.sqlite(source))?;
-        let hits = self.hydrate_hits(hits)?;
-        Ok(hits
-            .into_iter()
-            .filter(|hit| match lookup {
-                TypeIdentityLookup::Primary => {
-                    normalize_lookup_key(&hit.document.name.primary) == key
-                }
-                TypeIdentityLookup::Alias => hit
-                    .document
-                    .name
-                    .alias
-                    .as_deref()
-                    .is_some_and(|alias| normalize_lookup_key(alias) == key),
-            })
-            .collect())
+        self.hydrate_hits(hits)
     }
 
     fn callable_exists(&self, callable_id: &str) -> Result<bool, SearchError> {
@@ -1746,6 +1739,7 @@ fn create_lookup_indexes(connection: &Connection, path: &Path) -> Result<(), Sea
             "CREATE INDEX document_names_key_idx ON document_names(key, key_kind, document_id);
              CREATE INDEX documents_owner_member_idx ON documents(owner_primary, name_primary);
              CREATE INDEX type_identities_name_idx ON type_identities(name_primary, name_alias, type_id);
+             CREATE INDEX type_identities_document_idx ON type_identities(document_id);
              CREATE INDEX members_owner_idx ON members(owner_type_id, member_kind, name_primary, document_id);
              CREATE INDEX callables_document_idx ON callables(document_id, callable_kind);
              CREATE INDEX signatures_callable_idx ON signatures(callable_id, ordinal);
@@ -4080,6 +4074,86 @@ mod tests {
         assert!(
             related_type_refs.is_empty(),
             "edge-filtered traversal must not choose a hidden duplicate type identity"
+        );
+    }
+
+    #[test]
+    fn type_identity_lookup_returns_all_same_name_variants_deterministically() {
+        let path = temp_path("duplicate-type-lookup.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![
+                platform_type_with_owner_path("ЭлементыФормы", "Форма"),
+                platform_type_with_owner_path("ЭлементыФормы", "ФормаКлиентскогоПриложения"),
+            ],
+            ..model::PlatformContext::default()
+        };
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let hits = index
+            .type_identities_by_name("ЭлементыФормы")
+            .expect("type identity lookup must work");
+        let ids = hits
+            .iter()
+            .map(|hit| hit.document.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ids,
+            [
+                "platform_type:ЭлементыФормы:Форма",
+                "platform_type:ЭлементыФормы:ФормаКлиентскогоПриложения",
+            ]
+        );
+    }
+
+    #[test]
+    fn type_identity_lookup_uses_indexed_sql_plan() {
+        let path = temp_path("type-lookup-query-plan.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![
+                platform_type_with_owner_path("ЭлементыФормы", "Форма"),
+                platform_type_with_owner_path("ЭлементыФормы", "ФормаКлиентскогоПриложения"),
+            ],
+            ..model::PlatformContext::default()
+        };
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let mut statement = index
+            .connection
+            .prepare(
+                "EXPLAIN QUERY PLAN
+                 SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary,
+                 d.owner_alias, d.signature_text, d.description
+                 FROM document_names n
+                 JOIN type_identities t ON t.document_id = n.document_id
+                 JOIN documents d ON d.id = t.document_id
+                 WHERE n.key = ?1
+                   AND n.key_kind = ?2
+                 ORDER BY d.kind_priority, d.id",
+            )
+            .expect("query plan must prepare");
+        let plan = statement
+            .query_map(
+                [normalize_lookup_key("ЭлементыФормы"), "primary".to_string()],
+                |row| row.get::<_, String>(3),
+            )
+            .expect("query plan must run")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("query plan rows must be readable");
+
+        assert!(
+            plan.iter()
+                .any(|detail| detail.contains("document_names_key_idx"))
+        );
+        assert!(
+            plan.iter()
+                .any(|detail| detail.contains("type_identities_document_idx"))
+        );
+        assert!(
+            !plan.iter().any(|detail| detail == "SCAN t"),
+            "type identity lookup must not scan all type identities: {plan:?}"
         );
     }
 

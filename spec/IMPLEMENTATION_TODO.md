@@ -833,7 +833,7 @@ Completion notes:
   `cargo test -p hbk-export --lib`, `cargo test -p syntax-helper-search --lib` and
   `cargo test --workspace`.
 
-### [ ] T76. Replace in-memory type lookup scan with indexed SQL lookup
+### [x] T76. Replace in-memory type lookup scan with indexed SQL lookup
 
 Spec refs:
 
@@ -854,6 +854,20 @@ Verification:
 
 - `cargo test -p syntax-helper-search --lib`
 - `cargo test --workspace`
+
+Completion notes:
+
+- `type_identities_by_lookup_key` now uses the indexed `document_names` lookup table joined to
+  `type_identities` instead of loading every platform type identity and filtering in memory.
+- Added an internal `type_identities(document_id)` index so the lookup plan does not scan all type
+  identities after filtering the lookup key.
+- Raised the internal search-index schema to version `5`; existing schema version `4` indexes are
+  rebuildable service data and must be rebuilt before query commands open them.
+- Deterministic same-name ambiguity behavior is preserved; a focused regression test verifies that
+  same-display-name platform type variants are returned in stable identity order, and a query-plan
+  test verifies indexed lookup usage.
+- No provider JSON shape, CLI behavior or public contract changed.
+- Verification passed with `cargo test -p syntax-helper-search --lib` and `cargo test --workspace`.
 
 ### [ ] T77. Clean `syntax-helper-search` dependency scope
 

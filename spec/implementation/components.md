@@ -311,7 +311,7 @@ than building from consumer JSON export directories.
 
 Implemented first slice:
 
-- `syntax-helper-search` owns `index.sqlite` schema version `4`, read-only query opens, FTS5 keyword
+- `syntax-helper-search` owns `index.sqlite` schema version `5`, read-only query opens, FTS5 keyword
   search, prefix-bounded fuzzy candidate selection, exact name/alias and owner/member lookup, and
   directed owner/type-reference relationship traversal.
 - `v8-context-hbk syntax export/index/get/search/related` owns CLI argument parsing, index path
@@ -330,6 +330,9 @@ Implemented first slice:
   `type_identities`, `members`, `callables`, `signatures`, `parameters` and `type_refs`. Provider
   JSON is assembled from those rows; `documents.signature_json` and `documents.preview` are no
   longer part of the SQLite schema.
+- Schema version `5` adds the internal `type_identities(document_id)` lookup index used by provider
+  type identity resolution. Older schema version `4` indexes are rebuildable service data and are
+  rejected by read-only query opens with a rebuild instruction.
 
 ### Solution Context resolver
 
