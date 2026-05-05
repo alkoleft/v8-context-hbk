@@ -8,18 +8,19 @@ context boundaries and keeps CLI/export behavior provisional.
 1. `hbk-container`: binary container parsing, entity enumeration and entity byte access.
 2. `hbk-book`: book metadata, locale inference, ZIP-backed `FileStorage`, TOC parsing and page reads.
 3. `hbk-docs`: documentation HTML/page parsing, normalized text/link extraction and page diagnostics.
-4. `syntax-helper-model`: provenance-rich platform context domain model and record sink boundary.
-5. `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized page parsers.
-6. `syntax-helper-language`: shared non-platform HBK language-fact model and fixture-backed parsers
+4. `hbk-book-export`: ordinary book-content export layouts and Markdown conversion adapters.
+5. `syntax-helper-model`: provenance-rich platform context domain model and record sink boundary.
+6. `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized page parsers.
+7. `syntax-helper-language`: shared non-platform HBK language-fact model and fixture-backed parsers
    for `shlang_*`, `shquery_*` and `dcsui_*` pages.
-7. `hbk-export`: canonical JSON export adapters.
-8. `syntax-helper-search`: local SQLite/FTS5 index and query library for Syntax Assistant exact
+8. `hbk-syntax-export`: canonical Syntax Assistant JSON export adapters.
+9. `syntax-helper-search`: local SQLite/FTS5 index and query library for Syntax Assistant exact
    lookup, keyword/fuzzy search and bounded relationship traversal.
-9. `context-resolver-core`: source-neutral Rust resolver API with typed identities, domains,
+10. `context-resolver-core`: source-neutral Rust resolver API with typed identities, domains,
    fact kinds, response statuses, diagnostics and resolver/source traits.
-10. `context-resolver-search`: HBK-backed platform and language-domain source adapters over
+11. `context-resolver-search`: HBK-backed platform and language-domain source adapters over
    `syntax-helper-search::SearchIndex`.
-11. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
+12. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
 
 Search/query components are described in
 [`syntax-helper-query-cli.md`](syntax-helper-query-cli.md).
@@ -32,12 +33,15 @@ Solution-context Rust resolution is described in
 - `hbk-container` must not depend on book, docs, extraction or export concerns.
 - `hbk-book` must not depend on Syntax Assistant extraction.
 - `hbk-docs` may depend on book-level page/TOC abstractions but must not know export schema details.
+- `hbk-book-export` may depend on `hbk-book` and `hbk-docs`, owns ordinary book-content export
+  layout/Markdown adapters and must not depend on Syntax Assistant extraction,
+  `hbk-syntax-export` or CLI presentation code.
 - `syntax-helper-model` must not depend on HBK container, HTML parsing or CLI code.
 - `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages.
 - `syntax-helper-language` owns the first shared language-fact model and source-family parsers for
   non-platform HBK language pages. It must not add language facts to `PlatformContext` or
   `syntax export` consumer JSON.
-- `hbk-export` owns output adapters for the Rust domain model.
+- `hbk-syntax-export` owns Syntax Assistant output adapters for the Rust domain model.
 - `syntax-helper-search` owns search-index schema, ranking and relationship traversal. It must not
   parse HBK files or perform CLI presentation. It may accept `syntax-helper-language` facts as
   pre-parsed documents for the T89 language-index fixture slice.
@@ -47,7 +51,7 @@ Solution-context Rust resolution is described in
   and language facts and the source-neutral resolver model. It must not expose SQLite tables, FTS
   fields, query-table provider facts or Syntax Assistant provenance as generic resolver facts.
 - `v8-context-hbk-cli` wires commands and error presentation only.
-- Syntax Assistant search/query code must not make `hbk-export` carry search-only fields in the
+- Syntax Assistant search/query code must not make `hbk-syntax-export` carry search-only fields in the
   lean consumer export. Use a search-specific index when structured links or provenance are required
   for query workflows.
 - The future solution-context resolver core must be a thin source-neutral integration layer above
@@ -167,6 +171,27 @@ Expected public concepts:
 
 Owns FR-DOC-001.
 
+### hbk-book-export
+
+Expected public concepts:
+
+- `BookExportRequest`
+- `BookExportFormat`
+- `BookExportHierarchy`
+- `BookExporter`
+- `BookExportError`
+
+Owns FR-HBK-004.
+
+`hbk-book-export` adapts ordinary HBK book content into output files. It owns output path planning,
+safe output-root validation, raw `FileStorage` unpacking and Markdown conversion for TOC pages. It
+must consume book/documentation abstractions from `hbk-book` and `hbk-docs` instead of reaching into
+container internals or Syntax Assistant extraction state.
+
+The first supported combinations are `format=raw` with `hierarchy=raw` and `format=markdown` with
+`hierarchy=toc`. Unsupported format/hierarchy pairs return typed export errors for CLI presentation
+rather than silently falling back to another layout.
+
 ### syntax-helper-model
 
 Expected public concepts:
@@ -194,7 +219,8 @@ Expected public concepts:
 Owns the domain model used by FR-SH-002 and FR-EXPORT-001.
 
 The model remains provenance-rich for diagnostics and parser maintenance. Consumer export shape is
-owned by `hbk-export` and may intentionally omit internal provenance and navigation scaffolding.
+owned by `hbk-syntax-export` and may intentionally omit internal provenance and navigation
+scaffolding.
 
 `PlatformContext` is a provenance-rich in-memory aggregate and sink for parser/tests that need the
 full domain model. It no longer owns public exact lookup helpers; accepted interactive lookup
@@ -258,7 +284,7 @@ least regular, extension, primitive and metadata-template types. Primitive type 
 shallow: direct children of `Примитивные типы` are primitive platform types, but nested literal
 pages are not ordinary platform types.
 
-### hbk-export
+### hbk-syntax-export
 
 Expected public concepts:
 
@@ -274,7 +300,7 @@ record-family JSON without retaining the full `PlatformContext`. The previous in
 `PlatformContext` exporter was provisional and is removed; repo-local exports and tests use the
 streaming `SyntaxHelperSink` path as the canonical writer. Streaming export may use the lean sink
 detail mode to skip consumer-omitted navigation fields, but omission from JSON remains an
-`hbk-export` adapter concern rather than an internal model constraint.
+`hbk-syntax-export` adapter concern rather than an internal model constraint.
 
 Schema version 7 record-family JSON exposes structured `availability`, `examples`, `see_also`,
 signature variant metadata, enum values, type-reference facts and TOC-derived semantic identity
@@ -294,7 +320,7 @@ field names and parameter names should be strings instead of `LocalizedName` unl
 evidence later proves aliases for this family. Query table parameters should not carry a `required`
 flag unless a reliable source contract is found.
 
-For schema version 8, `hbk-export` must emit `owner_path` only on records that represent semantic
+For schema version 8, `hbk-syntax-export` must emit `owner_path` only on records that represent semantic
 owner context: platform types, module-event module context and query table records. It must not emit
 `owner_path` on derivative type methods, type properties, constructors or nested query table
 fields/parameters. `metadata.json.files` is the authoritative inventory for the current schema; the
@@ -302,19 +328,19 @@ exporter writes current files but must not delete stale files from older schemas
 directory.
 
 Schema version 9 stops using the historical `global-context-events.json` filename for event facts.
-The split is `module-events.json`, `type-events.json` and `unknown-events.json`; `hbk-export` routes
+The split is `module-events.json`, `type-events.json` and `unknown-events.json`; `hbk-syntax-export` routes
 records by source-backed event classification without adding global semantic IDs. Type events carry
 `owner` as a single semantic owner string, while module events carry `module`. Any owner/object kind
 needed by events belongs on the owner type/object model, not as a duplicated event-only taxonomy.
 The split preserves the schema version 8 rule that derivative records do not emit `owner_path`.
 
 T38 adds optional `object_kind` to `platform-types.json` only. `syntax-helper-extract` derives it
-from TOC-backed platform type context after `branch_kind` and `type_kind` are known; `hbk-export`
+from TOC-backed platform type context after `branch_kind` and `type_kind` are known; `hbk-syntax-export`
 passes it through when present. Event files do not expose `object_kind`, `owner_kind`, `id` or
 `owner_ref`, and derivative type members, constructors and nested query table records keep the
 schema version 8 `owner_path` omission rule.
 
-Schema version 10 removes semantic `owner_path` from `type-events.json`. `hbk-export` composes the
+Schema version 10 removes semantic `owner_path` from `type-events.json`. `hbk-syntax-export` composes the
 type-event semantic owner chain into the single `owner` string so exact owner/event lookup remains
 unambiguous without adding a second owner field.
 

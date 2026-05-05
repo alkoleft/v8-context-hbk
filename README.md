@@ -1,64 +1,117 @@
 # v8-context-hbk
 
-`v8-context-hbk` is a command-line tool for reading 1C `*.hbk` help books and extracting structured platform documentation from Syntax Assistant books.
+Превратите книги Синтакс-помощника 1C в локальную структурированную базу знаний по API платформы.
 
-Use it when you need to inspect an installed 1C help book, print its table of contents, read a help
-page, export Syntax Assistant data into JSON files for downstream tools, or build a local Syntax
-Assistant search index for repeated API lookup.
+`v8-context-hbk` читает установленные `*.hbk`-файлы 1C, извлекает факты из Синтакс-помощника,
+строит индекс для быстрых запросов и отдает детерминированный JSON, который можно использовать в
+инструментах для BSL-разработки, code review и будущих анализаторов.
 
-The current extraction baseline is 1C platform `8.5.1.1150`. Other versions may work, but the command and export contracts are still provisional.
+Вместо того чтобы каждый раз разбирать справочный текст про `HTTPСоединение`, конструкторы,
+свойства, таблицы запросов или API системы компоновки данных, можно один раз построить локальный
+индекс и затем задавать точные вопросы к фактам платформы.
 
-## Prepare
+## Зачем Это Нужно
 
-Build the CLI from the repository:
+Знания о платформе 1C обычно заперты в справке, удобной для человека, но неудобной для
+инструментов, coding agents и анализаторов. Им нужны не страницы с текстом, а структурированные
+ответы:
+
+- Какие перегрузки конструктора существуют?
+- Какие параметры обязательны и какие типы они принимают?
+- Какой реквизит или метод принадлежит какому типу платформы?
+- К каким связанным типам ведет цепочка выражения?
+- Имя однозначно или оно встречается в разных доменах: API платформы, языке BSL и языке запросов?
+
+`v8-context-hbk` превращает документацию в локальные факты с идентичностями, сигнатурами, ссылками
+на типы, связями владелец/член, обходом отношений и машинно-читаемыми диагностическими данными.
+
+## Что Вы Получаете
+
+- Локальное извлечение данных из установленных HBK-файлов без runtime-интроспекции 1C.
+- Структурированный JSON-экспорт фактов Синтакс-помощника для последующей загрузки в другие
+  инструменты.
+- SQLite/FTS5-индекс для быстрых повторяемых запросов.
+- Точный поиск по имени, поиск владелец/член, поиск конструкторов, keyword search, fuzzy search и
+  обход отношений.
+- Детерминированный provider JSON для инструментов, которым нужны стабильные ответы, а не
+  человеко-ориентированный текст справки.
+- Resolver-блоки, которые учитывают источник факта и не смешивают API платформы, язык BSL и язык
+  запросов.
+- Диагностику с provenance для сопровождения парсеров без протекания внутренних HBK-путей в
+  потребительские факты.
+
+Текущий подтвержденный baseline платформы: `8.5.1.1150`. Другие версии могут работать, но CLI,
+экспорт и provider/resolver-контракты пока остаются provisional, пока модель проверяется на
+реальных HBK-данных.
+
+## Когда Это Подходит
+
+Используйте `v8-context-hbk`, если вы строите:
+
+- BSL coding assistant, которому нужны обоснованные факты API платформы;
+- локальный provider для анализатора, который должен отвечать без повторного разбора больших
+  HBK-файлов на каждый запрос;
+- pipeline загрузки platform context data;
+- регрессионные тесты вокруг извлечения документации платформы 1C;
+- developer tooling, которому нужен детерминированный JSON вместо скопированного текста справки.
+
+Проект намеренно остается самостоятельным. Ему не нужен запущенный процесс 1C, он не изменяет
+HBK-файлы и не реализует полноценный BSL-парсер или диагностический движок.
+
+## Быстрый Старт
+
+Соберите CLI из репозитория:
 
 ```bash
 cargo build -p v8-context-hbk-cli
 ```
 
-Use the binary through Cargo:
+Дальше примеры предполагают, что бинарь `v8-context-hbk` уже собран и доступен в `PATH`
+или запускается из каталога сборки:
 
 ```bash
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- <command>
+v8-context-hbk <command>
 ```
 
-The examples below assume the platform help files are installed under `/opt/1cv8/x86_64/8.5.1.1150/`.
+Примеры ниже предполагают, что файлы справки платформы установлены в
+`/opt/1cv8/x86_64/8.5.1.1150/`.
 
-## Inspect a Help Book
+## Инспекция Help Books
 
-List HBK container entities:
+Показать сущности HBK-контейнера:
 
 ```bash
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk
+v8-context-hbk inspect /opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk
 ```
 
-Print a table of contents as JSON:
+Вывести оглавление в JSON:
 
 ```bash
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json
+v8-context-hbk toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json
 ```
 
-Read a page by its HTML path from the book storage:
+Прочитать страницу по HTML-пути из storage книги:
 
 ```bash
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --path "<html-path>"
+v8-context-hbk page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --path "<html-path>"
 ```
 
-## Export Syntax Assistant Data
+## Экспорт Фактов Платформы
 
-Export Russian Syntax Assistant data:
+Экспортировать русскоязычные данные Синтакс-помощника:
 
 ```bash
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru
+v8-context-hbk syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/ru
 ```
 
-Export root/English-source Syntax Assistant data. The export locale is written as `en`:
+Экспортировать root/English-source данные Синтакс-помощника. Локаль экспорта будет записана как
+`en`:
 
 ```bash
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en
+v8-context-hbk syntax export /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output target/context/en
 ```
 
-The output directory contains JSON files by record family:
+Каталог результата содержит JSON-файлы по семействам записей:
 
 - `metadata.json`
 - `global-methods.json`
@@ -74,60 +127,107 @@ The output directory contains JSON files by record family:
 - `enums.json`
 - `diagnostics.json`
 
-The current provisional export schema is `schema_version: 11`. Consumer record-family files include
-structured `availability`, `examples`, `see_also`, signature variant metadata, type references and
-return types when the source page contains those facts. TOC-derived semantic identity fields such as
-`record_family`, `module`, `owner`, `type_kind` and platform-type `object_kind` are emitted where
-title-only lookup would be ambiguous. `owner_path` is limited to owning records such as
-`platform-types.json`, module context and query table records. Query table fields and parameters are
-nested under `query-tables.json` table records. Query table records also include localized source
-syntax and a deterministic table identifier.
-Absent facts are omitted from platform API consumer records. Enum values are nested in `enums.json`;
-`enum-values.json` is not emitted. Consumer records omit HBK file paths, TOC paths, HTML paths and
-page titles; `diagnostics.json` keeps parser provenance for maintenance.
+Текущая provisional-схема экспорта: `schema_version: 11`.
 
-The `syntax export` command summary reports the `diagnostics.json` record count as
-`parser_warnings` because those records are parser-maintenance warnings, not exported platform API
-facts.
+Потребительские файлы включают структурированную availability-информацию, примеры, see-also связи,
+варианты сигнатур, ссылки на типы и возвращаемые типы, когда эти факты есть на исходной странице.
+TOC-derived semantic fields, такие как `record_family`, `module`, `owner`, `type_kind` и
+`object_kind` для типов платформы, выводятся там, где одного заголовка недостаточно для
+однозначной идентификации.
 
-## Query Syntax Assistant Data
+Потребительские записи не содержат HBK file paths, TOC paths, HTML paths и page titles.
+`diagnostics.json` сохраняет parser provenance для сопровождения. Сводка `syntax export` показывает
+количество диагностик как `parser_warnings`, потому что это предупреждения сопровождения парсера, а
+не экспортируемые факты API платформы.
 
-Build a local SQLite/FTS5 search index from a Syntax Assistant HBK:
+## Локальный Syntax Index
+
+Построить SQLite/FTS5-индекс из HBK Синтакс-помощника:
 
 ```bash
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/sh-search-ru.sqlite
+v8-context-hbk syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/context/sh-search-ru.sqlite
 ```
 
-If `--output` or `--index` is omitted, commands use `V8_CONTEXT_HBK_SYNTAX_INDEX` and then
-`.v8-context-hbk/syntax/index.sqlite` under the current working directory.
+Если `--output` или `--index` не указаны, команды используют `V8_CONTEXT_HBK_SYNTAX_INDEX`, а затем
+`.v8-context-hbk/syntax/index.sqlite` в текущем рабочем каталоге.
 
-Run exact lookup, constructor lookup, keyword search, fuzzy name search and deterministic
-relationship traversal:
+Query-команды читают только заранее построенный индекс. Они не открывают и не парсят
+`shcntx_*.hbk` при каждом запросе.
+
+## Практические Вопросы к API
+
+Точный поиск типа:
 
 ```bash
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax get --index target/context/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных" --format json
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax get --index target/context/sh-search-ru.sqlite --owner "НастройкиКомпоновкиДанных" --member "Отбор"
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax constructors --index target/context/sh-search-ru.sqlite "HTTPСоединение"
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax constructors --index target/context/sh-search-ru.sqlite "HTTPСоединение" --details
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax search --index target/context/sh-search-ru.sqlite --query "отбор скд" --mode keywords
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax search --index target/context/sh-search-ru.sqlite --query "ОтборКомпоновкиДаных" --mode fuzzy --format json
-cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- syntax related --index target/context/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных"
+v8-context-hbk syntax get --index target/context/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных" --format json
 ```
 
-Query commands read only the prebuilt index. They do not reopen or parse `shcntx_*.hbk`.
+Поиск владелец/член:
 
-## Current Limitations
+```bash
+v8-context-hbk syntax get --index target/context/sh-search-ru.sqlite --owner "НастройкиКомпоновкиДанных" --member "Отбор"
+```
 
-- The JSON export schema is provisional.
-- The tool reads existing HBK files; it does not create or modify HBK files.
-- Syntax Assistant extraction is evidence-based on the current target platform and may need parser updates for other platform versions.
-- Runtime 1C introspection is out of scope. The tool extracts documentation from HBK files only.
+Сигнатуры конструкторов:
 
-## More Documentation
+```bash
+v8-context-hbk syntax constructors --index target/context/sh-search-ru.sqlite "HTTPСоединение"
+v8-context-hbk syntax constructors --index target/context/sh-search-ru.sqlite "HTTPСоединение" --details
+```
 
-- End-user documentation: this file.
-- Specification index: [spec/README.md](spec/README.md).
-- Functional requirements: [spec/requirements/functional.md](spec/requirements/functional.md).
-- Non-functional requirements: [spec/requirements/non-functional.md](spec/requirements/non-functional.md).
-- UAT test cases: [spec/acceptance/uat-test-cases.md](spec/acceptance/uat-test-cases.md).
-- Integration decision: [spec/decisions/ADR-0001-v8-context-integration.md](spec/decisions/ADR-0001-v8-context-integration.md).
+Поиск под задачу и восстановление при опечатке:
+
+```bash
+v8-context-hbk syntax search --index target/context/sh-search-ru.sqlite --query "отбор скд" --mode keywords
+v8-context-hbk syntax search --index target/context/sh-search-ru.sqlite --query "ОтборКомпоновкиДаных" --mode fuzzy --format json
+```
+
+Обход отношений:
+
+```bash
+v8-context-hbk syntax related --index target/context/sh-search-ru.sqlite --name "ОтборКомпоновкиДанных"
+```
+
+## Сделано для Tooling
+
+`v8-context-hbk` - не просто просмотрщик документации. Поверхность `syntax` спроектирована как
+локальный provider для BSL-инструментов:
+
+- результаты запросов используют явные статусы `ok`, `not_found`, `ambiguous` и `unsupported`;
+- JSON-вывод разделяет metadata запроса и факты платформы;
+- callable-сигнатуры сохраняют порядок параметров, обязательность и ссылки на типы;
+- обход отношений использует source-backed edges, а не скрытые догадки по имени;
+- provider output детерминирован для одного и того же индекса и запроса.
+
+Для Rust-приложений, которым нужны повторяемые in-process lookup-операции, workspace также содержит
+resolver-крейты:
+
+- `context-resolver-core`: source-neutral typed resolver model без зависимостей от HBK, SQLite, CLI
+  или парсеров;
+- `context-resolver-search`: адаптеры поверх локального search index для фактов платформы и
+  language-domain facts.
+
+Resolver-направление сохраняет одноименные факты раздельными между `PlatformApi`, `BslLanguage`,
+`QueryLanguage`, configuration и source-code domains, пока явные отношения не связывают их между
+собой.
+
+## Текущие Ограничения
+
+- Export, provider и resolver-контракты provisional.
+- Подтвержденный baseline: платформа 1C `8.5.1.1150`.
+- Инструмент читает существующие HBK-файлы; он не создает и не изменяет HBK-файлы.
+- Извлечение данных Синтакс-помощника evidence-based и может потребовать обновления парсера для
+  других версий платформы.
+- Runtime-интроспекция 1C вне scope. Инструмент извлекает документацию только из HBK-файлов.
+- BSL parsing, linting и diagnostics вне scope этого репозитория.
+
+## Документация
+
+- Индекс спецификации: [spec/README.md](spec/README.md)
+- Функциональные требования: [spec/requirements/functional.md](spec/requirements/functional.md)
+- Нефункциональные требования: [spec/requirements/non-functional.md](spec/requirements/non-functional.md)
+- Acceptance baseline: [spec/acceptance/baseline.md](spec/acceptance/baseline.md)
+- UAT test cases: [spec/acceptance/uat-test-cases.md](spec/acceptance/uat-test-cases.md)
+- Решение об интеграции: [spec/decisions/ADR-0001-v8-context-integration.md](spec/decisions/ADR-0001-v8-context-integration.md)
+- Provider boundary: [spec/decisions/ADR-0007-bsl-analyzer-provider-boundary.md](spec/decisions/ADR-0007-bsl-analyzer-provider-boundary.md)
+- Resolver boundary: [spec/decisions/ADR-0008-rust-context-resolver-api.md](spec/decisions/ADR-0008-rust-context-resolver-api.md)

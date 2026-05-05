@@ -75,6 +75,265 @@ Expected result:
 - Exit code is `0`.
 - Output is non-empty HTML/text content from the requested page.
 
+## UAT-HBK-004: Export Markdown TOC Corpus from Representative HBK Books
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-DOC-001, FR-CLI-001.
+
+Purpose:
+
+- Validate Markdown conversion on real pages from different HBK book families instead of only on a
+  synthetic or single-page fixture.
+- Cover ordinary UI help, BSL language syntax help, query-language help and data-composition
+  system help.
+
+Preconditions:
+
+- The following 8.5.1.1150 books exist:
+  - `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk`
+  - `/opt/1cv8/x86_64/8.5.1.1150/htmlui_ru.hbk`
+  - `/opt/1cv8/x86_64/8.5.1.1150/moxelui_ru.hbk`
+  - `/opt/1cv8/x86_64/8.5.1.1150/shlang_ru.hbk`
+  - `/opt/1cv8/x86_64/8.5.1.1150/shquery_ru.hbk`
+  - `/opt/1cv8/x86_64/8.5.1.1150/dcsui_ru.hbk`
+- `target/uat/book-md-corpus` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/book-md-corpus
+for book in fmtdui_ru htmlui_ru moxelui_ru shlang_ru shquery_ru dcsui_ru; do
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+    "/opt/1cv8/x86_64/8.5.1.1150/${book}.hbk" \
+    --output "target/uat/book-md-corpus/${book}" \
+    --format markdown \
+    --hierarchy toc
+done
+
+find target/uat/book-md-corpus -name '*.md' -type f | sort > target/uat/book-md-corpus/files.txt
+test "$(wc -l < target/uat/book-md-corpus/files.txt)" -ge 10
+for book in fmtdui_ru htmlui_ru moxelui_ru shlang_ru shquery_ru dcsui_ru; do
+  test "$(find "target/uat/book-md-corpus/${book}" -name '*.md' -type f | wc -l)" -gt 0
+done
+! rg -n '<(HTML|BODY)\b|v8help://service_book/service_style|&nbsp;' \
+  target/uat/book-md-corpus -g '*.md'
+! rg -n '/opt/1cv8|\.hbk\b|objects/.+\.html|#[0-9]+|toc[_ -]?index' \
+  target/uat/book-md-corpus -g '*.md'
+```
+
+Expected result:
+
+- All export commands exit with code `0`.
+- Every exported book directory contains Markdown files.
+- Markdown files are written under deterministic TOC-derived directories, not under raw HBK storage
+  paths.
+- The corpus contains pages from all listed books.
+- No exported Markdown file contains raw service HTML scaffolding such as `<HTML`, `<BODY`,
+  `v8help://service_book/service_style` or `&nbsp;`.
+- No exported Markdown file contains raw HBK file paths, raw TOC indexes or raw HTML page paths.
+
+Skip rule:
+
+- If one or more listed HBK books are absent, record the missing paths and do not mark the case
+  failed.
+
+Cleanup:
+
+- `target/uat/book-md-corpus` is service data and may be deleted after the run.
+
+## UAT-HBK-005: Markdown Export Converts Tables and Function Lists
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-DOC-001, FR-CLI-001.
+
+Source pages:
+
+- `dcsui_ru.hbk` `PresentSKD`: table of Russian/English data-composition keywords.
+- `dcsui_ru.hbk` `SKD_Functions_Strings`: string-function index and function sections.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/dcsui_ru.hbk` exists.
+- `target/uat/dcsui-md` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/dcsui-md
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  /opt/1cv8/x86_64/8.5.1.1150/dcsui_ru.hbk \
+  --output target/uat/dcsui-md \
+  --format markdown \
+  --hierarchy toc
+
+KEYWORDS_PAGE="$(rg -l '^# Двуязычное представление ключевых слов системы компоновки данных' target/uat/dcsui-md -g '*.md' | head -n 1)"
+STRINGS_PAGE="$(rg -l '^# Работа со строками' target/uat/dcsui-md -g '*.md' | head -n 1)"
+test -n "$KEYWORDS_PAGE"
+test -n "$STRINGS_PAGE"
+
+rg -q 'ВЫБОР' "$KEYWORDS_PAGE"
+rg -q 'CASE' "$KEYWORDS_PAGE"
+rg -q 'ДЛИНАСТРОКИ' "$KEYWORDS_PAGE"
+rg -q 'STRINGLENGTH' "$KEYWORDS_PAGE"
+rg -q '\|' "$KEYWORDS_PAGE"
+
+rg -q 'ДлинаСтроки' "$STRINGS_PAGE"
+rg -q 'StringLength' "$STRINGS_PAGE"
+rg -q 'ДлинаСтроки.*Строка' "$STRINGS_PAGE"
+rg -q 'Подстрока' "$STRINGS_PAGE"
+! rg -n '<(TABLE|TR|TD|A|P|H1|H2)\b|&nbsp;' "$KEYWORDS_PAGE" "$STRINGS_PAGE"
+```
+
+Expected result:
+
+- `PresentSKD` is exported as a Markdown page with a heading and readable keyword table content.
+- Russian/English keyword pairs remain visible in Markdown.
+- `SKD_Functions_Strings` keeps the string-function names and at least one function syntax or
+  parameter description.
+- Raw table/link/paragraph HTML tags and `&nbsp;` do not leak into the Markdown.
+
+Cleanup:
+
+- `target/uat/dcsui-md` is service data and may be deleted after the run.
+
+## UAT-HBK-006: Markdown Export Preserves Language Syntax Blocks and Links
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-DOC-001, FR-CLI-001.
+
+Source pages:
+
+- `shlang_ru.hbk` `def_Func`: BSL function declaration syntax.
+- `shlang_ru.hbk` `struct_IfThenElif`: conditional operator syntax and internal links.
+- `shquery_ru.hbk` `syntax_diagram.html`: query-language syntax diagram examples.
+- `shquery_ru.hbk` `SUM`: query aggregate function with see-also link.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shlang_ru.hbk` exists.
+- `/opt/1cv8/x86_64/8.5.1.1150/shquery_ru.hbk` exists.
+- `target/uat/shlang-md` and `target/uat/shquery-md` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shlang-md target/uat/shquery-md
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  /opt/1cv8/x86_64/8.5.1.1150/shlang_ru.hbk \
+  --output target/uat/shlang-md \
+  --format markdown \
+  --hierarchy toc
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  /opt/1cv8/x86_64/8.5.1.1150/shquery_ru.hbk \
+  --output target/uat/shquery-md \
+  --format markdown \
+  --hierarchy toc
+
+FUNC_PAGE="$(rg -l '^# Функция' target/uat/shlang-md -g '*.md' | head -n 1)"
+IF_PAGE="$(rg -l '^# Если' target/uat/shlang-md -g '*.md' | head -n 1)"
+QUERY_SYNTAX_PAGE="$(rg -l '^# Синтаксическая диаграмма конструкций языка запросов' target/uat/shquery-md -g '*.md' | head -n 1)"
+SUM_PAGE="$(rg -l '^# Агрегатная функция СУММА' target/uat/shquery-md -g '*.md' | head -n 1)"
+test -n "$FUNC_PAGE"
+test -n "$IF_PAGE"
+test -n "$QUERY_SYNTAX_PAGE"
+test -n "$SUM_PAGE"
+
+rg -q 'Синтаксис' "$FUNC_PAGE"
+rg -q 'Функция <Имя_функции>' "$FUNC_PAGE"
+rg -q 'Возврат <Возвращаемое значение>' "$FUNC_PAGE"
+rg -q 'КонецФункции' "$FUNC_PAGE"
+
+rg -q 'Если <Логическое выражение> Тогда' "$IF_PAGE"
+rg -q 'ИначеЕсли <Логическое выражение> Тогда' "$IF_PAGE"
+rg -q 'КонецЕсли' "$IF_PAGE"
+rg -q 'логического выражения' "$IF_PAGE"
+
+rg -q '<Конструкция языка>' "$QUERY_SYNTAX_PAGE"
+rg -q 'ЭТО_КЛЮЧЕВОЕ_СЛОВО' "$QUERY_SYNTAX_PAGE"
+rg -q 'Агрегатные функции' "$SUM_PAGE"
+rg -q 'NULL' "$SUM_PAGE"
+! rg -n '<(HTML|BODY|P|A|H1|DIV|BR)\b|&nbsp;' "$FUNC_PAGE" "$IF_PAGE" "$QUERY_SYNTAX_PAGE" "$SUM_PAGE"
+```
+
+Expected result:
+
+- BSL and query-language syntax examples remain readable as Markdown text.
+- Angle-bracket syntax placeholders such as `<Имя_функции>` and `<Конструкция языка>` are not lost
+  or interpreted as raw HTML tags.
+- See-also/internal link text remains visible.
+- Raw HTML page structure and `&nbsp;` do not leak into the Markdown.
+
+Cleanup:
+
+- `target/uat/shlang-md` and `target/uat/shquery-md` are service data and may be deleted after the
+  run.
+
+## UAT-HBK-007: Markdown Export Preserves Ordinary UI Help Text
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-DOC-001, FR-CLI-001.
+
+Source pages:
+
+- `fmtdui_ru.hbk` `form_formattedstringedit`: short page with paragraphs and line breaks.
+- `htmlui_ru.hbk` `form_addtable`: ordinary HTML editor help page.
+- `moxelui_ru.hbk` `form_moxelpagesetupdialog`: longer UI page with list/definition-like content.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` exists.
+- `/opt/1cv8/x86_64/8.5.1.1150/htmlui_ru.hbk` exists.
+- `/opt/1cv8/x86_64/8.5.1.1150/moxelui_ru.hbk` exists.
+- `target/uat/ui-md` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/ui-md
+for book in fmtdui_ru htmlui_ru moxelui_ru; do
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+    "/opt/1cv8/x86_64/8.5.1.1150/${book}.hbk" \
+    --output "target/uat/ui-md/${book}" \
+    --format markdown \
+    --hierarchy toc
+done
+
+FMTDUI_PAGE="$(rg -l '^# Конструктор строк на разных языках' target/uat/ui-md/fmtdui_ru -g '*.md' | head -n 1)"
+HTMLUI_PAGE="$(rg -l '^# Вставка таблицы' target/uat/ui-md/htmlui_ru -g '*.md' | head -n 1)"
+MOXEL_PAGE="$(rg -l '^# Параметры страницы табличного документа' target/uat/ui-md/moxelui_ru -g '*.md' | head -n 1)"
+test -n "$FMTDUI_PAGE"
+test -n "$HTMLUI_PAGE"
+test -n "$MOXEL_PAGE"
+
+rg -q 'интерфейсных языков' "$FMTDUI_PAGE"
+rg -q 'Обычная строка' "$FMTDUI_PAGE"
+rg -q 'Форматированная строка' "$FMTDUI_PAGE"
+
+rg -q 'HTML-документы можно вставлять таблицы' "$HTMLUI_PAGE"
+rg -q 'Таблица - Вставить таблицу' "$HTMLUI_PAGE"
+rg -q 'Ячейки можно объединять и делить' "$HTMLUI_PAGE"
+
+rg -q 'Файл - Параметры страницы' "$MOXEL_PAGE"
+rg -q 'Колонтитулы' "$MOXEL_PAGE"
+rg -q 'Авто' "$MOXEL_PAGE"
+! rg -n '<(HTML|BODY|P|A|H1|UL|LI|DL|DT|DD|STRONG|SPAN)\b|&nbsp;' "$FMTDUI_PAGE" "$HTMLUI_PAGE" "$MOXEL_PAGE"
+```
+
+Expected result:
+
+- Ordinary UI help pages retain their headings and essential user-facing prose.
+- Inline formatting and line breaks are converted into readable Markdown/text without raw HTML
+  scaffolding.
+- Longer list/definition-like UI pages keep their important option labels and descriptions.
+
+Cleanup:
+
+- `target/uat/ui-md` is service data and may be deleted after the run.
+
 ## UAT-SH-001: Export Russian Syntax Assistant Data
 
 Related use case: UC-SH-001.

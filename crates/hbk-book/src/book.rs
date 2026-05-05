@@ -1,3 +1,4 @@
+#[cfg(any(test, feature = "test-utils"))]
 use std::collections::BTreeMap;
 use std::fmt;
 use std::io::{self, Cursor, Read};

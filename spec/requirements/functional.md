@@ -96,6 +96,32 @@ Acceptance:
 - TOC parse succeeds for `fmtdui_root.hbk` and `fmtdui_ru.hbk`.
 - Lookup by a known page path returns the same page as tree traversal.
 
+## FR-HBK-004: Book Content Export
+
+The system must export ordinary HBK book content without invoking Syntax Assistant platform-fact
+extraction. The first public command has two explicit axes:
+
+- `format=raw` writes original stored bytes;
+- `format=markdown` converts TOC page HTML into readable Markdown;
+- `hierarchy=raw` preserves normalized `FileStorage` entry paths and acts as an unpack operation;
+- `hierarchy=toc` writes TOC pages under a deterministic TOC-derived directory tree.
+
+The first implementation slice supports `raw/raw` and `markdown/toc`. Other format/hierarchy pairs
+must fail with stable readable diagnostics until their behavior is specified. Markdown conversion
+must be backed by an approved stable HTML-to-Markdown library candidate and must preserve readable
+page headings, body text, links, lists, tables and syntax placeholders on representative real HBK
+pages. Normal Markdown output must not include raw HBK file paths, raw TOC indexes, raw HTML page
+paths or service HTML scaffolding.
+
+Acceptance:
+
+- Raw/raw export of a small HBK book writes stored files under normalized storage paths.
+- Markdown/toc export writes one Markdown file per TOC page under deterministic TOC-derived
+  directories.
+- Markdown export keeps representative real-page headings, prose, links, lists, tables and syntax
+  placeholders readable.
+- Unsupported format/hierarchy combinations fail with readable non-panic diagnostics.
+
 ## FR-DOC-001: Documentation Page Reader
 
 The system must read raw page HTML, parse it into a documentation representation, extract title,
@@ -762,6 +788,7 @@ The initial CLI must support:
 v8-context-hbk inspect <book.hbk>
 v8-context-hbk toc <book.hbk> --format json
 v8-context-hbk page <book.hbk> --path <html-path>
+v8-context-hbk export <book.hbk> --output <dir> --format <raw|markdown> --hierarchy <raw|toc>
 v8-context-hbk syntax export <shcntx.hbk> --output <dir>
 ```
 
@@ -769,4 +796,6 @@ Acceptance:
 
 - Commands fail with non-zero exit and readable error on missing/corrupt input.
 - `inspect` prints entity names and basic metadata.
+- `export` writes ordinary book content or returns a stable readable unsupported-combination
+  diagnostic.
 - `syntax export` writes canonical JSON export files.

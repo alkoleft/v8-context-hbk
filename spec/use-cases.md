@@ -57,6 +57,15 @@ storage.
 
 Related requirements: FR-HBK-002, FR-HBK-003, FR-DOC-001, FR-CLI-001.
 
+## UC-HBK-003: Export a Help Book as Files or Markdown
+
+Primary user: documentation consumer.
+
+Outcome: a user can export a whole HBK help book either as raw stored files or as readable
+TOC-ordered Markdown files for review, indexing and downstream documentation workflows.
+
+Related requirements: FR-HBK-002, FR-HBK-003, FR-HBK-004, FR-DOC-001, FR-CLI-001.
+
 ## UC-SH-001: Export Syntax Assistant Platform Data
 
 Primary user: platform-context consumer.
