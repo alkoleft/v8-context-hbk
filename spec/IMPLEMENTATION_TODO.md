@@ -794,7 +794,7 @@ Completion notes:
   `Task Tables > Main Table` missing-syntax behavior that T75 must implement.
 - Verification passed with `git diff --check`.
 
-### [ ] T75. Implement query-table syntax fallback removal
+### [x] T75. Implement query-table syntax fallback removal
 
 Spec refs:
 
@@ -817,6 +817,21 @@ Verification:
 - `cargo test -p syntax-helper-extract --lib`
 - `cargo test -p hbk-export --lib`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Removed fallback-to-name behavior for query table `identifier` and `table_role`: missing or empty
+  syntax now keeps an empty internal identifier and `QueryTableRole::Unknown`.
+- `hbk-export` omits empty consumer `identifier`, preserving the T74 JSON contract of no synthesized
+  `syntax` or `identifier` for missing-syntax query tables.
+- The extraction stream emits one `MISSING_QUERY_TABLE_SYNTAX` parser-maintenance diagnostic per
+  affected query table while still streaming the query table record and nested field/parameter
+  facts.
+- `syntax-helper-search` keeps non-empty internal document ids for missing-syntax query tables by
+  using semantic owner-path identity, without restoring parser/export fallback identifiers.
+- Verification passed with `cargo test -p syntax-helper-extract --lib`,
+  `cargo test -p hbk-export --lib`, `cargo test -p syntax-helper-search --lib` and
+  `cargo test --workspace`.
 
 ### [ ] T76. Replace in-memory type lookup scan with indexed SQL lookup
 

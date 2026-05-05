@@ -252,6 +252,7 @@ impl<'a> From<&'a model::PlatformProperty> for ConsumerPlatformProperty<'a> {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ConsumerQueryTable<'a> {
     name: &'a str,
+    #[serde(skip_serializing_if = "is_empty_str")]
     identifier: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     syntax: Option<ConsumerLocalizedName<'a>>,
@@ -263,6 +264,10 @@ pub(crate) struct ConsumerQueryTable<'a> {
     fields: Vec<ConsumerQueryTableField<'a>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     parameters: Vec<ConsumerQueryTableParameter<'a>>,
+}
+
+fn is_empty_str(value: &&str) -> bool {
+    value.is_empty()
 }
 
 impl<'a> ConsumerQueryTable<'a> {

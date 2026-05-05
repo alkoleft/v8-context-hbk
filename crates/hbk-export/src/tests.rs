@@ -553,6 +553,19 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 description: None,
                 source: source.clone(),
             },
+            model::QueryTable {
+                name: "Основная таблица".to_string(),
+                syntax: None,
+                identifier: String::new(),
+                semantic: semantic(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                )
+                .with_owner_path(vec![name("Таблицы задач")]),
+                table_role: model::QueryTableRole::Unknown,
+                description: None,
+                source: source.clone(),
+            },
         ],
         table_fields: vec![model::QueryTableField {
             owner: name("Таблица бизнес-процессов"),
@@ -879,6 +892,14 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             .get("type_refs")
             .is_none()
     );
+    assert_eq!(query_tables["records"][2]["name"], "Основная таблица");
+    assert_eq!(query_tables["records"][2]["table_role"], "unknown");
+    assert_eq!(
+        query_tables["records"][2]["owner_path"],
+        serde_json::json!(["Таблицы задач"])
+    );
+    assert!(query_tables["records"][2].get("syntax").is_none());
+    assert!(query_tables["records"][2].get("identifier").is_none());
 
     let enums = read_json(dir.join("enums.json"));
     let enum_record = &enums["records"][0];

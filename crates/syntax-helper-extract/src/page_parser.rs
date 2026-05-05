@@ -120,7 +120,7 @@ pub fn parse_query_table(content: &PageContent, source: SyntaxHelperSource) -> Q
     let syntax = query_table_syntax(content);
     let name = query_table_name(content);
     let identifier = query_table_identifier(syntax.as_ref(), &name);
-    let table_role = query_table_role(syntax.as_ref(), &name);
+    let table_role = query_table_role(syntax.as_ref());
     QueryTable {
         name,
         syntax,
@@ -135,6 +135,7 @@ pub fn parse_query_table(content: &PageContent, source: SyntaxHelperSource) -> Q
 pub(crate) fn query_table_syntax(content: &PageContent) -> Option<LocalizedName> {
     chapter_section_text(&content.raw_html, &["Синтаксис", "Syntax"])
         .map(|text| name_from_text(&text))
+        .filter(|name| !name.primary.trim().is_empty())
 }
 
 fn query_table_name(content: &PageContent) -> String {
@@ -147,18 +148,20 @@ fn query_table_name(content: &PageContent) -> String {
 }
 
 pub(crate) fn query_table_identifier(syntax: Option<&LocalizedName>, name: &str) -> String {
-    let primary = syntax
-        .and_then(primary_syntax_segment)
-        .filter(|segment| !segment.is_empty())
-        .unwrap_or_else(|| name.trim());
-    if syntax.is_some_and(|syntax| query_table_syntax_segment_count(syntax) > 2) {
+    let Some(syntax) = syntax else {
+        return String::new();
+    };
+    let Some(primary) = primary_syntax_segment(syntax).filter(|segment| !segment.is_empty()) else {
+        return String::new();
+    };
+    if query_table_syntax_segment_count(syntax) > 2 {
         format!("{}{}", primary, camel_case_identifier_part(name))
     } else {
         compact_identifier_part(primary)
     }
 }
 
-pub(crate) fn query_table_role(syntax: Option<&LocalizedName>, name: &str) -> QueryTableRole {
+pub(crate) fn query_table_role(syntax: Option<&LocalizedName>) -> QueryTableRole {
     if let Some(syntax) = syntax.filter(|syntax| !syntax.primary.trim().is_empty()) {
         return if query_table_syntax_segment_count(syntax) <= 2 {
             QueryTableRole::Primary
@@ -166,14 +169,7 @@ pub(crate) fn query_table_role(syntax: Option<&LocalizedName>, name: &str) -> Qu
             QueryTableRole::Additional
         };
     }
-    let normalized = name.trim().to_lowercase();
-    if normalized == "основная таблица" || normalized == "main table" {
-        QueryTableRole::Primary
-    } else if normalized.is_empty() {
-        QueryTableRole::Unknown
-    } else {
-        QueryTableRole::Additional
-    }
+    QueryTableRole::Unknown
 }
 
 pub fn parse_platform_method(content: &PageContent, source: SyntaxHelperSource) -> PlatformMethod {

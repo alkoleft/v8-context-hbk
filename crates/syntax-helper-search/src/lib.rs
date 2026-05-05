@@ -2795,7 +2795,7 @@ impl DocumentIdentities {
         let query_table_counts = count_by(
             query_tables
                 .iter()
-                .map(|record| normalize_lookup_key(&record.identifier)),
+                .map(|record| query_table_identity_key(record)),
         );
         let platform_type_ids = platform_types
             .iter()
@@ -2815,7 +2815,12 @@ impl DocumentIdentities {
             .map(|record| {
                 (
                     semantic_relation_key(&record.semantic, &record.name_primary),
-                    query_table_identity(&record.identifier, &record.semantic, &query_table_counts),
+                    query_table_identity(
+                        &record.name_primary,
+                        &record.identifier,
+                        &record.semantic,
+                        &query_table_counts,
+                    ),
                 )
             })
             .collect();
@@ -2942,13 +2947,14 @@ fn platform_type_identity(
 }
 
 fn query_table_identity(
+    name_primary: &str,
     identifier: &str,
     semantic: &model::SemanticContext,
     counts: &BTreeMap<String, usize>,
 ) -> String {
-    let base = clean_identity_part(identifier);
+    let base = query_table_identity_base(name_primary, identifier, semantic);
     if counts
-        .get(&normalize_lookup_key(identifier))
+        .get(&normalize_lookup_key(&base))
         .copied()
         .unwrap_or(0)
         <= 1
@@ -2960,6 +2966,26 @@ fn query_table_identity(
             semantic_variant(&semantic.owner_path)
         )
     }
+}
+
+fn query_table_identity_key(record: &QueryTableIdentityInput) -> String {
+    normalize_lookup_key(&query_table_identity_base(
+        &record.name_primary,
+        &record.identifier,
+        &record.semantic,
+    ))
+}
+
+fn query_table_identity_base(
+    name_primary: &str,
+    identifier: &str,
+    semantic: &model::SemanticContext,
+) -> String {
+    let identifier = clean_identity_part(identifier);
+    if !identifier.is_empty() {
+        return identifier;
+    }
+    semantic_record_key(name_primary, semantic)
 }
 
 fn enum_identity(name_primary: &str, source_html_path: &str) -> String {
@@ -3922,6 +3948,35 @@ mod tests {
                 && relation.target_id
                     == "query_table_field:query_table:ОстаткиИОбороты:Таблицы регистра бухгалтерии (без поддержки корреспонденции):Сумма"
         }));
+    }
+
+    #[test]
+    fn missing_syntax_query_table_identity_uses_semantic_owner_path() {
+        let mut task_table = query_table("", "Таблицы задач", "Основная таблица");
+        task_table.syntax = None;
+        task_table.identifier = String::new();
+        task_table.table_role = model::QueryTableRole::Unknown;
+        let context = model::PlatformContext {
+            query_tables: vec![task_table],
+            table_fields: vec![query_table_field(
+                "Основная таблица",
+                "Таблицы задач",
+                "Наименование",
+            )],
+            ..model::PlatformContext::default()
+        };
+
+        let documents = builder_from_context(&context).into_documents();
+        let ids = documents
+            .iter()
+            .map(|document| document.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(!ids.contains(&"query_table:"));
+        assert!(ids.contains(&"query_table:Таблицы задач:Основная таблица"));
+        assert!(ids.contains(
+            &"query_table_field:query_table:Таблицы задач:Основная таблица:Наименование"
+        ));
     }
 
     #[test]

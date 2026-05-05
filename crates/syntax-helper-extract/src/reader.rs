@@ -192,7 +192,11 @@ where
                     table.semantic = catalog_page.semantic.clone();
                     table.name = name_from_text(&catalog_page.source.page_title).primary;
                     table.identifier = query_table_identifier(table.syntax.as_ref(), &table.name);
-                    table.table_role = query_table_role(table.syntax.as_ref(), &table.name);
+                    table.table_role = query_table_role(table.syntax.as_ref());
+                    if table.syntax.is_none() {
+                        sink.diagnostic(missing_query_table_syntax_diagnostic(&table))
+                            .map_err(SyntaxHelperStreamError::Sink)?;
+                    }
                     sink.query_table(table)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
@@ -253,6 +257,16 @@ where
     }
 
     Ok(())
+}
+
+fn missing_query_table_syntax_diagnostic(table: &QueryTable) -> SyntaxHelperDiagnostic {
+    SyntaxHelperDiagnostic {
+        severity: DiagnosticSeverity::Warning,
+        code: "MISSING_QUERY_TABLE_SYNTAX",
+        source: table.source.clone(),
+        parser_stage: "query_table",
+        message: "Query table page has no source Syntax section or has an empty Syntax section; syntax and identifier are not synthesized from the table display name".to_string(),
+    }
 }
 
 fn module_context(semantic: &SemanticContext) -> ModuleEventContext {

@@ -14,7 +14,9 @@ struct RecordingSink {
     seen: Vec<String>,
     events: Vec<GlobalContextEvent>,
     platform_types: Vec<PlatformType>,
+    query_tables: Vec<QueryTable>,
     type_properties: Vec<PlatformProperty>,
+    diagnostics: Vec<SyntaxHelperDiagnostic>,
 }
 
 impl RecordingSink {
@@ -55,6 +57,7 @@ impl SyntaxHelperSink for RecordingSink {
 
     fn query_table(&mut self, record: QueryTable) -> Result<(), Self::Error> {
         self.seen.push(format!("query_table:{}", record.name));
+        self.query_tables.push(record);
         Ok(())
     }
 
@@ -102,6 +105,7 @@ impl SyntaxHelperSink for RecordingSink {
 
     fn diagnostic(&mut self, record: SyntaxHelperDiagnostic) -> Result<(), Self::Error> {
         self.seen.push(format!("diagnostic:{}", record.code));
+        self.diagnostics.push(record);
         Ok(())
     }
 }
@@ -396,6 +400,115 @@ fn parses_additional_query_table_identifier_from_extended_syntax() {
     );
     assert_eq!(table.identifier, "БизнесПроцессТаблицаТочекБизнесПроцессов");
     assert_eq!(table.table_role, QueryTableRole::Additional);
+}
+
+#[test]
+fn query_table_without_syntax_does_not_fallback_to_display_name() {
+    let toc = Toc::parse(
+        r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Основная таблица"}},"/tables/catalog1/table2.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "tables/catalog1/table2.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">Основная таблица</h1><p class="V8SH_chapter">Поля</p><p class="V8SH_chapter">Описание:</p><p>Основная таблица задач.</p></body></html>"#,
+    );
+
+    let table = parse_query_table(&content, source("tables/catalog1/table2.html"));
+
+    assert!(table.syntax.is_none());
+    assert_eq!(table.identifier, "");
+    assert_eq!(table.table_role, QueryTableRole::Unknown);
+
+    let empty_syntax_content = fixture_content_from_raw(
+        &toc,
+        "shcntx_ru.hbk",
+        "ru",
+        "tables/catalog1/table2.html",
+        r#"<html><body><h1 class="V8SH_pagetitle">Основная таблица</h1><p class="V8SH_chapter">Синтаксис</p><p class="V8SH_chapter">Поля</p><p>Наименование</p></body></html>"#,
+    );
+    let empty_syntax_table =
+        parse_query_table(&empty_syntax_content, source("tables/catalog1/table2.html"));
+    assert!(empty_syntax_table.syntax.is_none());
+    assert_eq!(empty_syntax_table.identifier, "");
+    assert_eq!(empty_syntax_table.table_role, QueryTableRole::Unknown);
+}
+
+#[test]
+fn extraction_reports_missing_query_table_syntax_without_dropping_record() {
+    let toc = Toc::parse(
+        r#"{
+                4
+                {1,0,3,2,3,4,{0,0,{0,0,{"ru","Универсальные коллекции значений"}},"/objects/catalog234.html"}}
+                {2,1,0,{0,0,{0,0,{"ru","Массив"}},"/objects/catalog234/Array.html"}}
+                {3,1,0,{0,0,{0,0,{"ru","Основная таблица"}},"/tables/catalog1/table2.html"}}
+                {4,1,0,{0,0,{0,0,{"ru","Наименование"}},"/tables/catalog1/table2/fields/Description.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let mut sink = RecordingSink::default();
+
+    extract_with_loader_into(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc,
+        |html_path| {
+            let html = match html_path {
+                "objects/catalog234.html" => {
+                    include_str!("../../../tests/fixtures/syntax-helper/root_catalog_types_ru.html")
+                }
+                "objects/catalog234/Array.html" => {
+                    include_str!("../../../tests/fixtures/syntax-helper/object_array_ru.html")
+                }
+                "tables/catalog1/table2.html" => {
+                    r#"<html><body><h1 class="V8SH_pagetitle">Основная таблица</h1><p class="V8SH_chapter">Поля</p><p class="V8SH_chapter">Описание:</p><p>Основная таблица задач.</p></body></html>"#
+                }
+                "tables/catalog1/table2/fields/Description.html" => {
+                    r#"<html><body><h1 class="V8SH_pagetitle">Наименование</h1><p class="V8SH_heading">Наименование</p>Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>. <br>Описание задачи.<br></body></html>"#
+                }
+                other => panic!("unexpected fixture page load: {other}"),
+            };
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_ru.hbk",
+                "ru",
+                html_path,
+                html,
+            ))
+        },
+        &mut sink,
+    )
+    .expect("fixture extraction must stream");
+
+    assert!(
+        sink.seen
+            .contains(&"query_table:Основная таблица".to_string())
+    );
+    assert!(
+        sink.seen
+            .contains(&"table_field:Основная таблица:Наименование".to_string())
+    );
+    let table = sink
+        .query_tables
+        .iter()
+        .find(|table| table.name == "Основная таблица")
+        .expect("query table record must be kept");
+    assert!(table.syntax.is_none());
+    assert_eq!(table.identifier, "");
+    assert_eq!(table.table_role, QueryTableRole::Unknown);
+
+    let diagnostic = sink
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "MISSING_QUERY_TABLE_SYNTAX")
+        .expect("missing syntax diagnostic must be emitted");
+    assert_eq!(diagnostic.parser_stage, "query_table");
+    assert_eq!(diagnostic.source.page_title, "Основная таблица");
 }
 
 #[test]
