@@ -552,3 +552,259 @@ Verification:
   relation traversal after source open. Each operation should stay under the provisional `100 ms`
   target; if not, record the measured value, environment/input, suspected blocker and a follow-up
   task instead of adding cache/config work outside this task.
+
+## Cleanup Sequence: Legacy Removal Before Rework
+
+Execution guard:
+
+- T68-T78 are cleanup tasks for removing provisional legacy paths before broader rework.
+- While T66 or T67 remain unchecked, these cleanup tasks are not the default first unchecked task.
+- A cleanup task may be selected only after T66/T67 are complete, or when the user explicitly says
+  to run the cleanup sequence now.
+- Every cleanup task references the public-contract policy in
+  `spec/implementation/components.md`: provisional legacy paths may be removed without
+  compatibility fallback when no accepted ADR or requirement stabilizes them.
+
+### [ ] T68. Record cleanup boundary for pre-rework legacy removal
+
+Spec refs:
+
+- `spec/implementation/components.md`
+- `spec/README.md`
+
+Scope:
+
+- Confirm the no-backward-compatibility cleanup policy is durable in spec/ and not only in task
+  text or chat.
+- Record cleanup sequencing, non-goals and implementation boundaries for T69-T78.
+- Do not remove code in this task.
+- Do not change T66/T67 ordering unless the user explicitly selected cleanup work before them.
+
+Verification:
+
+- Cleanup policy is present in durable spec/ documentation.
+- T69-T78 reference the policy and stay scoped to one cleanup concern each.
+- `git diff --check`
+
+### [ ] T69. Remove legacy in-memory search-index path
+
+Spec refs:
+
+- T68
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Remove the duplicate `build_index(context)` / `documents_from_context` path in
+  `syntax-helper-search`.
+- Keep the streaming `SearchIndexBuilder` / `SyntaxHelperSink` path as the single index-build
+  mechanism.
+- Update tests to build indexes through the surviving path.
+- Do not change CLI query behavior, SQLite public assumptions or provider JSON shape.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+### [ ] T70. Remove legacy in-memory export path
+
+Spec refs:
+
+- T68
+- `spec/implementation/components.md`
+- FR-EXPORT-001
+
+Scope:
+
+- Remove duplicate in-memory export APIs such as `export_platform_context`, `export_syntax_helper`
+  and `PlatformContextExporter` when no repo-local accepted contract requires them.
+- Keep `StreamingSyntaxHelperExport` as the single canonical export path.
+- Update export tests and spec notes to reflect the surviving path.
+- Do not change consumer JSON record-family shape in this task.
+
+Verification:
+
+- `cargo test -p hbk-export --lib`
+- `cargo test --workspace`
+
+### [ ] T71. Collapse duplicated `syntax get` query dispatch
+
+Spec refs:
+
+- T68
+- ADR-0007
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Replace the duplicated tuple-match logic in `get_query_value` and `get_lookup` with one typed
+  query classification for `syntax get`.
+- Preserve accepted provider query kinds, status behavior and text output.
+- Do not move provider JSON fact serialization in this task.
+
+Verification:
+
+- `cargo test -p v8-context-hbk-cli`
+- `cargo test --workspace`
+
+### [ ] T72. Collapse provider JSON adapter duplication
+
+Spec refs:
+
+- T68
+- ADR-0007
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Deduplicate CLI `document_fact` / `compact_document_fact` provider JSON mapping.
+- Keep provider JSON deterministic and export-compatible for shared platform fact fields.
+- Do not change lookup dispatch, SQLite schema or search ranking in this task.
+
+Verification:
+
+- `cargo test -p v8-context-hbk-cli`
+- `cargo test --workspace`
+
+### [ ] T73. Normalize HBK/page path handling boundaries
+
+Spec refs:
+
+- T68
+- FR-HBK-002
+- FR-HBK-003
+- FR-DOC-001
+- FR-SH-003
+- `spec/implementation/components.md`
+
+Scope:
+
+- Consolidate path-normalization rules currently split across `hbk-book`, `hbk-docs` and
+  `syntax-helper-extract`.
+- Keep distinct functions only where the semantics genuinely differ, such as storage path,
+  documentation link target and Syntax Assistant member link.
+- Preserve existing observable behavior unless a difference is promoted into spec/UAT first.
+- Do not remove query-table syntax fallback behavior in this task.
+
+Verification:
+
+- `cargo test -p hbk-book --lib`
+- `cargo test -p hbk-docs --lib`
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test --workspace`
+
+### [ ] T74. Specify query-table syntax fallback removal
+
+Spec refs:
+
+- T68
+- FR-EXPORT-001
+- FR-SH-003
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+- `spec/acceptance/uat-test-cases.md`
+
+Scope:
+
+- Define the observable contract for pages where query table syntax is missing or empty.
+- Decide the JSON/diagnostic behavior before removing `query_table_identifier` /
+  `query_table_role` fallback-to-name behavior.
+- Add or update UAT/acceptance notes for at least one source-backed query-table scenario.
+- Do not implement parser/export changes in this task.
+
+Verification:
+
+- Updated spec/UAT notes define the selected missing-syntax behavior and non-goals.
+- Follow-up implementation scope remains limited to the selected contract.
+- `git diff --check`
+
+### [ ] T75. Implement query-table syntax fallback removal
+
+Spec refs:
+
+- T68
+- T74
+- FR-EXPORT-001
+- FR-SH-003
+- `spec/implementation/components.md`
+
+Scope:
+
+- Remove fallback-to-name behavior in `query_table_identifier` and `query_table_role` according to
+  the T74-approved contract.
+- Emit the selected diagnostic or unsupported result for missing/empty syntax.
+- Update focused parser/export tests and any affected acceptance baseline notes.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p hbk-export --lib`
+- `cargo test --workspace`
+
+### [ ] T76. Replace in-memory type lookup scan with indexed SQL lookup
+
+Spec refs:
+
+- T68
+- ADR-0004
+- ADR-0007
+- FR-SH-PROVIDER-001
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Change `type_identities_by_lookup_key` to use indexed SQLite lookup instead of loading all type
+  identities and filtering in memory.
+- Preserve deterministic ambiguity behavior and provider JSON results.
+- Do not change index schema unless a focused migration is required and recorded in spec.
+
+Verification:
+
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test --workspace`
+
+### [ ] T77. Clean `syntax-helper-search` dependency scope
+
+Spec refs:
+
+- T68
+- `spec/implementation/components.md`
+
+Scope:
+
+- Move `syntax-helper-search` `serde_json` dependency to dev-dependencies when it is still only used
+  by tests, or remove it if no longer needed.
+- Keep dependency cleanup limited to this crate and this finding.
+- Do not include broad clippy cleanup or unrelated dependency updates.
+
+Verification:
+
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo test --workspace`
+
+### [ ] T78. Deduplicate property usage and type-prose cleanup
+
+Spec refs:
+
+- T68
+- FR-SH-002
+- FR-EXPORT-001
+- `spec/implementation/components.md`
+
+Scope:
+
+- Remove duplicated parser/export handling for property `usage` normalization and leading type
+  prose cleanup.
+- Keep the rule at the boundary selected by spec: parser/domain if it is extraction truth,
+  exporter only if it is consumer-shape adaptation.
+- Do not perform broad parser rewrites in this task.
+
+Verification:
+
+- `cargo test -p syntax-helper-extract --lib`
+- `cargo test -p hbk-export --lib`
+- `cargo test --workspace`

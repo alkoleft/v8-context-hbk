@@ -45,6 +45,9 @@ Solution-context Rust resolution is described in
 - Public contracts are provisional unless an ADR or requirement explicitly stabilizes them.
 - Legacy-shaped DTOs or exports are adapters for concrete consumers, not constraints on the internal
   model.
+- Before a planned rework, provisional legacy paths may be removed without compatibility fallback
+  when no accepted ADR or requirement stabilizes them. Cleanup tasks must reference this policy,
+  keep observable contract changes spec-first, and avoid adding replacement compatibility layers.
 - Runtime 1C introspection is out of scope for this repository.
 - Validation belongs at file/container input, external command input, parsing boundaries,
   serialization/export boundaries and public API boundaries.
