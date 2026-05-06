@@ -159,8 +159,8 @@ remain readable after `open` so `HbkBook` can create a short-lived `FileStorageR
 or `FileStorage` entries; entry bytes are read from the actual ZIP stream at the HBK input boundary.
 
 The supported ordinary page/file surface is `read_file`, `read_page` and `FileStorageReader`.
-`HbkBook::read_pages` is a test/support convenience for deterministic fixture checks and is not an
-ordinary public contract.
+`HbkBook::read_pages` is retired; deterministic repeated-page fixture checks should use
+`FileStorageReader` directly.
 
 ### hbk-docs
 

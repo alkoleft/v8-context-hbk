@@ -1,5 +1,3 @@
-#[cfg(any(test, feature = "test-utils"))]
-use std::collections::BTreeMap;
 use std::fmt;
 use std::io::{self, Cursor, Read};
 use std::path::{Path, PathBuf};
@@ -220,24 +218,6 @@ impl HbkBook {
     pub fn read_page(&self, path: &str) -> Result<String, BookError> {
         let mut reader = self.file_storage_reader()?;
         reader.read_page(path)
-    }
-
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn read_pages<'p>(
-        &self,
-        paths: impl IntoIterator<Item = &'p str>,
-    ) -> Result<BTreeMap<String, String>, BookError> {
-        let mut pages = BTreeMap::new();
-        let mut reader = self.file_storage_reader()?;
-        for path in paths {
-            let entry_name = normalize_storage_path_owned(path);
-            if pages.contains_key(&entry_name) {
-                continue;
-            }
-            let page = reader.read_page(&entry_name)?;
-            pages.insert(entry_name, page);
-        }
-        Ok(pages)
     }
 
     fn from_container(container: HbkContainer) -> Result<Self, BookError> {
@@ -637,46 +617,6 @@ mod tests {
             reader.read_page("docs/second.html").unwrap(),
             "<html>second</html>"
         );
-    }
-
-    #[test]
-    fn read_pages_deduplicates_storage_paths() {
-        let toc = r#"{
-            2
-            {1,0,0,{0,0,{0,0,{"ru","Первая"}},"/docs/first.html"}}
-            {2,0,0,{0,0,{0,0,{"ru","Вторая"}},"/docs/second.html"}}
-        }"#;
-        let fixture = TempHbk::new(
-            "fmtdui_ru.hbk",
-            fixture_container(vec![
-                (
-                    "Book",
-                    Some(
-                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
-                            .as_bytes()
-                            .to_vec(),
-                    ),
-                ),
-                ("PackBlock", Some(zip_bytes("toc.txt", toc.as_bytes()))),
-                (
-                    "FileStorage",
-                    Some(zip_entries(vec![
-                        ("docs/first.html", b"<html>first</html>"),
-                        ("docs/second.html", b"<html>second</html>"),
-                    ])),
-                ),
-            ]),
-        )
-        .expect("fixture must be written");
-        let book = HbkBook::open(fixture.path()).expect("book must open");
-
-        let pages = book
-            .read_pages(["/docs/first.html", "docs/second.html", "/docs/first.html"])
-            .expect("pages must read");
-
-        assert_eq!(pages.len(), 2);
-        assert_eq!(pages["docs/first.html"], "<html>first</html>");
-        assert_eq!(pages["docs/second.html"], "<html>second</html>");
     }
 
     #[test]

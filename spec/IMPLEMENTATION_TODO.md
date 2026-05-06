@@ -282,7 +282,7 @@ Completion notes:
   - `cargo test -p v8-context-hbk-cli`
   - `cargo test --workspace`
 
-### [ ] T96. Narrow or retire `HbkBook::read_pages` test-support API
+### [x] T96. Narrow or retire `HbkBook::read_pages` test-support API
 
 Spec refs:
 
@@ -309,6 +309,15 @@ Verification:
 
 - `cargo test -p hbk-book`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Removed the gated `HbkBook::read_pages` test/support convenience API.
+- Preserved production `HbkBook::open`, `read_file`, `read_page` and `FileStorageReader` behavior.
+- Kept deterministic repeated-page coverage on the supported `FileStorageReader` surface.
+- Verification passed:
+  - `cargo test -p hbk-book`
+  - `cargo test --workspace`
 
 ### [ ] T97. Deduplicate first language callable parsing paths
 

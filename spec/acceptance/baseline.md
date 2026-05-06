@@ -174,6 +174,9 @@ directories are service data unless promoted here.
   kind strings round-trip through the typed model with unchanged priority values, and
   `context-resolver-search` still keeps `query_table*` provider facts hidden from the platform
   resolver adapter.
+- T96 retired the `HbkBook::read_pages` test/support convenience API. The ordinary supported
+  page/file surface remains `HbkBook::read_file`, `HbkBook::read_page` and `FileStorageReader`;
+  deterministic repeated-page fixture coverage uses `FileStorageReader` directly.
 
 ## Post-T29 Runtime Regression To Fix
 
