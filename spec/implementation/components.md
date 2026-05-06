@@ -163,7 +163,10 @@ or `FileStorage` entries; entry bytes are read from the actual ZIP stream at the
 
 The supported ordinary page/file surface is `read_file`, `read_page` and `FileStorageReader`.
 `HbkBook::read_pages` is retired; deterministic repeated-page fixture checks should use
-`FileStorageReader` directly.
+`FileStorageReader` directly. `FileStorageReader::file_paths` is the narrow raw-storage
+enumeration surface for ordinary export: it lists non-directory stored FileStorage entry names
+without applying TOC fallback filters or Syntax Assistant semantics. Export crates must still
+validate those storage paths at their filesystem-write boundary before writing files.
 
 ### hbk-docs
 
@@ -197,12 +200,20 @@ The first supported combinations are `format=raw` with `hierarchy=raw` and `form
 `hierarchy=toc`. Unsupported format/hierarchy pairs return typed export errors for CLI presentation
 rather than silently falling back to another layout.
 
-T99 introduced the crate boundary and request model only. `BookExportRequest` validates the output
-root at the public export boundary before later file writes exist: the root must contain at least one
-directory name and must not contain `..` segments. The request model recognizes only the specified
-future-supported combinations, `raw/raw` and `markdown/toc`; `raw/toc` and `markdown/raw` return a
-typed unsupported-combination error. Actual raw unpack, Markdown conversion and CLI wiring remain
-owned by later FR-HBK-004 tasks.
+T99 introduced the crate boundary and request model. `BookExportRequest` validates the output root
+at the public export boundary: the root must contain at least one directory name and must not
+contain `..` segments. The request model recognizes only the specified future-supported
+combinations, `raw/raw` and `markdown/toc`; `raw/toc` and `markdown/raw` return a typed
+unsupported-combination error.
+
+T100 implemented `format=raw` with `hierarchy=raw` inside `BookExporter::export`. Raw export
+enumerates non-directory FileStorage entries through `hbk-book`, validates all storage paths before
+any filesystem writes, rejects parent segments, absolute/rooted paths, Windows drive-like paths,
+backslash separators, empty paths, duplicate normalized output paths and file/directory prefix
+collisions, then writes the original stored bytes under normalized relative paths.
+`BookExporter::export` also validates that the request source path matches the opened `HbkBook` path
+so callers cannot accidentally export bytes from a different book than the request names. Markdown
+conversion and CLI wiring remain owned by later FR-HBK-004 tasks.
 
 ### syntax-helper-model
 

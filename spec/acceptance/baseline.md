@@ -188,6 +188,13 @@ directories are service data unless promoted here.
   `BookExportResult` and `BookExportError` concepts. Request validation rejects unsafe output roots
   and unsupported format/hierarchy pairs, and the direct dependency boundary is limited to
   `hbk-book` and `hbk-docs`.
+- T100 implemented raw/raw ordinary book export in `hbk-book-export` without wiring the top-level
+  CLI command. `BookExporter::export` writes original FileStorage bytes under normalized relative
+  paths for `format=raw` with `hierarchy=raw`. Export planning rejects unsafe storage paths and
+  duplicate or file/directory-colliding normalized output paths before creating the output root, and
+  the exporter rejects request/opened-book source path mismatches before writing. The direct
+  dependency boundary remains limited to `hbk-book` and `hbk-docs`; `hbk-book` exposes the narrow
+  `FileStorageReader::file_paths` enumeration surface used by the exporter.
 
 ## Post-T29 Runtime Regression To Fix
 

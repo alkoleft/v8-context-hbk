@@ -303,6 +303,24 @@ impl FileStorageReader {
         Ok(bytes)
     }
 
+    pub fn file_paths(&mut self) -> Result<Vec<String>, BookError> {
+        let mut paths = Vec::new();
+        for index in 0..self.archive.len() {
+            let entry = self
+                .archive
+                .by_index(index)
+                .map_err(|source| BookError::InvalidZip {
+                    path: self.path.clone(),
+                    entity_name: FILE_STORAGE_NAME,
+                    source,
+                })?;
+            if !entry.is_dir() {
+                paths.push(entry.name().to_string());
+            }
+        }
+        Ok(paths)
+    }
+
     pub fn read_page(&mut self, path: &str) -> Result<String, BookError> {
         let bytes = self.read_file(path)?;
         String::from_utf8(bytes).map_err(|source| BookError::InvalidUtf8 {
@@ -616,6 +634,41 @@ mod tests {
         assert_eq!(
             reader.read_page("docs/second.html").unwrap(),
             "<html>second</html>"
+        );
+    }
+
+    #[test]
+    fn file_storage_reader_lists_stored_file_paths() {
+        let fixture = TempHbk::new(
+            "fmtdui_ru.hbk",
+            fixture_container(vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", None),
+                (
+                    "FileStorage",
+                    Some(zip_entries(vec![
+                        ("docs/first.html", b"<html>first</html>"),
+                        ("assets/style.css", b"body {}"),
+                    ])),
+                ),
+            ]),
+        )
+        .expect("fixture must be written");
+        let book = HbkBook::open(fixture.path()).expect("book must open");
+        let mut reader = book
+            .file_storage_reader()
+            .expect("FileStorage reader must open");
+
+        assert_eq!(
+            reader.file_paths().expect("paths must be listed"),
+            vec!["docs/first.html", "assets/style.css"]
         );
     }
 

@@ -23,7 +23,7 @@ language-domain and cleanup conclusions live in `acceptance/baseline.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md`,
 `implementation/syntax-bsl-provider-plan.md` and `implementation/solution-context-resolve.md`.
 
-The active open tasks are T99-T103. T98 is complete; T99 is now the first unchecked planned task.
+The active task block is T99-T103. T100 is complete; T101 is now the first unchecked planned task.
 T99-T103 are user-requested book-content export slices handled outside the first-unchecked
 cleanup/provider sequence.
 
@@ -448,7 +448,7 @@ Completion notes:
   - `cargo tree -p hbk-book-export --depth 1`
   - `cargo test --workspace`
 
-### [ ] T100. Implement raw/raw book unpack in `hbk-book-export`
+### [x] T100. Implement raw/raw book unpack in `hbk-book-export`
 
 Spec refs:
 
@@ -472,6 +472,27 @@ Verification:
 - `cargo test -p hbk-book`
 - `cargo test -p hbk-book-export`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Added `FileStorageReader::file_paths` as the narrow `hbk-book` FileStorage enumeration surface for
+  non-directory stored entries without TOC fallback filtering.
+- Implemented `BookExporter::export` for `format=raw` with `hierarchy=raw`.
+- Raw export validates all storage paths before filesystem writes, rejects parent segments,
+  absolute/rooted paths, Windows drive-like paths, backslash separators, empty paths and duplicate
+  or file/directory-colliding normalized output paths, then writes the original stored bytes under
+  normalized relative paths.
+- Added source-path mismatch validation so a request naming one HBK cannot be exported through an
+  exporter opened on another HBK.
+- Kept CLI wiring, TOC traversal and Markdown conversion out of this task.
+- Kept `hbk-book-export` direct dependencies limited to `hbk-book` and `hbk-docs`; the test-only
+  dependency on `hbk-book` enables deterministic fixture helpers.
+- Verification passed:
+  - `cargo fmt --all --check`
+  - `cargo test -p hbk-book`
+  - `cargo test -p hbk-book-export`
+  - `cargo tree -p hbk-book-export --depth 1`
+  - `cargo test --workspace`
 
 ### [ ] T101. Wire top-level raw export CLI and unsupported matrix diagnostics
 
