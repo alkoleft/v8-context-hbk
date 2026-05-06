@@ -1,3 +1,4 @@
 /target
 scripts/infr/*
 .v8-context-hbk/
+web/docs-viewer/dist/

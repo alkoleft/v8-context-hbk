@@ -1,0 +1,11 @@
+{
+  "name": "v8-context-hbk-docs-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node src/server.mjs",
+    "test": "node --test"
+  }
+}

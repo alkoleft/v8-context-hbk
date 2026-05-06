@@ -1600,3 +1600,16 @@ nodes with `book_id`, matching page Markdown files for every `page_id`, and no r
 paths, `.hbk` names, raw HTML storage paths or raw TOC-index wording in generated locale JSON or
 Markdown. Fixture coverage also checks that generated site page Markdown preserves internal
 Markdown links and HTML fragments through site-owned page-id targets.
+
+T113 completed the first minimal documentation web app. `web/docs-viewer` builds with
+`npm --prefix web/docs-viewer run build` and serves generated site data with
+`npm --prefix web/docs-viewer start -- --data "$PWD/target/uat/doc-site-data/data" --listen
+127.0.0.1:4173`. UAT-HBK-015 passed on 2026-05-07 against the T112 representative generated data:
+browser smoke loaded the app, expanded a Russian root TOC section and opened the
+`form_formattedstringedit` page. Network requests showed separate loads for `/data/manifest.json`,
+`/data/locales/ru/toc-root.json`, a lazy `/data/locales/ru/toc-sections/*.json` section and
+`/data/locales/ru/pages/page-fmtdui-ru-form-formattedstringedit-0ee13df5698bdba0.md`. Checks also
+confirmed that representative page strings such as `Конструктор строк` and `Если в конфигурации`
+were absent from the initial HTML and `app.js`, and browser console output had no errors after the
+favicon request was eliminated. Desktop `1440x900` and mobile `390x844` viewport smoke checks showed
+usable navigation and page readability without overlapping text.

@@ -26,7 +26,7 @@ language-domain, cleanup, book-content export and documentation-site conclusions
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/ADR-0010-documentation-site-generator-and-web-app.md`.
 
-Current first unchecked task: T113.
+Current first unchecked task: none.
 T111-T113 are user-requested documentation site generator/web-app slices that continue the
 book-content export direction from T99-T109.
 
@@ -143,7 +143,7 @@ Completion notes:
   corpus.
 - The separate documentation web app remains T113 scope.
 
-### [ ] T113. Add minimal documentation web app
+### [x] T113. Add minimal documentation web app
 
 Spec refs:
 
@@ -166,7 +166,18 @@ Scope:
 Verification:
 
 - Frontend unit tests for manifest/TOC/page data loading where the chosen web stack supports them.
-- Production web build command for the chosen web app.
-- UAT-HBK-015 passes or records a concrete browser-automation/tooling skip.
-- Browser smoke over a generated fixture site verifies manifest, TOC and page assets are requested
-  separately.
+- Production web build command for the chosen web app passed on 2026-05-07.
+- UAT-HBK-015 passed on 2026-05-07 against the representative T112 generated data.
+- Browser smoke over a generated fixture site verified manifest, TOC section and page assets are
+  requested separately.
+
+Completion notes:
+
+- Added `web/docs-viewer`, a dependency-free Node/static documentation web app that serves generated
+  `data/` artifacts and renders locale selection, root global TOC, lazy child sections and page
+  Markdown.
+- The server validates `--data`, confines `/data/*` paths to the generated data root and never
+  parses HBK files or runs extraction in request paths.
+- The initial app bundle contains viewer code only; generated Markdown pages are loaded on demand.
+- Focused Node tests cover CLI argument parsing, invalid data roots, static/data 404 behavior, path
+  traversal confinement and safe Markdown rendering for HTML-like input.

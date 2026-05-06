@@ -714,7 +714,10 @@ Preconditions:
 Steps:
 
 ```bash
-<docs-web-app command> --data target/uat/doc-site-data/data --listen 127.0.0.1:4173
+npm --prefix web/docs-viewer run build
+npm --prefix web/docs-viewer start -- \
+  --data "$PWD/target/uat/doc-site-data/data" \
+  --listen 127.0.0.1:4173
 ```
 
 In a browser or smoke runner:

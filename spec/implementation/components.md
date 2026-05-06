@@ -377,6 +377,12 @@ Later web-app slices may add search and Syntax Assistant API endpoints, but thos
 generated/indexed artifacts. They must not parse HBK files or run extraction pipelines in request
 paths.
 
+T113 implements this first boundary as `web/docs-viewer`, a dependency-free Node/static web app with
+a small static server. The server accepts `--data <dir>` and `--listen <host:port>`, serves generated
+data under `/data/*`, confines paths to the provided data root and serves the static viewer from the
+production build output. The browser code consumes only generated data artifacts and keeps page
+Markdown out of the initial bundle.
+
 ### syntax-helper-model
 
 Expected public concepts:

@@ -149,7 +149,8 @@ The first implementation slice should stop at a usable documentation site withou
    `v8-context-hbk site generate <source-dir> --output <data-dir> [--include <file-name>]...`
    with readable diagnostics and summary measurements.
 5. Add a minimal separate web app that can serve/load the generated manifest, locale root TOC, lazy
-   section children and page Markdown.
+   section children and page Markdown. Completed in T113 as the dependency-free
+   `web/docs-viewer` Node/static app.
 
 Search and Syntax Assistant API behavior are intentionally later slices. When added, they should use
 generated local index artifacts or existing accepted local index contracts, not HBK parsing in web
@@ -163,3 +164,23 @@ request paths.
 - UAT-HBK-015 validates the separate web app serving/loading generated data and lazy navigation.
 - Build measurements record source book count, generated page count, output size, build time and
   peak RSS or equivalent before optimization work.
+
+## T113 Web Viewer Notes
+
+The first documentation web app lives under `web/docs-viewer`.
+
+- `npm --prefix web/docs-viewer run build` copies the static app assets into
+  `web/docs-viewer/dist`.
+- `npm --prefix web/docs-viewer start -- --data <absolute-data-dir> --listen 127.0.0.1:4173`
+  serves the built app and generated `data/` subtree.
+- The server validates `--data`, confines `/data/*` requests to that directory and does not parse
+  HBK files in request paths.
+- The browser app loads `manifest.json`, locale `toc-root.json`, lazy `toc-sections/*.json` and
+  page Markdown files through separate fetch requests.
+- The initial bundle contains only the viewer code and no generated page Markdown payload.
+- Markdown rendering is intentionally small and safe for the first slice: headings, paragraphs,
+  lists, fenced code blocks, strong text and links are rendered with DOM nodes rather than raw HTML
+  injection.
+
+Search, Syntax Assistant API endpoints, indexing status and `hbk-reader` route compatibility remain
+outside this slice.
