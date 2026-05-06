@@ -106,12 +106,14 @@ extraction. The first public command has two explicit axes:
 - `hierarchy=raw` preserves normalized `FileStorage` entry paths and acts as an unpack operation;
 - `hierarchy=toc` writes TOC pages under a deterministic TOC-derived directory tree.
 
-The first implementation slice supports `raw/raw` and `markdown/toc`. Other format/hierarchy pairs
-must fail with stable readable diagnostics until their behavior is specified. Markdown conversion
-must be backed by an approved stable HTML-to-Markdown library candidate and must preserve readable
-page headings, body text, links, lists, tables and syntax placeholders on representative real HBK
-pages. Normal Markdown output must not include raw HBK file paths, raw TOC indexes, raw HTML page
-paths or service HTML scaffolding.
+The public command is implemented in slices. The first wired top-level CLI slice supports
+`raw/raw`. `markdown/toc` is the next specified supported combination after Markdown conversion and
+TOC layout tasks are implemented. Until a combination is implemented at the CLI boundary, it must
+fail with stable readable diagnostics before source-file access. Markdown conversion must be backed
+by an approved stable HTML-to-Markdown library candidate and must preserve readable page headings,
+body text, links, lists, tables and syntax placeholders on representative real HBK pages. Normal
+Markdown output must not include raw HBK file paths, raw TOC indexes, raw HTML page paths or service
+HTML scaffolding.
 
 Acceptance:
 

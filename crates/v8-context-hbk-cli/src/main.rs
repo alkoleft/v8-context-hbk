@@ -4,6 +4,9 @@ use std::time::Instant;
 use clap::{Parser, Subcommand, ValueEnum};
 use hbk_book::HbkBook;
 use hbk_book::{Toc, TocPage};
+use hbk_book_export::{
+    BookExportFormat, BookExportHierarchy, BookExportRequest, BookExportResult, BookExporter,
+};
 use hbk_container::HbkContainer;
 use hbk_syntax_export::JsonExporter;
 use serde_json::{Value, json};
@@ -41,6 +44,16 @@ enum Command {
         book: PathBuf,
         #[arg(long, value_name = "HTML_PATH")]
         path: String,
+    },
+    Export {
+        #[arg(value_name = "HBK_FILE")]
+        book: PathBuf,
+        #[arg(long, value_name = "DIR")]
+        output: PathBuf,
+        #[arg(long, value_enum)]
+        format: BookExportCliFormat,
+        #[arg(long, value_enum)]
+        hierarchy: BookExportCliHierarchy,
     },
     Syntax {
         #[command(subcommand)]
@@ -156,6 +169,36 @@ enum SearchCliMode {
     Fuzzy,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum BookExportCliFormat {
+    Raw,
+    Markdown,
+}
+
+impl From<BookExportCliFormat> for BookExportFormat {
+    fn from(value: BookExportCliFormat) -> Self {
+        match value {
+            BookExportCliFormat::Raw => Self::Raw,
+            BookExportCliFormat::Markdown => Self::Markdown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum BookExportCliHierarchy {
+    Raw,
+    Toc,
+}
+
+impl From<BookExportCliHierarchy> for BookExportHierarchy {
+    fn from(value: BookExportCliHierarchy) -> Self {
+        match value {
+            BookExportCliHierarchy::Raw => Self::Raw,
+            BookExportCliHierarchy::Toc => Self::Toc,
+        }
+    }
+}
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("{error}");
@@ -169,6 +212,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::Inspect { path } => inspect(path)?,
         Command::Toc { path, format } => toc(path, format)?,
         Command::Page { book, path } => page(book, &path)?,
+        Command::Export {
+            book,
+            output,
+            format,
+            hierarchy,
+        } => export_book(book, output, format.into(), hierarchy.into())?,
         Command::Syntax { command } => syntax(command)?,
     }
     Ok(())
@@ -205,6 +254,52 @@ fn page(book_path: PathBuf, path: &str) -> Result<(), Box<dyn std::error::Error>
     let page = book.read_page(path)?;
     print!("{page}");
     Ok(())
+}
+
+fn export_book(
+    book_path: PathBuf,
+    output: PathBuf,
+    format: BookExportFormat,
+    hierarchy: BookExportHierarchy,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let result = export_book_content(book_path, output, format, hierarchy)?;
+    println!("output: {}", result.output_root().display());
+    println!("format: {format}");
+    println!("hierarchy: {hierarchy}");
+    println!("files: {}", result.files().len());
+    println!(
+        "bytes: {}",
+        result
+            .files()
+            .iter()
+            .map(|file| file.bytes_written())
+            .sum::<u64>()
+    );
+    Ok(())
+}
+
+fn export_book_content(
+    book_path: PathBuf,
+    output: PathBuf,
+    format: BookExportFormat,
+    hierarchy: BookExportHierarchy,
+) -> Result<BookExportResult, hbk_book_export::BookExportError> {
+    validate_cli_book_export_combination(format, hierarchy)?;
+    let request = BookExportRequest::new(book_path.clone(), output, format, hierarchy)?;
+    let book = HbkBook::open(&book_path)?;
+    BookExporter::new(&book).export(&request)
+}
+
+fn validate_cli_book_export_combination(
+    format: BookExportFormat,
+    hierarchy: BookExportHierarchy,
+) -> Result<(), hbk_book_export::BookExportError> {
+    match (format, hierarchy) {
+        (BookExportFormat::Raw, BookExportHierarchy::Raw) => Ok(()),
+        (format, hierarchy) => {
+            Err(hbk_book_export::BookExportError::UnsupportedCombination { format, hierarchy })
+        }
+    }
 }
 
 fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
@@ -1307,6 +1402,7 @@ fn page_to_json(page: &TocPage) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hbk_book::test_utils::{fixture_container, zip_entries};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
     use syntax_helper_model as model;
@@ -1606,12 +1702,132 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    #[test]
+    fn top_level_export_command_parses_raw_raw_request() {
+        let cli = Cli::try_parse_from([
+            "v8-context-hbk",
+            "export",
+            "fmtdui_ru.hbk",
+            "--output",
+            "target/book-export/raw",
+            "--format",
+            "raw",
+            "--hierarchy",
+            "raw",
+        ])
+        .expect("top-level export command must parse");
+
+        match cli.command {
+            Command::Export {
+                book,
+                output,
+                format,
+                hierarchy,
+            } => {
+                assert_eq!(book, PathBuf::from("fmtdui_ru.hbk"));
+                assert_eq!(output, PathBuf::from("target/book-export/raw"));
+                assert!(matches!(format, BookExportCliFormat::Raw));
+                assert!(matches!(hierarchy, BookExportCliHierarchy::Raw));
+            }
+            other => panic!("expected top-level export command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn top_level_export_writes_raw_storage_files() {
+        let workspace = temp_workspace("cli-raw-success");
+        let source_path = workspace.join("fmtdui_ru.hbk");
+        write_book_fixture(
+            &source_path,
+            vec![
+                ("docs/page.html", b"<html>page</html>".as_ref()),
+                ("assets/./style.css", b"body {}".as_ref()),
+            ],
+        );
+        let output_root = workspace.join("out");
+
+        let result = export_book_content(
+            source_path,
+            output_root.clone(),
+            BookExportFormat::Raw,
+            BookExportHierarchy::Raw,
+        )
+        .expect("raw/raw top-level export path must succeed");
+
+        assert_eq!(
+            fs::read(output_root.join("docs/page.html")).expect("page must be exported"),
+            b"<html>page</html>"
+        );
+        assert_eq!(
+            fs::read(output_root.join("assets/style.css")).expect("asset must be exported"),
+            b"body {}"
+        );
+        assert_eq!(result.files().len(), 2);
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn top_level_export_reports_unsupported_matrix_before_opening_book() {
+        for (format, hierarchy, expected) in [
+            (
+                BookExportFormat::Raw,
+                BookExportHierarchy::Toc,
+                "unsupported book export combination: format=raw, hierarchy=toc",
+            ),
+            (
+                BookExportFormat::Markdown,
+                BookExportHierarchy::Toc,
+                "unsupported book export combination: format=markdown, hierarchy=toc",
+            ),
+            (
+                BookExportFormat::Markdown,
+                BookExportHierarchy::Raw,
+                "unsupported book export combination: format=markdown, hierarchy=raw",
+            ),
+        ] {
+            let error = export_book_content(
+                PathBuf::from("missing.hbk"),
+                PathBuf::from("target/book-export/unsupported-cli"),
+                format,
+                hierarchy,
+            )
+            .expect_err("non-raw/raw CLI combinations must stay unsupported in T101");
+
+            assert_eq!(error.to_string(), expected);
+        }
+    }
+
     fn temp_path(name: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("v8-context-hbk-cli-{unique}-{name}"))
+    }
+
+    fn temp_workspace(name: &str) -> PathBuf {
+        let path = temp_path(name);
+        fs::create_dir_all(&path).expect("temp workspace must be created");
+        path
+    }
+
+    fn write_book_fixture(path: &std::path::Path, storage_entries: Vec<(&str, &[u8])>) {
+        fs::write(
+            path,
+            fixture_container(vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", None),
+                ("FileStorage", Some(zip_entries(storage_entries))),
+            ]),
+        )
+        .expect("fixture HBK must be written");
     }
 
     fn metadata() -> IndexMetadata {

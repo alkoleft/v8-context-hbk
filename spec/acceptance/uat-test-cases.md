@@ -334,6 +334,97 @@ Cleanup:
 
 - `target/uat/ui-md` is service data and may be deleted after the run.
 
+## UAT-HBK-008: Raw Export Unpacks Ordinary Help Book Storage
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-CLI-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` exists.
+- `target/uat/book-raw` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/book-raw
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk \
+  --output target/uat/book-raw/fmtdui_ru \
+  --format raw \
+  --hierarchy raw
+
+test -f target/uat/book-raw/fmtdui_ru/form_formattedstringedit
+test "$(find target/uat/book-raw/fmtdui_ru -type f | wc -l)" -gt 0
+```
+
+Expected result:
+
+- Exit code is `0`.
+- The command summary reports the output directory, `format=raw`, `hierarchy=raw` and a non-zero
+  exported file count.
+- Stored `FileStorage` entries are written under normalized raw storage paths.
+- The command does not create Syntax Assistant JSON export files such as `metadata.json` or
+  `platform-types.json`.
+
+Skip rule:
+
+- If the fixture is absent, record the skip reason and do not mark the case failed.
+
+Cleanup:
+
+- `target/uat/book-raw` is service data and may be deleted after the run.
+
+## UAT-HBK-009: Book Export Reports Unsupported Matrix Diagnostics
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-CLI-001.
+
+Preconditions:
+
+- `target/uat/book-export-unsupported.err` can be created or removed.
+
+Steps:
+
+```bash
+rm -f target/uat/book-export-unsupported.err
+rm -f target/uat/missing-book-for-unsupported.hbk
+! cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  target/uat/missing-book-for-unsupported.hbk \
+  --output target/uat/book-raw-unsupported \
+  --format raw \
+  --hierarchy toc \
+  2> target/uat/book-export-unsupported.err
+
+rg -q 'unsupported book export combination: format=raw, hierarchy=toc' \
+  target/uat/book-export-unsupported.err
+
+! cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  target/uat/missing-book-for-unsupported.hbk \
+  --output target/uat/book-md-unsupported \
+  --format markdown \
+  --hierarchy toc \
+  2> target/uat/book-export-unsupported.err
+
+rg -q 'unsupported book export combination: format=markdown, hierarchy=toc' \
+  target/uat/book-export-unsupported.err
+```
+
+Expected result:
+
+- Exit code is non-zero.
+- The error is a stable readable unsupported-combination diagnostic, not a panic/backtrace.
+- The unsupported-combination diagnostic is returned before attempting to open the HBK source file.
+- The command does not invoke Syntax Assistant extraction and does not write Syntax Assistant JSON
+  export files.
+
+Cleanup:
+
+- `target/uat/book-export-unsupported.err`, `target/uat/book-raw-unsupported` and
+  `target/uat/book-md-unsupported` are service data and may be deleted after the run.
+
 ## UAT-SH-001: Export Russian Syntax Assistant Data
 
 Related use case: UC-SH-001.

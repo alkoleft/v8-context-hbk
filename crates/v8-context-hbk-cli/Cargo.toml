@@ -10,9 +10,13 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 hbk-book.workspace = true
+hbk-book-export.workspace = true
 hbk-container.workspace = true
 hbk-syntax-export.workspace = true
 serde_json.workspace = true
 syntax-helper-extract.workspace = true
 syntax-helper-model.workspace = true
 syntax-helper-search.workspace = true
+
+[dev-dependencies]
+hbk-book = { workspace = true, features = ["test-utils"] }

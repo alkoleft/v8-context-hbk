@@ -882,6 +882,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "hbk-book",
+ "hbk-book-export",
  "hbk-container",
  "hbk-syntax-export",
  "serde_json",

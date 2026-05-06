@@ -96,6 +96,22 @@ v8-context-hbk toc /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --format json
 v8-context-hbk page /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk --path "<html-path>"
 ```
 
+## Экспорт Обычных Help Books
+
+Распаковать обычную книгу справки в исходной структуре `FileStorage`:
+
+```bash
+v8-context-hbk export /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk \
+  --output target/book-raw/fmtdui_ru \
+  --format raw \
+  --hierarchy raw
+```
+
+Команда верхнего уровня `export` не извлекает факты Синтакс-помощника и не пишет JSON-схему
+platform context.
+Пока реализована только пара `--format raw --hierarchy raw`; неподдержанные сочетания возвращают
+читаемую ошибку. Markdown/TOC export остается следующим запланированным этапом.
+
 ## Экспорт Фактов Платформы
 
 Экспортировать русскоязычные данные Синтакс-помощника:

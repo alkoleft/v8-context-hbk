@@ -215,6 +215,16 @@ collisions, then writes the original stored bytes under normalized relative path
 so callers cannot accidentally export bytes from a different book than the request names. Markdown
 conversion and CLI wiring remain owned by later FR-HBK-004 tasks.
 
+T101 wired the top-level CLI command
+`v8-context-hbk export <book.hbk> --output <dir> --format <raw|markdown> --hierarchy <raw|toc>` to
+`hbk-book-export`. The CLI maps only the ordinary book-content export path to `hbk-book-export`;
+`syntax export` remains wired to `hbk-syntax-export` and the Syntax Assistant extraction/export
+pipeline. The CLI validates unsupported format/hierarchy combinations through
+its command boundary before opening the HBK source file, so unsupported matrix diagnostics are
+stable and do not depend on source-file availability. `format=raw` with `hierarchy=raw` is the only
+implemented top-level book export behavior after T101; Markdown/TOC export remains a later
+FR-HBK-004 task.
+
 ### syntax-helper-model
 
 Expected public concepts:

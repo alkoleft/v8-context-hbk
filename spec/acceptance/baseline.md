@@ -195,6 +195,15 @@ directories are service data unless promoted here.
   the exporter rejects request/opened-book source path mismatches before writing. The direct
   dependency boundary remains limited to `hbk-book` and `hbk-docs`; `hbk-book` exposes the narrow
   `FileStorageReader::file_paths` enumeration surface used by the exporter.
+- T101 wired the top-level `v8-context-hbk export` CLI command to `hbk-book-export` for ordinary
+  book-content export. `format=raw` with `hierarchy=raw` now works through the CLI and preserves raw
+  `FileStorage` bytes under normalized storage paths. Non-raw/raw CLI combinations, including
+  `format=raw` with `hierarchy=toc` and `format=markdown` with `hierarchy=toc`, return stable
+  readable diagnostics before the HBK source file is opened. `syntax export` remains unchanged and
+  continues to use `hbk-syntax-export`. Focused tests cover CLI parsing, raw/raw export and
+  unsupported matrix diagnostics; local UAT smoke on
+  `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` wrote 2 files / 1792 bytes and returned the expected
+  raw/toc and markdown/toc unsupported diagnostics.
 
 ## Post-T29 Runtime Regression To Fix
 

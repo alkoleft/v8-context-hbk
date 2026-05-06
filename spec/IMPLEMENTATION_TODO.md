@@ -494,13 +494,15 @@ Completion notes:
   - `cargo tree -p hbk-book-export --depth 1`
   - `cargo test --workspace`
 
-### [ ] T101. Wire top-level raw export CLI and unsupported matrix diagnostics
+### [x] T101. Wire top-level raw export CLI and unsupported matrix diagnostics
 
 Spec refs:
 
 - UC-HBK-003
 - FR-HBK-004
 - FR-CLI-001
+- UAT-HBK-008
+- UAT-HBK-009
 - ADR-0009
 
 Scope:
@@ -518,6 +520,27 @@ Verification:
 - `cargo test -p hbk-book-export`
 - `cargo test -p v8-context-hbk-cli`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Added the top-level `v8-context-hbk export <book.hbk> --output <dir> --format <raw|markdown>
+  --hierarchy <raw|toc>` command in `v8-context-hbk-cli`.
+- Wired the T101 public CLI slice to `hbk-book-export` for `format=raw` with `hierarchy=raw`.
+- Kept `syntax export` unchanged and still routed through `hbk-syntax-export`.
+- Added a CLI boundary guard so every non-raw/raw top-level book export pair, including
+  `markdown/toc`, returns stable `UnsupportedCombination` diagnostics before opening the HBK source
+  file; Markdown/TOC export remains T102/T103 scope.
+- Added UAT-HBK-008 and UAT-HBK-009 for raw/raw export and unsupported matrix diagnostics.
+- Updated README usage, FR-HBK-004 staged-slice wording, implementation notes and acceptance
+  baseline.
+- Independent review findings were resolved, and the final reviewer pass returned `APPROVED`.
+- Verification passed:
+  - `cargo fmt --all --check`
+  - `cargo test -p hbk-book-export`
+  - `cargo test -p v8-context-hbk-cli`
+  - `cargo test --workspace`
+  - real CLI smoke on `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` for raw/raw export
+  - real CLI smoke for raw/toc and markdown/toc unsupported diagnostics on missing HBK paths
 
 ### [ ] T102. Implement Markdown conversion for TOC pages
 
