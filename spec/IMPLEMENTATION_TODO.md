@@ -404,7 +404,7 @@ Completion notes:
   - `cargo test -p v8-context-hbk-cli`
   - `cargo test --workspace`
 
-### [ ] T99. Add `hbk-book-export` crate boundary and request model
+### [x] T99. Add `hbk-book-export` crate boundary and request model
 
 Spec refs:
 
@@ -431,6 +431,22 @@ Verification:
   equivalent `cargo metadata` query).
 - `cargo test -p hbk-book-export`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Added `crates/hbk-book-export` and wired it into the workspace plus `Cargo.lock`.
+- Defined the typed ordinary book export request/format/hierarchy/exporter/result/error boundary.
+- Implemented output-root validation at the public request boundary: roots must contain at least one
+  directory name and must not contain `..` segments.
+- Implemented typed unsupported-combination diagnostics for `raw/toc` and `markdown/raw`; request
+  validation recognizes only future-supported `raw/raw` and `markdown/toc` combinations.
+- Did not wire the CLI command and did not implement actual raw unpack, Markdown conversion or file
+  writes.
+- Verification passed:
+  - `cargo fmt --all --check`
+  - `cargo test -p hbk-book-export`
+  - `cargo tree -p hbk-book-export --depth 1`
+  - `cargo test --workspace`
 
 ### [ ] T100. Implement raw/raw book unpack in `hbk-book-export`
 

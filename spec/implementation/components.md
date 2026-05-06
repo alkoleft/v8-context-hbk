@@ -197,6 +197,13 @@ The first supported combinations are `format=raw` with `hierarchy=raw` and `form
 `hierarchy=toc`. Unsupported format/hierarchy pairs return typed export errors for CLI presentation
 rather than silently falling back to another layout.
 
+T99 introduced the crate boundary and request model only. `BookExportRequest` validates the output
+root at the public export boundary before later file writes exist: the root must contain at least one
+directory name and must not contain `..` segments. The request model recognizes only the specified
+future-supported combinations, `raw/raw` and `markdown/toc`; `raw/toc` and `markdown/raw` return a
+typed unsupported-combination error. Actual raw unpack, Markdown conversion and CLI wiring remain
+owned by later FR-HBK-004 tasks.
+
 ### syntax-helper-model
 
 Expected public concepts:

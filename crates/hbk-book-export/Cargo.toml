@@ -1,0 +1,8 @@
+[package]
+name = "hbk-book-export"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hbk-book.workspace = true
+hbk-docs.workspace = true

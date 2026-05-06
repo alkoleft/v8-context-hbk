@@ -3,6 +3,7 @@ members = [
     "crates/context-resolver-core",
     "crates/context-resolver-search",
     "crates/hbk-book",
+    "crates/hbk-book-export",
     "crates/hbk-container",
     "crates/hbk-docs",
     "crates/hbk-syntax-export",
@@ -21,6 +22,7 @@ edition = "2024"
 [workspace.dependencies]
 clap = { version = "4.5.51", features = ["derive"] }
 hbk-book = { path = "crates/hbk-book" }
+hbk-book-export = { path = "crates/hbk-book-export" }
 hbk-container = { path = "crates/hbk-container" }
 hbk-docs = { path = "crates/hbk-docs" }
 hbk-syntax-export = { path = "crates/hbk-syntax-export" }

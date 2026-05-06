@@ -312,6 +312,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hbk-book-export"
+version = "0.1.0"
+dependencies = [
+ "hbk-book",
+ "hbk-docs",
+]
+
+[[package]]
 name = "hbk-container"
 version = "0.1.0"
 dependencies = [

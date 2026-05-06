@@ -182,6 +182,12 @@ directories are service data unless promoted here.
   slicing remain source-family-specific, while shared assembly now preserves source-qualified ids,
   language domains, fact families, signatures, parameter names, return/type refs and provenance for
   existing fixture-backed language facts.
+- T99 added the `hbk-book-export` crate boundary for ordinary book-content export without wiring a
+  user-visible CLI command or implementing file writes. The crate currently owns typed
+  `BookExportRequest`, `BookExportFormat`, `BookExportHierarchy`, `BookExporter`,
+  `BookExportResult` and `BookExportError` concepts. Request validation rejects unsafe output roots
+  and unsupported format/hierarchy pairs, and the direct dependency boundary is limited to
+  `hbk-book` and `hbk-docs`.
 
 ## Post-T29 Runtime Regression To Fix
 
