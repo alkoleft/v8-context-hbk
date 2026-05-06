@@ -8,6 +8,7 @@ use hbk_book_export::{
     BookExportFormat, BookExportHierarchy, BookExportRequest, BookExportResult, BookExporter,
 };
 use hbk_container::HbkContainer;
+use hbk_doc_site::{DocSiteGenerator, SiteGenerationRequest, SiteGenerationResult};
 use hbk_syntax_export::JsonExporter;
 use serde_json::{Value, json};
 use syntax_helper_extract::{SyntaxHelperReader, SyntaxHelperStreamError};
@@ -55,9 +56,25 @@ enum Command {
         #[arg(long, value_enum)]
         hierarchy: BookExportCliHierarchy,
     },
+    Site {
+        #[command(subcommand)]
+        command: SiteCommand,
+    },
     Syntax {
         #[command(subcommand)]
         command: SyntaxCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum SiteCommand {
+    Generate {
+        #[arg(value_name = "SOURCE_DIR")]
+        source_dir: PathBuf,
+        #[arg(long, value_name = "DIR")]
+        output: PathBuf,
+        #[arg(long = "include", value_name = "FILE_NAME")]
+        include_file_names: Vec<String>,
     },
 }
 
@@ -218,6 +235,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             format,
             hierarchy,
         } => export_book(book, output, format.into(), hierarchy.into())?,
+        Command::Site { command } => site(command)?,
         Command::Syntax { command } => syntax(command)?,
     }
     Ok(())
@@ -301,6 +319,78 @@ fn validate_cli_book_export_combination(
             Err(hbk_book_export::BookExportError::UnsupportedCombination { format, hierarchy })
         }
     }
+}
+
+fn site(command: SiteCommand) -> Result<(), Box<dyn std::error::Error>> {
+    match command {
+        SiteCommand::Generate {
+            source_dir,
+            output,
+            include_file_names,
+        } => site_generate(source_dir, output, include_file_names)?,
+    }
+    Ok(())
+}
+
+fn site_generate(
+    source_dir: PathBuf,
+    output: PathBuf,
+    include_file_names: Vec<String>,
+) -> Result<(), hbk_doc_site::SiteGenerationError> {
+    let run = generate_site_data(source_dir, output, include_file_names)?;
+    println!("output: {}", run.result.output_root().display());
+    println!("source_books: {}", run.result.book_count());
+    println!("locales: {}", run.result.locale_count());
+    println!("toc_nodes: {}", run.result.toc_node_count());
+    println!("pages: {}", run.result.page_count());
+    println!("files: {}", run.result.files().len());
+    println!(
+        "bytes: {}",
+        run.result
+            .files()
+            .iter()
+            .map(|file| file.bytes_written())
+            .sum::<u64>()
+    );
+    println!("elapsed_ms: {}", run.elapsed_ms);
+    match run.peak_rss_kib {
+        Some(value) => println!("peak_rss_kib: {value}"),
+        None => println!("peak_rss_kib: unavailable"),
+    }
+    Ok(())
+}
+
+#[derive(Debug)]
+struct SiteGenerationRun {
+    result: SiteGenerationResult,
+    elapsed_ms: u128,
+    peak_rss_kib: Option<u64>,
+}
+
+fn generate_site_data(
+    source_dir: PathBuf,
+    output: PathBuf,
+    include_file_names: Vec<String>,
+) -> Result<SiteGenerationRun, hbk_doc_site::SiteGenerationError> {
+    let started = Instant::now();
+    let request = SiteGenerationRequest::source_directory(output, source_dir, include_file_names);
+    let result = DocSiteGenerator::generate(&request)?;
+    Ok(SiteGenerationRun {
+        result,
+        elapsed_ms: started.elapsed().as_millis(),
+        peak_rss_kib: peak_rss_kib(),
+    })
+}
+
+fn peak_rss_kib() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    status.lines().find_map(|line| {
+        let value = line.strip_prefix("VmHWM:")?.trim();
+        value
+            .split_whitespace()
+            .next()
+            .and_then(|number| number.parse().ok())
+    })
 }
 
 fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
@@ -1735,6 +1825,39 @@ mod tests {
     }
 
     #[test]
+    fn site_generate_command_parses_include_filters() {
+        let cli = Cli::try_parse_from([
+            "v8-context-hbk",
+            "site",
+            "generate",
+            "/opt/1cv8/x86_64/8.5.1.1150",
+            "--output",
+            "target/doc-site",
+            "--include",
+            "fmtdui_ru.hbk",
+            "--include",
+            "shlang_ru.hbk",
+        ])
+        .expect("site generate command must parse");
+
+        match cli.command {
+            Command::Site {
+                command:
+                    SiteCommand::Generate {
+                        source_dir,
+                        output,
+                        include_file_names,
+                    },
+            } => {
+                assert_eq!(source_dir, PathBuf::from("/opt/1cv8/x86_64/8.5.1.1150"));
+                assert_eq!(output, PathBuf::from("target/doc-site"));
+                assert_eq!(include_file_names, vec!["fmtdui_ru.hbk", "shlang_ru.hbk"]);
+            }
+            other => panic!("expected site generate command, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn top_level_export_writes_raw_storage_files() {
         let workspace = temp_workspace("cli-raw-success");
         let source_path = workspace.join("fmtdui_ru.hbk");
@@ -1798,6 +1921,110 @@ mod tests {
         assert!(markdown.contains("# Справка"));
         assert!(markdown.contains("Markdown page"));
         assert_eq!(result.files().len(), 1);
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn site_generate_writes_page_markdown_data_files() {
+        let workspace = temp_workspace("cli-site-success");
+        let source_path = workspace.join("fmtdui_ru.hbk");
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Справка"}{"en","Help"}},"/docs/page.html"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![(
+                "docs/page.html",
+                "<html><body><h1>Справка</h1><p>Site page</p></body></html>".as_bytes(),
+            )],
+        );
+        let output_root = workspace.join("out");
+
+        let run = generate_site_data(
+            workspace.clone(),
+            output_root.clone(),
+            vec!["fmtdui_ru.hbk".to_string()],
+        )
+        .expect("site generation must succeed");
+
+        assert_eq!(run.result.book_count(), 1);
+        assert_eq!(run.result.page_count(), 1);
+        assert!(output_root.join("data/manifest.json").exists());
+        let pages_root = output_root.join("data/locales/ru/pages");
+        let page = fs::read_dir(pages_root)
+            .expect("pages directory must exist")
+            .next()
+            .expect("one page file must exist")
+            .unwrap()
+            .path();
+        let markdown = fs::read_to_string(page).expect("page Markdown must be readable");
+        assert!(markdown.contains("# Справка"));
+        assert!(markdown.contains("Site page"));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn site_generate_reports_missing_source_directory_before_writing() {
+        let workspace = temp_workspace("cli-site-missing-source");
+        let source_dir = workspace.join("missing");
+        let output_root = workspace.join("out");
+
+        let error = generate_site_data(source_dir.clone(), output_root.clone(), Vec::new())
+            .expect_err("missing source directory must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "documentation site source directory '{}' does not exist",
+                source_dir.display()
+            )
+        );
+        assert!(!output_root.exists());
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn site_generate_reports_empty_corpus_before_writing() {
+        let workspace = temp_workspace("cli-site-empty-corpus");
+        let output_root = workspace.join("out");
+
+        let error = generate_site_data(
+            workspace.clone(),
+            output_root.clone(),
+            vec!["missing_ru.hbk".to_string()],
+        )
+        .expect_err("empty included corpus must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "documentation site source corpus is empty"
+        );
+        assert!(!output_root.exists());
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn site_generate_reports_unsupported_input_without_panic() {
+        let workspace = temp_workspace("cli-site-unsupported-input");
+        let source_path = workspace.join("bad_ru.hbk");
+        fs::write(&source_path, b"not an hbk container").expect("bad fixture must be written");
+        let output_root = workspace.join("out");
+
+        let error = generate_site_data(
+            workspace.clone(),
+            output_root.clone(),
+            vec!["bad_ru.hbk".to_string()],
+        )
+        .expect_err("unsupported HBK input must be rejected");
+
+        assert!(
+            error
+                .to_string()
+                .starts_with("failed to read documentation site book")
+        );
+        assert!(!output_root.exists());
         let _ = fs::remove_dir_all(workspace);
     }
 

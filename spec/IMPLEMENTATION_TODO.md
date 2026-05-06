@@ -26,7 +26,7 @@ language-domain, cleanup, book-content export and documentation-site conclusions
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/ADR-0010-documentation-site-generator-and-web-app.md`.
 
-Current first unchecked task: T112.
+Current first unchecked task: T113.
 T111-T113 are user-requested documentation site generator/web-app slices that continue the
 book-content export direction from T99-T109.
 
@@ -88,7 +88,7 @@ Completion notes:
 - Page Markdown writing, CLI `site generate` wiring, real-corpus measurements and web app behavior
   remain T112/T113 scope.
 
-### [ ] T112. Generate page data and wire `site generate` CLI
+### [x] T112. Generate page data and wire `site generate` CLI
 
 Spec refs:
 
@@ -121,11 +121,27 @@ Verification:
 
 - Focused `hbk-doc-site` tests for page artifact planning and error diagnostics.
 - Focused `v8-context-hbk-cli` tests for command parsing and diagnostics.
-- UAT-HBK-014 passes or is skipped only for missing installed HBK books.
-- `spec/acceptance/baseline.md` records the first site generation measurement or skip reason.
-- `cargo test -p hbk-doc-site`
-- `cargo test -p v8-context-hbk-cli`
-- `cargo test --workspace`
+- UAT-HBK-014 passed on 2026-05-07 against the local 8.5.1.1150 corpus.
+- `spec/acceptance/baseline.md` records the first site generation measurement.
+- `cargo test -p hbk-book-export` passed on 2026-05-07.
+- `cargo test -p hbk-doc-site` passed on 2026-05-07.
+- `cargo test -p v8-context-hbk-cli` passed on 2026-05-07.
+- `cargo test --workspace` passed on 2026-05-07.
+
+Completion notes:
+
+- `hbk-doc-site` now writes page Markdown files under
+  `data/locales/<locale>/pages/<page-id>.md` for page-bearing global TOC nodes.
+- Page generation reuses the accepted single-book Markdown conversion path from
+  `hbk-book-export`, while `hbk-doc-site` owns global page ids, page file planning and artifact
+  layout, including generated page-id link targets for internal Markdown links and fragments.
+- Added `v8-context-hbk site generate <source-dir> --output <data-dir> [--include <file-name>]...`
+  with readable source-directory/corpus diagnostics and summary data: source books, locales, TOC
+  nodes, pages, files, output bytes, elapsed milliseconds and peak RSS when available.
+- UAT-HBK-014 generated 4 source books, 1 locale, 267 TOC nodes, 254 page Markdown files,
+  302 generated files, 931369 bytes, 3281 ms and 11632 KiB peak RSS for the representative local
+  corpus.
+- The separate documentation web app remains T113 scope.
 
 ### [ ] T113. Add minimal documentation web app
 

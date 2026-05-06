@@ -11,6 +11,7 @@ path = "src/main.rs"
 clap.workspace = true
 hbk-book.workspace = true
 hbk-book-export.workspace = true
+hbk-doc-site.workspace = true
 hbk-container.workspace = true
 hbk-syntax-export.workspace = true
 serde_json.workspace = true

@@ -1585,3 +1585,18 @@ and their child sections. The T111 artifact writer produces deterministic `data/
 files for fixture corpora. The manifest includes generator version, deterministic build id, source
 book file sizes, TOC root paths and future page root paths. Page Markdown writing, CLI
 `site generate`, UAT-HBK-014 real-corpus measurements and the web app remain T112/T113 scope.
+
+T112 completed documentation-site page-data generation and CLI wiring without adding a web app,
+search or semantic indexing. `hbk-doc-site` now writes page Markdown files under
+`data/locales/<locale>/pages/<page-id>.md` for page-bearing global TOC nodes while keeping stable
+global `page_id` values and TOC/page data split. `v8-context-hbk site generate <source-dir>
+--output <data-dir> [--include <file-name>]...` reports source book count, locale count, TOC node
+count, page count, generated file count, output bytes, elapsed milliseconds and Linux VmHWM when
+available. UAT-HBK-014 passed on 2026-05-07 against the local 8.5.1.1150 corpus
+`fmtdui_ru.hbk`, `shlang_ru.hbk`, `shquery_ru.hbk` and `dcsui_ru.hbk`: 4 source books, 1 locale,
+267 TOC nodes, 254 page Markdown files, 302 generated files, 931369 bytes, 3281 ms and
+11632 KiB peak RSS. The UAT checks confirmed manifest/TOC/page artifact presence, page-bearing TOC
+nodes with `book_id`, matching page Markdown files for every `page_id`, and no raw installed HBK
+paths, `.hbk` names, raw HTML storage paths or raw TOC-index wording in generated locale JSON or
+Markdown. Fixture coverage also checks that generated site page Markdown preserves internal
+Markdown links and HTML fragments through site-owned page-id targets.

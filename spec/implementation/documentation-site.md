@@ -143,8 +143,11 @@ The first implementation slice should stop at a usable documentation site withou
    validation.
 2. Generate `data/manifest.json`, root TOC and section TOC JSON for a small multi-book fixture.
    Completed in T111.
-3. Write page Markdown files for page-bearing nodes.
-4. Add CLI wiring for `site generate`.
+3. Write page Markdown files for page-bearing nodes. Completed in T112 with generated
+   `data/locales/<locale>/pages/<page-id>.md` files and page ids owned by `hbk-doc-site`.
+4. Add CLI wiring for `site generate`. Completed in T112 as
+   `v8-context-hbk site generate <source-dir> --output <data-dir> [--include <file-name>]...`
+   with readable diagnostics and summary measurements.
 5. Add a minimal separate web app that can serve/load the generated manifest, locale root TOC, lazy
    section children and page Markdown.
 

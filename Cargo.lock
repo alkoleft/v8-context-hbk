@@ -379,6 +379,7 @@ name = "hbk-doc-site"
 version = "0.1.0"
 dependencies = [
  "hbk-book",
+ "hbk-book-export",
  "serde",
  "serde_json",
 ]
@@ -1007,6 +1008,7 @@ dependencies = [
  "hbk-book",
  "hbk-book-export",
  "hbk-container",
+ "hbk-doc-site",
  "hbk-syntax-export",
  "serde_json",
  "syntax-helper-extract",

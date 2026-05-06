@@ -131,6 +131,62 @@ impl<'a> BookExporter<'a> {
         Ok(BookMarkdownPage::from_page_content(page))
     }
 
+    pub fn markdown_toc_page(
+        &self,
+        html_path: &str,
+        title: &str,
+    ) -> Result<BookMarkdownPage, BookExportError> {
+        let normalized_html_path = normalize_storage_path(html_path);
+        let markdown = if is_heading_only_toc_path(normalized_html_path) {
+            heading_only_markdown(title)
+        } else {
+            match DocumentationReader::new(self.book).load_page(normalized_html_path) {
+                Ok(page) => page_content_to_markdown(&page),
+                Err(error) if documentation_error_is_missing_page(&error) => {
+                    heading_only_markdown(title)
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
+        Ok(BookMarkdownPage {
+            html_path: normalized_html_path.to_string(),
+            title: title.to_string(),
+            markdown,
+        })
+    }
+
+    pub fn linked_markdown_toc_page(
+        &self,
+        html_path: &str,
+        title: &str,
+        current_output_path: &Path,
+        link_targets: &HashMap<String, PathBuf>,
+        source_book_ids: &HashSet<String>,
+    ) -> Result<BookMarkdownPage, BookExportError> {
+        let normalized_html_path = normalize_storage_path(html_path);
+        let markdown = if is_heading_only_toc_path(normalized_html_path) {
+            heading_only_markdown(title)
+        } else {
+            match DocumentationReader::new(self.book).load_page(normalized_html_path) {
+                Ok(page) => page_content_to_linked_markdown(
+                    &page,
+                    current_output_path,
+                    link_targets,
+                    source_book_ids,
+                ),
+                Err(error) if documentation_error_is_missing_page(&error) => {
+                    heading_only_markdown(title)
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
+        Ok(BookMarkdownPage {
+            html_path: normalized_html_path.to_string(),
+            title: title.to_string(),
+            markdown,
+        })
+    }
+
     fn export_raw_raw(
         &self,
         request: &BookExportRequest,

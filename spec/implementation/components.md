@@ -326,7 +326,11 @@ The T111 manifest includes schema version, generator name/version, deterministic
 source book inventory with `book_id`, file name, title, locale and file size, root TOC paths and
 future page-root paths. Locale-derived artifact path segments are validated before writing.
 
-Page Markdown files under `data/locales/<locale>/pages/` remain T112 scope.
+T112 adds page Markdown files under `data/locales/<locale>/pages/<page-id>.md` for page-bearing
+global TOC nodes and keeps those files addressed by stable generated `page_id` values. Markdown
+conversion reuses the accepted single-book Markdown conversion behavior through `hbk-book-export`;
+the site component owns global page identity, generated page-id link target planning, output path
+planning and the generated data split.
 
 The component must keep these responsibilities separate:
 
@@ -351,8 +355,10 @@ identity on page-bearing nodes and must not silently collapse page-bearing nodes
 
 The first generator command shape is expected to be
 `v8-context-hbk site generate <source-dir> --output <data-dir>`, with repeated
-`--include <file-name>` filters for deterministic UAT and focused generation. User-facing README
-details belong after the command exists.
+`--include <file-name>` filters for deterministic UAT and focused generation. T112 wires this
+command through the CLI and prints source book count, locale count, TOC node count, page count,
+generated file count, output bytes, elapsed milliseconds and peak RSS when available. User-facing
+README details may follow the accepted command behavior.
 
 ### docs-web-app
 

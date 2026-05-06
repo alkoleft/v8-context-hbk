@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 hbk-book.workspace = true
+hbk-book-export.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
