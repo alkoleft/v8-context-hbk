@@ -1567,3 +1567,10 @@ query-language examples as `sdbl` fenced code blocks containing `ВЫБРАТЬ`
 examples as Markdown blockquotes. The same release export check also confirmed that
 `Работа с пакетными запросами` still uses `bsl` fences for ordinary BSL examples and XBASE
 same-page links retain Markdown `#fragment` anchors.
+
+T109 completed the matching target-anchor side of Markdown/TOC fragment navigation. The same
+`shclang_ru.hbk` page `Работа с временными таблицами` now exports same-page links such as
+`index.md#Manager` together with explicit Markdown-compatible targets such as
+`<a id="Manager"></a>` before the corresponding heading. UAT-HBK-013 passed with target checks for
+`Manager`, `Create`, `Used` and `Delete`; release-profile export to
+`target/uat/shclang-anchor-materialized-md` showed the generated targets in the user-reported page.

@@ -120,7 +120,8 @@ example containers must export as Markdown `bsl` code blocks, not as one-cell da
 Source HTML blockquotes that are used as Courier query-language examples must export as Markdown
 `sdbl` code blocks, not as quoted prose.
 Internal same-book links with source HTML fragments must preserve their fragment anchors in Markdown
-links.
+links, and source heading anchors such as HTML `name` or `id` attributes must be materialized in the
+Markdown page so those fragments have a matching target.
 
 Acceptance:
 
@@ -135,6 +136,7 @@ Acceptance:
 - Markdown/toc export keeps query-language examples readable as `sdbl` code blocks when HBK HTML
   represents them as Courier blockquotes.
 - Markdown/toc export preserves internal same-page and same-book `#fragment` link anchors.
+- Markdown/toc export materializes source heading anchors used by those fragments.
 - Unsupported format/hierarchy combinations fail with readable non-panic diagnostics.
 
 ## FR-DOC-001: Documentation Page Reader

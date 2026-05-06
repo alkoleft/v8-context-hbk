@@ -23,8 +23,8 @@ language-domain and cleanup conclusions live in `acceptance/baseline.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md`,
 `implementation/syntax-bsl-provider-plan.md` and `implementation/solution-context-resolve.md`.
 
-The active task block is T99-T108. T99-T108 are complete.
-T99-T108 are user-requested book-content export slices handled outside the first-unchecked
+The active task block is T99-T109. T99-T109 are complete.
+T99-T109 are user-requested book-content export slices handled outside the first-unchecked
 cleanup/provider sequence.
 
 ## Loop Rule
@@ -537,6 +537,59 @@ Completion notes:
   - `cargo fmt --all --check`
   - `cargo test -p hbk-book-export`
   - `cargo test -p v8-context-hbk-cli`
+
+### [x] T109. Materialize Markdown target anchors for source HTML heading fragments
+
+Spec refs:
+
+- FR-HBK-004
+- UAT-HBK-013
+- `spec/implementation/components.md`
+
+Problem:
+
+- T107 preserves source `#fragment` suffixes in Markdown links, but the target page can lose the
+  corresponding HTML `<a name="...">` heading anchors during HTML-to-Markdown conversion.
+- `shclang_ru.hbk` page `Работа с временными таблицами` exports links such as `index.md#Manager`,
+  while the generated Markdown only contains `## Менеджер временных таблиц` and no `Manager` anchor
+  target.
+
+Scope:
+
+- Extract source heading anchors from HTML `name` or `id` attributes before Markdown conversion.
+- Materialize those targets in Markdown near the corresponding heading so same-page fragments work.
+- Preserve T105/T106 code-table `bsl` fences, T108 `sdbl` query blockquotes, normal prose/tables and
+  T107 fragment href rewriting.
+
+Verification:
+
+- Focused `hbk-book-export` regression test for same-page links and materialized heading anchors.
+- Real-book regression check on `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` page
+  `Work with temp table` when the fixture exists.
+- UAT-HBK-013 passes or is skipped only for a missing installed HBK book.
+- `cargo test -p hbk-book-export`
+- `cargo test -p v8-context-hbk-cli`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Added a Markdown post-conversion materialization pass for source heading anchors.
+- Heading-local HTML anchors from `name` or `id` attributes are emitted as explicit
+  `<a id="..."></a>` targets immediately before the matching Markdown heading.
+- Verified `shclang_ru.hbk` page `Work with temp table` now exports links such as
+  `index.md#Manager` together with target anchors for `Manager`, `Create`, `Used` and `Delete`.
+- Kept T107 href fragment rewriting, T108 `sdbl` query code blocks and T105/T106 `bsl` code blocks
+  intact.
+- Verification passed:
+  - focused `hbk-book-export` fragment and anchor target regression test
+  - real `Work with temp table` regression through representative real-page test
+  - real XBASE fragment and anchor regression test
+  - UAT-HBK-013
+  - `cargo fmt --all --check`
+  - `cargo test -p hbk-book-export`
+  - `cargo test -p v8-context-hbk-cli`
+  - `cargo build --release -p v8-context-hbk-cli`
+  - `cargo test --workspace`
 
 ### [x] T108. Convert Courier query blockquotes to `sdbl` code blocks
 

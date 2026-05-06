@@ -277,6 +277,12 @@ blockquotes. A blockquote is treated as an SDBL query example only when it has C
 content and no links. Such blockquotes are rewritten to `<pre><code class="language-sdbl">` before
 conversion. Navigation blockquotes with links remain regular quoted/link content.
 
+T109 keeps the T107 link-fragment href behavior but also materializes source heading anchors in the
+generated Markdown. Heading-local HTML anchors, such as `<a name="Manager"></a>` inside an `h2`, are
+exported as explicit Markdown-compatible HTML anchor targets immediately before the corresponding
+Markdown heading. This is an export adapter concern: the internal TOC/link lookup remains
+path-based, and generated anchor tags are limited to anchors owned by source headings.
+
 ### syntax-helper-model
 
 Expected public concepts:

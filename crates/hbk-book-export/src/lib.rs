@@ -806,9 +806,11 @@ fn page_content_to_markdown(page: &PageContent) -> String {
         .include_images(false)
         .preserve_tables(true)
         .escape_special_chars(false);
+    let anchor_targets = markdown_heading_anchor_targets(&page.raw_html);
     let html = normalize_code_examples(&page.raw_html);
     let markdown = html_to_markdown_with_options(&html, &options);
-    ensure_markdown_heading(&page.title, normalize_markdown(markdown))
+    let markdown = ensure_markdown_heading(&page.title, normalize_markdown(markdown));
+    materialize_markdown_heading_anchors(&markdown, &anchor_targets)
 }
 
 fn page_content_to_linked_markdown(
@@ -818,6 +820,7 @@ fn page_content_to_linked_markdown(
     source_book_ids: &HashSet<String>,
 ) -> String {
     let html = rewrite_page_link_targets(page, current_output_path, link_targets, source_book_ids);
+    let anchor_targets = markdown_heading_anchor_targets(&html);
     let html = normalize_code_examples(&html);
     let options = MarkdownOptions::new()
         .include_links(true)
@@ -825,7 +828,8 @@ fn page_content_to_linked_markdown(
         .preserve_tables(true)
         .escape_special_chars(false);
     let markdown = html_to_markdown_with_options(&html, &options);
-    ensure_markdown_heading(&page.title, normalize_markdown(markdown))
+    let markdown = ensure_markdown_heading(&page.title, normalize_markdown(markdown));
+    materialize_markdown_heading_anchors(&markdown, &anchor_targets)
 }
 
 fn markdown_link_targets(plans: &[MarkdownTocExportPlan]) -> HashMap<String, PathBuf> {
@@ -1137,6 +1141,108 @@ fn path_components(path: &Path) -> Vec<String> {
         .collect()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MarkdownHeadingAnchorTarget {
+    level: usize,
+    text: String,
+    id: String,
+}
+
+fn markdown_heading_anchor_targets(html: &str) -> Vec<MarkdownHeadingAnchorTarget> {
+    let fragment = Html::parse_fragment(html);
+    let heading_selector =
+        Selector::parse("h1, h2, h3, h4, h5, h6").expect("static selector must be valid");
+    let anchor_selector = Selector::parse("[name], [id]").expect("static selector must be valid");
+    let mut targets = Vec::new();
+
+    for heading in fragment.select(&heading_selector) {
+        let Some(level) = markdown_heading_level(heading.value().name()) else {
+            continue;
+        };
+        let Some(id) = element_anchor_id(heading)
+            .or_else(|| heading.select(&anchor_selector).find_map(element_anchor_id))
+        else {
+            continue;
+        };
+        let text = normalize_markdown_heading_text(&heading.text().collect::<String>());
+        if text.is_empty() {
+            continue;
+        }
+        targets.push(MarkdownHeadingAnchorTarget { level, text, id });
+    }
+
+    targets
+}
+
+fn markdown_heading_level(tag_name: &str) -> Option<usize> {
+    let level = tag_name.strip_prefix('h')?.parse::<usize>().ok()?;
+    (1..=6).contains(&level).then_some(level)
+}
+
+fn element_anchor_id(element: ElementRef<'_>) -> Option<String> {
+    element
+        .value()
+        .attr("name")
+        .or_else(|| element.value().attr("id"))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn materialize_markdown_heading_anchors(
+    markdown: &str,
+    targets: &[MarkdownHeadingAnchorTarget],
+) -> String {
+    if targets.is_empty() {
+        return markdown.to_string();
+    }
+
+    let mut output = String::with_capacity(markdown.len() + targets.len() * 24);
+    let mut next_target = 0;
+    for segment in markdown.split_inclusive('\n') {
+        let line = segment.strip_suffix('\n').unwrap_or(segment);
+        if let Some((level, text)) = parse_markdown_heading_line(line) {
+            if !targets
+                .get(next_target)
+                .is_some_and(|target| target.level == level && target.text == text)
+            {
+                output.push_str(segment);
+                continue;
+            }
+            output.push_str("<a id=\"");
+            output.push_str(&escape_html_attribute(&targets[next_target].id));
+            output.push_str("\"></a>\n");
+            next_target += 1;
+        }
+        output.push_str(segment);
+    }
+    output
+}
+
+fn parse_markdown_heading_line(line: &str) -> Option<(usize, String)> {
+    let hashes = line
+        .chars()
+        .take_while(|character| *character == '#')
+        .count();
+    if !(1..=6).contains(&hashes)
+        || !line
+            .as_bytes()
+            .get(hashes)
+            .is_some_and(u8::is_ascii_whitespace)
+    {
+        return None;
+    }
+    let text = normalize_markdown_heading_text(&line[hashes..]);
+    (!text.is_empty()).then_some((hashes, text))
+}
+
+fn normalize_markdown_heading_text(text: &str) -> String {
+    text.replace('\u{a0}', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn normalize_code_examples(html: &str) -> String {
     let html = normalize_code_example_tables(html);
     normalize_query_code_blockquotes(&html)
@@ -1277,6 +1383,20 @@ fn escape_html_text(text: &str) -> String {
     for character in text.chars() {
         match character {
             '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            _ => output.push(character),
+        }
+    }
+    output
+}
+
+fn escape_html_attribute(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '"' => output.push_str("&quot;"),
             '<' => output.push_str("&lt;"),
             '>' => output.push_str("&gt;"),
             _ => output.push(character),
@@ -1863,7 +1983,12 @@ mod tests {
                         <h1>Основные понятия XBASE</h1>
                         <p><a href="#FieldsRecords">Поля и записи</a></p>
                         <p><a href="OtherPage#Details">Другая страница</a></p>
+                        <p><a href="#DirectId">Заголовок с id</a></p>
+                        <p><a href="#SecondParams">Вторые параметры</a></p>
                         <h2><a name="FieldsRecords">Поля и записи</a></h2>
+                        <h2 id="DirectId">Заголовок с id</h2>
+                        <h2><a name="FirstParams"></a>Параметры</h2>
+                        <h2><a name="SecondParams"></a>Параметры</h2>
                     </body></html>"##
                         .as_bytes(),
                 ),
@@ -1890,10 +2015,16 @@ mod tests {
 
         let markdown = fs::read_to_string(output_root.join("основные-понятия-xbase/index.md"))
             .expect("Markdown page must be exported");
+        let other_markdown = fs::read_to_string(output_root.join("другая-страница/index.md"))
+            .expect("linked Markdown page must be exported");
 
         assert!(markdown.contains("[Поля и записи](index.md#FieldsRecords)"));
         assert!(markdown.contains("[Другая страница](../другая-страница/index.md#Details)"));
+        assert!(markdown.contains("<a id=\"FieldsRecords\"></a>\n## Поля и записи"));
+        assert!(markdown.contains("<a id=\"DirectId\"></a>\n## Заголовок с id"));
+        assert!(other_markdown.contains("<a id=\"Details\"></a>\n## Детали"));
         assert!(!markdown.contains("[Поля и записи](index.md)"));
+        assert_duplicate_heading_anchors_stay_with_their_source_heading(&markdown);
     }
 
     #[test]
@@ -1965,6 +2096,10 @@ mod tests {
                 html_path: "Work with temp table",
                 expected: &[
                     "# Работа с временными таблицами",
+                    "<a id=\"Manager\"></a>\n## Менеджер временных таблиц",
+                    "<a id=\"Create\"></a>\n## Создание временных таблиц",
+                    "<a id=\"Used\"></a>\n## Использование временных таблиц",
+                    "<a id=\"Delete\"></a>\n## Удаление временных таблиц",
                     "```sdbl",
                     "ВЫБРАТЬ\n   Код,",
                     "ПОМЕСТИТЬ ВременнаяТаблица",
@@ -2103,6 +2238,9 @@ mod tests {
         assert!(markdown.contains("[Поля и записи](index.md#FieldsRecords)"));
         assert!(markdown.contains("[Работа с индексными файлами](index.md#WorkWithIndexFile)"));
         assert!(markdown.contains("[Ограничения](index.md#constraint)"));
+        assert!(markdown.contains("<a id=\"FieldsRecords\"></a>"));
+        assert!(markdown.contains("<a id=\"WorkWithIndexFile\"></a>"));
+        assert!(markdown.contains("<a id=\"constraint\"></a>"));
         assert!(!markdown.contains("[Поля и записи](index.md)"));
     }
 
@@ -2370,7 +2508,8 @@ mod tests {
             "<html",
             "<body",
             "<p",
-            "<a ",
+            "<a href",
+            "<a name",
             "<h1",
             "<h2",
             "<table",
@@ -2380,7 +2519,17 @@ mod tests {
             "<li",
             "<div",
             "<span",
-            "</",
+            "</html",
+            "</body",
+            "</p",
+            "</h",
+            "</table",
+            "</tr",
+            "</td",
+            "</ul",
+            "</li",
+            "</div",
+            "</span",
             "&nbsp;",
             "v8help://service_book/service_style",
             "/opt/1cv8",
@@ -2394,6 +2543,28 @@ mod tests {
                 "Markdown must not contain raw service/provenance fragment {forbidden:?}:\n{markdown}"
             );
         }
+    }
+
+    fn assert_duplicate_heading_anchors_stay_with_their_source_heading(markdown: &str) {
+        let first_heading = markdown
+            .find("## Параметры")
+            .expect("first duplicate heading must exist");
+        let second_heading = markdown[first_heading + "## Параметры".len()..]
+            .find("## Параметры")
+            .map(|offset| first_heading + "## Параметры".len() + offset)
+            .expect("second duplicate heading must exist");
+        let first_anchor = markdown
+            .find("<a id=\"FirstParams\"></a>")
+            .expect("first duplicate heading anchor must exist");
+        let second_anchor = markdown
+            .find("<a id=\"SecondParams\"></a>")
+            .expect("second duplicate heading anchor must exist");
+
+        assert!(first_anchor < first_heading, "{markdown}");
+        assert!(
+            first_heading < second_anchor && second_anchor < second_heading,
+            "{markdown}"
+        );
     }
 
     struct TempWorkspace {

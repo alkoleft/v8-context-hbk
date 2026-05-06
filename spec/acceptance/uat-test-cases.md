@@ -584,6 +584,11 @@ cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
 PAGE=target/uat/shclang-sdbl-md/встроенный-язык/работа-с-запросами/выполнение-и-работа-с-запросами-во-встроенном-языке/работа-с-временными-таблицами/index.md
 test -f "$PAGE"
 rg -q '^# Работа с временными таблицами$' "$PAGE"
+rg -q '\[Менеджер временных таблиц\]\(index\.md#Manager\)' "$PAGE"
+rg -q '^<a id="Manager"></a>$' "$PAGE"
+rg -q '^<a id="Create"></a>$' "$PAGE"
+rg -q '^<a id="Used"></a>$' "$PAGE"
+rg -q '^<a id="Delete"></a>$' "$PAGE"
 rg -q '^```sdbl$' "$PAGE"
 rg -q '^ВЫБРАТЬ$' "$PAGE"
 rg -q '^ +Код,$' "$PAGE"
@@ -594,6 +599,7 @@ rg -q '^ИЗ Справочник\.Номенклатура$' "$PAGE"
 
 Expected result:
 
+- Same-page fragment links point to materialized Markdown anchor targets.
 - Courier query-language examples are exported as Markdown `sdbl` code blocks.
 - Query text line breaks and indentation remain readable.
 - Query-language examples are not exported as Markdown blockquotes.
