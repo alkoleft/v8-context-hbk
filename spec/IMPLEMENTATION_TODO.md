@@ -23,9 +23,8 @@ language-domain and cleanup conclusions live in `acceptance/baseline.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md`,
 `implementation/syntax-bsl-provider-plan.md` and `implementation/solution-context-resolve.md`.
 
-The active task block is T99-T103. T99-T102 are complete; T103 is now the first unchecked planned
-task.
-T99-T103 are user-requested book-content export slices handled outside the first-unchecked
+The active task block is T99-T108. T99-T108 are complete.
+T99-T108 are user-requested book-content export slices handled outside the first-unchecked
 cleanup/provider sequence.
 
 ## Loop Rule
@@ -520,7 +519,6 @@ Verification:
 - Focused CLI tests for raw/raw success and unsupported combination diagnostics.
 - `cargo test -p hbk-book-export`
 - `cargo test -p v8-context-hbk-cli`
-- `cargo test --workspace`
 
 Completion notes:
 
@@ -536,6 +534,195 @@ Completion notes:
   baseline.
 - Independent review findings were resolved, and the final reviewer pass returned `APPROVED`.
 - Verification passed:
+  - `cargo fmt --all --check`
+  - `cargo test -p hbk-book-export`
+  - `cargo test -p v8-context-hbk-cli`
+
+### [x] T108. Convert Courier query blockquotes to `sdbl` code blocks
+
+Spec refs:
+
+- FR-HBK-004
+- UAT-HBK-013
+- `spec/implementation/components.md`
+
+Problem:
+
+- `shclang_ru.hbk` page `Работа с временными таблицами` stores query-language examples in
+  `<blockquote>` elements with Courier font content.
+- `quick_html2md` exports those examples as quoted prose, for example `> ВЫБРАТЬ`, while they are
+  source code examples.
+
+Scope:
+
+- Detect Courier blockquotes used as query-language examples in ordinary book Markdown export.
+- Convert those examples to ` ```sdbl ` fenced code blocks before `quick_html2md`.
+- Preserve navigation/link blockquotes, BSL table code blocks, normal GFM tables, T104 placeholder
+  behavior and T107 link fragments.
+
+Verification:
+
+- Focused `hbk-book-export` regression test for a Courier query blockquote.
+- Real-book regression check on `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` page
+  `Work with temp table` when the fixture exists.
+- UAT-HBK-013 passes or is skipped only for a missing installed HBK book.
+- `cargo test -p hbk-book-export`
+- `cargo test -p v8-context-hbk-cli`
+- `cargo test --workspace`
+
+Completion notes:
+
+- Added a Markdown pre-conversion path for Courier-family blockquotes without descendant links.
+  Those blocks are rewritten as `<pre><code class="language-sdbl">` before `quick_html2md`, so
+  query-language examples export as `sdbl` fenced code blocks instead of Markdown quotes.
+- Kept link/navigation blockquotes unchanged by requiring the no-`href` guard, and kept the
+  single-cell Courier table path as `bsl`.
+- Verified `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` page `Work with temp table` exports
+  ` ```sdbl ` blocks containing `ВЫБРАТЬ`, `ПОМЕСТИТЬ ВременнаяТаблица` and
+  `ИЗ Справочник.Номенклатура`, with no `> ВЫБРАТЬ` blockquotes.
+- Verification passed:
+  - focused `hbk-book-export` Courier blockquote regression test
+  - real `Work with temp table` regression test
+  - UAT-HBK-013
+  - `cargo test -p hbk-book-export`
+  - `cargo test -p v8-context-hbk-cli`
+  - `cargo test --workspace`
+
+### [x] T107. Preserve fragment anchors in Markdown internal links
+
+Spec refs:
+
+- FR-HBK-004
+- UAT-HBK-012
+- `spec/implementation/components.md`
+
+Problem:
+
+- `shclang_ru.hbk` page `Основные понятия XBASE` (`MainXBase`) contains same-page HTML links such
+  as `href="#FieldsRecords"`.
+- Markdown/TOC export rewrites these links to `index.md`, losing the `#FieldsRecords` fragment.
+- The loss happens while composing Markdown href targets; path lookup intentionally drops fragments
+  before resolving TOC page paths.
+
+Scope:
+
+- Preserve source `#fragment` suffixes when rewriting internal same-page and same-book links to
+  Markdown targets.
+- Keep TOC path lookup fragment-free.
+- Preserve external links, unresolved-link text, T104 placeholder behavior and T105/T106 code-table
+  conversion.
+
+Verification:
+
+- Focused `hbk-book-export` regression for same-page fragments.
+- Real-book regression check on `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` page `MainXBase` when
+  the fixture exists.
+- UAT-HBK-012 passes or is skipped only for a missing installed HBK book.
+- `cargo test -p hbk-book-export`
+- `cargo test -p v8-context-hbk-cli`
+
+Completion notes:
+
+- Markdown/TOC link rewriting now appends source `#fragment` suffixes after successful TOC path
+  lookup and relative Markdown target composition.
+- TOC lookup and `relative_markdown_link()` remain path-only.
+- `MainXBase` now exports same-page links such as `index.md#FieldsRecords`,
+  `index.md#WorkWithIndexFile` and `index.md#constraint`.
+- Verification passed:
+  - focused `hbk-book-export` fragment regression test
+  - real `MainXBase` regression test
+  - UAT-HBK-012
+  - `cargo test -p hbk-book-export`
+  - `cargo test -p v8-context-hbk-cli`
+
+### [x] T106. Mark exported BSL code fences with the `bsl` language
+
+Spec refs:
+
+- FR-HBK-004
+- UAT-HBK-011
+- `spec/implementation/components.md`
+
+Problem:
+
+- T105 exports single-cell Courier code example tables as fenced Markdown code blocks.
+- The fence currently has no language tag, so Markdown renderers cannot apply BSL highlighting.
+
+Scope:
+
+- Emit code-example fences as ` ```bsl ` for the T105 code-table path.
+- Preserve code text, line breaks, normal GFM tables, T104 placeholder behavior and ordinary
+  `quick_html2md` conversion for non-code tables.
+
+Verification:
+
+- Focused `hbk-book-export` regression expects ` ```bsl `.
+- UAT-HBK-011 passes.
+- `cargo test -p hbk-book-export`
+- `cargo test -p v8-context-hbk-cli`
+
+Completion notes:
+
+- T105 code-example tables now emit `<pre><code class="language-bsl">` before Markdown conversion.
+- `quick_html2md` serializes those blocks as ` ```bsl ` fenced code blocks.
+- Verification passed:
+  - focused `hbk-book-export` code-table regression
+  - UAT-HBK-011
+  - release-profile export of `shclang_ru.hbk` to `/tmp/hbk-shclang-release-bsl`
+  - `cargo fmt --all --check`
+  - `cargo test -p hbk-book-export`
+  - `cargo test -p v8-context-hbk-cli`
+
+### [x] T105. Convert single-cell Courier code tables to Markdown code blocks
+
+Spec refs:
+
+- UC-HBK-003
+- FR-HBK-004
+- FR-DOC-001
+- FR-CLI-001
+- UAT-HBK-011
+- `spec/implementation/components.md`
+
+Problem:
+
+- `shclang_ru.hbk` page `Работа с пакетными запросами` (`WorkinWithBath`) stores the BSL/query
+  example in a one-cell HTML table with `Courier New` font and line breaks.
+- The current Markdown conversion preserves tables globally, so that example becomes a one-cell GFM
+  table with escaped `|` markers and collapsed code lines.
+- This makes code examples hard to read while still correctly preserving real data tables such as
+  DCS keyword tables.
+
+Scope:
+
+- Detect single-cell Courier HTML tables used as code example containers in ordinary book Markdown
+  export.
+- Convert only those code-example tables to Markdown code blocks before HTML-to-Markdown conversion.
+- Preserve normal GFM table conversion for real multi-cell data tables.
+- Preserve T104 content-node placeholder behavior and normal link rewriting.
+
+Verification:
+
+- Focused `hbk-book-export` regression test for a single-cell Courier code table.
+- Real-book regression check on `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` page
+  `WorkinWithBath` when the fixture exists.
+- Existing representative DCS table test still passes.
+- UAT-HBK-011 passes or is skipped only for a missing installed HBK book.
+- `cargo test -p hbk-book-export`
+- `cargo test -p v8-context-hbk-cli`
+
+Completion notes:
+
+- Added a narrow `hbk-book-export` pre-conversion normalization for one-cell Courier HTML tables.
+- Such code-example tables are rewritten to `<pre><code>` before `quick_html2md`, preserving line
+  breaks and query `|` markers as fenced Markdown code blocks.
+- Multi-cell documentation tables remain on the normal GFM table path; representative DCS keyword
+  table checks still pass.
+- Verification passed:
+  - focused `hbk-book-export` code-table regression test
+  - real `WorkinWithBath` regression through the representative real-page test
+  - real DCS table regression through the representative real-page test
+  - UAT-HBK-011
   - `cargo fmt --all --check`
   - `cargo test -p hbk-book-export`
   - `cargo test -p v8-context-hbk-cli`
@@ -665,3 +852,59 @@ Completion notes:
   - UAT-HBK-006
   - UAT-HBK-007
   - `cargo test --workspace`
+
+### [x] T104. Preserve TOC titles for shared content-node placeholder pages
+
+Spec refs:
+
+- UC-HBK-003
+- FR-HBK-004
+- FR-HBK-003
+- FR-CLI-001
+- UAT-HBK-010
+- `spec/implementation/components.md`
+
+Problem:
+
+- `shclang_ru.hbk` contains several TOC section nodes that point to the same service placeholder
+  storage path `_CONTENTS_NODE_fileConf`.
+- The current Markdown/TOC export loads that placeholder as an ordinary page, and `hbk-docs`
+  resolves the repeated HTML path to the first matching TOC title.
+- As a result, different section pages such as `Общие объекты` and `Работа с запросами` are
+  exported with the borrowed heading `# Общее описание встроенного языка`.
+
+Scope:
+
+- Treat shared service content-node placeholder paths as heading-only Markdown pages at the
+  `hbk-book-export` boundary.
+- Use each TOC item's own title for those heading-only pages.
+- Preserve normal Markdown conversion for real page HTML and the existing missing-page heading-only
+  behavior.
+- Do not add Syntax Assistant extraction, raw/toc support, markdown/raw support or binary resource
+  export.
+
+Verification:
+
+- Focused `hbk-book-export` regression test for repeated service content-node placeholder paths.
+- Real-book regression check on `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` when the fixture
+  exists.
+- UAT-HBK-010 passes or is skipped only for a missing installed HBK book.
+- `cargo test -p hbk-book-export`
+- `cargo test -p v8-context-hbk-cli`
+
+Completion notes:
+
+- `hbk-book-export` now treats `_CONTENTS_NODE_*` paths as TOC section placeholders for
+  Markdown/TOC export.
+- Placeholder pages are written as heading-only Markdown with the current TOC item's title and are
+  excluded from internal Markdown link targets.
+- Normal real-page conversion, missing-page heading-only behavior and unsupported export
+  combinations remain unchanged.
+- Verification passed:
+  - focused `hbk-book-export` content-node regression tests
+  - real `shclang_ru.hbk` regression test
+  - release-profile export of `shclang_ru.hbk` to `/tmp/hbk-shclang-check-fixed`
+  - UAT-HBK-010
+  - `cargo fmt --all --check`
+  - `cargo test -p hbk-book-export`
+  - `cargo test -p v8-context-hbk-cli`

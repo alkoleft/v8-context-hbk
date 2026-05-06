@@ -9,6 +9,8 @@ use hbk_book::{
 };
 use hbk_docs::{DocumentationError, DocumentationReader, PageContent};
 use quick_html2md::{MarkdownOptions, html_to_markdown_with_options};
+use scraper::node::Node;
+use scraper::{ElementRef, Html, Selector};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BookExportFormat {
@@ -169,7 +171,7 @@ impl<'a> BookExporter<'a> {
         let mut loader = DocumentationReader::new(self.book).page_loader()?;
         let mut exported_files = Vec::with_capacity(plans.len());
         for plan in plans {
-            let markdown = if plan.html_path.is_empty() {
+            let markdown = if is_heading_only_toc_path(&plan.html_path) {
                 heading_only_markdown(&plan.title)
             } else {
                 match loader.load_page(&plan.html_path) {
@@ -804,7 +806,8 @@ fn page_content_to_markdown(page: &PageContent) -> String {
         .include_images(false)
         .preserve_tables(true)
         .escape_special_chars(false);
-    let markdown = html_to_markdown_with_options(&page.raw_html, &options);
+    let html = normalize_code_examples(&page.raw_html);
+    let markdown = html_to_markdown_with_options(&html, &options);
     ensure_markdown_heading(&page.title, normalize_markdown(markdown))
 }
 
@@ -815,6 +818,7 @@ fn page_content_to_linked_markdown(
     source_book_ids: &HashSet<String>,
 ) -> String {
     let html = rewrite_page_link_targets(page, current_output_path, link_targets, source_book_ids);
+    let html = normalize_code_examples(&html);
     let options = MarkdownOptions::new()
         .include_links(true)
         .include_images(false)
@@ -827,7 +831,7 @@ fn page_content_to_linked_markdown(
 fn markdown_link_targets(plans: &[MarkdownTocExportPlan]) -> HashMap<String, PathBuf> {
     let mut targets = HashMap::new();
     for plan in plans {
-        if !plan.html_path.is_empty() {
+        if !is_heading_only_toc_path(&plan.html_path) {
             targets
                 .entry(plan.html_path.clone())
                 .or_insert_with(|| plan.relative_path.clone());
@@ -851,7 +855,12 @@ fn rewrite_page_link_targets(
             .normalized_path
             .as_deref()
             .and_then(|target| markdown_link_target(target, link_targets, source_book_ids))
-            .map(|target| relative_markdown_link(current_output_path, target));
+            .map(|target| {
+                append_markdown_link_fragment(
+                    relative_markdown_link(current_output_path, target),
+                    &link.raw_href,
+                )
+            });
         replacements
             .entry(link.raw_href.clone())
             .and_modify(|current| {
@@ -946,8 +955,28 @@ fn href_replacement_for_raw_value(
     let target = normalize_markdown_link_target(current_html_path, raw_href)
         .as_deref()
         .and_then(|target| markdown_link_target(target, link_targets, source_book_ids))
-        .map(|target| relative_markdown_link(current_output_path, target));
+        .map(|target| {
+            append_markdown_link_fragment(
+                relative_markdown_link(current_output_path, target),
+                raw_href,
+            )
+        });
     Some(target)
+}
+
+fn append_markdown_link_fragment(mut target: String, raw_href: &str) -> String {
+    if let Some(fragment) = markdown_link_fragment(raw_href) {
+        target.push('#');
+        target.push_str(fragment);
+    }
+    target
+}
+
+fn markdown_link_fragment(raw_href: &str) -> Option<&str> {
+    raw_href
+        .split_once('#')
+        .map(|(_, fragment)| fragment.split('?').next().unwrap_or_default().trim())
+        .filter(|fragment| !fragment.is_empty())
 }
 
 fn source_book_link_ids(book: &HbkBook) -> HashSet<String> {
@@ -1108,6 +1137,176 @@ fn path_components(path: &Path) -> Vec<String> {
         .collect()
 }
 
+fn normalize_code_examples(html: &str) -> String {
+    let html = normalize_code_example_tables(html);
+    normalize_query_code_blockquotes(&html)
+}
+
+fn normalize_code_example_tables(html: &str) -> String {
+    let mut output = String::with_capacity(html.len());
+    let mut cursor = 0;
+    while let Some(start) = find_ascii_case_insensitive(html, cursor, "<table") {
+        let Some(end_tag_start) = find_ascii_case_insensitive(html, start, "</table") else {
+            break;
+        };
+        let Some(end_tag_end) = html[end_tag_start..]
+            .find('>')
+            .map(|offset| end_tag_start + offset + 1)
+        else {
+            break;
+        };
+        let table_html = &html[start..end_tag_end];
+        output.push_str(&html[cursor..start]);
+        if let Some(code_block) = code_example_table_to_pre(table_html) {
+            output.push_str(&code_block);
+        } else {
+            output.push_str(table_html);
+        }
+        cursor = end_tag_end;
+    }
+    output.push_str(&html[cursor..]);
+    output
+}
+
+fn code_example_table_to_pre(table_html: &str) -> Option<String> {
+    if !html_contains_ascii_case_insensitive(table_html, "courier") {
+        return None;
+    }
+
+    let fragment = Html::parse_fragment(table_html);
+    let cell_selector = Selector::parse("td, th").expect("static selector must be valid");
+    let mut cells = fragment.select(&cell_selector);
+    let cell = cells.next()?;
+    if cells.next().is_some() {
+        return None;
+    }
+
+    let mut code = String::new();
+    collect_code_example_text(cell, &mut code);
+    let code = normalize_code_example_text(&code);
+    (!code.is_empty()).then(|| {
+        format!(
+            "<pre><code class=\"language-bsl\">{}</code></pre>",
+            escape_html_text(&code)
+        )
+    })
+}
+
+fn normalize_query_code_blockquotes(html: &str) -> String {
+    let mut output = String::with_capacity(html.len());
+    let mut cursor = 0;
+    while let Some(start) = find_ascii_case_insensitive(html, cursor, "<blockquote") {
+        let Some(end_tag_start) = find_ascii_case_insensitive(html, start, "</blockquote") else {
+            break;
+        };
+        let Some(end_tag_end) = html[end_tag_start..]
+            .find('>')
+            .map(|offset| end_tag_start + offset + 1)
+        else {
+            break;
+        };
+        let blockquote_html = &html[start..end_tag_end];
+        output.push_str(&html[cursor..start]);
+        if let Some(code_block) = query_code_blockquote_to_pre(blockquote_html) {
+            output.push_str(&code_block);
+        } else {
+            output.push_str(blockquote_html);
+        }
+        cursor = end_tag_end;
+    }
+    output.push_str(&html[cursor..]);
+    output
+}
+
+fn query_code_blockquote_to_pre(blockquote_html: &str) -> Option<String> {
+    if !html_contains_ascii_case_insensitive(blockquote_html, "courier")
+        || html_contains_ascii_case_insensitive(blockquote_html, "href")
+    {
+        return None;
+    }
+
+    let fragment = Html::parse_fragment(blockquote_html);
+    let blockquote_selector = Selector::parse("blockquote").expect("static selector must be valid");
+    let blockquote = fragment.select(&blockquote_selector).next()?;
+    let mut code = String::new();
+    collect_code_example_text(blockquote, &mut code);
+    let code = normalize_code_example_text(&code);
+    (!code.is_empty()).then(|| {
+        format!(
+            "<pre><code class=\"language-sdbl\">{}</code></pre>",
+            escape_html_text(&code)
+        )
+    })
+}
+
+fn collect_code_example_text(element: ElementRef<'_>, output: &mut String) {
+    for child in element.children() {
+        match child.value() {
+            Node::Text(text) => output.push_str(text),
+            Node::Element(element) => {
+                let tag_name = element.name();
+                if tag_name.eq_ignore_ascii_case("br") {
+                    output.push('\n');
+                } else if let Some(child_element) = ElementRef::wrap(child) {
+                    collect_code_example_text(child_element, output);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn normalize_code_example_text(code: &str) -> String {
+    let code = code.replace('\r', "").replace('\u{a0}', " ");
+    let mut lines = code.lines().map(str::trim_end).collect::<Vec<_>>();
+    while lines.first().is_some_and(|line| line.trim().is_empty()) {
+        lines.remove(0);
+    }
+    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+        lines.pop();
+    }
+    let mut output = lines.join("\n");
+    if !output.is_empty() {
+        output.push('\n');
+    }
+    output
+}
+
+fn escape_html_text(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            _ => output.push(character),
+        }
+    }
+    output
+}
+
+fn html_contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
+    find_ascii_case_insensitive(haystack, 0, needle).is_some()
+}
+
+fn find_ascii_case_insensitive(haystack: &str, from: usize, needle: &str) -> Option<usize> {
+    if needle.is_empty() || from >= haystack.len() {
+        return None;
+    }
+    let haystack = haystack.as_bytes();
+    let needle = needle.as_bytes();
+    if needle.len() > haystack.len() {
+        return None;
+    }
+
+    (from..=haystack.len() - needle.len()).find(|start| {
+        haystack[*start..*start + needle.len()]
+            .iter()
+            .zip(needle)
+            .all(|(left, right)| left.eq_ignore_ascii_case(right))
+    })
+}
+
 fn heading_only_markdown(title: &str) -> String {
     let title = title.trim();
     if title.is_empty() {
@@ -1115,6 +1314,14 @@ fn heading_only_markdown(title: &str) -> String {
     } else {
         format!("# {title}\n")
     }
+}
+
+fn is_heading_only_toc_path(html_path: &str) -> bool {
+    html_path.is_empty() || is_content_node_placeholder_path(html_path)
+}
+
+fn is_content_node_placeholder_path(html_path: &str) -> bool {
+    html_path.starts_with("_CONTENTS_NODE_")
 }
 
 fn documentation_error_is_missing_page(error: &DocumentationError) -> bool {
@@ -1491,6 +1698,205 @@ mod tests {
     }
 
     #[test]
+    fn exports_shared_content_node_placeholders_with_each_toc_title() {
+        let workspace = TempWorkspace::new("markdown-content-node-placeholder");
+        let source_path = workspace.path().join("shclang_ru.hbk");
+        let toc = r#"{
+            4
+            {1,0,2,2,3,{0,0,{0,0,{"ru","Встроенный язык"}{"en","Language"}},""}}
+            {2,1,0,{0,0,{0,0,{"ru","Общее описание встроенного языка"}{"en","General"}},"_CONTENTS_NODE_fileConf"}}
+            {3,1,1,4,{0,0,{0,0,{"ru","Общие объекты"}{"en","Common objects"}},"_CONTENTS_NODE_fileConf"}}
+            {4,3,0,{0,0,{0,0,{"ru","Основные понятия XBASE"}{"en","XBASE"}},"MainXBase"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![
+                (
+                    "_CONTENTS_NODE_fileConf",
+                    b"\xef\xbb\xbf<html><body></body></html>",
+                ),
+                (
+                    "MainXBase",
+                    "<html><body><h1>Основные понятия XBASE</h1><p>Содержательная страница</p></body></html>"
+                        .as_bytes(),
+                ),
+            ],
+        );
+        let output_root = workspace.path().join("out");
+        let book = HbkBook::open(&source_path).expect("book must open");
+        let request = BookExportRequest::new(
+            source_path,
+            output_root.clone(),
+            BookExportFormat::Markdown,
+            BookExportHierarchy::Toc,
+        )
+        .expect("markdown/toc request must be valid");
+
+        BookExporter::new(&book)
+            .export(&request)
+            .expect("markdown/toc export must succeed");
+
+        let general = fs::read_to_string(
+            output_root.join("встроенный-язык/общее-описание-встроенного-языка/index.md"),
+        )
+        .expect("first placeholder page must be exported");
+        let common = fs::read_to_string(output_root.join("встроенный-язык/общие-объекты/index.md"))
+            .expect("second placeholder page must be exported");
+        let real = fs::read_to_string(
+            output_root.join("встроенный-язык/общие-объекты/основные-понятия-xbase/index.md"),
+        )
+        .expect("real child page must be exported");
+
+        assert_eq!(general, "# Общее описание встроенного языка\n");
+        assert_eq!(common, "# Общие объекты\n");
+        assert!(real.contains("# Основные понятия XBASE"));
+        assert!(real.contains("Содержательная страница"));
+    }
+
+    #[test]
+    fn converts_single_cell_courier_tables_to_markdown_code_blocks() {
+        let workspace = TempWorkspace::new("markdown-code-table");
+        let source_path = workspace.path().join("shclang_ru.hbk");
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Работа с пакетными запросами"}{"en","Batch"}},"WorkinWithBath"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![(
+                "WorkinWithBath",
+                r##"<html><body>
+                    <h1>Работа с пакетными запросами</h1>
+                    <p>Например:</p>
+                    <table width="100%" bgcolor="#f7f7f7"><tbody><tr><td>
+                        <font face="Courier New">Запрос&nbsp;=&nbsp;Новый&nbsp;Запрос;<br>
+                        Запрос.Текст = "ВЫБРАТЬ<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;УчетНоменклатуры.Номенклатура<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;|";<br><br>
+                        Результат=Запрос.Выполнить();</font>
+                    </td></tr></tbody></table>
+                </body></html>"##
+                    .as_bytes(),
+            )],
+        );
+        let book = HbkBook::open(&source_path).expect("book must open");
+
+        let page = BookExporter::new(&book)
+            .markdown_page("WorkinWithBath")
+            .expect("TOC page must convert to Markdown");
+        let markdown = page.markdown();
+
+        assert!(markdown.contains("```bsl"), "{markdown}");
+        assert!(markdown.contains("Запрос = Новый Запрос;"), "{markdown}");
+        assert!(markdown.contains("Запрос.Текст = \"ВЫБРАТЬ"), "{markdown}");
+        assert!(
+            markdown.contains("    | УчетНоменклатуры.Номенклатура"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("Результат=Запрос.Выполнить();"),
+            "{markdown}"
+        );
+        assert!(!markdown.contains("| Запрос = Новый Запрос"), "{markdown}");
+        assert_no_raw_markdown_scaffolding(markdown);
+    }
+
+    #[test]
+    fn converts_courier_query_blockquotes_to_sdbl_code_blocks() {
+        let workspace = TempWorkspace::new("markdown-sdbl-blockquote");
+        let source_path = workspace.path().join("shclang_ru.hbk");
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Работа с временными таблицами"}{"en","Temp tables"}},"Work with temp table"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![(
+                "Work with temp table",
+                r##"<html><body>
+                    <h1>Работа с временными таблицами</h1>
+                    <blockquote style="MARGIN-RIGHT: 0px" dir="ltr"><p><font face="Courier New">ВЫБРАТЬ<br>&nbsp;&nbsp; Код,<br>&nbsp;&nbsp; Наименование<br>ПОМЕСТИТЬ ВременнаяТаблица<br>ИЗ Справочник.Номенклатура</font></p></blockquote>
+                </body></html>"##
+                    .as_bytes(),
+            )],
+        );
+        let book = HbkBook::open(&source_path).expect("book must open");
+
+        let page = BookExporter::new(&book)
+            .markdown_page("Work with temp table")
+            .expect("TOC page must convert to Markdown");
+        let markdown = page.markdown();
+
+        assert!(markdown.contains("```sdbl"), "{markdown}");
+        assert!(markdown.contains("ВЫБРАТЬ\n   Код,"), "{markdown}");
+        assert!(
+            markdown.contains("ПОМЕСТИТЬ ВременнаяТаблица"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("ИЗ Справочник.Номенклатура"),
+            "{markdown}"
+        );
+        assert!(!markdown.contains("> ВЫБРАТЬ"), "{markdown}");
+        assert_no_raw_markdown_scaffolding(markdown);
+    }
+
+    #[test]
+    fn preserves_internal_link_fragments_in_markdown_targets() {
+        let workspace = TempWorkspace::new("markdown-link-fragments");
+        let source_path = workspace.path().join("shclang_ru.hbk");
+        let toc = r#"{
+            2
+            {1,0,0,{0,0,{0,0,{"ru","Основные понятия XBASE"}{"en","XBASE"}},"MainXBase"}}
+            {2,0,0,{0,0,{0,0,{"ru","Другая страница"}{"en","Other"}},"OtherPage"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![
+                (
+                    "MainXBase",
+                    r##"<html><body>
+                        <h1>Основные понятия XBASE</h1>
+                        <p><a href="#FieldsRecords">Поля и записи</a></p>
+                        <p><a href="OtherPage#Details">Другая страница</a></p>
+                        <h2><a name="FieldsRecords">Поля и записи</a></h2>
+                    </body></html>"##
+                        .as_bytes(),
+                ),
+                (
+                    "OtherPage",
+                    r##"<html><body><h1>Другая страница</h1><h2><a name="Details">Детали</a></h2></body></html>"##
+                        .as_bytes(),
+                ),
+            ],
+        );
+        let output_root = workspace.path().join("out");
+        let book = HbkBook::open(&source_path).expect("book must open");
+        let request = BookExportRequest::new(
+            source_path,
+            output_root.clone(),
+            BookExportFormat::Markdown,
+            BookExportHierarchy::Toc,
+        )
+        .expect("markdown/toc request must be valid");
+
+        BookExporter::new(&book)
+            .export(&request)
+            .expect("markdown/toc export must succeed");
+
+        let markdown = fs::read_to_string(output_root.join("основные-понятия-xbase/index.md"))
+            .expect("Markdown page must be exported");
+
+        assert!(markdown.contains("[Поля и записи](index.md#FieldsRecords)"));
+        assert!(markdown.contains("[Другая страница](../другая-страница/index.md#Details)"));
+        assert!(!markdown.contains("[Поля и записи](index.md)"));
+    }
+
+    #[test]
     fn real_representative_pages_convert_to_readable_markdown_when_platform_books_exist() {
         struct Case<'a> {
             book_path: &'a str,
@@ -1541,6 +1947,28 @@ mod tests {
                     "ИначеЕсли <Логическое выражение> Тогда",
                     "КонецЕсли",
                     "логического выражения",
+                ],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk",
+                html_path: "WorkinWithBath",
+                expected: &[
+                    "# Работа с пакетными запросами",
+                    "```bsl",
+                    "Запрос = Новый Запрос;",
+                    "    | УчетНоменклатурыОстаткиИОбороты.Номенклатура,",
+                    "Результат=Запрос.Выполнить();",
+                ],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk",
+                html_path: "Work with temp table",
+                expected: &[
+                    "# Работа с временными таблицами",
+                    "```sdbl",
+                    "ВЫБРАТЬ\n   Код,",
+                    "ПОМЕСТИТЬ ВременнаяТаблица",
+                    "ИЗ Справочник.Номенклатура",
                 ],
             },
             Case {
@@ -1611,6 +2039,71 @@ mod tests {
             }
             assert_no_raw_markdown_scaffolding(markdown);
         }
+    }
+
+    #[test]
+    fn real_shclang_content_node_pages_keep_toc_headings_when_platform_book_exists() {
+        let book_path = Path::new("/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk");
+        if !book_path.exists() {
+            return;
+        }
+
+        let workspace = TempWorkspace::new("real-shclang-content-nodes");
+        let output_root = workspace.path().join("out");
+        let book = HbkBook::open(book_path).expect("platform HBK must open");
+        let request = BookExportRequest::new(
+            book_path,
+            output_root.clone(),
+            BookExportFormat::Markdown,
+            BookExportHierarchy::Toc,
+        )
+        .expect("markdown/toc request must be valid");
+
+        BookExporter::new(&book)
+            .export(&request)
+            .expect("markdown/toc export must succeed");
+
+        let common = fs::read_to_string(output_root.join("встроенный-язык/общие-объекты/index.md"))
+            .expect("common objects placeholder page must be exported");
+        let query =
+            fs::read_to_string(output_root.join("встроенный-язык/работа-с-запросами/index.md"))
+                .expect("query placeholder page must be exported");
+
+        assert_eq!(common, "# Общие объекты\n");
+        assert_eq!(query, "# Работа с запросами\n");
+    }
+
+    #[test]
+    fn real_shclang_xbase_page_preserves_internal_link_fragments_when_platform_book_exists() {
+        let book_path = Path::new("/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk");
+        if !book_path.exists() {
+            return;
+        }
+
+        let workspace = TempWorkspace::new("real-shclang-link-fragments");
+        let output_root = workspace.path().join("out");
+        let book = HbkBook::open(book_path).expect("platform HBK must open");
+        let request = BookExportRequest::new(
+            book_path,
+            output_root.clone(),
+            BookExportFormat::Markdown,
+            BookExportHierarchy::Toc,
+        )
+        .expect("markdown/toc request must be valid");
+
+        BookExporter::new(&book)
+            .export(&request)
+            .expect("markdown/toc export must succeed");
+
+        let markdown = fs::read_to_string(
+            output_root.join("встроенный-язык/общие-объекты/xbase/основные-понятия-xbase/index.md"),
+        )
+        .expect("XBase Markdown page must be exported");
+
+        assert!(markdown.contains("[Поля и записи](index.md#FieldsRecords)"));
+        assert!(markdown.contains("[Работа с индексными файлами](index.md#WorkWithIndexFile)"));
+        assert!(markdown.contains("[Ограничения](index.md#constraint)"));
+        assert!(!markdown.contains("[Поля и записи](index.md)"));
     }
 
     #[test]

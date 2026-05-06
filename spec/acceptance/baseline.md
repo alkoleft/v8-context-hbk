@@ -222,6 +222,25 @@ directories are service data unless promoted here.
   paths, raw TOC indexes, raw HTML page paths and service HTML scaffolding. UAT-HBK-005,
   UAT-HBK-006 and UAT-HBK-007 passed against the representative DCS, language/query-language and
   ordinary UI help pages.
+- T104 fixed the real `shclang_ru.hbk` Markdown/TOC regression where several TOC sections reuse the
+  shared service placeholder path `_CONTENTS_NODE_fileConf`. Those placeholder pages now export as
+  heading-only Markdown with each item's own TOC title instead of borrowing the first matching TOC
+  title. Fresh release export of `shclang_ru.hbk` produced 35 Markdown files for 35 TOC pages;
+  UAT-HBK-010 passed for `Общие объекты` and `Работа с запросами`.
+- T105 fixed the real `shclang_ru.hbk` Markdown/TOC regression where the `WorkinWithBath` page
+  stores the package-query BSL/query example as a one-cell Courier HTML table. `hbk-book-export`
+  now rewrites one-cell Courier code tables to Markdown code blocks before `quick_html2md`, so the
+  example keeps line breaks and leading `|` query markers instead of becoming a one-cell GFM table.
+  UAT-HBK-011 passed, and the representative DCS keyword table remains exported as a Markdown table.
+- T106 changed the T105 code-table output to language-tagged fenced blocks. `hbk-book-export`
+  rewrites those examples to `<pre><code class="language-bsl">`, and the resulting Markdown uses
+  ` ```bsl ` fences. Fresh release export of `shclang_ru.hbk` kept 35 Markdown files and the
+  `WorkinWithBath` example now starts with ` ```bsl `.
+- T107 fixed the real `shclang_ru.hbk` Markdown/TOC regression where same-page links on
+  `MainXBase` lost source HTML fragments. Markdown link rewriting now keeps TOC lookup path-only
+  but appends the original `#fragment` to the final relative Markdown target. UAT-HBK-012 passed,
+  and `Основные понятия XBASE` now exports links such as `index.md#FieldsRecords`,
+  `index.md#WorkWithIndexFile` and `index.md#constraint`.
 
 ## Post-T29 Runtime Regression To Fix
 
@@ -1539,3 +1558,12 @@ callable return/result mapping still uses explicit `return_types` or edge-specif
 evidence is missing. Focused resolver coverage now mutates a fixture index to remove constructor
 result evidence and verifies that callable lookup returns an empty return-type list and `constructs`
 traversal returns an empty relation set instead of a synthesized owner type.
+
+T108 completed the Markdown/TOC export correction for `shclang_ru.hbk` query examples stored as
+Courier blockquotes. UAT-HBK-013 passed against
+`/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk`: page `Работа с временными таблицами` exports
+query-language examples as `sdbl` fenced code blocks containing `ВЫБРАТЬ`,
+`ПОМЕСТИТЬ ВременнаяТаблица` and `ИЗ Справочник.Номенклатура`, and no longer exports those
+examples as Markdown blockquotes. The same release export check also confirmed that
+`Работа с пакетными запросами` still uses `bsl` fences for ordinary BSL examples and XBASE
+same-page links retain Markdown `#fragment` anchors.

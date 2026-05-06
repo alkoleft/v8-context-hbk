@@ -405,10 +405,10 @@ rg -q 'unsupported book export combination: format=raw, hierarchy=toc' \
   target/uat/missing-book-for-unsupported.hbk \
   --output target/uat/book-md-unsupported \
   --format markdown \
-  --hierarchy toc \
+  --hierarchy raw \
   2> target/uat/book-export-unsupported.err
 
-rg -q 'unsupported book export combination: format=markdown, hierarchy=toc' \
+rg -q 'unsupported book export combination: format=markdown, hierarchy=raw' \
   target/uat/book-export-unsupported.err
 ```
 
@@ -424,6 +424,187 @@ Cleanup:
 
 - `target/uat/book-export-unsupported.err`, `target/uat/book-raw-unsupported` and
   `target/uat/book-md-unsupported` are service data and may be deleted after the run.
+
+## UAT-HBK-010: Markdown Export Uses TOC Titles for Shared Content Nodes
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-HBK-003, FR-CLI-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` exists.
+- `target/uat/shclang-md` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shclang-md
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  /opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk \
+  --output target/uat/shclang-md \
+  --format markdown \
+  --hierarchy toc
+
+test -f target/uat/shclang-md/встроенный-язык/общие-объекты/index.md
+test -f target/uat/shclang-md/встроенный-язык/работа-с-запросами/index.md
+rg -q '^# Общие объекты$' target/uat/shclang-md/встроенный-язык/общие-объекты/index.md
+rg -q '^# Работа с запросами$' target/uat/shclang-md/встроенный-язык/работа-с-запросами/index.md
+! rg -n '^# Общее описание встроенного языка$' \
+  target/uat/shclang-md/встроенный-язык/общие-объекты/index.md \
+  target/uat/shclang-md/встроенный-язык/работа-с-запросами/index.md
+```
+
+Expected result:
+
+- Shared service content-node placeholder pages export as heading-only Markdown.
+- Each placeholder page uses its own TOC title.
+- The exported headings are not borrowed from the first TOC item that points to the same service
+  placeholder path.
+
+Skip rule:
+
+- If the fixture is absent, record the skip reason and do not mark the case failed.
+
+Cleanup:
+
+- `target/uat/shclang-md` is service data and may be deleted after the run.
+
+## UAT-HBK-011: Markdown Export Converts Courier Code Tables to Code Blocks
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-DOC-001, FR-CLI-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` exists.
+- `target/uat/shclang-code-md` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shclang-code-md
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  /opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk \
+  --output target/uat/shclang-code-md \
+  --format markdown \
+  --hierarchy toc
+
+PAGE=target/uat/shclang-code-md/встроенный-язык/работа-с-запросами/выполнение-и-работа-с-запросами-во-встроенном-языке/работа-с-пакетными-запросами/index.md
+test -f "$PAGE"
+rg -q '^# Работа с пакетными запросами$' "$PAGE"
+rg -q '^```bsl$' "$PAGE"
+rg -q '^Запрос = Новый Запрос;' "$PAGE"
+rg -q '^Запрос.Текст = "ВЫБРАТЬ' "$PAGE"
+rg -q '^    \| УчетНоменклатуры' "$PAGE"
+rg -q '^Результат=Запрос\.Выполнить\(\);' "$PAGE"
+! rg -n '^\| .*Запрос = Новый Запрос|^\| -+' "$PAGE"
+```
+
+Expected result:
+
+- The package-query example is exported as a Markdown `bsl` code block.
+- Query text line breaks and leading spaces before `|` markers remain readable.
+- The code example is not exported as a one-cell Markdown table.
+
+Skip rule:
+
+- If the fixture is absent, record the skip reason and do not mark the case failed.
+
+Cleanup:
+
+- `target/uat/shclang-code-md` is service data and may be deleted after the run.
+
+## UAT-HBK-012: Markdown Export Preserves Internal Link Fragments
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-DOC-001, FR-CLI-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` exists.
+- `target/uat/shclang-anchor-md` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shclang-anchor-md
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  /opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk \
+  --output target/uat/shclang-anchor-md \
+  --format markdown \
+  --hierarchy toc
+
+PAGE=target/uat/shclang-anchor-md/встроенный-язык/общие-объекты/xbase/основные-понятия-xbase/index.md
+test -f "$PAGE"
+rg -q '^# Основные понятия XBASE$' "$PAGE"
+rg -q '\[Поля и записи\]\(index\.md#FieldsRecords\)' "$PAGE"
+rg -q '\[Работа с индексными файлами\]\(index\.md#WorkWithIndexFile\)' "$PAGE"
+rg -q '\[Ограничения\]\(index\.md#constraint\)' "$PAGE"
+! rg -n '\[Поля и записи\]\(index\.md\)' "$PAGE"
+```
+
+Expected result:
+
+- Same-page table-of-contents links preserve source HTML anchor fragments.
+- The link target remains the exported Markdown page path and appends the original fragment.
+- Fragment anchors are not collapsed to plain `index.md`.
+
+Skip rule:
+
+- If the fixture is absent, record the skip reason and do not mark the case failed.
+
+Cleanup:
+
+- `target/uat/shclang-anchor-md` is service data and may be deleted after the run.
+
+## UAT-HBK-013: Markdown Export Converts Courier Query Blockquotes to SDBL Code Blocks
+
+Related use case: UC-HBK-003.
+
+Related requirements: FR-HBK-004, FR-DOC-001, FR-CLI-001.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk` exists.
+- `target/uat/shclang-sdbl-md` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/shclang-sdbl-md
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- export \
+  /opt/1cv8/x86_64/8.5.1.1150/shclang_ru.hbk \
+  --output target/uat/shclang-sdbl-md \
+  --format markdown \
+  --hierarchy toc
+
+PAGE=target/uat/shclang-sdbl-md/встроенный-язык/работа-с-запросами/выполнение-и-работа-с-запросами-во-встроенном-языке/работа-с-временными-таблицами/index.md
+test -f "$PAGE"
+rg -q '^# Работа с временными таблицами$' "$PAGE"
+rg -q '^```sdbl$' "$PAGE"
+rg -q '^ВЫБРАТЬ$' "$PAGE"
+rg -q '^ +Код,$' "$PAGE"
+rg -q '^ПОМЕСТИТЬ ВременнаяТаблица$' "$PAGE"
+rg -q '^ИЗ Справочник\.Номенклатура$' "$PAGE"
+! rg -n '^> ВЫБРАТЬ|^> ПОМЕСТИТЬ|^> УНИЧТОЖИТЬ' "$PAGE"
+```
+
+Expected result:
+
+- Courier query-language examples are exported as Markdown `sdbl` code blocks.
+- Query text line breaks and indentation remain readable.
+- Query-language examples are not exported as Markdown blockquotes.
+
+Skip rule:
+
+- If the fixture is absent, record the skip reason and do not mark the case failed.
+
+Cleanup:
+
+- `target/uat/shclang-sdbl-md` is service data and may be deleted after the run.
 
 ## UAT-SH-001: Export Russian Syntax Assistant Data
 

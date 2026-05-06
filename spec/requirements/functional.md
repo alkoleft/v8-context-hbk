@@ -113,7 +113,14 @@ fail with stable readable diagnostics before source-file access. Markdown conver
 by an approved stable HTML-to-Markdown library candidate and must preserve readable page headings,
 body text, links, lists, tables and syntax placeholders on representative real HBK pages. Normal
 Markdown output must not include raw HBK file paths, raw TOC indexes, raw HTML page paths or service
-HTML scaffolding.
+HTML scaffolding. TOC items that point to shared service content-node placeholder paths must export
+heading-only Markdown using the item's own TOC title instead of a title derived from another TOC item
+that reuses the same placeholder path. Source HTML tables that are used as single-cell Courier code
+example containers must export as Markdown `bsl` code blocks, not as one-cell data tables.
+Source HTML blockquotes that are used as Courier query-language examples must export as Markdown
+`sdbl` code blocks, not as quoted prose.
+Internal same-book links with source HTML fragments must preserve their fragment anchors in Markdown
+links.
 
 Acceptance:
 
@@ -122,6 +129,12 @@ Acceptance:
   directories.
 - Markdown export keeps representative real-page headings, prose, links, lists, tables and syntax
   placeholders readable.
+- Markdown/toc export keeps distinct TOC headings for shared service content-node placeholder pages.
+- Markdown/toc export keeps source code examples readable as `bsl` code blocks when HBK HTML
+  represents them as single-cell Courier tables.
+- Markdown/toc export keeps query-language examples readable as `sdbl` code blocks when HBK HTML
+  represents them as Courier blockquotes.
+- Markdown/toc export preserves internal same-page and same-book `#fragment` link anchors.
 - Unsupported format/hierarchy combinations fail with readable non-panic diagnostics.
 
 ## FR-DOC-001: Documentation Page Reader

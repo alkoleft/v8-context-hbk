@@ -364,6 +364,7 @@ dependencies = [
  "hbk-book",
  "hbk-docs",
  "quick_html2md",
+ "scraper",
 ]
 
 [[package]]

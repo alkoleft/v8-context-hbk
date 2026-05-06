@@ -253,6 +253,30 @@ T103 implements that `markdown/toc` layout in `hbk-book-export` and wires the to
 `--format markdown --hierarchy toc`. The CLI still rejects `raw/toc` and `markdown/raw` before
 opening the source HBK. UAT-HBK-004 through UAT-HBK-007 passed on the local 8.5.1.1150 corpus.
 
+T104 treats shared service content-node placeholder paths, such as `_CONTENTS_NODE_fileConf`, as
+TOC section markers rather than ordinary documentation pages. Markdown/TOC export writes those TOC
+items as heading-only Markdown using each item's own TOC title, because loading the shared
+placeholder through the normal documentation reader can borrow the first TOC title that uses the
+same storage path. Real HTML pages, missing-page heading-only behavior and unsupported export
+combinations remain unchanged.
+
+T105 keeps `quick_html2md` as the normal Markdown converter but adds a narrow pre-conversion
+normalization for HBK code-example tables. A table is treated as a code example only when it has one
+data/header cell and the source HTML marks it with Courier-family font content. Such tables are
+rewritten to `<pre><code class="language-bsl">` before conversion so line breaks and query `|`
+markers remain readable in `bsl` fenced code blocks. Multi-cell documentation tables, including DCS
+keyword tables, continue through the normal GFM table path.
+
+T107 keeps Markdown link-target lookup path-based, but preserves source HTML `#fragment` suffixes
+when composing the final Markdown href. Same-page anchors such as `href="#FieldsRecords"` therefore
+become `index.md#FieldsRecords`, and same-book links with fragments append the fragment to the
+relative exported Markdown target. Fragments are not added to the TOC lookup map.
+
+T108 extends the pre-conversion normalization with a separate query-language path for Courier
+blockquotes. A blockquote is treated as an SDBL query example only when it has Courier-family font
+content and no links. Such blockquotes are rewritten to `<pre><code class="language-sdbl">` before
+conversion. Navigation blockquotes with links remain regular quoted/link content.
+
 ### syntax-helper-model
 
 Expected public concepts:
