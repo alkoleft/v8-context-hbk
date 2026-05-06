@@ -1148,7 +1148,7 @@ fn provider_response(
 fn candidate_summary(document: &SearchDocument) -> Value {
     json!({
         "id": document.id,
-        "kind": document.kind,
+        "kind": document.kind.as_str(),
         "name": document.name,
         "owner": document.owner.as_ref().map(|owner| owner.primary.clone()),
     })
@@ -1163,7 +1163,7 @@ enum ProviderFactDetail {
 fn document_fact(document: &SearchDocument, detail: ProviderFactDetail) -> Value {
     let mut fact = json!({
         "id": document.id,
-        "kind": document.kind,
+        "kind": document.kind.as_str(),
         "name": document.name,
     });
     if let Some(owner) = &document.owner {
@@ -1311,6 +1311,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
     use syntax_helper_model as model;
     use syntax_helper_model::SyntaxHelperSink;
+    use syntax_helper_search::SearchDocumentKind;
 
     #[test]
     fn provider_response_uses_versioned_envelope() {
@@ -1459,7 +1460,7 @@ mod tests {
     fn compact_related_fact_keeps_identity_and_omits_bulky_fields() {
         let document = SearchDocument {
             id: "type_method:platform_type:Тест:Выполнить".to_string(),
-            kind: "type_method".to_string(),
+            kind: SearchDocumentKind::TypeMethod,
             name: name("Выполнить"),
             owner: Some(name("Тест")),
             signatures: vec![syntax_helper_search::SearchSignature {
@@ -1482,7 +1483,7 @@ mod tests {
         let fact = document_fact(&document, ProviderFactDetail::Compact);
 
         assert_eq!(fact["id"], document.id);
-        assert_eq!(fact["kind"], document.kind);
+        assert_eq!(fact["kind"], document.kind.as_str());
         assert_eq!(fact["name"]["primary"], "Выполнить");
         assert_eq!(fact["owner"], "Тест");
         assert!(fact.get("signatures").is_none());
@@ -1494,7 +1495,7 @@ mod tests {
     fn full_provider_fact_keeps_export_compatible_fields() {
         let document = SearchDocument {
             id: "type_method:platform_type:Тест:Выполнить".to_string(),
-            kind: "type_method".to_string(),
+            kind: SearchDocumentKind::TypeMethod,
             name: name("Выполнить"),
             owner: Some(name("Тест")),
             signatures: vec![syntax_helper_search::SearchSignature {
@@ -1522,7 +1523,7 @@ mod tests {
         let fact = document_fact(&document, ProviderFactDetail::Full);
 
         assert_eq!(fact["id"], document.id);
-        assert_eq!(fact["kind"], document.kind);
+        assert_eq!(fact["kind"], document.kind.as_str());
         assert_eq!(fact["name"]["primary"], "Выполнить");
         assert_eq!(fact["owner"], "Тест");
         assert_eq!(fact["types"], json!(["Строка"]));
@@ -1564,7 +1565,11 @@ mod tests {
         let roots = owner_member_roots(&index, "ЭлементыФормы", "Добавить").unwrap();
 
         assert_eq!(roots.len(), 2);
-        assert!(roots.iter().all(|hit| hit.document.kind == "platform_type"));
+        assert!(
+            roots
+                .iter()
+                .all(|hit| hit.document.kind == SearchDocumentKind::PlatformType)
+        );
         assert_eq!(roots[0].document.id, "platform_type:ЭлементыФормы:Форма");
         assert_eq!(
             roots[1].document.id,
@@ -1596,7 +1601,7 @@ mod tests {
         assert!(
             candidates
                 .iter()
-                .all(|hit| hit.document.kind == "platform_type")
+                .all(|hit| hit.document.kind == SearchDocumentKind::PlatformType)
         );
         let _ = fs::remove_file(path);
     }

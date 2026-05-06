@@ -168,6 +168,12 @@ directories are service data unless promoted here.
   relation insertion and focused relation tests now share one streaming relation-row builder and the
   same `(source_id, target_id, edge_kind)` deduplication key. This did not change relation edge
   kinds, labels, evidence, weights, SQLite schema, query ordering, provider JSON or resolver facts.
+- T95 replaced raw search document kind strings in Rust search/resolver structs with
+  `syntax-helper-search::SearchDocumentKind`. Explicit boundary conversion preserves existing
+  SQLite `documents.kind` strings and provider `kind` values. Focused tests now assert all current
+  kind strings round-trip through the typed model with unchanged priority values, and
+  `context-resolver-search` still keeps `query_table*` provider facts hidden from the platform
+  resolver adapter.
 
 ## Post-T29 Runtime Regression To Fix
 

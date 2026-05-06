@@ -51,10 +51,227 @@ pub struct RelationStep {
     pub evidence: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SearchDocumentKind {
+    PlatformType,
+    TypeProperty,
+    TypeMethod,
+    Constructor,
+    GlobalMethod,
+    GlobalProperty,
+    ModuleEvent,
+    TypeEvent,
+    UnknownEvent,
+    QueryTable,
+    QueryTableField,
+    QueryTableParameter,
+    LanguageType,
+    LanguageConstruct,
+    LanguageFunction,
+    LanguageOperator,
+    LanguageKeyword,
+    LanguageLiteral,
+    Enum,
+    EnumValue,
+}
+
+impl SearchDocumentKind {
+    pub const ALL: [Self; 20] = [
+        Self::PlatformType,
+        Self::TypeProperty,
+        Self::TypeMethod,
+        Self::Constructor,
+        Self::GlobalMethod,
+        Self::GlobalProperty,
+        Self::ModuleEvent,
+        Self::TypeEvent,
+        Self::UnknownEvent,
+        Self::QueryTable,
+        Self::QueryTableField,
+        Self::QueryTableParameter,
+        Self::LanguageType,
+        Self::LanguageConstruct,
+        Self::LanguageFunction,
+        Self::LanguageOperator,
+        Self::LanguageKeyword,
+        Self::LanguageLiteral,
+        Self::Enum,
+        Self::EnumValue,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PlatformType => "platform_type",
+            Self::TypeProperty => "type_property",
+            Self::TypeMethod => "type_method",
+            Self::Constructor => "constructor",
+            Self::GlobalMethod => "global_method",
+            Self::GlobalProperty => "global_property",
+            Self::ModuleEvent => "module_event",
+            Self::TypeEvent => "type_event",
+            Self::UnknownEvent => "unknown_event",
+            Self::QueryTable => "query_table",
+            Self::QueryTableField => "query_table_field",
+            Self::QueryTableParameter => "query_table_parameter",
+            Self::LanguageType => "language_type",
+            Self::LanguageConstruct => "language_construct",
+            Self::LanguageFunction => "language_function",
+            Self::LanguageOperator => "language_operator",
+            Self::LanguageKeyword => "language_keyword",
+            Self::LanguageLiteral => "language_literal",
+            Self::Enum => "enum",
+            Self::EnumValue => "enum_value",
+        }
+    }
+
+    pub fn from_storage(value: &str) -> Option<Self> {
+        match value {
+            "platform_type" => Some(Self::PlatformType),
+            "type_property" => Some(Self::TypeProperty),
+            "type_method" => Some(Self::TypeMethod),
+            "constructor" => Some(Self::Constructor),
+            "global_method" => Some(Self::GlobalMethod),
+            "global_property" => Some(Self::GlobalProperty),
+            "module_event" => Some(Self::ModuleEvent),
+            "type_event" => Some(Self::TypeEvent),
+            "unknown_event" => Some(Self::UnknownEvent),
+            "query_table" => Some(Self::QueryTable),
+            "query_table_field" => Some(Self::QueryTableField),
+            "query_table_parameter" => Some(Self::QueryTableParameter),
+            "language_type" => Some(Self::LanguageType),
+            "language_construct" => Some(Self::LanguageConstruct),
+            "language_function" => Some(Self::LanguageFunction),
+            "language_operator" => Some(Self::LanguageOperator),
+            "language_keyword" => Some(Self::LanguageKeyword),
+            "language_literal" => Some(Self::LanguageLiteral),
+            "enum" => Some(Self::Enum),
+            "enum_value" => Some(Self::EnumValue),
+            _ => None,
+        }
+    }
+
+    pub fn priority(self) -> i64 {
+        match self {
+            Self::PlatformType => 10,
+            Self::TypeProperty => 20,
+            Self::TypeMethod => 30,
+            Self::Constructor => 40,
+            Self::GlobalMethod => 50,
+            Self::GlobalProperty => 60,
+            Self::ModuleEvent => 70,
+            Self::TypeEvent => 80,
+            Self::UnknownEvent => 90,
+            Self::QueryTable => 100,
+            Self::QueryTableField => 110,
+            Self::QueryTableParameter => 120,
+            Self::LanguageType => 125,
+            Self::LanguageConstruct => 126,
+            Self::LanguageFunction => 127,
+            Self::LanguageOperator => 128,
+            Self::LanguageKeyword => 129,
+            Self::LanguageLiteral => 130,
+            Self::Enum => 140,
+            Self::EnumValue => 150,
+        }
+    }
+
+    pub fn is_callable(self) -> bool {
+        matches!(
+            self,
+            Self::GlobalMethod
+                | Self::TypeMethod
+                | Self::Constructor
+                | Self::ModuleEvent
+                | Self::TypeEvent
+                | Self::UnknownEvent
+                | Self::LanguageFunction
+        )
+    }
+
+    pub fn is_language(self) -> bool {
+        matches!(
+            self,
+            Self::LanguageType
+                | Self::LanguageConstruct
+                | Self::LanguageFunction
+                | Self::LanguageOperator
+                | Self::LanguageKeyword
+                | Self::LanguageLiteral
+        )
+    }
+
+    pub fn type_ref_kind(self) -> &'static str {
+        match self {
+            Self::PlatformType => "extends",
+            Self::QueryTableField => "query_field_type",
+            Self::QueryTableParameter => "query_parameter_type",
+            Self::TypeProperty
+            | Self::TypeMethod
+            | Self::Constructor
+            | Self::GlobalMethod
+            | Self::GlobalProperty
+            | Self::ModuleEvent
+            | Self::TypeEvent
+            | Self::UnknownEvent
+            | Self::QueryTable
+            | Self::LanguageType
+            | Self::LanguageConstruct
+            | Self::LanguageFunction
+            | Self::LanguageOperator
+            | Self::LanguageKeyword
+            | Self::LanguageLiteral
+            | Self::Enum
+            | Self::EnumValue => "property_type",
+        }
+    }
+
+    pub fn public_type_ref_kinds(self) -> &'static [&'static str] {
+        match self {
+            Self::PlatformType => &["extends"],
+            Self::QueryTableField => &["query_field_type"],
+            Self::QueryTableParameter => &["query_parameter_type"],
+            Self::TypeProperty
+            | Self::TypeMethod
+            | Self::Constructor
+            | Self::GlobalMethod
+            | Self::GlobalProperty
+            | Self::ModuleEvent
+            | Self::TypeEvent
+            | Self::UnknownEvent
+            | Self::QueryTable
+            | Self::LanguageType
+            | Self::LanguageConstruct
+            | Self::LanguageFunction
+            | Self::LanguageOperator
+            | Self::LanguageKeyword
+            | Self::LanguageLiteral
+            | Self::Enum
+            | Self::EnumValue => &["property_type"],
+        }
+    }
+}
+
+impl fmt::Display for SearchDocumentKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug)]
+struct UnknownSearchDocumentKind(String);
+
+impl fmt::Display for UnknownSearchDocumentKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "unknown search document kind '{}'", self.0)
+    }
+}
+
+impl std::error::Error for UnknownSearchDocumentKind {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchDocument {
     pub id: String,
-    pub kind: String,
+    pub kind: SearchDocumentKind,
     pub name: model::LocalizedName,
     pub owner: Option<model::LocalizedName>,
     pub signatures: Vec<SearchSignature>,
@@ -130,8 +347,8 @@ impl SearchIndexBuilder {
             .map(|draft| draft.into_document(&identities))
             .collect::<Vec<_>>();
         documents.sort_by(|left, right| {
-            kind_priority(&left.kind)
-                .cmp(&kind_priority(&right.kind))
+            kind_priority(left.kind)
+                .cmp(&kind_priority(right.kind))
                 .then_with(|| left.id.cmp(&right.id))
         });
         validate_document_id_collisions(&documents)?;
@@ -149,7 +366,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
     fn global_method(&mut self, record: model::GlobalMethod) -> Result<(), Self::Error> {
         self.drafts.push(DocumentDraft::new(
             document(
-                "global_method",
+                SearchDocumentKind::GlobalMethod,
                 None,
                 &record.name,
                 &record.signatures,
@@ -158,7 +375,11 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             ),
-            DraftIdentity::Immediate(document_identity("global_method", None, &record.name)),
+            DraftIdentity::Immediate(document_identity(
+                SearchDocumentKind::GlobalMethod.as_str(),
+                None,
+                &record.name,
+            )),
         ));
         Ok(())
     }
@@ -166,7 +387,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
     fn global_property(&mut self, record: model::GlobalProperty) -> Result<(), Self::Error> {
         self.drafts.push(DocumentDraft::new(
             document(
-                "global_property",
+                SearchDocumentKind::GlobalProperty,
                 None,
                 &record.name,
                 &[],
@@ -175,7 +396,11 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             ),
-            DraftIdentity::Immediate(document_identity("global_property", None, &record.name)),
+            DraftIdentity::Immediate(document_identity(
+                SearchDocumentKind::GlobalProperty.as_str(),
+                None,
+                &record.name,
+            )),
         ));
         Ok(())
     }
@@ -186,9 +411,9 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
     ) -> Result<(), Self::Error> {
         let owner = event_owner(&record);
         let kind = match record.semantic.record_family {
-            model::RecordFamily::ModuleEvent => "module_event",
-            model::RecordFamily::TypeEvent => "type_event",
-            _ => "unknown_event",
+            model::RecordFamily::ModuleEvent => SearchDocumentKind::ModuleEvent,
+            model::RecordFamily::TypeEvent => SearchDocumentKind::TypeEvent,
+            _ => SearchDocumentKind::UnknownEvent,
         };
         self.drafts.push(DocumentDraft::new(
             document(
@@ -201,7 +426,11 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             ),
-            DraftIdentity::Immediate(document_identity(kind, owner.as_ref(), &record.name)),
+            DraftIdentity::Immediate(document_identity(
+                kind.as_str(),
+                owner.as_ref(),
+                &record.name,
+            )),
         ));
         Ok(())
     }
@@ -213,7 +442,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
         });
         self.drafts.push(DocumentDraft::new(
             document(
-                "platform_type",
+                SearchDocumentKind::PlatformType,
                 None,
                 &record.name,
                 &[],
@@ -249,7 +478,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
         });
         self.drafts.push(DocumentDraft::new(
             document(
-                "query_table",
+                SearchDocumentKind::QueryTable,
                 None,
                 &name,
                 &[],
@@ -270,7 +499,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
     fn type_method(&mut self, record: model::PlatformMethod) -> Result<(), Self::Error> {
         self.drafts.push(DocumentDraft::new(
             document(
-                "type_method",
+                SearchDocumentKind::TypeMethod,
                 Some(&record.owner),
                 &record.name,
                 &record.signatures,
@@ -290,7 +519,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
     fn type_property(&mut self, record: model::PlatformProperty) -> Result<(), Self::Error> {
         self.drafts.push(DocumentDraft::new(
             document(
-                "type_property",
+                SearchDocumentKind::TypeProperty,
                 Some(&record.owner),
                 &record.name,
                 &[],
@@ -314,7 +543,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
         };
         self.drafts.push(DocumentDraft::new(
             document(
-                "query_table_field",
+                SearchDocumentKind::QueryTableField,
                 Some(&record.owner),
                 &name,
                 &[],
@@ -338,7 +567,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
         };
         self.drafts.push(DocumentDraft::new(
             document(
-                "query_table_parameter",
+                SearchDocumentKind::QueryTableParameter,
                 Some(&record.owner),
                 &name,
                 &[],
@@ -366,7 +595,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
         };
         self.drafts.push(DocumentDraft::new(
             document(
-                "constructor",
+                SearchDocumentKind::Constructor,
                 Some(&record.owner),
                 &name,
                 &record.signatures,
@@ -390,7 +619,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
         });
         self.drafts.push(DocumentDraft::new(
             document(
-                "enum",
+                SearchDocumentKind::Enum,
                 None,
                 &record.name,
                 &[],
@@ -410,7 +639,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
     fn enum_value(&mut self, record: model::EnumValue) -> Result<(), Self::Error> {
         self.drafts.push(DocumentDraft::new(
             document(
-                "enum_value",
+                SearchDocumentKind::EnumValue,
                 Some(&record.owner),
                 &record.name,
                 &[],
@@ -840,7 +1069,7 @@ impl SearchIndex {
             if !hits.is_empty() {
                 return Ok(hits);
             }
-            if !is_language_document_kind(&source_document.kind) {
+            if !source_document.kind.is_language() {
                 return Ok(Vec::new());
             }
         }
@@ -1153,7 +1382,12 @@ impl SearchIndex {
             let right_score = fuzzy_score(&normalized_query, &right.document);
             left_score
                 .cmp(&right_score)
-                .then_with(|| left.document.kind.cmp(&right.document.kind))
+                .then_with(|| {
+                    left.document
+                        .kind
+                        .as_str()
+                        .cmp(right.document.kind.as_str())
+                })
                 .then_with(|| left.document.id.cmp(&right.document.id))
         });
         Ok(candidates
@@ -1331,7 +1565,7 @@ impl SearchIndex {
         mut document: SearchDocument,
     ) -> Result<SearchDocument, SearchError> {
         let mut type_refs = Vec::new();
-        for ref_kind in document_public_type_ref_kinds(&document.kind) {
+        for ref_kind in document.kind.public_type_ref_kinds() {
             type_refs.extend(self.type_ref_names(&document.id, ref_kind)?);
         }
         document.type_refs = type_refs;
@@ -1550,7 +1784,7 @@ impl DocumentDraft {
             DraftIdentity::TypeOwned { owner, semantic } => {
                 let owner_identity = identities.type_owner_identity(&owner, &semantic);
                 self.document.id = owned_document_identity(
-                    &self.document.kind,
+                    self.document.kind.as_str(),
                     &owner_identity,
                     &self.document.name.primary,
                 );
@@ -1576,7 +1810,7 @@ impl DocumentDraft {
             DraftIdentity::QueryMember { owner, semantic } => {
                 let owner_identity = identities.query_member_owner_identity(&owner, &semantic);
                 self.document.id = owned_document_identity(
-                    &self.document.kind,
+                    self.document.kind.as_str(),
                     &owner_identity,
                     &self.document.name.primary,
                 );
@@ -1594,7 +1828,7 @@ impl DocumentDraft {
             DraftIdentity::EnumValue { owner } => {
                 let owner_identity = identities.enum_owner_identity(&owner);
                 self.document.id = owned_document_identity(
-                    "enum_value",
+                    SearchDocumentKind::EnumValue.as_str(),
                     &owner_identity,
                     &self.document.name.primary,
                 );
@@ -1874,8 +2108,8 @@ fn insert_documents(
         document_statement
             .execute(params![
                 document.id,
-                document.kind,
-                kind_priority(&document.kind),
+                document.kind.as_str(),
+                kind_priority(document.kind),
                 document.name.primary,
                 document.name.alias,
                 owner_primary,
@@ -1922,7 +2156,7 @@ fn insert_normalized_facts(
     let mut type_id_by_normalized_id = BTreeMap::new();
     for document in documents
         .iter()
-        .filter(|document| document.kind == "platform_type")
+        .filter(|document| document.kind == SearchDocumentKind::PlatformType)
     {
         insert_type_lookup_key(
             &mut type_id_by_key,
@@ -1998,7 +2232,7 @@ fn insert_normalized_facts(
 
     for document in documents
         .iter()
-        .filter(|document| document.kind == "platform_type")
+        .filter(|document| document.kind == SearchDocumentKind::PlatformType)
     {
         type_statement
             .execute(params![
@@ -2025,15 +2259,18 @@ fn insert_normalized_facts(
 
         if let Some(owner_type_id) = owner_type_id.as_deref()
             && matches!(
-                document.kind.as_str(),
-                "type_method" | "type_property" | "constructor" | "type_event"
+                document.kind,
+                SearchDocumentKind::TypeMethod
+                    | SearchDocumentKind::TypeProperty
+                    | SearchDocumentKind::Constructor
+                    | SearchDocumentKind::TypeEvent
             )
         {
             member_statement
                 .execute(params![
                     document.id,
                     owner_type_id,
-                    document.kind,
+                    document.kind.as_str(),
                     document.name.primary,
                     document.name.alias,
                     document.id,
@@ -2044,12 +2281,12 @@ fn insert_normalized_facts(
                 })?;
         }
 
-        if is_callable_kind(&document.kind) {
+        if document.kind.is_callable() {
             callable_statement
                 .execute(params![
                     document.id,
                     document.id,
-                    document.kind,
+                    document.kind.as_str(),
                     owner_type_id
                 ])
                 .map_err(|source| SearchError::Sqlite {
@@ -2112,7 +2349,7 @@ fn insert_normalized_facts(
                 &type_id_by_key,
                 TypeRefRow {
                     source_document_id: &document.id,
-                    ref_kind: document_type_ref_kind(&document.kind),
+                    ref_kind: document.kind.type_ref_kind(),
                     ordinal,
                     source_signature_id: None,
                     source_signature_ordinal: None,
@@ -2137,7 +2374,7 @@ fn insert_normalized_facts(
                 },
             )?;
         }
-        if document.kind == "constructor"
+        if document.kind == SearchDocumentKind::Constructor
             && let (Some(owner), Some(owner_type_id)) = (&document.owner, owner_type_id.as_deref())
         {
             insert_type_ref(
@@ -2235,49 +2472,6 @@ fn owner_type_id(
         .map(|(_, id)| id)
         .and_then(|id| type_id_by_normalized_id.get(&normalize_lookup_key(id)))
         .cloned()
-}
-
-fn is_callable_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "global_method"
-            | "type_method"
-            | "constructor"
-            | "module_event"
-            | "type_event"
-            | "unknown_event"
-            | "language_function"
-    )
-}
-
-fn is_language_document_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "language_type"
-            | "language_construct"
-            | "language_function"
-            | "language_operator"
-            | "language_keyword"
-            | "language_literal"
-    )
-}
-
-fn document_type_ref_kind(kind: &str) -> &'static str {
-    match kind {
-        "platform_type" => "extends",
-        "query_table_field" => "query_field_type",
-        "query_table_parameter" => "query_parameter_type",
-        _ => "property_type",
-    }
-}
-
-fn document_public_type_ref_kinds(kind: &str) -> &'static [&'static str] {
-    match kind {
-        "platform_type" => &["extends"],
-        "query_table_field" => &["query_field_type"],
-        "query_table_parameter" => &["query_parameter_type"],
-        _ => &["property_type"],
-    }
 }
 
 fn edge_ref_kind(edge_kind: &str) -> &'static str {
@@ -2460,7 +2654,7 @@ fn visit_constructor_relation<E>(
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
     visit: &mut impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
-    if document.kind != "constructor" {
+    if document.kind != SearchDocumentKind::Constructor {
         return Ok(());
     }
     let Some(owner) = &document.owner else {
@@ -2538,9 +2732,7 @@ fn explicit_or_fallback_type_ref_key(
     explicit_ids
         .get(ordinal)
         .and_then(|id| id.clone())
-        .or_else(|| {
-            (!is_language_document_kind(&document.kind)).then(|| normalize_lookup_key(type_name))
-        })
+        .or_else(|| (!document.kind.is_language()).then(|| normalize_lookup_key(type_name)))
 }
 
 fn validate_index(connection: &Connection, path: &Path) -> Result<(), SearchError> {
@@ -2561,7 +2753,7 @@ fn validate_index(connection: &Connection, path: &Path) -> Result<(), SearchErro
 
 #[allow(clippy::too_many_arguments)]
 fn document(
-    kind: &str,
+    kind: SearchDocumentKind,
     owner: Option<&model::LocalizedName>,
     name: &model::LocalizedName,
     signatures: &[model::Signature],
@@ -2596,7 +2788,7 @@ fn document(
         .collect::<Vec<_>>();
     SearchDocument {
         id,
-        kind: kind.to_string(),
+        kind,
         name: name.clone(),
         owner: owner.cloned(),
         signatures,
@@ -2707,7 +2899,7 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
     let explicit_return_type_ref_ids = explicit_language_type_ref_ids(fact, &fact.return_types);
     SearchDocument {
         id: fact.id.clone(),
-        kind: fact.family.document_kind().to_string(),
+        kind: language_document_kind(fact.family),
         name: fact.name.clone(),
         owner: None,
         signatures,
@@ -2724,6 +2916,17 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         owner_relation_key: None,
         explicit_type_ref_ids,
         explicit_return_type_ref_ids,
+    }
+}
+
+fn language_document_kind(family: language::LanguageFactFamily) -> SearchDocumentKind {
+    match family {
+        language::LanguageFactFamily::Construct => SearchDocumentKind::LanguageConstruct,
+        language::LanguageFactFamily::Type => SearchDocumentKind::LanguageType,
+        language::LanguageFactFamily::Function => SearchDocumentKind::LanguageFunction,
+        language::LanguageFactFamily::Operator => SearchDocumentKind::LanguageOperator,
+        language::LanguageFactFamily::Keyword => SearchDocumentKind::LanguageKeyword,
+        language::LanguageFactFamily::Literal => SearchDocumentKind::LanguageLiteral,
     }
 }
 
@@ -2819,7 +3022,7 @@ fn relation_lookup(documents: &[SearchDocument]) -> BTreeMap<String, (&SearchDoc
         for key in document_lookup_keys(document) {
             match by_name.get(&key) {
                 Some((existing, _))
-                    if kind_priority(&existing.kind) <= kind_priority(&document.kind) => {}
+                    if kind_priority(existing.kind) <= kind_priority(document.kind) => {}
                 _ => {
                     by_name.insert(key, (document, document.id.clone()));
                 }
@@ -2840,9 +3043,17 @@ fn document_lookup_keys(document: &SearchDocument) -> Vec<String> {
 
 fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument> {
     let description: Option<String> = row.get(7)?;
+    let kind_text: String = row.get(1)?;
+    let kind = SearchDocumentKind::from_storage(&kind_text).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            1,
+            rusqlite::types::Type::Text,
+            Box::new(UnknownSearchDocumentKind(kind_text)),
+        )
+    })?;
     Ok(SearchDocument {
         id: row.get(0)?,
-        kind: row.get(1)?,
+        kind,
         name: model::LocalizedName {
             primary: row.get(2)?,
             alias: row.get(3)?,
@@ -3194,30 +3405,8 @@ fn enum_kind(source_html_path: &str) -> &'static str {
     }
 }
 
-fn kind_priority(kind: &str) -> i64 {
-    match kind {
-        "platform_type" => 10,
-        "type_property" => 20,
-        "type_method" => 30,
-        "constructor" => 40,
-        "global_method" => 50,
-        "global_property" => 60,
-        "module_event" => 70,
-        "type_event" => 80,
-        "unknown_event" => 90,
-        "query_table" => 100,
-        "query_table_field" => 110,
-        "query_table_parameter" => 120,
-        "language_type" => 125,
-        "language_construct" => 126,
-        "language_function" => 127,
-        "language_operator" => 128,
-        "language_keyword" => 129,
-        "language_literal" => 130,
-        "enum" => 140,
-        "enum_value" => 150,
-        _ => 999,
-    }
+fn kind_priority(kind: SearchDocumentKind) -> i64 {
+    kind.priority()
 }
 
 fn owner_member_key(owner: &str, member: &str) -> String {
@@ -3339,9 +3528,9 @@ fn keyword_order(query: &str, document: &SearchDocument) -> (usize, i64) {
         })
         .unwrap_or_default();
     if !query_key.is_empty() && (name == query_key || alias == query_key) {
-        (0, kind_priority(&document.kind))
+        (0, kind_priority(document.kind))
     } else if !query_key.is_empty() && owner_member == query_key {
-        (1, kind_priority(&document.kind))
+        (1, kind_priority(document.kind))
     } else if !first.is_empty() && name.starts_with(first) {
         (2, 0)
     } else if !first.is_empty() && alias.starts_with(first) {
@@ -3440,6 +3629,60 @@ mod tests {
     use syntax_helper_language::{LanguagePageInput, LanguageSourceFamily, extract_language_facts};
 
     #[test]
+    fn document_kind_roundtrips_storage_strings_and_priorities() {
+        let expected = [
+            (SearchDocumentKind::PlatformType, "platform_type", 10),
+            (SearchDocumentKind::TypeProperty, "type_property", 20),
+            (SearchDocumentKind::TypeMethod, "type_method", 30),
+            (SearchDocumentKind::Constructor, "constructor", 40),
+            (SearchDocumentKind::GlobalMethod, "global_method", 50),
+            (SearchDocumentKind::GlobalProperty, "global_property", 60),
+            (SearchDocumentKind::ModuleEvent, "module_event", 70),
+            (SearchDocumentKind::TypeEvent, "type_event", 80),
+            (SearchDocumentKind::UnknownEvent, "unknown_event", 90),
+            (SearchDocumentKind::QueryTable, "query_table", 100),
+            (
+                SearchDocumentKind::QueryTableField,
+                "query_table_field",
+                110,
+            ),
+            (
+                SearchDocumentKind::QueryTableParameter,
+                "query_table_parameter",
+                120,
+            ),
+            (SearchDocumentKind::LanguageType, "language_type", 125),
+            (
+                SearchDocumentKind::LanguageConstruct,
+                "language_construct",
+                126,
+            ),
+            (
+                SearchDocumentKind::LanguageFunction,
+                "language_function",
+                127,
+            ),
+            (
+                SearchDocumentKind::LanguageOperator,
+                "language_operator",
+                128,
+            ),
+            (SearchDocumentKind::LanguageKeyword, "language_keyword", 129),
+            (SearchDocumentKind::LanguageLiteral, "language_literal", 130),
+            (SearchDocumentKind::Enum, "enum", 140),
+            (SearchDocumentKind::EnumValue, "enum_value", 150),
+        ];
+
+        assert_eq!(expected.len(), SearchDocumentKind::ALL.len());
+        for (kind, stored, priority) in expected {
+            assert_eq!(kind.as_str(), stored);
+            assert_eq!(SearchDocumentKind::from_storage(stored), Some(kind));
+            assert_eq!(kind.priority(), priority);
+        }
+        assert_eq!(SearchDocumentKind::from_storage("unexpected_kind"), None);
+    }
+
+    #[test]
     fn index_accepts_language_facts_with_distinct_source_qualified_ids() {
         let path = temp_path("language.sqlite");
         let mut builder = SearchIndexBuilder::new();
@@ -3453,14 +3696,17 @@ mod tests {
             .get_by_id("shlang:def_String")
             .expect("id lookup must work")
             .expect("BSL string type must be indexed");
-        assert_eq!(bsl.document.kind, "language_type");
+        assert_eq!(bsl.document.kind, SearchDocumentKind::LanguageType);
         assert_eq!(bsl.document.name.primary, "Строка");
 
         let function_construct = index
             .get_by_id("shlang:def_Func")
             .expect("id lookup must work")
             .expect("BSL function construct must be indexed");
-        assert_eq!(function_construct.document.kind, "language_construct");
+        assert_eq!(
+            function_construct.document.kind,
+            SearchDocumentKind::LanguageConstruct
+        );
         assert!(
             function_construct
                 .document
@@ -3473,7 +3719,7 @@ mod tests {
             .get_by_id("shquery:SELECTStatement")
             .expect("id lookup must work")
             .expect("query SELECT construct must be indexed");
-        assert_eq!(select.document.kind, "language_construct");
+        assert_eq!(select.document.kind, SearchDocumentKind::LanguageConstruct);
         assert!(
             select
                 .document
@@ -3486,21 +3732,21 @@ mod tests {
             .get_by_id("shquery:SUM")
             .expect("id lookup must work")
             .expect("query SUM function must be indexed");
-        assert_eq!(sum.document.kind, "language_function");
+        assert_eq!(sum.document.kind, SearchDocumentKind::LanguageFunction);
         assert_eq!(sum.document.name.primary, "СУММА");
 
         let query = index
             .get_by_id("shquery:STRING")
             .expect("id lookup must work")
             .expect("query STRING function must be indexed");
-        assert_eq!(query.document.kind, "language_function");
+        assert_eq!(query.document.kind, SearchDocumentKind::LanguageFunction);
         assert_eq!(query.document.name.primary, "СТРОКА");
 
         let skd = index
             .get_by_id("dcsui:SKD_Functions_Strings#StringLength")
             .expect("id lookup must work")
             .expect("SKD string function must be indexed");
-        assert_eq!(skd.document.kind, "language_function");
+        assert_eq!(skd.document.kind, SearchDocumentKind::LanguageFunction);
         assert_eq!(skd.document.name.primary, "ДлинаСтроки");
 
         let string_hits = index
@@ -3530,21 +3776,21 @@ mod tests {
             .get_by_id("shlang:def_String")
             .expect("id lookup must work")
             .expect("root BSL string type must be indexed");
-        assert_eq!(bsl.document.kind, "language_type");
+        assert_eq!(bsl.document.kind, SearchDocumentKind::LanguageType);
         assert_eq!(bsl.document.name.primary, "String");
 
         let sum = index
             .get_by_id("shquery:SUM")
             .expect("id lookup must work")
             .expect("root query SUM function must be indexed");
-        assert_eq!(sum.document.kind, "language_function");
+        assert_eq!(sum.document.kind, SearchDocumentKind::LanguageFunction);
         assert_eq!(sum.document.name.primary, "SUM");
 
         let skd = index
             .get_by_id("dcsui:SKD_Functions_Strings#StringLength")
             .expect("id lookup must work")
             .expect("root SKD string function must be indexed");
-        assert_eq!(skd.document.kind, "language_function");
+        assert_eq!(skd.document.kind, SearchDocumentKind::LanguageFunction);
         assert_eq!(skd.document.name.primary, "StringLength");
     }
 
@@ -3657,12 +3903,12 @@ mod tests {
             .expect("exact lookup must work");
         assert_eq!(exact.len(), 1);
         assert_eq!(exact[0].document.name.primary, "ОтборКомпоновкиДанных");
-        assert_eq!(exact[0].document.kind, "platform_type");
+        assert_eq!(exact[0].document.kind, SearchDocumentKind::PlatformType);
 
         let event = index
             .get_by_name("ПередЗаписью")
             .expect("event lookup must work");
-        assert_eq!(event[0].document.kind, "type_event");
+        assert_eq!(event[0].document.kind, SearchDocumentKind::TypeEvent);
 
         let member = index
             .get_by_owner_member("НастройкиКомпоновкиДанных", "Отбор")
@@ -3688,10 +3934,11 @@ mod tests {
             .members_by_type_id("platform_type:ОтборКомпоновкиДанных")
             .expect("member listing must work");
         assert!(members.iter().any(|hit| {
-            hit.document.kind == "type_property" && hit.document.name.primary == "Элементы"
+            hit.document.kind == SearchDocumentKind::TypeProperty
+                && hit.document.name.primary == "Элементы"
         }));
         assert!(members.iter().any(|hit| {
-            hit.document.kind == "type_method"
+            hit.document.kind == SearchDocumentKind::TypeMethod
                 && hit.document.name.primary == "ПолучитьОбъектПоИдентификатору"
         }));
 
@@ -3918,7 +4165,8 @@ mod tests {
             .expect("keyword search must work");
         assert_eq!(hits[0].document.id, "platform_type:Структура");
         assert!(hits.iter().skip(1).any(|hit| {
-            hit.document.kind == "type_property" && hit.document.name.primary == "Структура"
+            hit.document.kind == SearchDocumentKind::TypeProperty
+                && hit.document.name.primary == "Структура"
         }));
     }
 
@@ -4110,11 +4358,12 @@ mod tests {
             .related_by_id("platform_type:ОтборКомпоновкиДанных", 5, 20)
             .expect("id-root related search must work");
         assert!(related.iter().any(|hit| {
-            hit.document.kind == "constructor"
+            hit.document.kind == SearchDocumentKind::Constructor
                 && hit.document.name.primary == "Новый ОтборКомпоновкиДанных()"
         }));
         assert!(related.iter().any(|hit| {
-            hit.document.kind == "type_property" && hit.document.name.primary == "Элементы"
+            hit.document.kind == SearchDocumentKind::TypeProperty
+                && hit.document.name.primary == "Элементы"
         }));
         assert_eq!(
             index
@@ -4200,7 +4449,7 @@ mod tests {
         let path = temp_path("duplicate-document-id.sqlite");
         let documents = vec![
             document(
-                "global_method",
+                SearchDocumentKind::GlobalMethod,
                 None,
                 &name("Сообщить", None),
                 &[],
@@ -4210,7 +4459,7 @@ mod tests {
                 "global_method:Сообщить".to_string(),
             ),
             document(
-                "global_method",
+                SearchDocumentKind::GlobalMethod,
                 None,
                 &name("Сообщить", None),
                 &[],

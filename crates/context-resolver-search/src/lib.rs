@@ -5,7 +5,9 @@ use context_resolver_core::{
     ResolveResponse, ResolvedCallable, ResolvedMember, ResolvedType, Signature, SourceCapabilities,
     SourceDescriptor, SourceId, TypeId, TypeInfo, TypeLookup, TypeRef,
 };
-use syntax_helper_search::{RelatedHit, SearchDocument, SearchError, SearchHit, SearchIndex};
+use syntax_helper_search::{
+    RelatedHit, SearchDocument, SearchDocumentKind, SearchError, SearchHit, SearchIndex,
+};
 
 const DEFAULT_SOURCE_ID: &str = "shcntx-platform";
 
@@ -112,22 +114,35 @@ impl PlatformSearchSource {
     }
 
     fn map_context_fact(&self, hit: SearchHit) -> Result<Option<ContextFact>, ResolveError> {
-        match hit.document.kind.as_str() {
-            "platform_type" => Ok(Some(self.map_type(hit).fact)),
-            "type_property" | "global_property" | "enum_value" => {
-                Ok(self.map_member(hit)?.map(|member| member.fact))
-            }
-            "type_method" | "global_method" | "constructor" | "type_event" | "module_event" => {
+        match hit.document.kind {
+            SearchDocumentKind::PlatformType => Ok(Some(self.map_type(hit).fact)),
+            SearchDocumentKind::TypeProperty
+            | SearchDocumentKind::GlobalProperty
+            | SearchDocumentKind::EnumValue => Ok(self.map_member(hit)?.map(|member| member.fact)),
+            SearchDocumentKind::TypeMethod
+            | SearchDocumentKind::GlobalMethod
+            | SearchDocumentKind::Constructor
+            | SearchDocumentKind::TypeEvent
+            | SearchDocumentKind::ModuleEvent => {
                 Ok(self.map_callable(hit)?.map(|callable| callable.fact))
             }
-            "enum" => Ok(Some(ContextFact {
+            SearchDocumentKind::Enum => Ok(Some(ContextFact {
                 id: self.fact_id(FactKind::Enum, hit.document.id.clone()),
                 name: map_name(&hit.document),
                 owner: None,
                 details: FactDetails::Enum,
                 relations: Vec::new(),
             })),
-            _ => Ok(None),
+            SearchDocumentKind::UnknownEvent
+            | SearchDocumentKind::QueryTable
+            | SearchDocumentKind::QueryTableField
+            | SearchDocumentKind::QueryTableParameter
+            | SearchDocumentKind::LanguageType
+            | SearchDocumentKind::LanguageConstruct
+            | SearchDocumentKind::LanguageFunction
+            | SearchDocumentKind::LanguageOperator
+            | SearchDocumentKind::LanguageKeyword
+            | SearchDocumentKind::LanguageLiteral => Ok(None),
         }
     }
 
@@ -139,12 +154,27 @@ impl PlatformSearchSource {
         let Some(owner) = self.owner_id_for_document(&hit.document)? else {
             return Ok(None);
         };
-        let kind = match hit.document.kind.as_str() {
-            "type_property" | "global_property" => MemberKind::Property,
-            "type_method" => MemberKind::Method,
-            "type_event" | "module_event" => MemberKind::Event,
-            "enum_value" => MemberKind::EnumValue,
-            _ => return Ok(None),
+        let kind = match hit.document.kind {
+            SearchDocumentKind::TypeProperty | SearchDocumentKind::GlobalProperty => {
+                MemberKind::Property
+            }
+            SearchDocumentKind::TypeMethod => MemberKind::Method,
+            SearchDocumentKind::TypeEvent | SearchDocumentKind::ModuleEvent => MemberKind::Event,
+            SearchDocumentKind::EnumValue => MemberKind::EnumValue,
+            SearchDocumentKind::PlatformType
+            | SearchDocumentKind::Constructor
+            | SearchDocumentKind::GlobalMethod
+            | SearchDocumentKind::UnknownEvent
+            | SearchDocumentKind::QueryTable
+            | SearchDocumentKind::QueryTableField
+            | SearchDocumentKind::QueryTableParameter
+            | SearchDocumentKind::LanguageType
+            | SearchDocumentKind::LanguageConstruct
+            | SearchDocumentKind::LanguageFunction
+            | SearchDocumentKind::LanguageOperator
+            | SearchDocumentKind::LanguageKeyword
+            | SearchDocumentKind::LanguageLiteral
+            | SearchDocumentKind::Enum => return Ok(None),
         };
         let info = MemberInfo {
             kind,
@@ -168,12 +198,26 @@ impl PlatformSearchSource {
     }
 
     fn map_callable(&self, hit: SearchHit) -> Result<Option<ResolvedCallable>, ResolveError> {
-        let kind = match hit.document.kind.as_str() {
-            "constructor" => CallableKind::Constructor,
-            "type_method" => CallableKind::Method,
-            "global_method" => CallableKind::GlobalMethod,
-            "type_event" | "module_event" => CallableKind::Event,
-            _ => return Ok(None),
+        let kind = match hit.document.kind {
+            SearchDocumentKind::Constructor => CallableKind::Constructor,
+            SearchDocumentKind::TypeMethod => CallableKind::Method,
+            SearchDocumentKind::GlobalMethod => CallableKind::GlobalMethod,
+            SearchDocumentKind::TypeEvent | SearchDocumentKind::ModuleEvent => CallableKind::Event,
+            SearchDocumentKind::PlatformType
+            | SearchDocumentKind::TypeProperty
+            | SearchDocumentKind::GlobalProperty
+            | SearchDocumentKind::UnknownEvent
+            | SearchDocumentKind::QueryTable
+            | SearchDocumentKind::QueryTableField
+            | SearchDocumentKind::QueryTableParameter
+            | SearchDocumentKind::LanguageType
+            | SearchDocumentKind::LanguageConstruct
+            | SearchDocumentKind::LanguageFunction
+            | SearchDocumentKind::LanguageOperator
+            | SearchDocumentKind::LanguageKeyword
+            | SearchDocumentKind::LanguageLiteral
+            | SearchDocumentKind::Enum
+            | SearchDocumentKind::EnumValue => return Ok(None),
         };
         let owner = self.owner_id_for_document(&hit.document)?;
         let mut return_types = self.typed_refs(&hit.document.return_types)?;
@@ -238,7 +282,7 @@ impl PlatformSearchSource {
     }
 
     fn map_related(&self, hit: RelatedHit) -> Option<ContextFact> {
-        if !is_platform_document_kind(&hit.document.kind) {
+        if !is_platform_document_kind(hit.document.kind) {
             return None;
         }
         let kind = fact_kind_for_document(&hit.document)?;
@@ -345,7 +389,7 @@ impl LanguageSearchSource {
             .id
             .strip_prefix(self.source_id.as_str())
             .is_some_and(|tail| tail.starts_with(':'))
-            && is_language_document_kind(&document.kind)
+            && document.kind.is_language()
     }
 
     fn map_context_fact(&self, hit: SearchHit) -> Option<ContextFact> {
@@ -369,7 +413,10 @@ impl LanguageSearchSource {
     }
 
     fn map_type(&self, hit: SearchHit) -> Option<ResolvedType> {
-        if hit.document.kind != "language_type" && hit.document.kind != "language_literal" {
+        if !matches!(
+            hit.document.kind,
+            SearchDocumentKind::LanguageType | SearchDocumentKind::LanguageLiteral
+        ) {
             return None;
         }
         let info = TypeInfo {
@@ -387,7 +434,7 @@ impl LanguageSearchSource {
     }
 
     fn map_callable(&self, hit: SearchHit) -> Option<ResolvedCallable> {
-        if hit.document.kind != "language_function" {
+        if hit.document.kind != SearchDocumentKind::LanguageFunction {
             return None;
         }
         let info = self.callable_info(&hit.document);
@@ -739,7 +786,7 @@ impl ContextSource for PlatformSearchSource {
                 else {
                     return Ok(ResolveResponse::not_found("platform fact not found"));
                 };
-                if !is_platform_document_kind(&hit.document.kind) {
+                if !is_platform_document_kind(hit.document.kind) {
                     return Ok(ResolveResponse::not_found(
                         "non-platform document is hidden",
                     ));
@@ -955,54 +1002,71 @@ fn map_name(document: &SearchDocument) -> Name {
     Name::new(document.name.primary.clone(), document.name.alias.clone())
 }
 
-fn is_platform_document_kind(kind: &str) -> bool {
+fn is_platform_document_kind(kind: SearchDocumentKind) -> bool {
     matches!(
         kind,
-        "platform_type"
-            | "type_property"
-            | "type_method"
-            | "constructor"
-            | "global_method"
-            | "global_property"
-            | "module_event"
-            | "type_event"
-            | "enum"
-            | "enum_value"
-    )
-}
-
-fn is_language_document_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "language_type"
-            | "language_construct"
-            | "language_function"
-            | "language_operator"
-            | "language_keyword"
-            | "language_literal"
+        SearchDocumentKind::PlatformType
+            | SearchDocumentKind::TypeProperty
+            | SearchDocumentKind::TypeMethod
+            | SearchDocumentKind::Constructor
+            | SearchDocumentKind::GlobalMethod
+            | SearchDocumentKind::GlobalProperty
+            | SearchDocumentKind::ModuleEvent
+            | SearchDocumentKind::TypeEvent
+            | SearchDocumentKind::Enum
+            | SearchDocumentKind::EnumValue
     )
 }
 
 fn fact_kind_for_document(document: &SearchDocument) -> Option<FactKind> {
-    match document.kind.as_str() {
-        "platform_type" => Some(FactKind::Type),
-        "type_property" | "global_property" => Some(FactKind::Member),
-        "type_method" | "global_method" | "module_event" | "type_event" => Some(FactKind::Callable),
-        "constructor" => Some(FactKind::Constructor),
-        "enum" => Some(FactKind::Enum),
-        "enum_value" => Some(FactKind::EnumValue),
-        _ => None,
+    match document.kind {
+        SearchDocumentKind::PlatformType => Some(FactKind::Type),
+        SearchDocumentKind::TypeProperty | SearchDocumentKind::GlobalProperty => {
+            Some(FactKind::Member)
+        }
+        SearchDocumentKind::TypeMethod
+        | SearchDocumentKind::GlobalMethod
+        | SearchDocumentKind::ModuleEvent
+        | SearchDocumentKind::TypeEvent => Some(FactKind::Callable),
+        SearchDocumentKind::Constructor => Some(FactKind::Constructor),
+        SearchDocumentKind::Enum => Some(FactKind::Enum),
+        SearchDocumentKind::EnumValue => Some(FactKind::EnumValue),
+        SearchDocumentKind::UnknownEvent
+        | SearchDocumentKind::QueryTable
+        | SearchDocumentKind::QueryTableField
+        | SearchDocumentKind::QueryTableParameter
+        | SearchDocumentKind::LanguageType
+        | SearchDocumentKind::LanguageConstruct
+        | SearchDocumentKind::LanguageFunction
+        | SearchDocumentKind::LanguageOperator
+        | SearchDocumentKind::LanguageKeyword
+        | SearchDocumentKind::LanguageLiteral => None,
     }
 }
 
 fn language_fact_kind_for_document(document: &SearchDocument) -> Option<FactKind> {
-    match document.kind.as_str() {
-        "language_type" | "language_literal" => Some(FactKind::Type),
-        "language_function" => Some(FactKind::Callable),
-        "language_keyword" => Some(FactKind::Keyword),
-        "language_operator" => Some(FactKind::Operator),
-        "language_construct" => Some(FactKind::Global),
-        _ => None,
+    match document.kind {
+        SearchDocumentKind::LanguageType | SearchDocumentKind::LanguageLiteral => {
+            Some(FactKind::Type)
+        }
+        SearchDocumentKind::LanguageFunction => Some(FactKind::Callable),
+        SearchDocumentKind::LanguageKeyword => Some(FactKind::Keyword),
+        SearchDocumentKind::LanguageOperator => Some(FactKind::Operator),
+        SearchDocumentKind::LanguageConstruct => Some(FactKind::Global),
+        SearchDocumentKind::PlatformType
+        | SearchDocumentKind::TypeProperty
+        | SearchDocumentKind::TypeMethod
+        | SearchDocumentKind::Constructor
+        | SearchDocumentKind::GlobalMethod
+        | SearchDocumentKind::GlobalProperty
+        | SearchDocumentKind::ModuleEvent
+        | SearchDocumentKind::TypeEvent
+        | SearchDocumentKind::UnknownEvent
+        | SearchDocumentKind::QueryTable
+        | SearchDocumentKind::QueryTableField
+        | SearchDocumentKind::QueryTableParameter
+        | SearchDocumentKind::Enum
+        | SearchDocumentKind::EnumValue => None,
     }
 }
 
@@ -1303,22 +1367,42 @@ mod tests {
     fn platform_adapter_does_not_expose_query_table_documents() {
         let source = fixture_source();
         let index = fixture_index("platform-adapter-query-table-hidden.sqlite");
-        let adapter = PlatformSearchSource::with_source_id(index, source.clone());
-        let query_table = FactId::new(
-            source,
-            LanguageDomain::PlatformApi,
-            FactKind::QueryTable,
+        for id in [
             "query_table:ОсновнаяТаблица",
-        );
+            "query_table_field:query_table:ОсновнаяТаблица:Период",
+            "query_table_parameter:query_table:ОсновнаяТаблица:Дата",
+        ] {
+            assert!(
+                index
+                    .get_by_id(id)
+                    .expect("search provider id lookup must not fail")
+                    .is_some(),
+                "{id} must stay available as a search/provider document"
+            );
+        }
+        let adapter = PlatformSearchSource::with_source_id(index, source.clone());
 
-        let response = adapter
-            .resolve(
-                context_resolver_core::ResolveQuery::Id(&query_table),
-                &ResolveContext::all(),
-            )
-            .expect("query_table id lookup must not fail");
+        for (kind, local_id) in [
+            (FactKind::QueryTable, "query_table:ОсновнаяТаблица"),
+            (
+                FactKind::QueryField,
+                "query_table_field:query_table:ОсновнаяТаблица:Период",
+            ),
+            (
+                FactKind::QueryParameter,
+                "query_table_parameter:query_table:ОсновнаяТаблица:Дата",
+            ),
+        ] {
+            let fact = FactId::new(source.clone(), LanguageDomain::PlatformApi, kind, local_id);
+            let response = adapter
+                .resolve(
+                    context_resolver_core::ResolveQuery::Id(&fact),
+                    &ResolveContext::all(),
+                )
+                .expect("query_table* id lookup must not fail");
 
-        assert_eq!(response.status, ResolveStatus::NotFound);
+            assert_eq!(response.status, ResolveStatus::NotFound);
+        }
     }
 
     #[test]
@@ -1674,6 +1758,38 @@ mod tests {
                 source: source_ref("query-table"),
             })
             .expect("query table must sink");
+        builder
+            .table_field(model::QueryTableField {
+                owner: name("ОсновнаяТаблица", None),
+                name: "Период".to_string(),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTableField,
+                ),
+                type_refs: vec![model::TypeRef {
+                    name: "Дата".to_string(),
+                }],
+                description: Some("Query field provider fact.".to_string()),
+                note: None,
+                source: source_ref("query-table-field"),
+            })
+            .expect("query table field must sink");
+        builder
+            .table_parameter(model::QueryTableParameter {
+                owner: name("ОсновнаяТаблица", None),
+                name: "Дата".to_string(),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTableParameter,
+                ),
+                type_refs: vec![model::TypeRef {
+                    name: "Дата".to_string(),
+                }],
+                description: Some("Query parameter provider fact.".to_string()),
+                default_value: None,
+                source: source_ref("query-table-parameter"),
+            })
+            .expect("query table parameter must sink");
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
         path
     }

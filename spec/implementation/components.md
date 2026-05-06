@@ -445,6 +445,12 @@ rather than immediate cleanup work:
   `syntax-helper-model::LocalizedName`. The shared helper is presentation logic only, not a public
   identity, lookup or JSON contract mechanism. `syntax-helper-search` and `v8-context-hbk-cli` now
   call that helper without changing search ranking, relation labels, text output or provider JSON.
+- T95 replaced raw in-workspace search document kind strings with
+  `syntax-helper-search::SearchDocumentKind`. The typed kind is the Rust search/resolver adapter
+  boundary only; SQLite `documents.kind` values, provider `kind` values, search ordering, resolver
+  fact mapping and consumer export JSON remain unchanged. `v8-context-hbk-cli` still assembles
+  provider JSON explicitly from the existing string values, and the platform resolver adapter still
+  hides `query_table*` provider documents.
 - HBK storage/page path normalization, documentation link-target normalization and Syntax Assistant
   member-link normalization are accepted distinct component boundaries. T73 consolidated shared
   storage/page path handling in `hbk-book`, while retaining separate documentation-link and

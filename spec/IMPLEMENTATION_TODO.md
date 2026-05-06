@@ -230,7 +230,7 @@ Completion notes:
   - `cargo test -p context-resolver-search`
   - `cargo test --workspace`
 
-### [ ] T95. Replace stringly search document kinds with a typed internal kind
+### [x] T95. Replace stringly search document kinds with a typed internal kind
 
 Spec refs:
 
@@ -264,6 +264,23 @@ Verification:
 - `cargo test -p context-resolver-search`
 - `cargo test -p v8-context-hbk-cli`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Added `syntax-helper-search::SearchDocumentKind` as the typed in-workspace document-kind model.
+- Converted Syntax Assistant and language fact builders, SQLite row hydration, normalized fact
+  insertion, relation construction, ranking priority and resolver adapter mapping to use the typed
+  kind internally.
+- Kept SQLite `documents.kind` values and provider JSON `kind` values as the existing strings at
+  explicit boundary conversions.
+- Added focused kind round-trip/priority coverage and retained resolver coverage proving
+  `query_table*` provider facts stay hidden from the platform resolver adapter.
+- Preserved search ordering, resolver fact mapping, provider JSON, SQLite schema and export JSON.
+- Verification passed:
+  - `cargo test -p syntax-helper-search --lib`
+  - `cargo test -p context-resolver-search`
+  - `cargo test -p v8-context-hbk-cli`
+  - `cargo test --workspace`
 
 ### [ ] T96. Narrow or retire `HbkBook::read_pages` test-support API
 
