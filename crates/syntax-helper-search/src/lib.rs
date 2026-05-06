@@ -1907,7 +1907,7 @@ fn insert_documents(
                 document
                     .owner
                     .as_ref()
-                    .map(|owner| searchable_name(&display_name(owner))),
+                    .map(|owner| searchable_name(&owner.display_name())),
                 searchable_text(&signatures),
                 searchable_text(&parameters),
                 searchable_text(&type_names),
@@ -2414,7 +2414,7 @@ fn insert_owner_relations(
             source_id: owner_id.clone(),
             target_id: document.id.clone(),
             edge_kind: "owns",
-            label: format!("{} owns {}", display_name(owner), document.name.primary),
+            label: format!("{} owns {}", owner.display_name(), document.name.primary),
             evidence: "owner",
             weight: 10,
         },
@@ -2430,7 +2430,7 @@ fn insert_owner_relations(
             label: format!(
                 "{} member of {}",
                 document.name.primary,
-                display_name(owner)
+                owner.display_name()
             ),
             evidence: "owner",
             weight: 20,
@@ -2462,7 +2462,7 @@ fn insert_constructor_relation(
             source_id: document.id.clone(),
             target_id: owner_id.clone(),
             edge_kind: "constructs",
-            label: format!("constructs {}", display_name(owner)),
+            label: format!("constructs {}", owner.display_name()),
             evidence: "structured",
             weight: 15,
         },
@@ -2791,7 +2791,7 @@ fn explicit_language_type_ref_id(
 
 fn type_ref_from_name(name: &model::LocalizedName) -> model::TypeRef {
     model::TypeRef {
-        name: display_name(name),
+        name: name.display_name(),
     }
 }
 
@@ -2837,7 +2837,7 @@ fn relations_from_documents(documents: &[SearchDocument]) -> Vec<Relation> {
                     source_id: owner_id.clone(),
                     target_id: document.id.clone(),
                     edge_kind: "owns",
-                    label: format!("{} owns {}", display_name(owner), document.name.primary),
+                    label: format!("{} owns {}", owner.display_name(), document.name.primary),
                     evidence: "owner",
                     weight: 10,
                 });
@@ -2848,7 +2848,7 @@ fn relations_from_documents(documents: &[SearchDocument]) -> Vec<Relation> {
                     label: format!(
                         "{} member of {}",
                         document.name.primary,
-                        display_name(owner)
+                        owner.display_name()
                     ),
                     evidence: "owner",
                     weight: 20,
@@ -2863,7 +2863,7 @@ fn relations_from_documents(documents: &[SearchDocument]) -> Vec<Relation> {
                 source_id: document.id.clone(),
                 target_id: owner_id.clone(),
                 edge_kind: "constructs",
-                label: format!("constructs {}", display_name(owner)),
+                label: format!("constructs {}", owner.display_name()),
                 evidence: "structured",
                 weight: 15,
             });
@@ -3305,13 +3305,6 @@ fn enum_kind(source_html_path: &str) -> &'static str {
     }
 }
 
-fn display_name(name: &model::LocalizedName) -> String {
-    match &name.alias {
-        Some(alias) => format!("{} ({alias})", name.primary),
-        None => name.primary.clone(),
-    }
-}
-
 fn kind_priority(kind: &str) -> i64 {
     match kind {
         "platform_type" => 10,
@@ -3451,7 +3444,7 @@ fn keyword_order(query: &str, document: &SearchDocument) -> (usize, i64) {
         .map(|owner| {
             searchable_name(&format!(
                 "{}.{}",
-                display_name(owner),
+                owner.display_name(),
                 document.name.primary
             ))
         })

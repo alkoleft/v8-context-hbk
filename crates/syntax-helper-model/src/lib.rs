@@ -538,6 +538,13 @@ impl LocalizedName {
     pub fn matches(&self, value: &str) -> bool {
         self.primary == value || self.alias.as_deref() == Some(value)
     }
+
+    pub fn display_name(&self) -> String {
+        match &self.alias {
+            Some(alias) => format!("{} ({alias})", self.primary),
+            None => self.primary.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

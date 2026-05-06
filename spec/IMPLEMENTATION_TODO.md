@@ -23,7 +23,7 @@ language-domain and cleanup conclusions live in `acceptance/baseline.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md`,
 `implementation/syntax-bsl-provider-plan.md` and `implementation/solution-context-resolve.md`.
 
-The active open tasks are T91-T103. T91 is now the first unchecked planned task; T98-T103 are
+The active open tasks are T92-T103. T92 is now the first unchecked planned task; T98-T103 are
 user-requested book-content export slices handled outside the first-unchecked cleanup/provider
 sequence.
 
@@ -44,7 +44,7 @@ sequence.
 
 ## Active Tasks
 
-### [ ] T91. Collapse duplicated localized display-name presentation helper
+### [x] T91. Collapse duplicated localized display-name presentation helper
 
 Spec refs:
 
@@ -74,6 +74,17 @@ Verification:
 - `cargo test -p syntax-helper-search --lib`
 - `cargo test -p v8-context-hbk-cli`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Added the single localized-name presentation helper to `syntax-helper-model::LocalizedName`.
+- Replaced the duplicated local helpers in `syntax-helper-search` and `v8-context-hbk-cli` with
+  calls to the shared model helper.
+- Preserved current human text output, search document text, relation labels and provider JSON.
+- Verification passed:
+  - `cargo test -p syntax-helper-search --lib`
+  - `cargo test -p v8-context-hbk-cli`
+  - `cargo test --workspace`
 
 ### [ ] T92. Remove hidden resolver edge and constructor return fallbacks
 

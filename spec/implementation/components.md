@@ -439,11 +439,10 @@ rather than immediate cleanup work:
   adapters, while `v8-context-hbk-cli` assembles the public provider envelope and fact JSON from
   normalized facts using export-compatible field names. T72 removed the stale full/compact provider
   adapter duplication, and T86 removed serde serialization from the search result structs.
-- `display_name` helpers are stale presentation duplication. The duplicate helper is not a public
-  identity, lookup or JSON contract mechanism, but the same localized-name display rule currently
-  exists in both `syntax-helper-search` and `v8-context-hbk-cli`. T91 should collapse that rule into
-  one narrow shared helper without changing search ranking, relation labels, text output or provider
-  JSON.
+- T91 collapsed the stale duplicated localized-name `display_name` helper into
+  `syntax-helper-model::LocalizedName`. The shared helper is presentation logic only, not a public
+  identity, lookup or JSON contract mechanism. `syntax-helper-search` and `v8-context-hbk-cli` now
+  call that helper without changing search ranking, relation labels, text output or provider JSON.
 - HBK storage/page path normalization, documentation link-target normalization and Syntax Assistant
   member-link normalization are accepted distinct component boundaries. T73 consolidated shared
   storage/page path handling in `hbk-book`, while retaining separate documentation-link and

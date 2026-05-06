@@ -8,7 +8,6 @@ use hbk_container::HbkContainer;
 use hbk_export::JsonExporter;
 use serde_json::{Value, json};
 use syntax_helper_extract::{SyntaxHelperReader, SyntaxHelperStreamError};
-use syntax_helper_model::LocalizedName;
 use syntax_helper_search::{
     IndexMetadata, RelatedHit, SearchDocument, SearchHit, SearchIndex, SearchIndexBuilder,
     SearchMode, build_index_from_builder,
@@ -897,7 +896,7 @@ fn print_hits_text(command: &str, hits: &[SearchHit]) -> Result<(), Box<dyn std:
             .document
             .owner
             .as_ref()
-            .map(display_name)
+            .map(|owner| owner.display_name())
             .unwrap_or_default();
         let prefix = if owner.is_empty() {
             String::new()
@@ -930,7 +929,7 @@ fn print_related_hits_text(hits: &[RelatedHit]) -> Result<(), Box<dyn std::error
             .document
             .owner
             .as_ref()
-            .map(display_name)
+            .map(|owner| owner.display_name())
             .unwrap_or_default();
         let prefix = if owner.is_empty() {
             String::new()
@@ -1202,7 +1201,7 @@ fn print_constructor_text_hit(hit: &SearchHit, details: bool) {
     }
 
     if let Some(owner) = &hit.document.owner {
-        println!("  owner: {}", display_name(owner));
+        println!("  owner: {}", owner.display_name());
     }
     if let Some(alias) = &hit.document.name.alias {
         println!("  alias: {alias}");
@@ -1232,13 +1231,6 @@ fn parse_positive_usize(value: &str) -> Result<usize, String> {
         return Err("value must be greater than 0".to_string());
     }
     Ok(parsed)
-}
-
-fn display_name(name: &LocalizedName) -> String {
-    match &name.alias {
-        Some(alias) => format!("{} ({alias})", name.primary),
-        None => name.primary.clone(),
-    }
 }
 
 fn print_toc_text(toc: &Toc) {
@@ -1633,8 +1625,8 @@ mod tests {
             .with_owner_path(vec![name(owner_path)])
     }
 
-    fn name(primary: &str) -> LocalizedName {
-        LocalizedName {
+    fn name(primary: &str) -> model::LocalizedName {
+        model::LocalizedName {
             primary: primary.to_string(),
             alias: None,
         }

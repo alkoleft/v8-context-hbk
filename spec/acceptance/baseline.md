@@ -154,8 +154,11 @@ directories are service data unless promoted here.
   accepted CLI-boundary separation; search lookup-key normalization remains in
   `syntax-helper-search`; public provider JSON shaping remains in `v8-context-hbk-cli`; storage
   path, documentation link and Syntax Assistant member-link normalization remain distinct component
-  boundaries. The only stale duplication found is the localized display-name presentation helper,
-  queued as narrow follow-up T91.
+  boundaries.
+- T91 collapsed the only stale duplication found by T87: the localized display-name presentation
+  helper now lives on `syntax-helper-model::LocalizedName` and is reused by `syntax-helper-search`
+  and `v8-context-hbk-cli`. This did not change CLI text output, provider JSON, SQLite schema,
+  search ranking, relation labels, export schema, extraction behavior or resolver contracts.
 
 ## Post-T29 Runtime Regression To Fix
 
