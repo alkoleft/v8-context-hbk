@@ -8,7 +8,6 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Statement, params};
-use serde::{Deserialize, Serialize};
 use strsim::levenshtein;
 use syntax_helper_language as language;
 use syntax_helper_model as model;
@@ -70,28 +69,19 @@ pub struct SearchDocument {
     pub explicit_return_type_ref_ids: Vec<Option<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchSignature {
-    #[serde(skip)]
     pub text: String,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<SearchParameter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchParameter {
     pub name: String,
     pub required: bool,
-    #[serde(default)]
-    #[serde(rename = "types")]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub type_refs: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
@@ -4139,32 +4129,19 @@ mod tests {
                 .contains(&"Булево".to_string())
         );
 
-        let signatures_json = serde_json::to_value(&constructors[0].document.signatures)
-            .expect("search signatures must serialize for provider JSON");
-        let signatures = signatures_json
-            .as_array()
-            .expect("structured signatures must be public JSON");
-        assert!(
-            signatures
-                .iter()
-                .all(|signature| signature.get("text").is_none()),
-            "signature text remains presentation data, not provider JSON"
+        let signatures = &constructors[0].document.signatures;
+        assert_eq!(signatures.len(), 1);
+        assert_eq!(
+            signatures[0].text,
+            "Новый HTTPСоединение(<Сервер>, <Порт>, <ИспользоватьАутентификациюОС>)"
         );
-        let parameters = signatures[0]["parameters"]
-            .as_array()
-            .expect("signature parameters must be structured");
-        let os_auth = parameters
+        let os_auth = signatures[0]
+            .parameters
             .iter()
-            .find(|parameter| parameter["name"] == "ИспользоватьАутентификациюОС")
+            .find(|parameter| parameter.name == "ИспользоватьАутентификациюОС")
             .expect("OS authentication parameter must be present");
-        assert_eq!(os_auth["required"], false);
-        assert!(
-            os_auth["types"]
-                .as_array()
-                .expect("parameter types must be an array")
-                .iter()
-                .any(|value| value == "Булево")
-        );
+        assert!(!os_auth.required);
+        assert!(os_auth.type_refs.iter().any(|value| value == "Булево"));
     }
 
     #[test]

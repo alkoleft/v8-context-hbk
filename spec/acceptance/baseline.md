@@ -159,6 +159,11 @@ directories are service data unless promoted here.
   helper now lives on `syntax-helper-model::LocalizedName` and is reused by `syntax-helper-search`
   and `v8-context-hbk-cli`. This did not change CLI text output, provider JSON, SQLite schema,
   search ranking, relation labels, export schema, extraction behavior or resolver contracts.
+- T93 enforced the provider JSON boundary for nested callable facts. `syntax-helper-search`
+  `SearchSignature` and `SearchParameter` are Rust query structs without serde/provider DTO
+  attributes; `v8-context-hbk-cli` explicitly assembles export-compatible
+  `signatures[].parameters[]` provider JSON. This did not change provider response schema version,
+  SQLite schema, search ranking, lookup behavior or export JSON.
 
 ## Post-T29 Runtime Regression To Fix
 

@@ -135,7 +135,7 @@ Completion notes:
   - `cargo test -p context-resolver-search`
   - `cargo test --workspace`
 
-### [ ] T93. Keep provider JSON assembly out of `syntax-helper-search` structs
+### [x] T93. Keep provider JSON assembly out of `syntax-helper-search` structs
 
 Spec refs:
 
@@ -167,6 +167,23 @@ Verification:
 - `cargo test -p syntax-helper-search --lib`
 - `cargo test -p v8-context-hbk-cli`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Removed serde derives and serde field attributes from `SearchSignature` and `SearchParameter`.
+- Removed the `syntax-helper-search` serde/serde_json dependency edge that existed only for direct
+  provider DTO serialization.
+- Replaced the stale search-crate provider-JSON assertion with Rust struct and normalized storage
+  assertions.
+- Moved signature/parameter provider JSON assembly into `v8-context-hbk-cli`, preserving
+  export-compatible `signatures[].parameters[]`, `types`, optional `description` and omission of
+  signature `text` from provider facts.
+- Provider response schema version, SQLite schema, search ranking, lookup behavior and export JSON
+  are unchanged.
+- Verification passed:
+  - `cargo test -p syntax-helper-search --lib`
+  - `cargo test -p v8-context-hbk-cli`
+  - `cargo test --workspace`
 
 ### [ ] T94. Deduplicate search relation graph construction
 

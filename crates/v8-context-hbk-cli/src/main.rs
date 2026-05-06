@@ -1173,7 +1173,13 @@ fn document_fact(document: &SearchDocument, detail: ProviderFactDetail) -> Value
         return fact;
     }
     if !document.signatures.is_empty() {
-        fact["signatures"] = json!(document.signatures);
+        fact["signatures"] = json!(
+            document
+                .signatures
+                .iter()
+                .map(signature_fact)
+                .collect::<Vec<_>>()
+        );
     }
     if !document.type_refs.is_empty() {
         fact["types"] = json!(document.type_refs);
@@ -1185,6 +1191,40 @@ fn document_fact(document: &SearchDocument, detail: ProviderFactDetail) -> Value
         fact["description"] = json!(description);
     }
     fact
+}
+
+fn signature_fact(signature: &syntax_helper_search::SearchSignature) -> Value {
+    let mut value = json!({});
+    if !signature.parameters.is_empty() {
+        value["parameters"] = json!(
+            signature
+                .parameters
+                .iter()
+                .map(parameter_fact)
+                .collect::<Vec<_>>()
+        );
+    }
+    if let Some(title) = &signature.title {
+        value["title"] = json!(title);
+    }
+    if let Some(description) = &signature.description {
+        value["description"] = json!(description);
+    }
+    value
+}
+
+fn parameter_fact(parameter: &syntax_helper_search::SearchParameter) -> Value {
+    let mut value = json!({
+        "name": parameter.name,
+        "required": parameter.required,
+    });
+    if !parameter.type_refs.is_empty() {
+        value["types"] = json!(parameter.type_refs);
+    }
+    if let Some(description) = &parameter.description {
+        value["description"] = json!(description);
+    }
+    value
 }
 
 fn print_constructor_text_hit(hit: &SearchHit, details: bool) {
@@ -1459,9 +1499,14 @@ mod tests {
             owner: Some(name("Тест")),
             signatures: vec![syntax_helper_search::SearchSignature {
                 text: "Выполнить(Параметр)".to_string(),
-                parameters: Vec::new(),
-                title: None,
-                description: None,
+                parameters: vec![syntax_helper_search::SearchParameter {
+                    name: "Параметр".to_string(),
+                    required: true,
+                    type_refs: vec!["Строка".to_string()],
+                    description: Some("Input value".to_string()),
+                }],
+                title: Some("Основной вариант".to_string()),
+                description: Some("Variant description".to_string()),
             }],
             type_refs: vec!["Строка".to_string()],
             return_types: vec!["Булево".to_string()],
@@ -1483,7 +1528,14 @@ mod tests {
         assert_eq!(fact["types"], json!(["Строка"]));
         assert_eq!(fact["return"], json!(["Булево"]));
         assert_eq!(fact["description"], "Detailed description");
-        assert_eq!(fact["signatures"].as_array().unwrap().len(), 1);
+        let signature = &fact["signatures"][0];
+        assert!(signature.get("text").is_none());
+        assert_eq!(signature["title"], "Основной вариант");
+        assert_eq!(signature["description"], "Variant description");
+        assert_eq!(signature["parameters"][0]["name"], "Параметр");
+        assert_eq!(signature["parameters"][0]["required"], true);
+        assert_eq!(signature["parameters"][0]["types"], json!(["Строка"]));
+        assert_eq!(signature["parameters"][0]["description"], "Input value");
     }
 
     #[test]
