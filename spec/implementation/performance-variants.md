@@ -63,7 +63,7 @@ the actual consumer need.
 
 Changes:
 
-- Introduce explicit export DTOs in `hbk-export` instead of serializing the internal
+- Introduce explicit export DTOs in `hbk-syntax-export` instead of serializing the internal
   provenance-rich model directly.
 - Remove per-record `source` data from consumer record-family files.
 - Remove navigation scaffolding that duplicates dedicated files:
@@ -113,7 +113,7 @@ Goal: avoid accumulating the full `PlatformContext` before export.
 Changes:
 
 - Let extraction emit typed records in stable traversal order.
-- Let `hbk-export` consume record-family streams/sinks while preserving the existing crate
+- Let `hbk-syntax-export` consume record-family streams/sinks while preserving the existing crate
   boundaries.
 - Keep the in-memory model as a separate full-domain aggregate when parser/tests need it. T85 later
   removed the legacy public exact lookup-helper API; accepted lookup behavior belongs to

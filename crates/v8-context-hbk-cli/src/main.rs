@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use hbk_book::HbkBook;
 use hbk_book::{Toc, TocPage};
 use hbk_container::HbkContainer;
-use hbk_export::JsonExporter;
+use hbk_syntax_export::JsonExporter;
 use serde_json::{Value, json};
 use syntax_helper_extract::{SyntaxHelperReader, SyntaxHelperStreamError};
 use syntax_helper_search::{

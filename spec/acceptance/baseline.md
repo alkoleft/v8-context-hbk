@@ -290,7 +290,7 @@ cargo check -p hbk-book
 cargo check -p hbk-docs
 cargo check -p syntax-helper-model
 cargo check -p syntax-helper-extract
-cargo check -p hbk-export
+cargo check -p hbk-syntax-export
 cargo check -p v8-context-hbk-cli
 git diff --check
 ```

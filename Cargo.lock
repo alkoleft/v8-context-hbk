@@ -327,7 +327,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "hbk-export"
+name = "hbk-syntax-export"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -875,7 +875,7 @@ dependencies = [
  "clap",
  "hbk-book",
  "hbk-container",
- "hbk-export",
+ "hbk-syntax-export",
  "serde_json",
  "syntax-helper-extract",
  "syntax-helper-model",

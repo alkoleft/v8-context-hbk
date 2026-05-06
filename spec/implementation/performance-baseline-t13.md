@@ -164,7 +164,7 @@ This section records the original T13 code review before Variant A and Variant B
 - Current traversal is deterministic because page paths and visited sets are ordered, but memory is
   paid up front before export starts.
 
-`hbk-export`:
+Syntax export crate (then `hbk-export`, now `hbk-syntax-export`):
 
 - `JsonExporter` writes every record family from the already materialized `PlatformContext`.
 - At T13, envelopes included export-level `source_hbk`, and records still contained provenance and

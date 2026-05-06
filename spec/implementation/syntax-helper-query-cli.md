@@ -45,7 +45,7 @@ Keep these layers separate:
 1. Provenance-rich extraction model in `syntax-helper-model`.
 2. Search document model for CLI lookup/ranking.
 3. Relationship graph model for owner/member/type/link traversal.
-4. Lean consumer export in `hbk-export` for downstream data ingestion.
+4. Lean consumer export in `hbk-syntax-export` for downstream data ingestion.
 5. Optional semantic vectors as a later index extension.
 
 Do not make the lean consumer export carry every search/debug field. If the query commands need

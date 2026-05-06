@@ -250,7 +250,7 @@ fn export_file_manifest_documents_canonical_json_files() {
 #[test]
 fn exporter_writes_full_canonical_file_set() {
     let dir = std::env::temp_dir().join(format!(
-        "v8-context-hbk-export-full-test-{}",
+        "v8-context-hbk-syntax-export-full-test-{}",
         std::process::id()
     ));
     if dir.exists() {
@@ -297,7 +297,7 @@ fn exporter_writes_full_canonical_file_set() {
 #[test]
 fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     let dir = std::env::temp_dir().join(format!(
-        "v8-context-hbk-export-lean-test-{}",
+        "v8-context-hbk-syntax-export-lean-test-{}",
         std::process::id()
     ));
     if dir.exists() {

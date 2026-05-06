@@ -5,7 +5,7 @@ members = [
     "crates/hbk-book",
     "crates/hbk-container",
     "crates/hbk-docs",
-    "crates/hbk-export",
+    "crates/hbk-syntax-export",
     "crates/syntax-helper-extract",
     "crates/syntax-helper-language",
     "crates/syntax-helper-model",
@@ -23,7 +23,7 @@ clap = { version = "4.5.51", features = ["derive"] }
 hbk-book = { path = "crates/hbk-book" }
 hbk-container = { path = "crates/hbk-container" }
 hbk-docs = { path = "crates/hbk-docs" }
-hbk-export = { path = "crates/hbk-export" }
+hbk-syntax-export = { path = "crates/hbk-syntax-export" }
 context-resolver-core = { path = "crates/context-resolver-core" }
 context-resolver-search = { path = "crates/context-resolver-search" }
 memmap2 = "0.9.9"

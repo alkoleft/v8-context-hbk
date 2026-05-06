@@ -23,9 +23,9 @@ language-domain and cleanup conclusions live in `acceptance/baseline.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md`,
 `implementation/syntax-bsl-provider-plan.md` and `implementation/solution-context-resolve.md`.
 
-The active open tasks are T95-T103. T95 is now the first unchecked planned task; T98-T103 are
-user-requested book-content export slices handled outside the first-unchecked cleanup/provider
-sequence.
+The active open tasks are T99-T103. T98 is complete; T99 is now the first unchecked planned task.
+T99-T103 are user-requested book-content export slices handled outside the first-unchecked
+cleanup/provider sequence.
 
 ## Loop Rule
 
@@ -368,7 +368,7 @@ Completion notes:
   - `cargo test -p context-resolver-search`
   - `cargo test --workspace`
 
-### [ ] T98. Rename Syntax Assistant export crate to `hbk-syntax-export`
+### [x] T98. Rename Syntax Assistant export crate to `hbk-syntax-export`
 
 Spec refs:
 
@@ -389,6 +389,20 @@ Verification:
 - `cargo test -p hbk-syntax-export`
 - `cargo test -p v8-context-hbk-cli`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Renamed the Syntax Assistant JSON export crate directory and package from `hbk-export` to
+  `hbk-syntax-export`.
+- Updated workspace membership, workspace dependency alias, CLI dependency alias, Rust import path
+  and Cargo.lock package/dependency entries.
+- Kept `v8-context-hbk syntax export` command shape and consumer JSON `schema_version` unchanged.
+- Added no ordinary book-content export behavior to `hbk-syntax-export`; T99 remains the first
+  unchecked ordinary book export crate-boundary task.
+- Verification passed:
+  - `cargo test -p hbk-syntax-export`
+  - `cargo test -p v8-context-hbk-cli`
+  - `cargo test --workspace`
 
 ### [ ] T99. Add `hbk-book-export` crate boundary and request model
 
