@@ -26,7 +26,7 @@ language-domain, cleanup, book-content export and documentation-site conclusions
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/ADR-0010-documentation-site-generator-and-web-app.md`.
 
-Current first unchecked task: T111.
+Current first unchecked task: T112.
 T111-T113 are user-requested documentation site generator/web-app slices that continue the
 book-content export direction from T99-T109.
 
@@ -47,7 +47,7 @@ book-content export direction from T99-T109.
 
 ## Active Tasks
 
-### [ ] T111. Add `hbk-doc-site` generator crate boundary and global TOC merge model
+### [x] T111. Add `hbk-doc-site` generator crate boundary and global TOC merge model
 
 Spec refs:
 
@@ -75,8 +75,18 @@ Verification:
 
 - Focused `hbk-doc-site` tests for deterministic merge, duplicate titles, source book provenance
   and fixture-level manifest/TOC JSON shape.
-- `cargo test -p hbk-doc-site`
-- `cargo test --workspace`
+- `cargo test -p hbk-doc-site` passed on 2026-05-07.
+- `cargo test --workspace` passed on 2026-05-07.
+
+Completion notes:
+
+- Added the `hbk-doc-site` crate with typed generator request/result/error, book id, page id and
+  TOC node id models.
+- Implemented deterministic explicit-file and source-directory discovery, safe locale artifact path
+  validation, locale grouping, global TOC section merge and generated `data/manifest.json`,
+  `toc-root.json` and `toc-sections/*.json` artifacts for fixture corpora.
+- Page Markdown writing, CLI `site generate` wiring, real-corpus measurements and web app behavior
+  remain T112/T113 scope.
 
 ### [ ] T112. Generate page data and wire `site generate` CLI
 

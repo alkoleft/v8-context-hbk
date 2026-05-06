@@ -1574,3 +1574,14 @@ T109 completed the matching target-anchor side of Markdown/TOC fragment navigati
 `<a id="Manager"></a>` before the corresponding heading. UAT-HBK-013 passed with target checks for
 `Manager`, `Create`, `Used` and `Delete`; release-profile export to
 `target/uat/shclang-anchor-materialized-md` showed the generated targets in the user-reported page.
+
+T111 added the first documentation-site generator crate boundary without CLI or web-app wiring. The
+new `hbk-doc-site` crate exposes typed generation request/result/error and site id models, discovers
+source books from explicit files or a source directory with include filters, rejects unsafe
+locale-derived artifact path segments, groups books by locale, merges same-level section nodes by
+normalized title and preserves `book_id`/distinct `page_id` values for page-bearing same-title nodes
+and their child sections. The T111 artifact writer produces deterministic `data/manifest.json`,
+`data/locales/<locale>/toc-root.json` and `data/locales/<locale>/toc-sections/<section-id>.json`
+files for fixture corpora. The manifest includes generator version, deterministic build id, source
+book file sizes, TOC root paths and future page root paths. Page Markdown writing, CLI
+`site generate`, UAT-HBK-014 real-corpus measurements and the web app remain T112/T113 scope.

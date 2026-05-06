@@ -9,8 +9,8 @@ context boundaries and keeps CLI/export behavior provisional.
 2. `hbk-book`: book metadata, locale inference, ZIP-backed `FileStorage`, TOC parsing and page reads.
 3. `hbk-docs`: documentation HTML/page parsing, normalized text/link extraction and page diagnostics.
 4. `hbk-book-export`: ordinary book-content export layouts and Markdown conversion adapters.
-5. `hbk-doc-site` (planned): documentation-site data generation, corpus discovery, global TOC
-   merge, stable site ids and page data layout.
+5. `hbk-doc-site`: documentation-site data generation, corpus discovery, global TOC merge, stable
+   site ids and generated site data artifact layout.
 6. `docs-web-app` (planned): separate documentation web application that serves the site UI and
    generated data artifacts; later owns search and Syntax Assistant API endpoints.
 7. `syntax-helper-model`: provenance-rich platform context domain model and record sink boundary.
@@ -300,27 +300,40 @@ path-based, and generated anchor tags are limited to anchors owned by source hea
 
 Expected public concepts:
 
-- `DocumentationSiteGenerateRequest`
-- `DocumentationSiteGenerator`
-- `DocumentationSiteGenerateResult`
-- `DocumentationSiteError`
-- `GlobalDocumentationToc`
+- `SiteGenerationRequest`
+- `DocSiteGenerator`
+- `SiteGenerationResult`
+- `SiteGenerationError`
 - `SiteTocNode`
 - `SitePageId`
+- `SiteTocNodeId`
 - `SiteBookId`
 
 Owns FR-HBK-005 and NFR-SITE-001.
 
-`hbk-doc-site` is the planned generator component selected by ADR-0010. It adapts a corpus of HBK
-books into documentation-site data artifacts: manifest data, locale-level merged TOC data and
-page-content files.
+`hbk-doc-site` is the generator component selected by ADR-0010. It adapts a corpus of HBK books into
+documentation-site data artifacts. T111 implements the first crate boundary as
+`SiteGenerationRequest`, `DocSiteGenerator`, `SiteGenerationResult`, `SiteGenerationError`,
+`SiteTocNode`, `SitePageId`, `SiteTocNodeId` and `SiteBookId`.
+
+The implemented T111 artifact slice writes:
+
+- `data/manifest.json`;
+- `data/locales/<locale>/toc-root.json`;
+- `data/locales/<locale>/toc-sections/<section-id>.json`.
+
+The T111 manifest includes schema version, generator name/version, deterministic build id, locales,
+source book inventory with `book_id`, file name, title, locale and file size, root TOC paths and
+future page-root paths. Locale-derived artifact path segments are validated before writing.
+
+Page Markdown files under `data/locales/<locale>/pages/` remain T112 scope.
 
 The component must keep these responsibilities separate:
 
 - source discovery and source book inventory;
-- per-book HBK open/TOC/page access through `hbk-book` and `hbk-docs`;
+- per-book HBK open/TOC access through `hbk-book`;
 - global TOC merge and stable site identity;
-- page content writing and link target planning;
+- page content writing and link target planning in the later page-data slice;
 - generated data artifact writing.
 
 The first implementation should reuse the accepted Markdown conversion rules from `hbk-book-export`

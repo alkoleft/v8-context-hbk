@@ -5,6 +5,7 @@ members = [
     "crates/hbk-book",
     "crates/hbk-book-export",
     "crates/hbk-container",
+    "crates/hbk-doc-site",
     "crates/hbk-docs",
     "crates/hbk-syntax-export",
     "crates/syntax-helper-extract",
@@ -24,6 +25,7 @@ clap = { version = "4.5.51", features = ["derive"] }
 hbk-book = { path = "crates/hbk-book" }
 hbk-book-export = { path = "crates/hbk-book-export" }
 hbk-container = { path = "crates/hbk-container" }
+hbk-doc-site = { path = "crates/hbk-doc-site" }
 hbk-docs = { path = "crates/hbk-docs" }
 hbk-syntax-export = { path = "crates/hbk-syntax-export" }
 context-resolver-core = { path = "crates/context-resolver-core" }

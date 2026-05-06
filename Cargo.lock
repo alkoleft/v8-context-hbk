@@ -375,6 +375,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hbk-doc-site"
+version = "0.1.0"
+dependencies = [
+ "hbk-book",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "hbk-docs"
 version = "0.1.0"
 dependencies = [

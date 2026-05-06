@@ -138,8 +138,11 @@ component. The web app must not parse HBK files or build the corpus in request h
 
 The first implementation slice should stop at a usable documentation site without syntax/search API:
 
-1. Add `hbk-doc-site` request/result/error model and small fixture-backed merge tests.
+1. Add `hbk-doc-site` request/result/error model and small fixture-backed merge tests. Completed in
+   T111 with deterministic build id, source book size inventory and safe locale artifact path
+   validation.
 2. Generate `data/manifest.json`, root TOC and section TOC JSON for a small multi-book fixture.
+   Completed in T111.
 3. Write page Markdown files for page-bearing nodes.
 4. Add CLI wiring for `site generate`.
 5. Add a minimal separate web app that can serve/load the generated manifest, locale root TOC, lazy
