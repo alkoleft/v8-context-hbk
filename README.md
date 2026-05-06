@@ -109,8 +109,25 @@ v8-context-hbk export /opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk \
 
 Команда верхнего уровня `export` не извлекает факты Синтакс-помощника и не пишет JSON-схему
 platform context.
-Пока реализована только пара `--format raw --hierarchy raw`; неподдержанные сочетания возвращают
-читаемую ошибку. Markdown/TOC export остается следующим запланированным этапом.
+Сейчас поддержаны две пары:
+
+- `--format raw --hierarchy raw`: распаковка исходных `FileStorage` entry paths;
+- `--format markdown --hierarchy toc`: Markdown-страницы по TOC-derived directory tree.
+
+Экспорт Markdown:
+
+```bash
+v8-context-hbk export /opt/1cv8/x86_64/8.5.1.1150/dcsui_ru.hbk \
+  --output target/book-md/dcsui_ru \
+  --format markdown \
+  --hierarchy toc
+```
+
+Markdown/TOC пишет каждую TOC-страницу как `index.md` в каталоге, построенном из заголовков TOC.
+Внутренние ссылки на экспортируемые TOC-страницы переписываются в относительные Markdown-ссылки;
+сырые HBK paths, HTML storage paths и service HTML scaffolding в Markdown не выводятся.
+Сочетания `--format raw --hierarchy toc` и `--format markdown --hierarchy raw` остаются
+неподдержанными и возвращают читаемую ошибку.
 
 ## Экспорт Фактов Платформы
 

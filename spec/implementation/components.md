@@ -231,8 +231,27 @@ implemented `BookExporter::markdown_page()` for individual TOC pages. The conver
 lists, GFM tables and angle-bracket syntax placeholders, and normalizes output so regular Markdown
 does not contain raw HBK file paths, raw TOC indexes, raw HTML page paths or service HTML
 scaffolding. Internal link and image targets are intentionally not emitted until T103 defines the
-deterministic Markdown/TOC file layout and link-target mapping. The top-level CLI still rejects
-`markdown/toc` before opening the source HBK; full Markdown layout and UAT wiring remain T103 scope.
+deterministic Markdown/TOC file layout and link-target mapping. At the end of T102, the top-level
+CLI still rejected `markdown/toc` before opening the source HBK; full Markdown layout and UAT wiring
+remained T103 scope.
+
+T103 defines the Markdown/TOC layout as a TOC-title-derived directory tree. Each TOC item maps to a
+directory segment derived from its displayed localized title, and each exported page is written as
+`index.md` inside that page directory. Sibling title collisions are disambiguated by a stable
+TOC-order suffix such as `-2`, without using raw TOC indexes or raw HTML paths as public output
+names. TOC items without an HTML path, or with a TOC HTML path that is absent from `FileStorage`,
+still produce a heading-only Markdown page so the layout remains TOC-ordered and deterministic.
+
+For full `markdown/toc` export, same-book internal links whose normalized target resolves to an
+exported TOC page are rewritten to the corresponding relative Markdown `index.md` path. External
+links remain as external Markdown links. Cross-book `v8help://` links, unresolved internal links,
+links to non-exported storage entries and image targets do not emit raw HBK storage paths; their
+visible text remains readable where the converter can preserve it. Binary resource export is not
+part of T103.
+
+T103 implements that `markdown/toc` layout in `hbk-book-export` and wires the top-level CLI to allow
+`--format markdown --hierarchy toc`. The CLI still rejects `raw/toc` and `markdown/raw` before
+opening the source HBK. UAT-HBK-004 through UAT-HBK-007 passed on the local 8.5.1.1150 corpus.
 
 ### syntax-helper-model
 

@@ -295,7 +295,8 @@ fn validate_cli_book_export_combination(
     hierarchy: BookExportHierarchy,
 ) -> Result<(), hbk_book_export::BookExportError> {
     match (format, hierarchy) {
-        (BookExportFormat::Raw, BookExportHierarchy::Raw) => Ok(()),
+        (BookExportFormat::Raw, BookExportHierarchy::Raw)
+        | (BookExportFormat::Markdown, BookExportHierarchy::Toc) => Ok(()),
         (format, hierarchy) => {
             Err(hbk_book_export::BookExportError::UnsupportedCombination { format, hierarchy })
         }
@@ -1402,7 +1403,7 @@ fn page_to_json(page: &TocPage) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hbk_book::test_utils::{fixture_container, zip_entries};
+    use hbk_book::test_utils::{fixture_container, zip_bytes, zip_entries};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
     use syntax_helper_model as model;
@@ -1767,17 +1768,46 @@ mod tests {
     }
 
     #[test]
+    fn top_level_export_writes_markdown_toc_files() {
+        let workspace = temp_workspace("cli-markdown-success");
+        let source_path = workspace.join("fmtdui_ru.hbk");
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Справка"}{"en","Help"}},"/docs/page.html"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![(
+                "docs/page.html",
+                "<html><body><h1>Справка</h1><p>Markdown page</p></body></html>".as_bytes(),
+            )],
+        );
+        let output_root = workspace.join("out");
+
+        let result = export_book_content(
+            source_path,
+            output_root.clone(),
+            BookExportFormat::Markdown,
+            BookExportHierarchy::Toc,
+        )
+        .expect("markdown/toc top-level export path must succeed");
+
+        let markdown_path = output_root.join("справка/index.md");
+        let markdown = fs::read_to_string(markdown_path).expect("Markdown page must be exported");
+        assert!(markdown.contains("# Справка"));
+        assert!(markdown.contains("Markdown page"));
+        assert_eq!(result.files().len(), 1);
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
     fn top_level_export_reports_unsupported_matrix_before_opening_book() {
         for (format, hierarchy, expected) in [
             (
                 BookExportFormat::Raw,
                 BookExportHierarchy::Toc,
                 "unsupported book export combination: format=raw, hierarchy=toc",
-            ),
-            (
-                BookExportFormat::Markdown,
-                BookExportHierarchy::Toc,
-                "unsupported book export combination: format=markdown, hierarchy=toc",
             ),
             (
                 BookExportFormat::Markdown,
@@ -1791,7 +1821,7 @@ mod tests {
                 format,
                 hierarchy,
             )
-            .expect_err("non-raw/raw CLI combinations must stay unsupported in T101");
+            .expect_err("raw/toc and markdown/raw must stay unsupported");
 
             assert_eq!(error.to_string(), expected);
         }
@@ -1824,6 +1854,29 @@ mod tests {
                     ),
                 ),
                 ("PackBlock", None),
+                ("FileStorage", Some(zip_entries(storage_entries))),
+            ]),
+        )
+        .expect("fixture HBK must be written");
+    }
+
+    fn write_book_fixture_with_toc(
+        path: &std::path::Path,
+        toc: &str,
+        storage_entries: Vec<(&str, &[u8])>,
+    ) {
+        fs::write(
+            path,
+            fixture_container(vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", Some(zip_bytes("toc.txt", toc.as_bytes()))),
                 ("FileStorage", Some(zip_entries(storage_entries))),
             ]),
         )

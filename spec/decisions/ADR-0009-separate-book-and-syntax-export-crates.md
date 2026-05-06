@@ -109,6 +109,6 @@ adapter responsibilities.
 - [x] `cargo test -p hbk-syntax-export` passes after the rename.
 - [x] `cargo test -p v8-context-hbk-cli` passes and `syntax export` behavior remains unchanged.
 - [x] New book-content export tests use `hbk-book-export`.
-- [ ] UAT-HBK-004 through UAT-HBK-007 verify Markdown export through the top-level `export`
+- [x] UAT-HBK-004 through UAT-HBK-007 verify Markdown export through the top-level `export`
       command.
 - [x] No new ordinary book-content export code is added to `hbk-syntax-export`.

@@ -600,7 +600,7 @@ Completion notes:
   - `cargo tree -p hbk-book-export --depth 1`
   - `cargo test --workspace`
 
-### [ ] T103. Implement markdown/toc export layout and UAT corpus
+### [x] T103. Implement markdown/toc export layout and UAT corpus
 
 Spec refs:
 
@@ -639,3 +639,29 @@ Verification:
 - `cargo test -p hbk-book-export`
 - `cargo test -p v8-context-hbk-cli`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Implemented `format=markdown` with `hierarchy=toc` in `hbk-book-export` and the top-level
+  `v8-context-hbk export` CLI.
+- Markdown/TOC export writes one `index.md` per TOC item under deterministic title-derived
+  directories, disambiguates same-title siblings with stable suffixes and rewrites internal links to
+  exported TOC Markdown targets.
+- TOC items with empty HTML paths or missing `FileStorage` page targets produce heading-only
+  Markdown pages so full ordinary-book TOC export remains deterministic on real HBK books.
+- Preserved unsupported pre-open CLI diagnostics for `raw/toc` and `markdown/raw`; Syntax Assistant
+  extraction, `hbk-syntax-export`, search/index and resolver crates remain outside
+  `hbk-book-export`.
+- Verification passed:
+  - `cargo fmt --all --check`
+  - `cargo test -p hbk-book-export`
+  - `cargo clippy -p hbk-book-export --all-targets -- -D warnings`
+  - `cargo test -p v8-context-hbk-cli`
+  - `cargo tree -p hbk-book-export --depth 1` confirmed no dependency on Syntax Assistant
+    extraction, `hbk-syntax-export`, search/index or resolver crates
+  - UAT-HBK-004 on all six local 8.5.1.1150 books; corpus exported 291 Markdown files and negative
+    raw path/scaffolding searches passed
+  - UAT-HBK-005
+  - UAT-HBK-006
+  - UAT-HBK-007
+  - `cargo test --workspace`

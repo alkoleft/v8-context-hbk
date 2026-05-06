@@ -212,6 +212,16 @@ directories are service data unless promoted here.
   rejecting raw HBK paths, raw TOC indexes, raw HTML page paths and service HTML scaffolding in
   normal Markdown output. `markdown/toc` remains blocked at the top-level CLI boundary until T103
   implements deterministic TOC layout and UAT corpus export.
+- T103 implemented top-level `format=markdown` with `hierarchy=toc` for ordinary book-content
+  export. `hbk-book-export` now writes one `index.md` per TOC item under a deterministic
+  title-derived directory tree, disambiguates same-title siblings with stable suffixes, rewrites
+  internal links to exported TOC Markdown targets, preserves external links and emits heading-only
+  pages for TOC items with empty or missing `FileStorage` page targets. `raw/toc` and
+  `markdown/raw` remain unsupported with pre-open CLI diagnostics. Local UAT-HBK-004 exported the
+  six-book 8.5.1.1150 corpus with 291 Markdown files and passed negative searches for raw HBK
+  paths, raw TOC indexes, raw HTML page paths and service HTML scaffolding. UAT-HBK-005,
+  UAT-HBK-006 and UAT-HBK-007 passed against the representative DCS, language/query-language and
+  ordinary UI help pages.
 
 ## Post-T29 Runtime Regression To Fix
 

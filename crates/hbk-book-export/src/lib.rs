@@ -1,10 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-use hbk_book::{BookError, HbkBook, normalize_storage_path};
+use hbk_book::{
+    BookError, HbkBook, Toc, TocPage, normalize_storage_path, normalize_storage_path_segments,
+};
 use hbk_docs::{DocumentationError, DocumentationReader, PageContent};
 use quick_html2md::{MarkdownOptions, html_to_markdown_with_options};
 
@@ -106,10 +108,7 @@ impl<'a> BookExporter<'a> {
         match (request.format(), request.hierarchy()) {
             (BookExportFormat::Raw, BookExportHierarchy::Raw) => self.export_raw_raw(request),
             (BookExportFormat::Markdown, BookExportHierarchy::Toc) => {
-                Err(BookExportError::ExportNotImplemented {
-                    format: request.format(),
-                    hierarchy: request.hierarchy(),
-                })
+                self.export_markdown_toc(request)
             }
             (format, hierarchy) => {
                 Err(BookExportError::UnsupportedCombination { format, hierarchy })
@@ -150,6 +149,56 @@ impl<'a> BookExporter<'a> {
                 source,
             })?;
             exported_files.push(BookExportedFile::new(plan.output_path, bytes.len() as u64));
+        }
+
+        Ok(BookExportResult::new(
+            request.output_root().to_path_buf(),
+            exported_files,
+        ))
+    }
+
+    fn export_markdown_toc(
+        &self,
+        request: &BookExportRequest,
+    ) -> Result<BookExportResult, BookExportError> {
+        let plans = plan_markdown_toc_exports(request.output_root(), self.book.toc());
+        let link_targets = markdown_link_targets(&plans);
+        let source_book_ids = source_book_link_ids(self.book);
+        create_directory(request.output_root())?;
+
+        let mut loader = DocumentationReader::new(self.book).page_loader()?;
+        let mut exported_files = Vec::with_capacity(plans.len());
+        for plan in plans {
+            let markdown = if plan.html_path.is_empty() {
+                heading_only_markdown(&plan.title)
+            } else {
+                match loader.load_page(&plan.html_path) {
+                    Ok(page) => page_content_to_linked_markdown(
+                        &page,
+                        &plan.relative_path,
+                        &link_targets,
+                        &source_book_ids,
+                    ),
+                    Err(error) if documentation_error_is_missing_page(&error) => {
+                        heading_only_markdown(&plan.title)
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            };
+            if let Some(parent) = plan.output_path.parent() {
+                create_directory(parent)?;
+            }
+            fs::write(&plan.output_path, markdown.as_bytes()).map_err(|source| {
+                BookExportError::Io {
+                    path: plan.output_path.clone(),
+                    operation: BookExportIoOperation::WriteFile,
+                    source,
+                }
+            })?;
+            exported_files.push(BookExportedFile::new(
+                plan.output_path,
+                markdown.len() as u64,
+            ));
         }
 
         Ok(BookExportResult::new(
@@ -245,10 +294,6 @@ pub enum BookExportError {
         format: BookExportFormat,
         hierarchy: BookExportHierarchy,
     },
-    ExportNotImplemented {
-        format: BookExportFormat,
-        hierarchy: BookExportHierarchy,
-    },
     UnsafeStoragePath {
         entry_name: String,
         reason: StoragePathError,
@@ -294,13 +339,6 @@ impl PartialEq for BookExportError {
             (
                 Self::UnsupportedCombination { format, hierarchy },
                 Self::UnsupportedCombination {
-                    format: other_format,
-                    hierarchy: other_hierarchy,
-                },
-            )
-            | (
-                Self::ExportNotImplemented { format, hierarchy },
-                Self::ExportNotImplemented {
                     format: other_format,
                     hierarchy: other_hierarchy,
                 },
@@ -425,10 +463,6 @@ impl fmt::Display for BookExportError {
                 f,
                 "unsupported book export combination: format={format}, hierarchy={hierarchy}"
             ),
-            Self::ExportNotImplemented { format, hierarchy } => write!(
-                f,
-                "book export combination is not implemented yet: format={format}, hierarchy={hierarchy}"
-            ),
             Self::UnsafeStoragePath { entry_name, reason } => write!(
                 f,
                 "unsafe FileStorage path '{entry_name}' cannot be exported: {reason}"
@@ -487,7 +521,6 @@ impl std::error::Error for BookExportError {
             Self::Io { source, .. } => Some(source),
             Self::InvalidOutputRoot { .. }
             | Self::UnsupportedCombination { .. }
-            | Self::ExportNotImplemented { .. }
             | Self::UnsafeStoragePath { .. }
             | Self::DuplicateStoragePath { .. }
             | Self::StoragePathCollision { .. }
@@ -538,6 +571,14 @@ impl fmt::Display for StoragePathError {
 #[derive(Debug)]
 struct RawExportPlan {
     entry_name: String,
+    output_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct MarkdownTocExportPlan {
+    html_path: String,
+    title: String,
+    relative_path: PathBuf,
     output_path: PathBuf,
 }
 
@@ -621,6 +662,78 @@ fn paths_have_prefix_collision(left: &Path, right: &Path) -> bool {
     left != right && (left.starts_with(right) || right.starts_with(left))
 }
 
+fn plan_markdown_toc_exports(output_root: &Path, toc: &Toc) -> Vec<MarkdownTocExportPlan> {
+    let mut plans = Vec::new();
+    append_markdown_toc_pages(output_root, toc.pages(), &[], &mut plans);
+    plans
+}
+
+fn append_markdown_toc_pages(
+    output_root: &Path,
+    pages: &[TocPage],
+    parent_segments: &[String],
+    plans: &mut Vec<MarkdownTocExportPlan>,
+) {
+    let mut used_segments = HashSet::new();
+    for page in pages {
+        let segment =
+            unique_toc_segment(title_path_segment(page.title.display()), &mut used_segments);
+        let mut segments = parent_segments.to_vec();
+        segments.push(segment);
+        let relative_path = markdown_page_relative_path(&segments);
+        plans.push(MarkdownTocExportPlan {
+            html_path: page.html_path.clone(),
+            title: page.title.display().to_string(),
+            output_path: output_root.join(&relative_path),
+            relative_path,
+        });
+        append_markdown_toc_pages(output_root, &page.children, &segments, plans);
+    }
+}
+
+fn markdown_page_relative_path(segments: &[String]) -> PathBuf {
+    let mut path = PathBuf::new();
+    for segment in segments {
+        path.push(segment);
+    }
+    path.push("index.md");
+    path
+}
+
+fn unique_toc_segment(base: String, used_segments: &mut HashSet<String>) -> String {
+    if used_segments.insert(base.clone()) {
+        return base;
+    }
+    for index in 2.. {
+        let candidate = format!("{base}-{index}");
+        if used_segments.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    unreachable!("unbounded counter must find a unique segment")
+}
+
+fn title_path_segment(title: &str) -> String {
+    let mut output = String::new();
+    let mut pending_separator = false;
+    for character in title.trim().chars() {
+        if character.is_alphanumeric() {
+            if pending_separator && !output.is_empty() {
+                output.push('-');
+            }
+            output.extend(character.to_lowercase());
+            pending_separator = false;
+        } else {
+            pending_separator = true;
+        }
+    }
+    if output.is_empty() {
+        "page".to_string()
+    } else {
+        output
+    }
+}
+
 fn create_directory(path: &Path) -> Result<(), BookExportError> {
     fs::create_dir_all(path).map_err(|source| BookExportError::Io {
         path: path.to_path_buf(),
@@ -693,6 +806,323 @@ fn page_content_to_markdown(page: &PageContent) -> String {
         .escape_special_chars(false);
     let markdown = html_to_markdown_with_options(&page.raw_html, &options);
     ensure_markdown_heading(&page.title, normalize_markdown(markdown))
+}
+
+fn page_content_to_linked_markdown(
+    page: &PageContent,
+    current_output_path: &Path,
+    link_targets: &HashMap<String, PathBuf>,
+    source_book_ids: &HashSet<String>,
+) -> String {
+    let html = rewrite_page_link_targets(page, current_output_path, link_targets, source_book_ids);
+    let options = MarkdownOptions::new()
+        .include_links(true)
+        .include_images(false)
+        .preserve_tables(true)
+        .escape_special_chars(false);
+    let markdown = html_to_markdown_with_options(&html, &options);
+    ensure_markdown_heading(&page.title, normalize_markdown(markdown))
+}
+
+fn markdown_link_targets(plans: &[MarkdownTocExportPlan]) -> HashMap<String, PathBuf> {
+    let mut targets = HashMap::new();
+    for plan in plans {
+        if !plan.html_path.is_empty() {
+            targets
+                .entry(plan.html_path.clone())
+                .or_insert_with(|| plan.relative_path.clone());
+        }
+    }
+    targets
+}
+
+fn rewrite_page_link_targets(
+    page: &PageContent,
+    current_output_path: &Path,
+    link_targets: &HashMap<String, PathBuf>,
+    source_book_ids: &HashSet<String>,
+) -> String {
+    let mut replacements: HashMap<String, Option<String>> = HashMap::new();
+    for link in &page.links {
+        if is_external_href(&link.raw_href) {
+            continue;
+        }
+        let replacement = link
+            .normalized_path
+            .as_deref()
+            .and_then(|target| markdown_link_target(target, link_targets, source_book_ids))
+            .map(|target| relative_markdown_link(current_output_path, target));
+        replacements
+            .entry(link.raw_href.clone())
+            .and_modify(|current| {
+                if current.is_none() {
+                    *current = replacement.clone();
+                }
+            })
+            .or_insert(replacement);
+    }
+
+    replace_href_attributes(
+        &page.raw_html,
+        &replacements,
+        &page.source.html_path,
+        current_output_path,
+        link_targets,
+        source_book_ids,
+    )
+}
+
+fn is_external_href(href: &str) -> bool {
+    href.contains(':') && !href.trim_start().starts_with("v8help://")
+}
+
+fn markdown_link_target<'a>(
+    normalized_path: &str,
+    link_targets: &'a HashMap<String, PathBuf>,
+    source_book_ids: &HashSet<String>,
+) -> Option<&'a PathBuf> {
+    link_targets.get(normalized_path).or_else(|| {
+        normalized_path
+            .split_once('/')
+            .filter(|(book_segment, _)| source_book_ids.contains(*book_segment))
+            .and_then(|(_, path_without_book_segment)| link_targets.get(path_without_book_segment))
+    })
+}
+
+fn replace_href_attributes(
+    html: &str,
+    replacements: &HashMap<String, Option<String>>,
+    current_html_path: &str,
+    current_output_path: &Path,
+    link_targets: &HashMap<String, PathBuf>,
+    source_book_ids: &HashSet<String>,
+) -> String {
+    let mut output = String::with_capacity(html.len());
+    let mut cursor = 0;
+    while let Some(position) = find_href_attribute(html, cursor) {
+        let Some(attribute) = parse_href_attribute(html, position) else {
+            let next = advance_one_char(html, position);
+            output.push_str(&html[cursor..next]);
+            cursor = next;
+            continue;
+        };
+        let replacement = replacements.get(attribute.value).cloned().or_else(|| {
+            href_replacement_for_raw_value(
+                current_html_path,
+                current_output_path,
+                link_targets,
+                source_book_ids,
+                attribute.value,
+            )
+        });
+        let Some(replacement) = replacement else {
+            output.push_str(&html[cursor..attribute.end]);
+            cursor = attribute.end;
+            continue;
+        };
+
+        output.push_str(&html[cursor..attribute.start]);
+        if let Some(target) = replacement {
+            output.push_str(&html[attribute.start..attribute.value_start]);
+            output.push_str(&target);
+            output.push_str(&html[attribute.value_end..attribute.end]);
+        }
+        cursor = attribute.end;
+    }
+    output.push_str(&html[cursor..]);
+    output
+}
+
+fn href_replacement_for_raw_value(
+    current_html_path: &str,
+    current_output_path: &Path,
+    link_targets: &HashMap<String, PathBuf>,
+    source_book_ids: &HashSet<String>,
+    raw_href: &str,
+) -> Option<Option<String>> {
+    if is_external_href(raw_href) {
+        return None;
+    }
+    let target = normalize_markdown_link_target(current_html_path, raw_href)
+        .as_deref()
+        .and_then(|target| markdown_link_target(target, link_targets, source_book_ids))
+        .map(|target| relative_markdown_link(current_output_path, target));
+    Some(target)
+}
+
+fn source_book_link_ids(book: &HbkBook) -> HashSet<String> {
+    let mut ids = HashSet::new();
+    if let Some(stem) = book.path().file_stem().and_then(|value| value.to_str()) {
+        ids.insert(stem.to_string());
+        if let Some((base, _)) = stem.rsplit_once('_') {
+            ids.insert(base.to_string());
+        }
+    }
+    if !book.meta().book_name.is_empty() {
+        ids.insert(book.meta().book_name.clone());
+    }
+    ids
+}
+
+fn normalize_markdown_link_target(current_html_path: &str, href: &str) -> Option<String> {
+    let href = href.trim();
+    if href.is_empty() {
+        return None;
+    }
+    if href.starts_with('#') {
+        return Some(current_html_path.to_string());
+    }
+    if is_external_href(href) {
+        return None;
+    }
+
+    let v8help_target = href.strip_prefix("v8help://");
+    let without_scheme = v8help_target.unwrap_or(href);
+    let path_part = without_scheme
+        .split(['#', '?'])
+        .next()
+        .unwrap_or_default()
+        .trim();
+    if path_part.is_empty() {
+        return Some(current_html_path.to_string());
+    }
+
+    let candidate = if v8help_target.is_some() || path_part.starts_with('/') {
+        path_part.to_string()
+    } else {
+        match current_html_path.rsplit_once('/') {
+            Some((base, _)) if !base.is_empty() => format!("{base}/{path_part}"),
+            _ => path_part.to_string(),
+        }
+    };
+    normalize_storage_path_segments(&candidate)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HrefAttribute<'a> {
+    start: usize,
+    end: usize,
+    value_start: usize,
+    value_end: usize,
+    value: &'a str,
+}
+
+fn find_href_attribute(html: &str, from: usize) -> Option<usize> {
+    let bytes = html.as_bytes();
+    let mut index = from;
+    while index + 4 <= bytes.len() {
+        if bytes[index..index + 4].eq_ignore_ascii_case(b"href")
+            && html_attribute_name_start_boundary(bytes, index)
+            && html_attribute_name_boundary(bytes, index + 4)
+        {
+            return Some(index);
+        }
+        index = advance_one_char(html, index);
+    }
+    None
+}
+
+fn html_attribute_name_start_boundary(bytes: &[u8], index: usize) -> bool {
+    index == 0 || html_attribute_name_boundary(bytes, index - 1)
+}
+
+fn html_attribute_name_boundary(bytes: &[u8], index: usize) -> bool {
+    index == 0
+        || index >= bytes.len()
+        || !matches!(
+            bytes[index],
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-' | b':'
+        )
+}
+
+fn parse_href_attribute(html: &str, start: usize) -> Option<HrefAttribute<'_>> {
+    let bytes = html.as_bytes();
+    let mut index = start + 4;
+    skip_ascii_whitespace(bytes, &mut index);
+    if bytes.get(index) != Some(&b'=') {
+        return None;
+    }
+    index += 1;
+    skip_ascii_whitespace(bytes, &mut index);
+    let quote = *bytes.get(index)?;
+    if quote != b'"' && quote != b'\'' {
+        return None;
+    }
+    let value_start = index + 1;
+    let value_end = bytes[value_start..]
+        .iter()
+        .position(|byte| *byte == quote)
+        .map(|offset| value_start + offset)?;
+    Some(HrefAttribute {
+        start,
+        end: value_end + 1,
+        value_start,
+        value_end,
+        value: &html[value_start..value_end],
+    })
+}
+
+fn skip_ascii_whitespace(bytes: &[u8], index: &mut usize) {
+    while bytes.get(*index).is_some_and(u8::is_ascii_whitespace) {
+        *index += 1;
+    }
+}
+
+fn advance_one_char(value: &str, index: usize) -> usize {
+    value[index..]
+        .chars()
+        .next()
+        .map(|character| index + character.len_utf8())
+        .unwrap_or(value.len())
+}
+
+fn relative_markdown_link(current_output_path: &Path, target_output_path: &Path) -> String {
+    let current_dir = current_output_path
+        .parent()
+        .unwrap_or_else(|| Path::new(""));
+    let current_components = path_components(current_dir);
+    let target_components = path_components(target_output_path);
+    let common = current_components
+        .iter()
+        .zip(&target_components)
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut parts = Vec::new();
+    for _ in common..current_components.len() {
+        parts.push("..".to_string());
+    }
+    parts.extend(target_components.into_iter().skip(common));
+    if parts.is_empty() {
+        "index.md".to_string()
+    } else {
+        parts.join("/")
+    }
+}
+
+fn path_components(path: &Path) -> Vec<String> {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => Some(value.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn heading_only_markdown(title: &str) -> String {
+    let title = title.trim();
+    if title.is_empty() {
+        String::new()
+    } else {
+        format!("# {title}\n")
+    }
+}
+
+fn documentation_error_is_missing_page(error: &DocumentationError) -> bool {
+    match error {
+        DocumentationError::PageRead { source, .. } => {
+            matches!(source.as_ref(), BookError::MissingZipEntry { .. })
+        }
+    }
 }
 
 fn normalize_markdown(markdown: String) -> String {
@@ -955,6 +1385,109 @@ mod tests {
                 html_path: "docs/unlisted.html".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn exports_markdown_toc_pages_under_deterministic_title_paths() {
+        let workspace = TempWorkspace::new("markdown-toc-layout");
+        let source_path = workspace.path().join("fmtdui_ru.hbk");
+        let toc = r#"{
+            5
+            {1,0,4,2,3,4,5,{0,0,{0,0,{"ru","Справка"}{"en","Help"}},"/docs/root.html"}}
+            {2,1,0,{0,0,{0,0,{"ru","Раздел"}{"en","Section"}},"/docs/child.html"}}
+            {3,1,0,{0,0,{0,0,{"ru","Раздел"}{"en","Section"}},"/docs/child-two.html"}}
+            {4,1,0,{0,0,{0,0,{"ru","Группа"}{"en","Group"}},""}}
+            {5,1,0,{0,0,{0,0,{"ru","Ссылка HTML"}{"en","HTML link"}},"/objects/raw.html"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![
+                (
+                    "docs/root.html",
+                    r#"<html><body>
+                        <h1>Справка</h1>
+                        <p><a HREF = "child.html">Раздел</a></p>
+                        <p><a href="v8help://fmtdui/docs/child-two.html">Вторая</a></p>
+                        <p><a href="v8help://otherbook/docs/child.html">Другая книга</a></p>
+                        <p><a href="missing.html">Несуществующая</a></p>
+                        <p><a href="https://example.com/help">Внешняя</a></p>
+                        <img src="assets/pic.png" alt="Картинка">
+                    </body></html>"#
+                        .as_bytes(),
+                ),
+                (
+                    "docs/child.html",
+                    "<html><body><h1>Раздел</h1><p>Первый</p></body></html>".as_bytes(),
+                ),
+                (
+                    "docs/child-two.html",
+                    "<html><body><h1>Раздел</h1><p>Второй</p></body></html>".as_bytes(),
+                ),
+            ],
+        );
+        let output_root = workspace.path().join("out");
+        let book = HbkBook::open(&source_path).expect("book must open");
+        let request = BookExportRequest::new(
+            source_path,
+            output_root.clone(),
+            BookExportFormat::Markdown,
+            BookExportHierarchy::Toc,
+        )
+        .expect("markdown/toc request must be valid");
+
+        let result = BookExporter::new(&book)
+            .export(&request)
+            .expect("markdown/toc export must succeed");
+
+        let exported: Vec<_> = result
+            .files()
+            .iter()
+            .map(|file| {
+                file.path()
+                    .strip_prefix(&output_root)
+                    .expect("exported file must be under output root")
+                    .to_path_buf()
+            })
+            .collect();
+        assert_eq!(
+            exported,
+            vec![
+                PathBuf::from("справка/index.md"),
+                PathBuf::from("справка/раздел/index.md"),
+                PathBuf::from("справка/раздел-2/index.md"),
+                PathBuf::from("справка/группа/index.md"),
+                PathBuf::from("справка/ссылка-html/index.md"),
+            ]
+        );
+
+        let root_markdown = fs::read_to_string(output_root.join("справка/index.md"))
+            .expect("root page must be exported");
+        assert!(
+            root_markdown.contains("[Раздел](раздел/index.md)"),
+            "{root_markdown}"
+        );
+        assert!(
+            root_markdown.contains("[Вторая](раздел-2/index.md)"),
+            "{root_markdown}"
+        );
+        assert!(root_markdown.contains("Другая книга"));
+        assert!(!root_markdown.contains("[Другая книга]"));
+        assert!(!root_markdown.contains("otherbook"));
+        assert!(root_markdown.contains("Несуществующая"));
+        assert!(!root_markdown.contains("child.html"));
+        assert!(!root_markdown.contains("missing.html"));
+        assert!(root_markdown.contains("[Внешняя](https://example.com/help)"));
+        assert!(!root_markdown.contains("assets/pic.png"));
+        assert_no_raw_markdown_scaffolding(&root_markdown);
+
+        let heading_only = fs::read_to_string(output_root.join("справка/группа/index.md"))
+            .expect("empty TOC path page must be exported");
+        assert_eq!(heading_only, "# Группа\n");
+        let missing_storage_page =
+            fs::read_to_string(output_root.join("справка/ссылка-html/index.md"))
+                .expect("missing storage TOC page must be exported as heading-only Markdown");
+        assert_eq!(missing_storage_page, "# Ссылка HTML\n");
     }
 
     #[test]
