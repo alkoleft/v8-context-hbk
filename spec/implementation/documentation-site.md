@@ -151,6 +151,11 @@ The first implementation slice should stop at a usable documentation site withou
 5. Add a minimal separate web app that can serve/load the generated manifest, locale root TOC, lazy
    section children and page Markdown. Completed in T113 as the dependency-free
    `web/docs-viewer` Node/static app.
+6. Add coarse progress reporting for long-running `site generate` runs. Completed in T114 with a
+   generator progress callback and CLI `stderr` progress for source discovery, book loading, site
+   planning and artifact writing. The final `stdout` summary remains unchanged.
+7. Remove avoidable repeated work in page generation. Completed in T115 with locale-level link
+   target precomputation, per-book Markdown page loader reuse and per-loader TOC HTML-path indexes.
 
 Search and Syntax Assistant API behavior are intentionally later slices. When added, they should use
 generated local index artifacts or existing accepted local index contracts, not HBK parsing in web
@@ -184,3 +189,39 @@ The first documentation web app lives under `web/docs-viewer`.
 
 Search, Syntax Assistant API endpoints, indexing status and `hbk-reader` route compatibility remain
 outside this slice.
+
+## T114 Site Generation Progress Notes
+
+`hbk-doc-site` exposes `DocSiteGenerator::generate_with_progress` for callers that need
+observability during long generation runs. `DocSiteGenerator::generate` remains the no-progress
+library wrapper for existing callers.
+
+The CLI uses the progress callback in `site generate` and writes progress lines to `stderr`.
+Progress covers:
+
+- discovered source book count;
+- currently loading source book;
+- loaded book count;
+- planned locale, TOC-node and page counts;
+- artifact writing progress for manifest, TOC roots, TOC sections and coarse page milestones.
+
+The progress stream is intentionally coarse. Page artifact messages are throttled so a full corpus
+does not produce one terminal line per generated page. The final summary stays on `stdout` with the
+same keys as T112.
+
+## T115 Site Generation Performance Notes
+
+The page-generation hot path remains sequential and deterministic, but it no longer repeats
+corpus-scale work for every page:
+
+- locale Markdown link targets are computed once per generated locale;
+- unprefixed links are resolved against the current source book, while explicit
+  `v8help://<book>/...` links use the precomputed locale target map;
+- one Markdown page loader is reused per source book during site generation, so `FileStorage`/ZIP
+  readers are not reopened for every page;
+- each documentation page loader builds a TOC HTML-path index once and reuses it for page provenance
+  and link resolution;
+- CLI artifact progress is throttled for both TOC section and page artifact families.
+
+This is intentionally not a worker-pool or tuning-knob change. Later parallelization still requires
+separate measurements and must preserve deterministic artifact order and diagnostics.

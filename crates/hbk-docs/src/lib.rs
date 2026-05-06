@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -35,6 +36,7 @@ impl<'a> DocumentationReader<'a> {
         Ok(DocumentationPageLoader {
             book: self.book,
             storage,
+            toc_pages: toc_pages_by_html_path(self.book.toc()),
         })
     }
 }
@@ -43,6 +45,7 @@ impl<'a> DocumentationReader<'a> {
 pub struct DocumentationPageLoader<'a> {
     book: &'a HbkBook,
     storage: FileStorageReader,
+    toc_pages: HashMap<String, TocPageSummary>,
 }
 
 impl DocumentationPageLoader<'_> {
@@ -55,10 +58,10 @@ impl DocumentationPageLoader<'_> {
                     html_path: normalize_storage_path_owned(html_path),
                     source: Box::new(source),
                 })?;
-        Ok(parse_page_html(
+        Ok(parse_page_html_with_toc_pages(
             self.book.path(),
             self.book.locale().source_code(),
-            self.book.toc(),
+            Some(&self.toc_pages),
             html_path,
             &raw_html,
             |path| self.storage.read_file(path).is_ok(),
@@ -159,16 +162,29 @@ pub fn parse_page_html(
     raw_html: &str,
     mut storage_contains: impl FnMut(&str) -> bool,
 ) -> PageContent {
+    let toc_pages = toc_pages_by_html_path(toc);
+    parse_page_html_with_toc_pages(
+        hbk_path,
+        locale,
+        Some(&toc_pages),
+        html_path,
+        raw_html,
+        &mut storage_contains,
+    )
+}
+
+fn parse_page_html_with_toc_pages(
+    hbk_path: &Path,
+    locale: &str,
+    toc_pages: Option<&HashMap<String, TocPageSummary>>,
+    html_path: &str,
+    raw_html: &str,
+    mut storage_contains: impl FnMut(&str) -> bool,
+) -> PageContent {
     let normalized_page_path = normalize_storage_path_owned(html_path);
-    let toc_page = toc
-        .flat_pages()
-        .find(|flat_page| flat_page.page.html_path == normalized_page_path);
-    let toc_path = toc_page
-        .as_ref()
-        .map(|flat_page| flat_page.index_path.to_string());
-    let toc_title = toc_page
-        .as_ref()
-        .map(|flat_page| flat_page.page.title.display().to_string());
+    let toc_page = toc_pages.and_then(|pages| pages.get(&normalized_page_path));
+    let toc_path = toc_page.map(|page| page.index_path.clone());
+    let toc_title = toc_page.map(|page| page.title.clone());
     let document = Html::parse_document(raw_html);
     let title = select_first_text(&document, "title")
         .or_else(|| select_first_text(&document, "h1"))
@@ -178,11 +194,11 @@ pub fn parse_page_html(
     let text_preview = text_preview(&body_text);
     let (links, diagnostics) = extract_links(
         &document,
-        toc,
         hbk_path,
         locale,
         &normalized_page_path,
         &title,
+        toc_pages,
         &mut storage_contains,
     );
 
@@ -201,6 +217,25 @@ pub fn parse_page_html(
         links,
         diagnostics,
     }
+}
+
+#[derive(Debug, Clone)]
+struct TocPageSummary {
+    index_path: String,
+    title: String,
+}
+
+fn toc_pages_by_html_path(toc: &Toc) -> HashMap<String, TocPageSummary> {
+    let mut pages = HashMap::new();
+    for flat_page in toc.flat_pages() {
+        pages
+            .entry(flat_page.page.html_path.clone())
+            .or_insert_with(|| TocPageSummary {
+                index_path: flat_page.index_path.to_string(),
+                title: flat_page.page.title.display().to_string(),
+            });
+    }
+    pages
 }
 
 fn select_first_text(document: &Html, selector: &str) -> Option<String> {
@@ -335,11 +370,11 @@ impl TextCollector {
 
 fn extract_links(
     document: &Html,
-    toc: &Toc,
     hbk_path: &Path,
     locale: &str,
     current_html_path: &str,
     page_title: &str,
+    toc_pages: Option<&HashMap<String, TocPageSummary>>,
     mut storage_contains: impl FnMut(&str) -> bool,
 ) -> (Vec<ResolvedLink>, Vec<LinkDiagnostic>) {
     let selector = Selector::parse("a[href]").expect("static selector must be valid");
@@ -351,13 +386,13 @@ fn extract_links(
         let normalized_path = normalize_link_target(current_html_path, &raw_href);
         let resolved_page = normalized_path
             .as_deref()
-            .and_then(|path| toc.find_by_html_path(path));
+            .and_then(|path| toc_pages.and_then(|pages| pages.get(path)));
 
         if let Some(page) = resolved_page {
             links.push(ResolvedLink {
                 raw_href,
                 normalized_path,
-                title: Some(page.title.display().to_string()),
+                title: Some(page.title.clone()),
                 status: LinkStatus::Resolved,
             });
         } else if normalized_path

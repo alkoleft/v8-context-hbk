@@ -181,3 +181,85 @@ Completion notes:
 - The initial app bundle contains viewer code only; generated Markdown pages are loaded on demand.
 - Focused Node tests cover CLI argument parsing, invalid data roots, static/data 404 behavior, path
   traversal confinement and safe Markdown rendering for HTML-like input.
+
+### [x] T114. Add visible progress for long-running documentation site generation
+
+Spec refs:
+
+- FR-HBK-005
+- NFR-SITE-001
+- UAT-HBK-014
+- `spec/implementation/documentation-site.md`
+
+Scope:
+
+- Add a narrow progress-reporting path for `v8-context-hbk site generate` so users can see long
+  source discovery, book loading, site planning and artifact writing stages.
+- Keep progress on `stderr`; keep the final summary on `stdout` with the existing T112 keys.
+- Keep progress coarse and deterministic. Do not add worker pools, caches, tuning knobs, search
+  endpoints or broad performance refactors in this task.
+
+Verification:
+
+- Focused `hbk-doc-site` test captures progress events for a small fixture generation.
+- Focused `v8-context-hbk-cli` test covers coarse page progress throttling.
+- UAT-HBK-014 progress check passed on 2026-05-07 against the representative local 8.5.1.1150
+  corpus.
+- `cargo test -p hbk-doc-site` passed on 2026-05-07.
+- `cargo test -p v8-context-hbk-cli` passed on 2026-05-07.
+- `cargo test --workspace` passed on 2026-05-07.
+
+Completion notes:
+
+- Added `SiteGenerationProgress`, `GeneratedSiteFileKind` and
+  `DocSiteGenerator::generate_with_progress` while preserving the no-progress
+  `DocSiteGenerator::generate` wrapper for library callers.
+- `v8-context-hbk site generate` now writes progress to `stderr`: source discovery, per-book
+  loading, loaded book count, planned locale/TOC/page counts and artifact writing milestones.
+- The final T112 stdout summary shape is unchanged. Page artifact progress is throttled to coarse
+  milestones so full-corpus generation does not print one line per page.
+
+### [x] T115. Remove avoidable repeated work from documentation site page generation
+
+Spec refs:
+
+- FR-HBK-005
+- NFR-SITE-001
+- UAT-HBK-014
+- `spec/acceptance/baseline.md`
+- `spec/implementation/documentation-site.md`
+
+Scope:
+
+- Precompute locale-level Markdown link targets once per generated locale instead of rebuilding
+  them for every generated page.
+- Reuse a per-book Markdown page loader while writing site pages so `site generate` does not reopen
+  the same book `FileStorage`/ZIP reader for every page.
+- Keep generated data shape, page ids, Markdown link rewriting behavior and final stdout summary
+  keys unchanged.
+- Keep the change sequential and deterministic. Do not add worker pools, caches, tuning knobs,
+  search endpoints or broad parser refactors.
+- Keep progress output coarse for both TOC section and page artifact writing.
+
+Verification:
+
+- Focused `hbk-doc-site` tests cover same-book and cross-book site Markdown links after link target
+  precomputation.
+- Focused `v8-context-hbk-cli` tests cover coarse progress throttling for repeated artifact kinds.
+- Representative release-profile UAT-HBK-014 measurement is updated in
+  `spec/acceptance/baseline.md`.
+- `cargo test -p hbk-docs` passed on 2026-05-07.
+- `cargo test -p hbk-book-export` passed on 2026-05-07.
+- `cargo test -p hbk-doc-site` passed on 2026-05-07.
+- `cargo test -p v8-context-hbk-cli` passed on 2026-05-07.
+
+Completion notes:
+
+- `hbk-doc-site` now precomputes locale-level Markdown link targets once per locale and applies
+  current-book scoping for unprefixed page links.
+- `site generate` reuses one Markdown page loader per source book while writing page Markdown, so
+  the same book `FileStorage`/ZIP reader is not reopened for every page.
+- `hbk-docs` now builds a TOC HTML-path index once per `DocumentationPageLoader`, avoiding repeated
+  `flat_pages()` expansion for every page and link in large books.
+- CLI artifact progress remains deterministic but is throttled for both TOC section and page
+  artifacts.

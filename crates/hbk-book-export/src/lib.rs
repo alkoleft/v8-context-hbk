@@ -7,7 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use hbk_book::{
     BookError, HbkBook, Toc, TocPage, normalize_storage_path, normalize_storage_path_segments,
 };
-use hbk_docs::{DocumentationError, DocumentationReader, PageContent};
+use hbk_docs::{DocumentationError, DocumentationPageLoader, DocumentationReader, PageContent};
 use quick_html2md::{MarkdownOptions, html_to_markdown_with_options};
 use scraper::node::Node;
 use scraper::{ElementRef, Html, Selector};
@@ -187,6 +187,11 @@ impl<'a> BookExporter<'a> {
         })
     }
 
+    pub fn markdown_page_loader(&self) -> Result<BookMarkdownPageLoader<'a>, BookExportError> {
+        let loader = DocumentationReader::new(self.book).page_loader()?;
+        Ok(BookMarkdownPageLoader { loader })
+    }
+
     fn export_raw_raw(
         &self,
         request: &BookExportRequest,
@@ -263,6 +268,68 @@ impl<'a> BookExporter<'a> {
             request.output_root().to_path_buf(),
             exported_files,
         ))
+    }
+}
+
+pub trait MarkdownLinkTargets {
+    fn markdown_link_target(
+        &self,
+        normalized_path: &str,
+        source_book_ids: &HashSet<String>,
+    ) -> Option<&PathBuf>;
+}
+
+impl MarkdownLinkTargets for HashMap<String, PathBuf> {
+    fn markdown_link_target(
+        &self,
+        normalized_path: &str,
+        source_book_ids: &HashSet<String>,
+    ) -> Option<&PathBuf> {
+        self.get(normalized_path).or_else(|| {
+            normalized_path
+                .split_once('/')
+                .filter(|(book_segment, _)| source_book_ids.contains(*book_segment))
+                .and_then(|(_, path_without_book_segment)| self.get(path_without_book_segment))
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct BookMarkdownPageLoader<'a> {
+    loader: DocumentationPageLoader<'a>,
+}
+
+impl BookMarkdownPageLoader<'_> {
+    pub fn linked_markdown_toc_page(
+        &mut self,
+        html_path: &str,
+        title: &str,
+        current_output_path: &Path,
+        link_targets: &impl MarkdownLinkTargets,
+        source_book_ids: &HashSet<String>,
+    ) -> Result<BookMarkdownPage, BookExportError> {
+        let normalized_html_path = normalize_storage_path(html_path);
+        let markdown = if is_heading_only_toc_path(normalized_html_path) {
+            heading_only_markdown(title)
+        } else {
+            match self.loader.load_page(normalized_html_path) {
+                Ok(page) => page_content_to_linked_markdown(
+                    &page,
+                    current_output_path,
+                    link_targets,
+                    source_book_ids,
+                ),
+                Err(error) if documentation_error_is_missing_page(&error) => {
+                    heading_only_markdown(title)
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
+        Ok(BookMarkdownPage {
+            html_path: normalized_html_path.to_string(),
+            title: title.to_string(),
+            markdown,
+        })
     }
 }
 
@@ -872,7 +939,7 @@ fn page_content_to_markdown(page: &PageContent) -> String {
 fn page_content_to_linked_markdown(
     page: &PageContent,
     current_output_path: &Path,
-    link_targets: &HashMap<String, PathBuf>,
+    link_targets: &impl MarkdownLinkTargets,
     source_book_ids: &HashSet<String>,
 ) -> String {
     let html = rewrite_page_link_targets(page, current_output_path, link_targets, source_book_ids);
@@ -903,7 +970,7 @@ fn markdown_link_targets(plans: &[MarkdownTocExportPlan]) -> HashMap<String, Pat
 fn rewrite_page_link_targets(
     page: &PageContent,
     current_output_path: &Path,
-    link_targets: &HashMap<String, PathBuf>,
+    link_targets: &impl MarkdownLinkTargets,
     source_book_ids: &HashSet<String>,
 ) -> String {
     let mut replacements: HashMap<String, Option<String>> = HashMap::new();
@@ -914,7 +981,7 @@ fn rewrite_page_link_targets(
         let replacement = link
             .normalized_path
             .as_deref()
-            .and_then(|target| markdown_link_target(target, link_targets, source_book_ids))
+            .and_then(|target| link_targets.markdown_link_target(target, source_book_ids))
             .map(|target| {
                 append_markdown_link_fragment(
                     relative_markdown_link(current_output_path, target),
@@ -945,25 +1012,12 @@ fn is_external_href(href: &str) -> bool {
     href.contains(':') && !href.trim_start().starts_with("v8help://")
 }
 
-fn markdown_link_target<'a>(
-    normalized_path: &str,
-    link_targets: &'a HashMap<String, PathBuf>,
-    source_book_ids: &HashSet<String>,
-) -> Option<&'a PathBuf> {
-    link_targets.get(normalized_path).or_else(|| {
-        normalized_path
-            .split_once('/')
-            .filter(|(book_segment, _)| source_book_ids.contains(*book_segment))
-            .and_then(|(_, path_without_book_segment)| link_targets.get(path_without_book_segment))
-    })
-}
-
 fn replace_href_attributes(
     html: &str,
     replacements: &HashMap<String, Option<String>>,
     current_html_path: &str,
     current_output_path: &Path,
-    link_targets: &HashMap<String, PathBuf>,
+    link_targets: &impl MarkdownLinkTargets,
     source_book_ids: &HashSet<String>,
 ) -> String {
     let mut output = String::with_capacity(html.len());
@@ -1005,7 +1059,7 @@ fn replace_href_attributes(
 fn href_replacement_for_raw_value(
     current_html_path: &str,
     current_output_path: &Path,
-    link_targets: &HashMap<String, PathBuf>,
+    link_targets: &impl MarkdownLinkTargets,
     source_book_ids: &HashSet<String>,
     raw_href: &str,
 ) -> Option<Option<String>> {
@@ -1014,7 +1068,7 @@ fn href_replacement_for_raw_value(
     }
     let target = normalize_markdown_link_target(current_html_path, raw_href)
         .as_deref()
-        .and_then(|target| markdown_link_target(target, link_targets, source_book_ids))
+        .and_then(|target| link_targets.markdown_link_target(target, source_book_ids))
         .map(|target| {
             append_markdown_link_fragment(
                 relative_markdown_link(current_output_path, target),

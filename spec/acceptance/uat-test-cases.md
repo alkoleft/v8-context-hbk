@@ -637,13 +637,18 @@ Steps:
 
 ```bash
 rm -rf target/uat/doc-site-data
+mkdir -p target/uat
 cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- site generate \
   /opt/1cv8/x86_64/8.5.1.1150 \
   --output target/uat/doc-site-data \
   --include 'fmtdui_ru.hbk' \
   --include 'shlang_ru.hbk' \
   --include 'shquery_ru.hbk' \
-  --include 'dcsui_ru.hbk'
+  --include 'dcsui_ru.hbk' \
+  2> target/uat/doc-site-data.progress.log
+
+rg -n 'progress: discovered|progress: loading source book|progress: planned site data|progress: writing artifact' \
+  target/uat/doc-site-data.progress.log
 
 test -f target/uat/doc-site-data/data/manifest.json
 test -f target/uat/doc-site-data/data/locales/ru/toc-root.json
@@ -680,6 +685,8 @@ Expected result:
 - TOC data uses stable generated ids and includes source book identity for page-bearing nodes.
 - Visible generated page/TOC content does not leak raw installed HBK paths, raw TOC indexes or raw
   HTML storage paths.
+- The progress stream reports source discovery, book loading, site planning and artifact writing on
+  `stderr`.
 - The command summary reports source book count, generated page count, output size, build timing and
   peak RSS or equivalent.
 - The implementation task records the first real measurement or skip reason in

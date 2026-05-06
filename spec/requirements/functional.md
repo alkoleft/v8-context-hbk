@@ -195,6 +195,8 @@ Acceptance:
 - The web application bundle or server response does not include all generated page Markdown.
 - Site generation reports source book count, page count, output size and timing/resource
   measurements in the acceptance baseline before performance optimization tasks.
+- Long-running site generation reports visible progress for source discovery, book loading, site
+  planning and artifact writing without changing the final stdout summary shape.
 
 ## FR-SH-001: Syntax Assistant Root Discovery
 

@@ -6,7 +6,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use hbk_book::{BookError, HbkBook, TocPage, normalize_storage_path};
-use hbk_book_export::{BookExportError, BookExporter};
+use hbk_book_export::{BookExportError, BookExporter, BookMarkdownPageLoader, MarkdownLinkTargets};
 use serde::Serialize;
 
 const SCHEMA_VERSION: u32 = 1;
@@ -61,6 +61,40 @@ pub enum SiteSource {
     Directory {
         source_dir: PathBuf,
         include_file_names: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeneratedSiteFileKind {
+    Manifest,
+    TocRoot,
+    TocSection,
+    Page,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SiteGenerationProgress<'a> {
+    SourceBooksDiscovered {
+        count: usize,
+    },
+    SourceBookLoading {
+        current: usize,
+        total: usize,
+        path: &'a Path,
+    },
+    SourceBooksLoaded {
+        count: usize,
+    },
+    SiteDataBuilt {
+        locale_count: usize,
+        toc_node_count: usize,
+        page_count: usize,
+    },
+    ArtifactWriting {
+        current: usize,
+        total: usize,
+        kind: GeneratedSiteFileKind,
+        path: &'a Path,
     },
 }
 
@@ -303,18 +337,36 @@ impl DocSiteGenerator {
     pub fn generate(
         request: &SiteGenerationRequest,
     ) -> Result<SiteGenerationResult, SiteGenerationError> {
+        Self::generate_with_progress(request, |_| {})
+    }
+
+    pub fn generate_with_progress<F>(
+        request: &SiteGenerationRequest,
+        mut progress: F,
+    ) -> Result<SiteGenerationResult, SiteGenerationError>
+    where
+        F: FnMut(SiteGenerationProgress<'_>),
+    {
         let paths = discover_source_books(request.source())?;
+        progress(SiteGenerationProgress::SourceBooksDiscovered { count: paths.len() });
         if paths.is_empty() {
             return Err(SiteGenerationError::EmptyCorpus);
         }
-        let books = load_source_books(paths)?;
+        let books = load_source_books(paths, &mut progress)?;
+        progress(SiteGenerationProgress::SourceBooksLoaded { count: books.len() });
         let data_root = request.output_root().join("data");
         let site = build_site_data(&books);
+        progress(SiteGenerationProgress::SiteDataBuilt {
+            locale_count: site.locale_count,
+            toc_node_count: site.toc_node_count,
+            page_count: site.page_count,
+        });
         write_site_data(
             request.output_root().to_path_buf(),
             &data_root,
             site,
             &books,
+            &mut progress,
         )
     }
 }
@@ -381,9 +433,21 @@ struct SourceBook {
     book: HbkBook,
 }
 
-fn load_source_books(paths: Vec<PathBuf>) -> Result<Vec<SourceBook>, SiteGenerationError> {
+fn load_source_books<F>(
+    paths: Vec<PathBuf>,
+    progress: &mut F,
+) -> Result<Vec<SourceBook>, SiteGenerationError>
+where
+    F: FnMut(SiteGenerationProgress<'_>),
+{
+    let total = paths.len();
     let mut opened = Vec::with_capacity(paths.len());
-    for path in paths {
+    for (index, path) in paths.into_iter().enumerate() {
+        progress(SiteGenerationProgress::SourceBookLoading {
+            current: index + 1,
+            total,
+            path: &path,
+        });
         let book = HbkBook::open(&path).map_err(|source| SiteGenerationError::Book {
             path: path.clone(),
             source,
@@ -775,18 +839,37 @@ fn write_site_data(
     data_root: &Path,
     site: SiteData,
     books: &[SourceBook],
+    progress: &mut impl FnMut(SiteGenerationProgress<'_>),
 ) -> Result<SiteGenerationResult, SiteGenerationError> {
     let mut files = Vec::new();
+    let total_files = generated_site_file_count(&site);
+    let mut written_files = 0usize;
     create_directory(data_root)?;
-    files.push(write_json(data_root.join("manifest.json"), &site.manifest)?);
+    let manifest_path = data_root.join("manifest.json");
+    written_files += 1;
+    progress(SiteGenerationProgress::ArtifactWriting {
+        current: written_files,
+        total: total_files,
+        kind: GeneratedSiteFileKind::Manifest,
+        path: &manifest_path,
+    });
+    files.push(write_json(manifest_path, &site.manifest)?);
     for locale in site.locales {
         let locale_root = data_root.join("locales").join(&locale.locale);
         let sections_root = locale_root.join("toc-sections");
         let pages_root = locale_root.join("pages");
         create_directory(&sections_root)?;
         create_directory(&pages_root)?;
+        let toc_root_path = locale_root.join("toc-root.json");
+        written_files += 1;
+        progress(SiteGenerationProgress::ArtifactWriting {
+            current: written_files,
+            total: total_files,
+            kind: GeneratedSiteFileKind::TocRoot,
+            path: &toc_root_path,
+        });
         files.push(write_json(
-            locale_root.join("toc-root.json"),
+            toc_root_path,
             &TocRootArtifact {
                 schema_version: SCHEMA_VERSION,
                 locale: locale.locale.clone(),
@@ -794,8 +877,16 @@ fn write_site_data(
             },
         )?);
         for section in locale.sections {
+            let section_path = sections_root.join(format!("{}.json", section.id.as_str()));
+            written_files += 1;
+            progress(SiteGenerationProgress::ArtifactWriting {
+                current: written_files,
+                total: total_files,
+                kind: GeneratedSiteFileKind::TocSection,
+                path: &section_path,
+            });
             files.push(write_json(
-                sections_root.join(format!("{}.json", section.id.as_str())),
+                section_path,
                 &TocSectionArtifact {
                     schema_version: SCHEMA_VERSION,
                     locale: section.locale,
@@ -804,12 +895,23 @@ fn write_site_data(
                 },
             )?);
         }
+        let link_targets = locale_link_targets(&locale.pages, books);
+        let mut page_loaders = BTreeMap::new();
         for page in &locale.pages {
+            let page_path = pages_root.join(page_markdown_relative_path(page));
+            written_files += 1;
+            progress(SiteGenerationProgress::ArtifactWriting {
+                current: written_files,
+                total: total_files,
+                kind: GeneratedSiteFileKind::Page,
+                path: &page_path,
+            });
             files.push(write_markdown_page(
-                &pages_root,
+                &page_path,
                 page,
-                &locale.pages,
+                &link_targets,
                 books,
+                &mut page_loaders,
             )?);
         }
     }
@@ -823,26 +925,53 @@ fn write_site_data(
     ))
 }
 
-fn write_markdown_page(
-    pages_root: &Path,
+fn generated_site_file_count(site: &SiteData) -> usize {
+    1 + site
+        .locales
+        .iter()
+        .map(|locale| 1 + locale.sections.len() + locale.pages.len())
+        .sum::<usize>()
+}
+
+fn write_markdown_page<'a>(
+    output_path: &Path,
     page: &SitePageArtifactPlan,
-    locale_pages: &[SitePageArtifactPlan],
-    books: &[SourceBook],
+    link_targets: &LocaleLinkTargets,
+    books: &'a [SourceBook],
+    page_loaders: &mut BTreeMap<SiteBookId, BookMarkdownPageLoader<'a>>,
 ) -> Result<GeneratedSiteFile, SiteGenerationError> {
     let book = books
         .iter()
         .find(|book| book.id == page.book_id)
         .expect("page plan must refer to a loaded source book");
     let current_output_path = page_markdown_relative_path(page);
-    let link_targets = site_page_link_targets(page, locale_pages, books);
-    let source_book_ids = source_book_link_ids(book);
-    let markdown = BookExporter::new(&book.book)
+    if !page_loaders.contains_key(&book.id) {
+        let loader = BookExporter::new(&book.book)
+            .markdown_page_loader()
+            .map_err(|source| SiteGenerationError::Markdown {
+                path: book.book.path().to_path_buf(),
+                html_path: page.html_path.clone(),
+                source,
+            })?;
+        page_loaders.insert(book.id.clone(), loader);
+    }
+    let page_link_targets = PageLinkTargets {
+        locale: link_targets,
+        book_id: &page.book_id,
+    };
+    let source_book_ids = link_targets
+        .book_source_ids
+        .get(&page.book_id)
+        .expect("page plan must refer to source book link ids");
+    let markdown = page_loaders
+        .get_mut(&book.id)
+        .expect("page loader must exist for source book")
         .linked_markdown_toc_page(
             &page.html_path,
             &page.title,
             &current_output_path,
-            &link_targets,
-            &source_book_ids,
+            &page_link_targets,
+            source_book_ids,
         )
         .map_err(|source| SiteGenerationError::Markdown {
             path: book.book.path().to_path_buf(),
@@ -851,39 +980,80 @@ fn write_markdown_page(
         })?
         .markdown()
         .to_string();
-    write_text(pages_root.join(current_output_path), &markdown)
+    write_text(output_path.to_path_buf(), &markdown)
 }
 
-fn site_page_link_targets(
-    current: &SitePageArtifactPlan,
+#[derive(Debug)]
+struct LocaleLinkTargets {
+    prefixed_targets: HashMap<String, PathBuf>,
+    book_targets: BTreeMap<SiteBookId, HashMap<String, PathBuf>>,
+    book_source_ids: BTreeMap<SiteBookId, HashSet<String>>,
+}
+
+fn locale_link_targets(
     locale_pages: &[SitePageArtifactPlan],
     books: &[SourceBook],
-) -> HashMap<String, PathBuf> {
-    let mut targets = HashMap::new();
-    let book_ids = books
+) -> LocaleLinkTargets {
+    let book_source_ids = books
         .iter()
         .map(|book| (book.id.clone(), source_book_link_ids(book)))
         .collect::<BTreeMap<_, _>>();
+    let mut prefixed_targets = HashMap::new();
+    let mut book_targets: BTreeMap<SiteBookId, HashMap<String, PathBuf>> = BTreeMap::new();
     for page in locale_pages {
         let normalized_html_path = normalize_storage_path(&page.html_path).to_string();
         if normalized_html_path.is_empty() {
             continue;
         }
         let relative_path = page_markdown_relative_path(page);
-        if page.book_id == current.book_id {
-            targets
-                .entry(normalized_html_path.clone())
-                .or_insert_with(|| relative_path.clone());
-        }
-        if let Some(source_ids) = book_ids.get(&page.book_id) {
+        book_targets
+            .entry(page.book_id.clone())
+            .or_default()
+            .entry(normalized_html_path.clone())
+            .or_insert_with(|| relative_path.clone());
+        if let Some(source_ids) = book_source_ids.get(&page.book_id) {
             for source_id in source_ids {
-                targets
+                prefixed_targets
                     .entry(format!("{source_id}/{normalized_html_path}"))
                     .or_insert_with(|| relative_path.clone());
             }
         }
     }
-    targets
+    LocaleLinkTargets {
+        prefixed_targets,
+        book_targets,
+        book_source_ids,
+    }
+}
+
+struct PageLinkTargets<'a> {
+    locale: &'a LocaleLinkTargets,
+    book_id: &'a SiteBookId,
+}
+
+impl MarkdownLinkTargets for PageLinkTargets<'_> {
+    fn markdown_link_target(
+        &self,
+        normalized_path: &str,
+        source_book_ids: &HashSet<String>,
+    ) -> Option<&PathBuf> {
+        self.locale
+            .book_targets
+            .get(self.book_id)
+            .and_then(|targets| targets.get(normalized_path))
+            .or_else(|| self.locale.prefixed_targets.get(normalized_path))
+            .or_else(|| {
+                normalized_path
+                    .split_once('/')
+                    .filter(|(book_segment, _)| source_book_ids.contains(*book_segment))
+                    .and_then(|(_, path_without_book_segment)| {
+                        self.locale
+                            .book_targets
+                            .get(self.book_id)
+                            .and_then(|targets| targets.get(path_without_book_segment))
+                    })
+            })
+    }
 }
 
 fn source_book_link_ids(book: &SourceBook) -> HashSet<String> {
@@ -1206,7 +1376,7 @@ mod tests {
             }"#,
             vec![(
                 "beta/page.html",
-                "<html><body><h1>Страница</h1><p>beta page body</p></body></html>".as_bytes(),
+                "<html><body><h1>Страница</h1><p>beta page body</p><a href=\"v8help://alpha/alpha/page.html\">alpha</a></body></html>".as_bytes(),
             )],
         );
         let output = workspace.path().join("out");
@@ -1314,11 +1484,90 @@ mod tests {
         assert!(!alpha_markdown.contains("/alpha/section.html"));
         assert!(beta_markdown.contains("# Страница"));
         assert!(beta_markdown.contains("beta page body"));
+        assert!(beta_markdown.contains("[alpha]("));
+        assert!(!beta_markdown.contains("v8help://alpha"));
         let alpha_page_file_name = format!("{alpha_page_id}.md");
         assert!(result.files().iter().any(|file| {
             file.path().file_name().and_then(|name| name.to_str())
                 == Some(alpha_page_file_name.as_str())
         }));
+    }
+
+    #[test]
+    fn generate_with_progress_reports_books_planning_and_artifacts() {
+        let workspace = TempWorkspace::new("progress");
+        let source = workspace.path().join("alpha_ru.hbk");
+        write_book_fixture_with_toc(
+            &source,
+            "Alpha",
+            "alpha",
+            r#"{
+                2
+                {1,0,1,2,{0,0,{0,0,{"ru","Раздел"}{"en","Section"}},""}}
+                {2,1,0,{0,0,{0,0,{"ru","Страница"}{"en","Page"}},"/alpha/page.html"}}
+            }"#,
+            vec![(
+                "alpha/page.html",
+                "<html><body><h1>Страница</h1><p>page body</p></body></html>".as_bytes(),
+            )],
+        );
+        let output = workspace.path().join("out");
+        let request = SiteGenerationRequest::explicit_files(&output, vec![source.clone()])
+            .expect("explicit request must be valid");
+        let mut events = Vec::new();
+
+        let result = DocSiteGenerator::generate_with_progress(&request, |event| match event {
+            SiteGenerationProgress::SourceBooksDiscovered { count } => {
+                events.push(format!("discovered:{count}"));
+            }
+            SiteGenerationProgress::SourceBookLoading {
+                current,
+                total,
+                path,
+            } => {
+                events.push(format!(
+                    "loading:{current}/{total}:{}",
+                    path_file_name(path)
+                ));
+            }
+            SiteGenerationProgress::SourceBooksLoaded { count } => {
+                events.push(format!("loaded:{count}"));
+            }
+            SiteGenerationProgress::SiteDataBuilt {
+                locale_count,
+                toc_node_count,
+                page_count,
+            } => {
+                events.push(format!(
+                    "planned:{locale_count}:{toc_node_count}:{page_count}"
+                ));
+            }
+            SiteGenerationProgress::ArtifactWriting {
+                current,
+                total,
+                kind,
+                path: _,
+            } => {
+                events.push(format!("artifact:{current}/{total}:{kind:?}"));
+            }
+        })
+        .expect("site data must generate");
+
+        assert_eq!(result.book_count(), 1);
+        assert_eq!(result.page_count(), 1);
+        assert_eq!(
+            events,
+            vec![
+                "discovered:1",
+                "loading:1/1:alpha_ru.hbk",
+                "loaded:1",
+                "planned:1:2:1",
+                "artifact:1/4:Manifest",
+                "artifact:2/4:TocRoot",
+                "artifact:3/4:TocSection",
+                "artifact:4/4:Page",
+            ]
+        );
     }
 
     #[test]

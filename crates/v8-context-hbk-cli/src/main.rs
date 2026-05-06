@@ -8,7 +8,10 @@ use hbk_book_export::{
     BookExportFormat, BookExportHierarchy, BookExportRequest, BookExportResult, BookExporter,
 };
 use hbk_container::HbkContainer;
-use hbk_doc_site::{DocSiteGenerator, SiteGenerationRequest, SiteGenerationResult};
+use hbk_doc_site::{
+    DocSiteGenerator, GeneratedSiteFileKind, SiteGenerationProgress, SiteGenerationRequest,
+    SiteGenerationResult,
+};
 use hbk_syntax_export::JsonExporter;
 use serde_json::{Value, json};
 use syntax_helper_extract::{SyntaxHelperReader, SyntaxHelperStreamError};
@@ -374,12 +377,79 @@ fn generate_site_data(
 ) -> Result<SiteGenerationRun, hbk_doc_site::SiteGenerationError> {
     let started = Instant::now();
     let request = SiteGenerationRequest::source_directory(output, source_dir, include_file_names);
-    let result = DocSiteGenerator::generate(&request)?;
+    let result =
+        DocSiteGenerator::generate_with_progress(&request, print_site_generation_progress)?;
     Ok(SiteGenerationRun {
         result,
         elapsed_ms: started.elapsed().as_millis(),
         peak_rss_kib: peak_rss_kib(),
     })
+}
+
+fn print_site_generation_progress(progress: SiteGenerationProgress<'_>) {
+    match progress {
+        SiteGenerationProgress::SourceBooksDiscovered { count } => {
+            eprintln!("progress: discovered {count} source book(s)");
+        }
+        SiteGenerationProgress::SourceBookLoading {
+            current,
+            total,
+            path,
+        } => {
+            eprintln!(
+                "progress: loading source book {current}/{total}: {}",
+                path.display()
+            );
+        }
+        SiteGenerationProgress::SourceBooksLoaded { count } => {
+            eprintln!("progress: loaded {count} source book(s)");
+        }
+        SiteGenerationProgress::SiteDataBuilt {
+            locale_count,
+            toc_node_count,
+            page_count,
+        } => {
+            eprintln!(
+                "progress: planned site data: locales={locale_count}, toc_nodes={toc_node_count}, pages={page_count}"
+            );
+        }
+        SiteGenerationProgress::ArtifactWriting {
+            current,
+            total,
+            kind,
+            path,
+        } => {
+            if should_print_artifact_progress(current, total, kind) {
+                eprintln!(
+                    "progress: writing artifact {current}/{total} ({}): {}",
+                    site_file_kind_label(kind),
+                    path.display()
+                );
+            }
+        }
+    }
+}
+
+fn should_print_artifact_progress(
+    current: usize,
+    total: usize,
+    kind: GeneratedSiteFileKind,
+) -> bool {
+    match kind {
+        GeneratedSiteFileKind::Manifest | GeneratedSiteFileKind::TocRoot => true,
+        GeneratedSiteFileKind::TocSection | GeneratedSiteFileKind::Page => {
+            current == total || current % 100 == 0
+        }
+    }
+}
+
+fn site_file_kind_label(kind: GeneratedSiteFileKind) -> &'static str {
+    match kind {
+        GeneratedSiteFileKind::Manifest => "manifest",
+        GeneratedSiteFileKind::TocRoot => "toc-root",
+        GeneratedSiteFileKind::TocSection => "toc-section",
+        GeneratedSiteFileKind::Page => "page",
+    }
 }
 
 fn peak_rss_kib() -> Option<u64> {
@@ -1963,6 +2033,40 @@ mod tests {
         assert!(markdown.contains("# Справка"));
         assert!(markdown.contains("Site page"));
         let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn site_generate_page_progress_is_coarse() {
+        assert!(!should_print_artifact_progress(
+            99,
+            250,
+            GeneratedSiteFileKind::Page
+        ));
+        assert!(should_print_artifact_progress(
+            100,
+            250,
+            GeneratedSiteFileKind::Page
+        ));
+        assert!(should_print_artifact_progress(
+            250,
+            250,
+            GeneratedSiteFileKind::Page
+        ));
+        assert!(should_print_artifact_progress(
+            1,
+            250,
+            GeneratedSiteFileKind::Manifest
+        ));
+        assert!(!should_print_artifact_progress(
+            99,
+            250,
+            GeneratedSiteFileKind::TocSection
+        ));
+        assert!(should_print_artifact_progress(
+            100,
+            250,
+            GeneratedSiteFileKind::TocSection
+        ));
     }
 
     #[test]

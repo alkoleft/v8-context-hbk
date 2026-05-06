@@ -74,6 +74,8 @@ Requirements:
 - The generator must write deterministic artifacts in bounded memory and deterministic order.
 - Build tasks must record source book count, generated page count, output size, wall-clock time and
   peak RSS or equivalent for the representative local HBK corpus before broad optimization.
+- Long-running generation must expose coarse progress at deterministic boundaries so a user can see
+  which stage is active without requiring page-level debug logs.
 - Do not add search service, Syntax Assistant API endpoints, worker pool tuning knobs or semantic
   search provider until the documentation navigation/page-view path is accepted and measured.
 - The web app must serve/load generated data without parsing HBK files in request paths.
