@@ -31,6 +31,8 @@ typed local provider for a BSL analyzer without re-parsing HBK books in analyzer
   facts represent the book hierarchy, not only local HTML path/title patterns.
 - Provide a Syntax Assistant query command surface for fast retrieval of extracted platform API facts,
   including exact lookup, description/keyword search and relationship exploration.
+- Generate local documentation-site data for ordinary HBK documentation using a global TOC and lazy
+  page data artifacts, and keep the documentation web application separate from HBK parsing.
 - Orient `syntax` command and index behavior toward BSL development and code-analysis assistance:
   precise signatures, constructor parameters, type references, owner/member relationships and
   deterministic tool-readable output are more important than generic documentation search breadth.
@@ -43,6 +45,7 @@ typed local provider for a BSL analyzer without re-parsing HBK books in analyzer
 
 - Writing or modifying `.hbk` containers.
 - Rendering the full HTML help UI.
+- Reproducing MkDocs, Docusaurus or the existing `hbk-reader` Kotlin/Spring application.
 - MCP server implementation.
 - Runtime extraction from 1C processes.
 - Complete compatibility proof for every platform version.
@@ -150,6 +153,48 @@ Acceptance:
 - A page from a small real HBK book loads as HTML.
 - The reader returns title, path, content and provenance.
 - Link resolution is deterministic and covered by fixture tests.
+
+## FR-HBK-005: Documentation Site Generator and Web Application
+
+Decision record: ADR-0010.
+
+The system must support a local documentation site for ordinary HBK documentation without requiring
+MkDocs, Docusaurus or page-per-route static-site generation.
+
+The generator input is a directory or explicit list of HBK books. The generator must group books by
+locale, merge their TOC trees into one global TOC per locale and write a generated data artifact
+directory containing:
+
+- a manifest with artifact schema version, generator version, available locales and source book
+  inventory;
+- a global TOC data contract suitable for lazy section loading;
+- page content files addressed by stable generated page ids;
+- optional Syntax Assistant/search index artifacts only after the documentation navigation/page-view
+  slice is accepted.
+
+A separate web application must serve the documentation UI and load TOC sections/page content from
+generated data files on demand. It must not require a generated route, bundled JavaScript module or
+eagerly loaded Markdown payload for every documentation page. It must not parse HBK files or run
+Syntax Assistant extraction in request paths.
+
+The global TOC merge must preserve source book identity for page-bearing nodes, keep deterministic
+ordering, avoid raw HBK/HTML/TOC paths as visible labels and handle duplicate titles or duplicate
+page paths through stable generated ids. Title-based branch merging may be used only for same-level
+section-like nodes; page-bearing nodes with the same title must not be silently collapsed unless a
+later requirement proves a stronger equivalence rule.
+
+Acceptance:
+
+- Site data generation over representative 8.5.1.1150 HBK books produces manifest, locale TOC data
+  and page content files.
+- Generated manifest records source books and locales.
+- Global TOC data contains merged locale navigation, stable node/page ids, source book identity and
+  lazy-child metadata.
+- A separate web application can serve or load the generated data and navigate from root TOC to a
+  page without invoking HBK parsing in request paths.
+- The web application bundle or server response does not include all generated page Markdown.
+- Site generation reports source book count, page count, output size and timing/resource
+  measurements in the acceptance baseline before performance optimization tasks.
 
 ## FR-SH-001: Syntax Assistant Root Discovery
 
@@ -806,6 +851,7 @@ v8-context-hbk inspect <book.hbk>
 v8-context-hbk toc <book.hbk> --format json
 v8-context-hbk page <book.hbk> --path <html-path>
 v8-context-hbk export <book.hbk> --output <dir> --format <raw|markdown> --hierarchy <raw|toc>
+v8-context-hbk site generate <source-dir> --output <data-dir> [--include <file-name>]...
 v8-context-hbk syntax export <shcntx.hbk> --output <dir>
 ```
 
@@ -815,4 +861,7 @@ Acceptance:
 - `inspect` prints entity names and basic metadata.
 - `export` writes ordinary book content or returns a stable readable unsupported-combination
   diagnostic.
+- `site generate` writes documentation-site data artifacts or returns a stable readable diagnostic
+  for missing source directory, empty corpus or unsupported input. Repeated `--include <file-name>`
+  filters restrict source-directory discovery for deterministic UAT and focused generation.
 - `syntax export` writes canonical JSON export files.

@@ -12,6 +12,11 @@ As a Rust tool author, I need to open an HBK file, inspect its entities, read fi
 As a documentation tool, I need to traverse the book TOC, resolve a page by path, read page HTML and
 follow links consistently.
 
+### Documentation Site User
+
+As a developer or maintainer, I need to browse the full installed 1C documentation corpus through a
+local static web site with one global navigation tree and fast page opening.
+
 ### Platform-Context Consumer
 
 As an AI/indexing tool, I need structured platform API data from Syntax Assistant: methods,
@@ -65,6 +70,17 @@ Outcome: a user can export a whole HBK help book either as raw stored files or a
 TOC-ordered Markdown files for review, indexing and downstream documentation workflows.
 
 Related requirements: FR-HBK-002, FR-HBK-003, FR-HBK-004, FR-DOC-001, FR-CLI-001.
+
+## UC-HBK-004: Browse a Generated Documentation Site
+
+Primary user: documentation site user.
+
+Outcome: a user can generate documentation-site data from multiple HBK books, open a separate web
+application and navigate one merged locale-level TOC to a documentation page without running
+`hbk-reader`, MkDocs, Docusaurus or HBK parsing in web request paths.
+
+Related requirements: FR-HBK-002, FR-HBK-003, FR-HBK-004, FR-HBK-005, FR-DOC-001, FR-CLI-001,
+NFR-SITE-001.
 
 ## UC-SH-001: Export Syntax Assistant Platform Data
 

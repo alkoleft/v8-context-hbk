@@ -36,6 +36,8 @@ Otherwise reconcile the specification files before implementing.
 - `implementation/solution-context-resolve.md`: ADR-0008 Rust API design for resolving platform,
   BSL-language, query-language, configuration and source-code context facts through one
   source-neutral interface.
+- `implementation/documentation-site.md`: ADR-0010 documentation-site generator and separate web
+  app plan, global TOC merge contract and first implementation slices.
 - `acceptance/baseline.md`: acceptance gates, commands, durable T9/T10 conclusions and success metrics.
 - `acceptance/test-case-requirements.md`: rules for UAT and black-box test case specifications.
 - `acceptance/uat-test-cases.md`: current UAT test case catalog.
@@ -45,8 +47,8 @@ Otherwise reconcile the specification files before implementing.
   (`completed-tasks-t0-t12.md`, `completed-tasks-t13-t17-t19-t24.md`,
   `completed-tasks-t25-t34.md`, `completed-tasks-t41-t47.md`,
   `completed-tasks-t48-t56.md`, `completed-tasks-t57-t65-t68-t85.md`,
-  `completed-tasks-t66-t67-t86-t90.md`, `implementation-todo-2026-05-04.md`,
-  `implementation-todo-2026-05-05.md`).
+  `completed-tasks-t66-t67-t86-t90.md`, `completed-tasks-t91-t110.md`,
+  `implementation-todo-2026-05-04.md`, `implementation-todo-2026-05-05.md`).
 
 ## External Files
 
@@ -87,3 +89,10 @@ The current provisional Syntax Assistant consumer JSON contract is `schema_versi
 `FR-EXPORT-001` owns the exact record-family shape; `acceptance/baseline.md` records the latest
 validated counts, schema-changing task conclusions and query-index baselines. The active task ledger
 owns current unchecked work.
+
+## Current Documentation Site Direction
+
+ADR-0010 owns the documentation web-view direction. Do not route the full HBK documentation corpus
+through MkDocs, Docusaurus or another page-per-route static-site generator as the first solution.
+Split the work into a generator utility and a separate web app: generated manifest, merged global
+TOC and page data first; search, Syntax Assistant index artifacts and web API endpoints later.

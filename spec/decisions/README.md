@@ -9,3 +9,4 @@
 - [ADR-0007: Keep the BSL Analyzer Provider Boundary as CLI JSON First](ADR-0007-bsl-analyzer-provider-boundary.md) - Accepted.
 - [ADR-0008: Add a Rust Context Resolver API for In-Process Solution Analysis](ADR-0008-rust-context-resolver-api.md) - Accepted.
 - [ADR-0009: Separate Book and Syntax Assistant Export Crates](ADR-0009-separate-book-and-syntax-export-crates.md) - Accepted.
+- [ADR-0010: Split Documentation Site Generation and Web Application](ADR-0010-documentation-site-generator-and-web-app.md) - Accepted.

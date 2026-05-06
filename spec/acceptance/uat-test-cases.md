@@ -612,6 +612,133 @@ Cleanup:
 
 - `target/uat/shclang-sdbl-md` is service data and may be deleted after the run.
 
+## UAT-HBK-014: Generate Documentation Site Data Artifacts
+
+Related use case: UC-HBK-004.
+
+Related requirements: FR-HBK-005, FR-HBK-003, FR-HBK-004, FR-DOC-001, FR-CLI-001, NFR-SITE-001.
+
+Purpose:
+
+- Validate that the project can generate custom documentation-site data artifacts from multiple HBK
+  books without invoking MkDocs or Docusaurus.
+- Validate the global TOC data contract and page-data split before web UI behavior is broadened.
+
+Preconditions:
+
+- The following 8.5.1.1150 books exist:
+  - `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk`
+  - `/opt/1cv8/x86_64/8.5.1.1150/shlang_ru.hbk`
+  - `/opt/1cv8/x86_64/8.5.1.1150/shquery_ru.hbk`
+  - `/opt/1cv8/x86_64/8.5.1.1150/dcsui_ru.hbk`
+- `target/uat/doc-site-data` can be created or removed.
+
+Steps:
+
+```bash
+rm -rf target/uat/doc-site-data
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- site generate \
+  /opt/1cv8/x86_64/8.5.1.1150 \
+  --output target/uat/doc-site-data \
+  --include 'fmtdui_ru.hbk' \
+  --include 'shlang_ru.hbk' \
+  --include 'shquery_ru.hbk' \
+  --include 'dcsui_ru.hbk'
+
+test -f target/uat/doc-site-data/data/manifest.json
+test -f target/uat/doc-site-data/data/locales/ru/toc-root.json
+test "$(find target/uat/doc-site-data/data/locales/ru/pages -name '*.md' -type f | wc -l)" -gt 10
+{
+  echo target/uat/doc-site-data/data/locales/ru/toc-root.json
+  find target/uat/doc-site-data/data/locales/ru/toc-sections -name '*.json' -type f | sort
+} > target/uat/doc-site-data/toc-json-files.txt
+
+jq -e '.schema_version >= 1' target/uat/doc-site-data/data/manifest.json
+jq -e '.locales | index("ru")' target/uat/doc-site-data/data/manifest.json
+jq -e '.books.ru | length >= 4' target/uat/doc-site-data/data/manifest.json
+jq -s -e '
+  [.. | objects | select((.page_id // "") != "")] as $pages
+  | ($pages | length) > 10
+  and all($pages[]; ((.book_id // "") | length) > 0)
+' $(cat target/uat/doc-site-data/toc-json-files.txt)
+jq -s -r '.. | objects | select((.page_id // "") != "") | .page_id' \
+  $(cat target/uat/doc-site-data/toc-json-files.txt) |
+while IFS= read -r page_id; do
+  test -f "target/uat/doc-site-data/data/locales/ru/pages/${page_id}.md"
+done
+
+! rg -n '/opt/1cv8|\.hbk\b|objects/.+\.html|toc[_ -]?index' \
+  target/uat/doc-site-data/data/locales/ru -g '*.json' -g '*.md'
+```
+
+Expected result:
+
+- The command exits with code `0`.
+- The generated artifact contains a generated data manifest, locale TOC data and page Markdown
+  files.
+- The manifest records source book inventory and available locales.
+- TOC data uses stable generated ids and includes source book identity for page-bearing nodes.
+- Visible generated page/TOC content does not leak raw installed HBK paths, raw TOC indexes or raw
+  HTML storage paths.
+- The command summary reports source book count, generated page count, output size, build timing and
+  peak RSS or equivalent.
+- The implementation task records the first real measurement or skip reason in
+  `spec/acceptance/baseline.md`.
+
+Skip rule:
+
+- If one or more listed HBK books are absent, record the missing paths and do not mark the case
+  failed.
+
+Cleanup:
+
+- `target/uat/doc-site-data` is service data and may be deleted after the run.
+
+## UAT-HBK-015: Serve Documentation Web App and Open a Generated Page
+
+Related use case: UC-HBK-004.
+
+Related requirements: FR-HBK-005, FR-CLI-001, NFR-SITE-001.
+
+Purpose:
+
+- Validate that the separate web app serves/loads generated documentation-site data.
+- Validate that the web bundle or initial server response loads TOC/page data lazily.
+
+Preconditions:
+
+- UAT-HBK-014 has generated `target/uat/doc-site-data`.
+- The documentation web app can be run against that generated data directory.
+- Playwright or an equivalent browser smoke runner is available.
+
+Steps:
+
+```bash
+<docs-web-app command> --data target/uat/doc-site-data/data --listen 127.0.0.1:4173
+```
+
+In a browser or smoke runner:
+
+- open `http://127.0.0.1:4173/`;
+- wait for the root TOC to load;
+- expand a section under the Russian locale;
+- open a documentation page;
+- verify that page content appears.
+
+Expected result:
+
+- The documentation web app opens and serves/loads generated data artifacts.
+- No HBK parsing or Syntax Assistant extraction is invoked in web request paths.
+- Network requests show separate loads for manifest, TOC data and page content.
+- The initial JavaScript bundle or server response does not contain representative page Markdown
+  strings from generated pages.
+- Navigation from global TOC to a page works without a full page reload.
+
+Skip rule:
+
+- If browser automation or the first web app slice is unavailable, record the missing prerequisite
+  and keep UAT-HBK-014 as the file-level acceptance gate for the current environment.
+
 ## UAT-SH-001: Export Russian Syntax Assistant Data
 
 Related use case: UC-SH-001.

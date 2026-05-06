@@ -62,6 +62,22 @@ preferred implementation direction because it supports exact lookup, full-text s
 relationship traversal without running a service. External search engines or graph databases require
 a measured limitation in the SQLite-backed slice and a separate ADR update.
 
+## NFR-SITE-001: Documentation Site Scale and Responsiveness
+
+Documentation site generation and serving must avoid the full-corpus build failure mode of
+general-purpose page-per-route static-site generators.
+
+Requirements:
+
+- The web bundle or initial server response must not embed all documentation page Markdown.
+- The site must load TOC sections and page content lazily from generated data files.
+- The generator must write deterministic artifacts in bounded memory and deterministic order.
+- Build tasks must record source book count, generated page count, output size, wall-clock time and
+  peak RSS or equivalent for the representative local HBK corpus before broad optimization.
+- Do not add search service, Syntax Assistant API endpoints, worker pool tuning knobs or semantic
+  search provider until the documentation navigation/page-view path is accepted and measured.
+- The web app must serve/load generated data without parsing HBK files in request paths.
+
 Parallel query commands from different CLI processes must be supported as concurrent read-only
 SQLite readers over the same resolved index path. Index rebuild must not update the active index file
 in place: write a complete temporary database beside the target, validate it, then atomically replace

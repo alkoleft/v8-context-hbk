@@ -9,18 +9,22 @@ context boundaries and keeps CLI/export behavior provisional.
 2. `hbk-book`: book metadata, locale inference, ZIP-backed `FileStorage`, TOC parsing and page reads.
 3. `hbk-docs`: documentation HTML/page parsing, normalized text/link extraction and page diagnostics.
 4. `hbk-book-export`: ordinary book-content export layouts and Markdown conversion adapters.
-5. `syntax-helper-model`: provenance-rich platform context domain model and record sink boundary.
-6. `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized page parsers.
-7. `syntax-helper-language`: shared non-platform HBK language-fact model and fixture-backed parsers
+5. `hbk-doc-site` (planned): documentation-site data generation, corpus discovery, global TOC
+   merge, stable site ids and page data layout.
+6. `docs-web-app` (planned): separate documentation web application that serves the site UI and
+   generated data artifacts; later owns search and Syntax Assistant API endpoints.
+7. `syntax-helper-model`: provenance-rich platform context domain model and record sink boundary.
+8. `syntax-helper-extract`: Syntax Assistant root discovery, catalog traversal and specialized page parsers.
+9. `syntax-helper-language`: shared non-platform HBK language-fact model and fixture-backed parsers
    for `shlang_*`, `shquery_*` and `dcsui_*` pages.
-8. `hbk-syntax-export`: canonical Syntax Assistant JSON export adapters.
-9. `syntax-helper-search`: local SQLite/FTS5 index and query library for Syntax Assistant exact
+10. `hbk-syntax-export`: canonical Syntax Assistant JSON export adapters.
+11. `syntax-helper-search`: local SQLite/FTS5 index and query library for Syntax Assistant exact
    lookup, keyword/fuzzy search and bounded relationship traversal.
-10. `context-resolver-core`: source-neutral Rust resolver API with typed identities, domains,
+12. `context-resolver-core`: source-neutral Rust resolver API with typed identities, domains,
    fact kinds, response statuses, diagnostics and resolver/source traits.
-11. `context-resolver-search`: HBK-backed platform and language-domain source adapters over
+13. `context-resolver-search`: HBK-backed platform and language-domain source adapters over
    `syntax-helper-search::SearchIndex`.
-12. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
+14. `v8-context-hbk-cli`: command wiring for the `v8-context-hbk` binary.
 
 Search/query components are described in
 [`syntax-helper-query-cli.md`](syntax-helper-query-cli.md).
@@ -36,6 +40,15 @@ Solution-context Rust resolution is described in
 - `hbk-book-export` may depend on `hbk-book`, `hbk-docs` and the approved narrow
   HTML-to-Markdown conversion utility, owns ordinary book-content export layout/Markdown adapters
   and must not depend on Syntax Assistant extraction, `hbk-syntax-export` or CLI presentation code.
+- `hbk-doc-site` may depend on `hbk-book`, `hbk-docs`, `hbk-book-export` and narrow serialization
+  utilities needed for generated documentation-site data artifacts. It owns multi-book corpus
+  discovery, global TOC merge, stable site ids, manifest/page artifact layout and web-app data
+  contracts. It must not depend on frontend framework internals, resolver crates or web-server
+  request handling. It may gain Syntax Assistant/search index generation only after a later spec
+  task defines that generated artifact boundary.
+- `docs-web-app` consumes generated site data artifacts. It must not depend on HBK container/book
+  parsing crates or perform Syntax Assistant extraction in request paths. Later search and Syntax
+  Assistant API endpoints must read generated/indexed data rather than parse HBK sources live.
 - `syntax-helper-model` must not depend on HBK container, HTML parsing or CLI code.
 - `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages.
 - `syntax-helper-language` owns the first shared language-fact model and source-family parsers for
@@ -283,6 +296,68 @@ exported as explicit Markdown-compatible HTML anchor targets immediately before 
 Markdown heading. This is an export adapter concern: the internal TOC/link lookup remains
 path-based, and generated anchor tags are limited to anchors owned by source headings.
 
+### hbk-doc-site
+
+Expected public concepts:
+
+- `DocumentationSiteGenerateRequest`
+- `DocumentationSiteGenerator`
+- `DocumentationSiteGenerateResult`
+- `DocumentationSiteError`
+- `GlobalDocumentationToc`
+- `SiteTocNode`
+- `SitePageId`
+- `SiteBookId`
+
+Owns FR-HBK-005 and NFR-SITE-001.
+
+`hbk-doc-site` is the planned generator component selected by ADR-0010. It adapts a corpus of HBK
+books into documentation-site data artifacts: manifest data, locale-level merged TOC data and
+page-content files.
+
+The component must keep these responsibilities separate:
+
+- source discovery and source book inventory;
+- per-book HBK open/TOC/page access through `hbk-book` and `hbk-docs`;
+- global TOC merge and stable site identity;
+- page content writing and link target planning;
+- generated data artifact writing.
+
+The first implementation should reuse the accepted Markdown conversion rules from `hbk-book-export`
+where possible, but the site component owns global cross-book identity and global TOC link mapping.
+If sharing the existing Markdown conversion requires moving helper functions, do that as a narrow
+extraction without changing the single-book `export --format markdown --hierarchy toc` contract.
+
+The generated site data contract is not a public stable protocol yet, but it must be versioned in
+`manifest.json` so later schema changes are explicit. The web app consumes generated data files; it
+must not parse HBK containers or invoke Syntax Assistant extraction in request paths.
+
+Global TOC merge behavior is specified in
+[`documentation-site.md`](documentation-site.md). The first implementation must preserve source book
+identity on page-bearing nodes and must not silently collapse page-bearing nodes solely by title.
+
+The first generator command shape is expected to be
+`v8-context-hbk site generate <source-dir> --output <data-dir>`, with repeated
+`--include <file-name>` filters for deterministic UAT and focused generation. User-facing README
+details belong after the command exists.
+
+### docs-web-app
+
+Owns the documentation web application boundary selected by ADR-0010.
+
+The first site slice needs only navigation and page viewing:
+
+- serve or load `manifest.json`, locale TOC data and page Markdown artifacts generated by
+  `hbk-doc-site`;
+- render locale selection, global TOC, lazy section loading and Markdown page content;
+- avoid embedding all generated page Markdown into the initial bundle or server response;
+- keep search, Syntax Assistant API endpoints, indexing status and backend compatibility out of the
+  first slice.
+
+Later web-app slices may add search and Syntax Assistant API endpoints, but those endpoints must use
+generated/indexed artifacts. They must not parse HBK files or run extraction pipelines in request
+paths.
+
 ### syntax-helper-model
 
 Expected public concepts:
@@ -460,8 +535,10 @@ deterministic internal document ids from TOC-derived semantic owner context when
 Owns FR-CLI-001.
 
 The installed binary name remains `v8-context-hbk`. Accepted inspection/navigation command names are
-`inspect`, `toc` and `page`. The target Syntax Assistant command group for new export/index/query
-work is `syntax`.
+`inspect`, `toc` and `page`. Ordinary single-book content export is the top-level `export` command.
+Documentation-site data generation is the `site generate` command group; it belongs to the
+generator boundary and supports repeated `--include <file-name>` filters for deterministic source
+selection. The target Syntax Assistant command group for export/index/query work is `syntax`.
 
 ### Syntax Assistant query commands
 
