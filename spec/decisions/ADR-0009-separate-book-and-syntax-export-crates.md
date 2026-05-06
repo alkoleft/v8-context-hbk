@@ -47,8 +47,13 @@ The CLI remains one binary:
 It may depend on Syntax Assistant model crates and serialization crates, but it must not parse HBK
 containers or own CLI presentation.
 
-`hbk-book-export` may depend on `hbk-book` and `hbk-docs`. It must not depend on
-Syntax Assistant extraction, `hbk-syntax-export`, search/index crates or resolver crates.
+`hbk-book-export` may depend on `hbk-book`, `hbk-docs` and narrow text-conversion utility crates
+selected by FR-HBK-004 tasks. It must not depend on Syntax Assistant extraction,
+`hbk-syntax-export`, search/index crates or resolver crates.
+
+T102 selects `quick_html2md` 0.2.1 as the approved HTML-to-Markdown library candidate for ordinary
+book page conversion. The selected dependency is licensed `MIT OR Apache-2.0` and is used only
+inside `hbk-book-export`.
 
 Both crates return typed errors at their serialization/export boundary. CLI code maps those errors
 to readable diagnostics.

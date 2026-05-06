@@ -29,6 +29,7 @@ hbk-syntax-export = { path = "crates/hbk-syntax-export" }
 context-resolver-core = { path = "crates/context-resolver-core" }
 context-resolver-search = { path = "crates/context-resolver-search" }
 memmap2 = "0.9.9"
+quick_html2md = "0.2.1"
 scraper = "0.26.0"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }

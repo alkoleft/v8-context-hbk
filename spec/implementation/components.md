@@ -33,9 +33,9 @@ Solution-context Rust resolution is described in
 - `hbk-container` must not depend on book, docs, extraction or export concerns.
 - `hbk-book` must not depend on Syntax Assistant extraction.
 - `hbk-docs` may depend on book-level page/TOC abstractions but must not know export schema details.
-- `hbk-book-export` may depend on `hbk-book` and `hbk-docs`, owns ordinary book-content export
-  layout/Markdown adapters and must not depend on Syntax Assistant extraction,
-  `hbk-syntax-export` or CLI presentation code.
+- `hbk-book-export` may depend on `hbk-book`, `hbk-docs` and the approved narrow
+  HTML-to-Markdown conversion utility, owns ordinary book-content export layout/Markdown adapters
+  and must not depend on Syntax Assistant extraction, `hbk-syntax-export` or CLI presentation code.
 - `syntax-helper-model` must not depend on HBK container, HTML parsing or CLI code.
 - `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages.
 - `syntax-helper-language` owns the first shared language-fact model and source-family parsers for
@@ -224,6 +224,15 @@ its command boundary before opening the HBK source file, so unsupported matrix d
 stable and do not depend on source-file availability. `format=raw` with `hierarchy=raw` is the only
 implemented top-level book export behavior after T101; Markdown/TOC export remains a later
 FR-HBK-004 task.
+
+T102 selected `quick_html2md` 0.2.1 as the approved stable HTML-to-Markdown library candidate and
+implemented `BookExporter::markdown_page()` for individual TOC pages. The converter consumes
+`hbk-docs::DocumentationReader` page content, preserves visible headings, body text, link text,
+lists, GFM tables and angle-bracket syntax placeholders, and normalizes output so regular Markdown
+does not contain raw HBK file paths, raw TOC indexes, raw HTML page paths or service HTML
+scaffolding. Internal link and image targets are intentionally not emitted until T103 defines the
+deterministic Markdown/TOC file layout and link-target mapping. The top-level CLI still rejects
+`markdown/toc` before opening the source HBK; full Markdown layout and UAT wiring remain T103 scope.
 
 ### syntax-helper-model
 

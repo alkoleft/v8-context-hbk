@@ -204,6 +204,14 @@ directories are service data unless promoted here.
   unsupported matrix diagnostics; local UAT smoke on
   `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` wrote 2 files / 1792 bytes and returned the expected
   raw/toc and markdown/toc unsupported diagnostics.
+- T102 selected `quick_html2md` 0.2.1 for ordinary book HTML-to-Markdown conversion inside
+  `hbk-book-export` and added `BookExporter::markdown_page()` for individual TOC pages. Focused
+  tests on representative local 8.5.1.1150 pages from `dcsui_ru.hbk`, `shlang_ru.hbk`,
+  `shquery_ru.hbk`, `fmtdui_ru.hbk`, `htmlui_ru.hbk` and `moxelui_ru.hbk` preserved readable
+  headings, body text, link text, lists, GFM tables and angle-bracket syntax placeholders while
+  rejecting raw HBK paths, raw TOC indexes, raw HTML page paths and service HTML scaffolding in
+  normal Markdown output. `markdown/toc` remains blocked at the top-level CLI boundary until T103
+  implements deterministic TOC layout and UAT corpus export.
 
 ## Post-T29 Runtime Regression To Fix
 

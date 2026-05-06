@@ -5,6 +5,8 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 use hbk_book::{BookError, HbkBook, normalize_storage_path};
+use hbk_docs::{DocumentationError, DocumentationReader, PageContent};
+use quick_html2md::{MarkdownOptions, html_to_markdown_with_options};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BookExportFormat {
@@ -115,6 +117,19 @@ impl<'a> BookExporter<'a> {
         }
     }
 
+    pub fn markdown_page(&self, html_path: &str) -> Result<BookMarkdownPage, BookExportError> {
+        let normalized_html_path = normalize_storage_path(html_path);
+        let toc_page = self
+            .book
+            .toc()
+            .find_by_html_path(normalized_html_path)
+            .ok_or_else(|| BookExportError::TocPageNotFound {
+                html_path: normalized_html_path.to_string(),
+            })?;
+        let page = DocumentationReader::new(self.book).load_page(&toc_page.html_path)?;
+        Ok(BookMarkdownPage::from_page_content(page))
+    }
+
     fn export_raw_raw(
         &self,
         request: &BookExportRequest,
@@ -141,6 +156,36 @@ impl<'a> BookExporter<'a> {
             request.output_root().to_path_buf(),
             exported_files,
         ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BookMarkdownPage {
+    html_path: String,
+    title: String,
+    markdown: String,
+}
+
+impl BookMarkdownPage {
+    pub fn html_path(&self) -> &str {
+        &self.html_path
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn markdown(&self) -> &str {
+        &self.markdown
+    }
+
+    fn from_page_content(page: PageContent) -> Self {
+        let markdown = page_content_to_markdown(&page);
+        Self {
+            html_path: page.source.html_path,
+            title: page.title,
+            markdown,
+        }
     }
 }
 
@@ -217,11 +262,15 @@ pub enum BookExportError {
         normalized_path: PathBuf,
         existing_path: PathBuf,
     },
+    TocPageNotFound {
+        html_path: String,
+    },
     SourcePathMismatch {
         request_source_path: PathBuf,
         book_path: PathBuf,
     },
     Book(BookError),
+    Documentation(DocumentationError),
     Io {
         path: PathBuf,
         operation: BookExportIoOperation,
@@ -290,6 +339,12 @@ impl PartialEq for BookExportError {
                     && existing_path == other_existing_path
             }
             (
+                Self::TocPageNotFound { html_path },
+                Self::TocPageNotFound {
+                    html_path: other_html_path,
+                },
+            ) => html_path == other_html_path,
+            (
                 Self::SourcePathMismatch {
                     request_source_path,
                     book_path,
@@ -318,6 +373,9 @@ impl PartialEq for BookExportError {
             (Self::Book(source), Self::Book(other_source)) => {
                 source.to_string() == other_source.to_string()
             }
+            (Self::Documentation(source), Self::Documentation(other_source)) => {
+                source.to_string() == other_source.to_string()
+            }
             _ => false,
         }
     }
@@ -328,6 +386,12 @@ impl Eq for BookExportError {}
 impl From<BookError> for BookExportError {
     fn from(value: BookError) -> Self {
         Self::Book(value)
+    }
+}
+
+impl From<DocumentationError> for BookExportError {
+    fn from(value: DocumentationError) -> Self {
+        Self::Documentation(value)
     }
 }
 
@@ -387,6 +451,12 @@ impl fmt::Display for BookExportError {
                 normalized_path.display(),
                 existing_path.display()
             ),
+            Self::TocPageNotFound { html_path } => {
+                write!(
+                    f,
+                    "TOC page '{html_path}' is not present in the opened HBK book"
+                )
+            }
             Self::SourcePathMismatch {
                 request_source_path,
                 book_path,
@@ -397,6 +467,9 @@ impl fmt::Display for BookExportError {
                 book_path.display()
             ),
             Self::Book(source) => write!(f, "failed to read HBK book for export: {source}"),
+            Self::Documentation(source) => {
+                write!(f, "failed to read documentation page for export: {source}")
+            }
             Self::Io {
                 path,
                 operation,
@@ -410,6 +483,7 @@ impl std::error::Error for BookExportError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Book(source) => Some(source),
+            Self::Documentation(source) => Some(source),
             Self::Io { source, .. } => Some(source),
             Self::InvalidOutputRoot { .. }
             | Self::UnsupportedCombination { .. }
@@ -417,6 +491,7 @@ impl std::error::Error for BookExportError {
             | Self::UnsafeStoragePath { .. }
             | Self::DuplicateStoragePath { .. }
             | Self::StoragePathCollision { .. }
+            | Self::TocPageNotFound { .. }
             | Self::SourcePathMismatch { .. } => None,
         }
     }
@@ -610,10 +685,53 @@ fn validate_combination(
     }
 }
 
+fn page_content_to_markdown(page: &PageContent) -> String {
+    let options = MarkdownOptions::new()
+        .include_links(false)
+        .include_images(false)
+        .preserve_tables(true)
+        .escape_special_chars(false);
+    let markdown = html_to_markdown_with_options(&page.raw_html, &options);
+    ensure_markdown_heading(&page.title, normalize_markdown(markdown))
+}
+
+fn normalize_markdown(markdown: String) -> String {
+    let normalized = markdown.replace('\r', "").replace('\u{a0}', " ");
+    let lines = normalized
+        .trim_matches(['\u{feff}', '\n'])
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>();
+    let mut output = lines.join("\n").trim().to_string();
+    if !output.is_empty() {
+        output.push('\n');
+    }
+    output
+}
+
+fn ensure_markdown_heading(title: &str, markdown: String) -> String {
+    if title.trim().is_empty()
+        || markdown
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .is_some_and(|line| line.starts_with('#'))
+    {
+        return markdown;
+    }
+
+    let mut output = format!("# {}\n", title.trim());
+    if !markdown.trim().is_empty() {
+        output.push('\n');
+        output.push_str(markdown.trim_end());
+        output.push('\n');
+    }
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hbk_book::test_utils::{fixture_container, zip_entries};
+    use hbk_book::test_utils::{fixture_container, zip_bytes, zip_entries};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
@@ -758,6 +876,208 @@ mod tests {
             result.files()[0].path(),
             Path::new("target/book-export/raw/docs/page.html")
         );
+    }
+
+    #[test]
+    fn converts_toc_page_html_to_markdown_without_raw_scaffolding() {
+        let workspace = TempWorkspace::new("markdown-page");
+        let source_path = workspace.path().join("fmtdui_ru.hbk");
+        let toc = r#"{
+            2
+            {1,0,0,{0,0,{0,0,{"ru","Справка"}{"en","Help"}},"/docs/page.html"}}
+            {2,0,0,{0,0,{0,0,{"ru","Связанная"}},"/docs/other.html"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![
+                (
+                    "docs/page.html",
+                    r#"<html><head>
+                        <link rel="stylesheet" href="v8help://service_book/service_style">
+                    </head><body>
+                        <h1>Справка&nbsp;по синтаксису</h1>
+                        <p>Синтаксис: Функция &lt;Имя_функции&gt;</p>
+                        <p><a href="other.html">Связанная страница</a></p>
+                        <table><tr><th>Имя</th><th>Значение</th></tr><tr><td>ВЫБОР</td><td>CASE</td></tr></table>
+                        <img src="assets/pic.png" alt="service image">
+                    </body></html>"#
+                        .as_bytes(),
+                ),
+                ("docs/other.html", b"<html><body>other</body></html>"),
+            ],
+        );
+        let book = HbkBook::open(&source_path).expect("book must open");
+
+        let page = BookExporter::new(&book)
+            .markdown_page("/docs/page.html")
+            .expect("TOC page must convert to Markdown");
+
+        assert_eq!(page.html_path(), "docs/page.html");
+        assert_eq!(page.title(), "Справка по синтаксису");
+        let markdown = page.markdown();
+        assert!(markdown.starts_with("# Справка по синтаксису\n"));
+        assert!(markdown.contains("Функция <Имя_функции>"));
+        assert!(markdown.contains("Связанная страница"));
+        assert!(markdown.contains("ВЫБОР"));
+        assert!(markdown.contains("CASE"));
+        assert!(markdown.contains('|'));
+        assert!(!markdown.contains("other.html"));
+        assert!(!markdown.contains("assets/pic.png"));
+        assert_no_raw_markdown_scaffolding(markdown);
+    }
+
+    #[test]
+    fn rejects_markdown_conversion_for_non_toc_storage_page() {
+        let workspace = TempWorkspace::new("markdown-non-toc");
+        let source_path = workspace.path().join("fmtdui_ru.hbk");
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Страница"}},"/docs/page.html"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![
+                ("docs/page.html", b"<html><body>page</body></html>"),
+                ("docs/unlisted.html", b"<html><body>unlisted</body></html>"),
+            ],
+        );
+        let book = HbkBook::open(&source_path).expect("book must open");
+
+        let error = BookExporter::new(&book)
+            .markdown_page("docs/unlisted.html")
+            .expect_err("non-TOC storage pages must not be converted as TOC pages");
+
+        assert_eq!(
+            error,
+            BookExportError::TocPageNotFound {
+                html_path: "docs/unlisted.html".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn real_representative_pages_convert_to_readable_markdown_when_platform_books_exist() {
+        struct Case<'a> {
+            book_path: &'a str,
+            html_path: &'a str,
+            expected: &'a [&'a str],
+        }
+
+        let cases = [
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/dcsui_ru.hbk",
+                html_path: "PresentSKD",
+                expected: &[
+                    "# Двуязычное представление ключевых слов системы компоновки данных",
+                    "ВЫБОР",
+                    "CASE",
+                    "|",
+                ],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/dcsui_ru.hbk",
+                html_path: "SKD_Functions_Strings",
+                expected: &[
+                    "# Работа со строками",
+                    "ДлинаСтроки",
+                    "StringLength",
+                    "ДлинаСтроки(<Строка>)",
+                    "Подстрока",
+                ],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/shlang_ru.hbk",
+                html_path: "def_Func",
+                expected: &[
+                    "# Функция",
+                    "Синтаксис",
+                    "Функция <Имя_функции>",
+                    "Возврат <Возвращаемое значение>",
+                    "КонецФункции",
+                    "Ждать",
+                ],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/shlang_ru.hbk",
+                html_path: "struct_IfThenElif",
+                expected: &[
+                    "# Если",
+                    "Если <Логическое выражение> Тогда",
+                    "ИначеЕсли <Логическое выражение> Тогда",
+                    "КонецЕсли",
+                    "логического выражения",
+                ],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/shquery_ru.hbk",
+                html_path: "syntax_diagram.html",
+                expected: &[
+                    "# Синтаксическая диаграмма конструкций языка запросов",
+                    "<Конструкция языка>",
+                    "ЭТО_КЛЮЧЕВОЕ_СЛОВО",
+                ],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/shquery_ru.hbk",
+                html_path: "SUM",
+                expected: &["# Агрегатная функция СУММА", "Агрегатные функции", "NULL"],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk",
+                html_path: "form_formattedstringedit",
+                expected: &[
+                    "# Конструктор строк на разных языках",
+                    "интерфейсных языков",
+                    "Обычная строка",
+                    "Форматированная строка",
+                ],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/htmlui_ru.hbk",
+                html_path: "form_addtable",
+                expected: &[
+                    "# Вставка таблицы",
+                    "HTML-документы можно вставлять таблицы",
+                    "Таблица - Вставить таблицу",
+                    "Ячейки можно объединять и делить",
+                ],
+            },
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/moxelui_ru.hbk",
+                html_path: "form_moxelpagesetupdialog",
+                expected: &[
+                    "# Параметры страницы табличного документа",
+                    "Файл - Параметры страницы",
+                    "Колонтитулы",
+                    "Авто",
+                ],
+            },
+        ];
+
+        for case in cases {
+            let book_path = Path::new(case.book_path);
+            if !book_path.exists() {
+                continue;
+            }
+
+            let book = HbkBook::open(book_path).expect("platform HBK must open");
+            let page = BookExporter::new(&book)
+                .markdown_page(case.html_path)
+                .expect("real TOC page must convert to Markdown");
+            let markdown = page.markdown();
+
+            for expected in case.expected {
+                assert!(
+                    markdown.contains(expected),
+                    "expected Markdown for {} {} to contain {expected:?}; got:\n{markdown}",
+                    case.book_path,
+                    case.html_path
+                );
+            }
+            assert_no_raw_markdown_scaffolding(markdown);
+        }
     }
 
     #[test]
@@ -998,6 +1318,56 @@ mod tests {
             ]),
         )
         .expect("fixture HBK must be written");
+    }
+
+    fn write_book_fixture_with_toc(path: &Path, toc: &str, storage_entries: Vec<(&str, &[u8])>) {
+        fs::write(
+            path,
+            fixture_container(vec![
+                (
+                    "Book",
+                    Some(
+                        r#"{1,"Interface", {1,2,{"ru","fmtdui"}}, 1, "tag", {0,0}, 0}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                ),
+                ("PackBlock", Some(zip_bytes("toc.txt", toc.as_bytes()))),
+                ("FileStorage", Some(zip_entries(storage_entries))),
+            ]),
+        )
+        .expect("fixture HBK must be written");
+    }
+
+    fn assert_no_raw_markdown_scaffolding(markdown: &str) {
+        for forbidden in [
+            "<html",
+            "<body",
+            "<p",
+            "<a ",
+            "<h1",
+            "<h2",
+            "<table",
+            "<tr",
+            "<td",
+            "<ul",
+            "<li",
+            "<div",
+            "<span",
+            "</",
+            "&nbsp;",
+            "v8help://service_book/service_style",
+            "/opt/1cv8",
+            ".hbk",
+            ".html",
+            "toc_index",
+            "toc-index",
+        ] {
+            assert!(
+                !markdown.contains(forbidden),
+                "Markdown must not contain raw service/provenance fragment {forbidden:?}:\n{markdown}"
+            );
+        }
     }
 
     struct TempWorkspace {

@@ -23,7 +23,8 @@ language-domain and cleanup conclusions live in `acceptance/baseline.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md`,
 `implementation/syntax-bsl-provider-plan.md` and `implementation/solution-context-resolve.md`.
 
-The active task block is T99-T103. T100 is complete; T101 is now the first unchecked planned task.
+The active task block is T99-T103. T99-T102 are complete; T103 is now the first unchecked planned
+task.
 T99-T103 are user-requested book-content export slices handled outside the first-unchecked
 cleanup/provider sequence.
 
@@ -542,7 +543,7 @@ Completion notes:
   - real CLI smoke on `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_ru.hbk` for raw/raw export
   - real CLI smoke for raw/toc and markdown/toc unsupported diagnostics on missing HBK paths
 
-### [ ] T102. Implement Markdown conversion for TOC pages
+### [x] T102. Implement Markdown conversion for TOC pages
 
 Spec refs:
 
@@ -575,6 +576,29 @@ Verification:
   or equivalent `cargo metadata` query).
 - `cargo test -p hbk-book-export`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Selected `quick_html2md` 0.2.1 as the approved stable HTML-to-Markdown library candidate for
+  ordinary book page conversion in `hbk-book-export`; `html2md` was not selected because its
+  published license is GPL-3.0+.
+- Added `BookExporter::markdown_page()` for individual TOC pages through `hbk-docs`
+  `DocumentationReader`, returning Markdown page content without wiring top-level CLI
+  `markdown/toc` export.
+- Markdown conversion preserves readable headings, body text, link text, lists, GFM tables and
+  angle-bracket syntax placeholders. Link/image targets are not emitted until T103 defines the
+  deterministic Markdown/TOC output layout and target mapping.
+- Focused tests cover deterministic fixture conversion, non-TOC page rejection and representative
+  real local pages from `dcsui_ru.hbk`, `shlang_ru.hbk`, `shquery_ru.hbk`, `fmtdui_ru.hbk`,
+  `htmlui_ru.hbk` and `moxelui_ru.hbk`.
+- Normal Markdown tests assert no raw HBK file paths, raw TOC indexes, raw HTML page paths or
+  service HTML scaffolding.
+- Verification passed:
+  - `cargo fmt --all --check`
+  - `cargo clippy -p hbk-book-export --all-targets -- -D warnings`
+  - `cargo test -p hbk-book-export -- --nocapture`
+  - `cargo tree -p hbk-book-export --depth 1`
+  - `cargo test --workspace`
 
 ### [ ] T103. Implement markdown/toc export layout and UAT corpus
 
