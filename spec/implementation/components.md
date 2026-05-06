@@ -40,7 +40,10 @@ Solution-context Rust resolution is described in
 - `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages.
 - `syntax-helper-language` owns the first shared language-fact model and source-family parsers for
   non-platform HBK language pages. It must not add language facts to `PlatformContext` or
-  `syntax export` consumer JSON.
+  `syntax export` consumer JSON. Language callable fact assembly may be shared after
+  source-family-specific page discovery and parsing have selected the callable name, syntax,
+  parameters, return/type references, description and anchor; the shared helper must not absorb
+  page-shape-specific parser rules.
 - `hbk-syntax-export` owns Syntax Assistant output adapters for the Rust domain model.
 - `syntax-helper-search` owns search-index schema, ranking and relationship traversal. It must not
   parse HBK files or perform CLI presentation. It may accept `syntax-helper-language` facts as

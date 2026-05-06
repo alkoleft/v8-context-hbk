@@ -319,7 +319,7 @@ Completion notes:
   - `cargo test -p hbk-book`
   - `cargo test --workspace`
 
-### [ ] T97. Deduplicate first language callable parsing paths
+### [x] T97. Deduplicate first language callable parsing paths
 
 Spec refs:
 
@@ -350,6 +350,23 @@ Verification:
 - `cargo test -p syntax-helper-search --lib`
 - `cargo test -p context-resolver-search`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Extracted one shared `syntax-helper-language` callable fact assembly helper for language function
+  facts.
+- Kept `shquery_*` and `dcsui_*` page discovery, page-key matching, syntax extraction and fixture
+  expectations source-family-specific.
+- Preserved current source-qualified ids, language domains, fact families, signatures, parameter
+  names, return/type refs and provenance, including the `SKD_Functions_Strings#StringLength`
+  anchor.
+- Added focused fixture assertions for structured query-function and SKD string-function
+  signatures/parameters.
+- Verification passed:
+  - `cargo test -p syntax-helper-language`
+  - `cargo test -p syntax-helper-search --lib`
+  - `cargo test -p context-resolver-search`
+  - `cargo test --workspace`
 
 ### [ ] T98. Rename Syntax Assistant export crate to `hbk-syntax-export`
 

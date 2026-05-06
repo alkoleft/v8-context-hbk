@@ -177,6 +177,11 @@ directories are service data unless promoted here.
 - T96 retired the `HbkBook::read_pages` test/support convenience API. The ordinary supported
   page/file surface remains `HbkBook::read_file`, `HbkBook::read_page` and `FileStorageReader`;
   deterministic repeated-page fixture coverage uses `FileStorageReader` directly.
+- T97 deduplicated the first `syntax-helper-language` callable fact assembly paths without changing
+  parser coverage or public contracts. `shquery_*` function parsing and DCSUI string-function
+  slicing remain source-family-specific, while shared assembly now preserves source-qualified ids,
+  language domains, fact families, signatures, parameter names, return/type refs and provenance for
+  existing fixture-backed language facts.
 
 ## Post-T29 Runtime Regression To Fix
 

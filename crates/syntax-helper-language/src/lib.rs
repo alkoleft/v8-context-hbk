@@ -199,32 +199,24 @@ fn query_function_fact(
     page_key: &str,
 ) -> LanguageFact {
     let syntax = first_pre_text(document);
-    let parameters = first_strong_parameter(document)
-        .into_iter()
-        .collect::<Vec<_>>();
-    let return_types =
-        return_type_after_label(document, &["Возвращаемое значение", "Return value"])
-            .into_iter()
-            .collect::<Vec<_>>();
-    let signatures = syntax
-        .clone()
-        .map(|text| LanguageSignature { text, parameters })
-        .into_iter()
-        .collect::<Vec<_>>();
-    language_fact(
+    language_function_fact(
         input,
-        LanguageDomain::QueryLanguage,
-        LanguageFactFamily::Function,
         title,
         page_key,
         None,
-        query_function_name(title, page_key, &syntax),
-        syntax,
-        Vec::new(),
-        return_types,
-        first_plain_paragraph(document),
+        CallableFactParts {
+            name: query_function_name(title, page_key, &syntax),
+            syntax,
+            parameters: first_strong_parameter(document).into_iter().collect(),
+            return_types: return_type_after_label(
+                document,
+                &["Возвращаемое значение", "Return value"],
+            )
+            .into_iter()
+            .collect(),
+            description: first_plain_paragraph(document),
+        },
     )
-    .with_signatures(signatures)
 }
 
 fn extract_dcsui_string_functions(
@@ -281,27 +273,60 @@ fn extract_dcsui_string_functions(
             alias: None,
         }
     };
-    vec![
-        language_fact(
-            input,
-            LanguageDomain::QueryLanguage,
-            LanguageFactFamily::Function,
-            title,
-            "SKD_Functions_Strings",
-            Some("StringLength"),
+    vec![language_function_fact(
+        input,
+        title,
+        "SKD_Functions_Strings",
+        Some("StringLength"),
+        CallableFactParts {
             name,
-            syntax.clone(),
-            Vec::new(),
-            Vec::new(),
-            Some(title.to_string()),
-        )
-        .with_signatures(
-            syntax
-                .map(|text| LanguageSignature { text, parameters })
-                .into_iter()
-                .collect(),
-        ),
-    ]
+            syntax,
+            parameters,
+            return_types: Vec::new(),
+            description: Some(title.to_string()),
+        },
+    )]
+}
+
+struct CallableFactParts {
+    name: LocalizedName,
+    syntax: Option<String>,
+    parameters: Vec<LanguageParameter>,
+    return_types: Vec<String>,
+    description: Option<String>,
+}
+
+fn language_function_fact(
+    input: LanguagePageInput<'_>,
+    page_title: &str,
+    page_key: &str,
+    anchor: Option<&str>,
+    parts: CallableFactParts,
+) -> LanguageFact {
+    let signatures = parts
+        .syntax
+        .clone()
+        .map(|text| LanguageSignature {
+            text,
+            parameters: parts.parameters,
+        })
+        .into_iter()
+        .collect();
+    let mut fact = language_fact(
+        input,
+        LanguageDomain::QueryLanguage,
+        LanguageFactFamily::Function,
+        page_title,
+        page_key,
+        anchor,
+        parts.name,
+        parts.syntax,
+        Vec::new(),
+        parts.return_types,
+        parts.description,
+    );
+    fact.signatures = signatures;
+    fact
 }
 
 fn extract_dcsui_query_extension(
@@ -404,17 +429,6 @@ fn language_fact(
             page_title: page_title.to_string(),
             anchor: anchor.map(ToOwned::to_owned),
         },
-    }
-}
-
-trait WithSignatures {
-    fn with_signatures(self, signatures: Vec<LanguageSignature>) -> Self;
-}
-
-impl WithSignatures for LanguageFact {
-    fn with_signatures(mut self, signatures: Vec<LanguageSignature>) -> Self {
-        self.signatures = signatures;
-        self
     }
 }
 
@@ -690,6 +704,17 @@ mod tests {
         assert_eq!(string.family, LanguageFactFamily::Function);
         assert_eq!(string.name.primary, "СТРОКА");
         assert!(string.return_types.iter().any(|value| value == "Строка"));
+        let signature = string
+            .signatures
+            .first()
+            .expect("query string function must keep a structured signature");
+        assert_eq!(signature.text, "СТРОКА (<Значение>)");
+        let parameter = signature
+            .parameters
+            .first()
+            .expect("query string function must keep a structured parameter");
+        assert_eq!(parameter.name, "Значение");
+        assert!(parameter.type_refs.iter().any(|value| value == "Строка"));
 
         let sum = fixture_fact(
             LanguageSourceFamily::Shquery,
@@ -759,6 +784,21 @@ mod tests {
         assert_eq!(string_length.domain, LanguageDomain::QueryLanguage);
         assert_eq!(string_length.family, LanguageFactFamily::Function);
         assert_eq!(string_length.name.primary, "ДлинаСтроки");
+        assert_eq!(
+            string_length.provenance.anchor.as_deref(),
+            Some("StringLength")
+        );
+        let signature = string_length
+            .signatures
+            .first()
+            .expect("SKD string function must keep a structured signature");
+        assert_eq!(signature.text, "ДлинаСтроки(<Строка>)");
+        let parameter = signature
+            .parameters
+            .first()
+            .expect("SKD string function must keep a structured parameter");
+        assert_eq!(parameter.name, "Строка");
+        assert_eq!(parameter.type_refs, vec!["Строка".to_string()]);
 
         let facts = fixture_facts(
             LanguageSourceFamily::Dcsui,
