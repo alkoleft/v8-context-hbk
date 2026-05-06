@@ -2359,8 +2359,6 @@ fn insert_relations_from_documents(
     path: &Path,
     documents: &[SearchDocument],
 ) -> Result<(), SearchError> {
-    let by_name = relation_lookup(documents);
-    let mut inserted = BTreeSet::new();
     let mut statement = connection
         .prepare(
             "INSERT INTO relations(source_id, target_id, edge_kind, label, evidence, weight)
@@ -2370,21 +2368,60 @@ fn insert_relations_from_documents(
             path: path.to_path_buf(),
             source,
         })?;
+    visit_relations_from_documents(documents, |relation| {
+        statement
+            .execute(params![
+                relation.source_id,
+                relation.target_id,
+                relation.edge_kind,
+                relation.label,
+                relation.evidence,
+                relation.weight,
+            ])
+            .map_err(|source| SearchError::Sqlite {
+                path: path.to_path_buf(),
+                source,
+            })?;
+        Ok(())
+    })
+}
+
+fn visit_relations_from_documents<E>(
+    documents: &[SearchDocument],
+    mut visit: impl FnMut(Relation) -> Result<(), E>,
+) -> Result<(), E> {
+    let by_name = relation_lookup(documents);
+    let mut emitted = BTreeSet::new();
     for document in documents {
-        insert_owner_relations(&mut statement, path, document, &by_name, &mut inserted)?;
-        insert_constructor_relation(&mut statement, path, document, &by_name, &mut inserted)?;
-        insert_type_reference_relations(&mut statement, path, document, &by_name, &mut inserted)?;
+        visit_document_relations(document, &by_name, |relation| {
+            if emitted.insert((
+                relation.source_id.clone(),
+                relation.target_id.clone(),
+                relation.edge_kind,
+            )) {
+                visit(relation)?;
+            }
+            Ok(())
+        })?;
     }
     Ok(())
 }
 
-fn insert_owner_relations(
-    statement: &mut Statement<'_>,
-    path: &Path,
+fn visit_document_relations<E>(
     document: &SearchDocument,
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
-    inserted: &mut BTreeSet<(String, String, &'static str)>,
-) -> Result<(), SearchError> {
+    mut visit: impl FnMut(Relation) -> Result<(), E>,
+) -> Result<(), E> {
+    visit_owner_relations(document, by_name, &mut visit)?;
+    visit_constructor_relation(document, by_name, &mut visit)?;
+    visit_type_reference_relations(document, by_name, &mut visit)
+}
+
+fn visit_owner_relations<E>(
+    document: &SearchDocument,
+    by_name: &BTreeMap<String, (&SearchDocument, String)>,
+    visit: &mut impl FnMut(Relation) -> Result<(), E>,
+) -> Result<(), E> {
     let Some(owner) = &document.owner else {
         return Ok(());
     };
@@ -2396,45 +2433,33 @@ fn insert_owner_relations(
     let Some((_, owner_id)) = by_name.get(&owner_key) else {
         return Ok(());
     };
-    insert_relation_if_new(
-        statement,
-        path,
-        inserted,
-        Relation {
-            source_id: owner_id.clone(),
-            target_id: document.id.clone(),
-            edge_kind: "owns",
-            label: format!("{} owns {}", owner.display_name(), document.name.primary),
-            evidence: "owner",
-            weight: 10,
-        },
-    )?;
-    insert_relation_if_new(
-        statement,
-        path,
-        inserted,
-        Relation {
-            source_id: document.id.clone(),
-            target_id: owner_id.clone(),
-            edge_kind: "member_of",
-            label: format!(
-                "{} member of {}",
-                document.name.primary,
-                owner.display_name()
-            ),
-            evidence: "owner",
-            weight: 20,
-        },
-    )
+    visit(Relation {
+        source_id: owner_id.clone(),
+        target_id: document.id.clone(),
+        edge_kind: "owns",
+        label: format!("{} owns {}", owner.display_name(), document.name.primary),
+        evidence: "owner",
+        weight: 10,
+    })?;
+    visit(Relation {
+        source_id: document.id.clone(),
+        target_id: owner_id.clone(),
+        edge_kind: "member_of",
+        label: format!(
+            "{} member of {}",
+            document.name.primary,
+            owner.display_name()
+        ),
+        evidence: "owner",
+        weight: 20,
+    })
 }
 
-fn insert_constructor_relation(
-    statement: &mut Statement<'_>,
-    path: &Path,
+fn visit_constructor_relation<E>(
     document: &SearchDocument,
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
-    inserted: &mut BTreeSet<(String, String, &'static str)>,
-) -> Result<(), SearchError> {
+    visit: &mut impl FnMut(Relation) -> Result<(), E>,
+) -> Result<(), E> {
     if document.kind != "constructor" {
         return Ok(());
     }
@@ -2444,28 +2469,21 @@ fn insert_constructor_relation(
     let Some((_, owner_id)) = by_name.get(&normalize_lookup_key(&owner.primary)) else {
         return Ok(());
     };
-    insert_relation_if_new(
-        statement,
-        path,
-        inserted,
-        Relation {
-            source_id: document.id.clone(),
-            target_id: owner_id.clone(),
-            edge_kind: "constructs",
-            label: format!("constructs {}", owner.display_name()),
-            evidence: "structured",
-            weight: 15,
-        },
-    )
+    visit(Relation {
+        source_id: document.id.clone(),
+        target_id: owner_id.clone(),
+        edge_kind: "constructs",
+        label: format!("constructs {}", owner.display_name()),
+        evidence: "structured",
+        weight: 15,
+    })
 }
 
-fn insert_type_reference_relations(
-    statement: &mut Statement<'_>,
-    path: &Path,
+fn visit_type_reference_relations<E>(
     document: &SearchDocument,
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
-    inserted: &mut BTreeSet<(String, String, &'static str)>,
-) -> Result<(), SearchError> {
+    visit: &mut impl FnMut(Relation) -> Result<(), E>,
+) -> Result<(), E> {
     for (ordinal, type_name) in document.type_refs.iter().enumerate() {
         let Some(target_key) = explicit_or_fallback_type_ref_key(
             document,
@@ -2478,19 +2496,14 @@ fn insert_type_reference_relations(
         let Some((_, target_id)) = by_name.get(&target_key) else {
             continue;
         };
-        insert_relation_if_new(
-            statement,
-            path,
-            inserted,
-            Relation {
-                source_id: document.id.clone(),
-                target_id: target_id.clone(),
-                edge_kind: "has_type",
-                label: type_name.clone(),
-                evidence: "type_ref",
-                weight: TYPE_REFERENCE_RELATION_WEIGHT,
-            },
-        )?;
+        visit(Relation {
+            source_id: document.id.clone(),
+            target_id: target_id.clone(),
+            edge_kind: "has_type",
+            label: type_name.clone(),
+            evidence: "type_ref",
+            weight: TYPE_REFERENCE_RELATION_WEIGHT,
+        })?;
     }
     for (ordinal, type_name) in document.return_types.iter().enumerate() {
         let Some(target_key) = explicit_or_fallback_type_ref_key(
@@ -2504,19 +2517,14 @@ fn insert_type_reference_relations(
         let Some((_, target_id)) = by_name.get(&target_key) else {
             continue;
         };
-        insert_relation_if_new(
-            statement,
-            path,
-            inserted,
-            Relation {
-                source_id: document.id.clone(),
-                target_id: target_id.clone(),
-                edge_kind: "returns",
-                label: type_name.clone(),
-                evidence: "type_ref",
-                weight: TYPE_REFERENCE_RELATION_WEIGHT,
-            },
-        )?;
+        visit(Relation {
+            source_id: document.id.clone(),
+            target_id: target_id.clone(),
+            edge_kind: "returns",
+            label: type_name.clone(),
+            evidence: "type_ref",
+            weight: TYPE_REFERENCE_RELATION_WEIGHT,
+        })?;
     }
     Ok(())
 }
@@ -2533,35 +2541,6 @@ fn explicit_or_fallback_type_ref_key(
         .or_else(|| {
             (!is_language_document_kind(&document.kind)).then(|| normalize_lookup_key(type_name))
         })
-}
-
-fn insert_relation_if_new(
-    statement: &mut Statement<'_>,
-    path: &Path,
-    inserted: &mut BTreeSet<(String, String, &'static str)>,
-    relation: Relation,
-) -> Result<(), SearchError> {
-    if !inserted.insert((
-        relation.source_id.clone(),
-        relation.target_id.clone(),
-        relation.edge_kind,
-    )) {
-        return Ok(());
-    }
-    statement
-        .execute(params![
-            relation.source_id,
-            relation.target_id,
-            relation.edge_kind,
-            relation.label,
-            relation.evidence,
-            relation.weight,
-        ])
-        .map_err(|source| SearchError::Sqlite {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    Ok(())
 }
 
 fn validate_index(connection: &Connection, path: &Path) -> Result<(), SearchError> {
@@ -2813,92 +2792,12 @@ fn semantic_relation_key(semantic: &model::SemanticContext, fallback: &str) -> S
 
 #[cfg(test)]
 fn relations_from_documents(documents: &[SearchDocument]) -> Vec<Relation> {
-    let by_name = relation_lookup(documents);
     let mut relations = Vec::new();
-    for document in documents {
-        if let Some(owner) = &document.owner {
-            let owner_key = document
-                .owner_relation_key
-                .as_deref()
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| normalize_lookup_key(&owner.primary));
-            if let Some((_, owner_id)) = by_name.get(&owner_key) {
-                relations.push(Relation {
-                    source_id: owner_id.clone(),
-                    target_id: document.id.clone(),
-                    edge_kind: "owns",
-                    label: format!("{} owns {}", owner.display_name(), document.name.primary),
-                    evidence: "owner",
-                    weight: 10,
-                });
-                relations.push(Relation {
-                    source_id: document.id.clone(),
-                    target_id: owner_id.clone(),
-                    edge_kind: "member_of",
-                    label: format!(
-                        "{} member of {}",
-                        document.name.primary,
-                        owner.display_name()
-                    ),
-                    evidence: "owner",
-                    weight: 20,
-                });
-            }
-        }
-        if document.kind == "constructor"
-            && let Some(owner) = &document.owner
-            && let Some((_, owner_id)) = by_name.get(&normalize_lookup_key(&owner.primary))
-        {
-            relations.push(Relation {
-                source_id: document.id.clone(),
-                target_id: owner_id.clone(),
-                edge_kind: "constructs",
-                label: format!("constructs {}", owner.display_name()),
-                evidence: "structured",
-                weight: 15,
-            });
-        }
-        for (ordinal, type_name) in document.type_refs.iter().enumerate() {
-            let Some(target_key) = explicit_or_fallback_type_ref_key(
-                document,
-                &document.explicit_type_ref_ids,
-                ordinal,
-                type_name,
-            ) else {
-                continue;
-            };
-            if let Some((_, target_id)) = by_name.get(&target_key) {
-                relations.push(Relation {
-                    source_id: document.id.clone(),
-                    target_id: target_id.clone(),
-                    edge_kind: "has_type",
-                    label: type_name.clone(),
-                    evidence: "type_ref",
-                    weight: TYPE_REFERENCE_RELATION_WEIGHT,
-                });
-            }
-        }
-        for (ordinal, type_name) in document.return_types.iter().enumerate() {
-            let Some(target_key) = explicit_or_fallback_type_ref_key(
-                document,
-                &document.explicit_return_type_ref_ids,
-                ordinal,
-                type_name,
-            ) else {
-                continue;
-            };
-            if let Some((_, target_id)) = by_name.get(&target_key) {
-                relations.push(Relation {
-                    source_id: document.id.clone(),
-                    target_id: target_id.clone(),
-                    edge_kind: "returns",
-                    label: type_name.clone(),
-                    evidence: "type_ref",
-                    weight: TYPE_REFERENCE_RELATION_WEIGHT,
-                });
-            }
-        }
-    }
+    visit_relations_from_documents(documents, |relation| {
+        relations.push(relation);
+        Ok::<_, std::convert::Infallible>(())
+    })
+    .expect("infallible relation collection must not fail");
     relations.sort_by(|left, right| {
         left.weight
             .cmp(&right.weight)
@@ -4247,6 +4146,53 @@ mod tests {
                 .expect("normalized property type ref query must work"),
             1
         );
+    }
+
+    #[test]
+    fn sqlite_relation_rows_match_shared_relation_builder() {
+        let path = temp_path("relation-builder-parity.sqlite");
+        let documents = builder_from_context(&fixture_context())
+            .into_documents()
+            .expect("fixture documents must not collide");
+        let expected = relations_from_documents(&documents)
+            .into_iter()
+            .map(|relation| {
+                (
+                    relation.source_id,
+                    relation.target_id,
+                    relation.edge_kind.to_string(),
+                    relation.label,
+                    relation.evidence.to_string(),
+                    relation.weight,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        build_index_from_documents(&path, &metadata(), documents).expect("index must build");
+        let connection = Connection::open(&path).expect("index must open for relation inspection");
+        let mut statement = connection
+            .prepare(
+                "SELECT source_id, target_id, edge_kind, label, evidence, weight
+                 FROM relations
+                 ORDER BY weight, source_id, edge_kind, target_id",
+            )
+            .expect("relation query must prepare");
+        let actual = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            })
+            .expect("relation query must run")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("relation rows must deserialize");
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

@@ -44,7 +44,9 @@ Solution-context Rust resolution is described in
 - `hbk-syntax-export` owns Syntax Assistant output adapters for the Rust domain model.
 - `syntax-helper-search` owns search-index schema, ranking and relationship traversal. It must not
   parse HBK files or perform CLI presentation. It may accept `syntax-helper-language` facts as
-  pre-parsed documents for the T89 language-index fixture slice.
+  pre-parsed documents for the T89 language-index fixture slice. Relation graph row construction is
+  a single streaming internal builder reused by SQLite insertion and focused relation tests; tests
+  must not carry a copied relation algorithm.
 - `context-resolver-core` owns the generic in-process resolver model. It must not depend on HBK,
   SQLite, CLI, parser or Syntax Assistant storage crates.
 - `context-resolver-search` owns translation between `syntax-helper-search::SearchIndex` platform

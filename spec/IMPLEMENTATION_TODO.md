@@ -23,7 +23,7 @@ language-domain and cleanup conclusions live in `acceptance/baseline.md`,
 `implementation/components.md`, `implementation/syntax-helper-query-cli.md`,
 `implementation/syntax-bsl-provider-plan.md` and `implementation/solution-context-resolve.md`.
 
-The active open tasks are T92-T103. T92 is now the first unchecked planned task; T98-T103 are
+The active open tasks are T95-T103. T95 is now the first unchecked planned task; T98-T103 are
 user-requested book-content export slices handled outside the first-unchecked cleanup/provider
 sequence.
 
@@ -185,7 +185,7 @@ Completion notes:
   - `cargo test -p v8-context-hbk-cli`
   - `cargo test --workspace`
 
-### [ ] T94. Deduplicate search relation graph construction
+### [x] T94. Deduplicate search relation graph construction
 
 Spec refs:
 
@@ -214,6 +214,21 @@ Verification:
 - `cargo test -p syntax-helper-search --lib`
 - `cargo test -p context-resolver-search`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Extracted one shared streaming relation-row visitor in `syntax-helper-search` for owner/member,
+  constructor, type-reference and return-reference edges.
+- SQLite relation insertion and focused relation tests now use the same builder and the same
+  `(source_id, target_id, edge_kind)` deduplication key.
+- Added a focused parity test that compares stored SQLite `relations` rows with the shared builder
+  output for the fixture document set.
+- Preserved current edge kinds, labels, evidence, weights, SQLite schema, query ordering, provider
+  JSON and resolver facts.
+- Verification passed:
+  - `cargo test -p syntax-helper-search --lib`
+  - `cargo test -p context-resolver-search`
+  - `cargo test --workspace`
 
 ### [ ] T95. Replace stringly search document kinds with a typed internal kind
 

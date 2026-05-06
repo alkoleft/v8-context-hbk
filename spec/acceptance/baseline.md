@@ -164,6 +164,10 @@ directories are service data unless promoted here.
   attributes; `v8-context-hbk-cli` explicitly assembles export-compatible
   `signatures[].parameters[]` provider JSON. This did not change provider response schema version,
   SQLite schema, search ranking, lookup behavior or export JSON.
+- T94 deduplicated search relation graph construction inside `syntax-helper-search`. SQLite
+  relation insertion and focused relation tests now share one streaming relation-row builder and the
+  same `(source_id, target_id, edge_kind)` deduplication key. This did not change relation edge
+  kinds, labels, evidence, weights, SQLite schema, query ordering, provider JSON or resolver facts.
 
 ## Post-T29 Runtime Regression To Fix
 
