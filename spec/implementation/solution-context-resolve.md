@@ -393,11 +393,19 @@ T67 implementation notes:
   relation traversal into resolver facts.
 - The platform adapter uses `type_identity_by_id`, `type_identities_by_name`,
   `members_by_type_id`, `member_by_owner_type_id`, `callable_by_id`,
-  `callable_by_owner_type_id`, `constructors_by_type_id` and `related_by_id_and_edge` /
-  bounded relation traversal.
+  `callable_by_owner_type_id`, `constructors_by_type_id` and `related_by_id_and_edge`.
 - Exact-name generic resolver lookup is intentionally limited to platform type identity lookup in
   this first adapter slice; broader name search remains the CLI/search-provider concern.
 - Query-table provider documents stay hidden from the platform adapter.
+
+T92 implementation notes:
+
+- Platform adapter callable return/result mapping uses explicit `return_types` or edge-specific
+  `related_by_id_and_edge` evidence only. Constructors no longer synthesize a return type from the
+  owner name when `constructs` evidence is absent.
+- Platform adapter relation traversal no longer falls back from edge-specific lookup to generic
+  `related_by_id` filtering. Missing edge-specific evidence is returned as an empty relation set so
+  resolver clients can distinguish absent evidence from real facts.
 
 ## First Language Adapter
 

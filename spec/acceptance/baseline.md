@@ -1467,3 +1467,12 @@ composition now preserves already found `ok` candidates when another source repo
 cross-source ambiguity does not hide valid candidates from other active sources. T90 focused
 latency checks for exact BSL type lookup and SKD relation traversal stayed under the provisional
 NFR-RESOLVE-001 `100 ms` target after source open.
+
+T92 removed hidden platform resolver adapter fallbacks without changing CLI behavior, provider JSON,
+SQLite schema, parser output, consumer export JSON or `syntax-helper-search` relation storage.
+Platform adapter relation traversal now uses edge-specific `related_by_id_and_edge` evidence only;
+callable return/result mapping still uses explicit `return_types` or edge-specific `returns` /
+`constructs` evidence, but constructors no longer synthesize a result type from the owner when that
+evidence is missing. Focused resolver coverage now mutates a fixture index to remove constructor
+result evidence and verifies that callable lookup returns an empty return-type list and `constructs`
+traversal returns an empty relation set instead of a synthesized owner type.

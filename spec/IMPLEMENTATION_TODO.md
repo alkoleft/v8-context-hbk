@@ -86,7 +86,7 @@ Completion notes:
   - `cargo test -p v8-context-hbk-cli`
   - `cargo test --workspace`
 
-### [ ] T92. Remove hidden resolver edge and constructor return fallbacks
+### [x] T92. Remove hidden resolver edge and constructor return fallbacks
 
 Spec refs:
 
@@ -120,6 +120,20 @@ Verification:
 
 - `cargo test -p context-resolver-search`
 - `cargo test --workspace`
+
+Completion notes:
+
+- Removed the platform adapter generic `related_by_id()` fallback from callable edge refs and
+  public `related()` traversal.
+- Removed constructor return-type synthesis from the owner name in resolver callable mapping.
+- Added focused coverage where constructor `constructs` evidence is removed from the fixture index;
+  resolver callable lookup now exposes no return/result type and `constructs` traversal returns an
+  empty relation set.
+- Preserved resolver public types, query-table exclusion, SQLite schema and `syntax-helper-search`
+  relation storage.
+- Verification passed:
+  - `cargo test -p context-resolver-search`
+  - `cargo test --workspace`
 
 ### [ ] T93. Keep provider JSON assembly out of `syntax-helper-search` structs
 

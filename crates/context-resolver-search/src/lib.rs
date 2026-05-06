@@ -82,19 +82,10 @@ impl PlatformSearchSource {
     }
 
     fn edge_refs(&self, document_id: &str, edge: &str) -> Result<Vec<TypeRef>, ResolveError> {
-        let mut hits = self
+        let hits = self
             .index
             .related_by_id_and_edge(document_id, edge, 20)
             .map_err(|source| self.source_failure(source))?;
-        if hits.is_empty() {
-            hits = self
-                .index
-                .related_by_id(document_id, 1, 20)
-                .map_err(|source| self.source_failure(source))?
-                .into_iter()
-                .filter(|hit| hit.via.iter().any(|step| step.edge_kind == edge))
-                .collect();
-        }
         hits.into_iter()
             .map(|hit| {
                 Ok(TypeRef {
@@ -193,15 +184,6 @@ impl PlatformSearchSource {
                 "returns"
             };
             return_types = self.edge_refs(&hit.document.id, edge)?;
-        }
-        if return_types.is_empty()
-            && matches!(kind, CallableKind::Constructor)
-            && let (Some(owner), Some(owner_name)) = (&owner, hit.document.owner.as_ref())
-        {
-            return_types.push(TypeRef {
-                name: owner_name.primary.clone(),
-                id: Some(owner.clone()),
-            });
         }
         let signatures = hit
             .document
@@ -965,17 +947,6 @@ impl ContextSource for PlatformSearchSource {
             .into_iter()
             .filter_map(|hit| self.map_related(hit))
             .collect::<Vec<_>>();
-        if !facts.is_empty() {
-            return Ok(ResolveResponse::ok(facts));
-        }
-        let facts = self
-            .index
-            .related_by_id(&source.local_id, 1, 20)
-            .map_err(|source| self.source_failure(source))?
-            .into_iter()
-            .filter(|hit| hit.via.iter().any(|step| step.edge_kind == edge))
-            .filter_map(|hit| self.map_related(hit))
-            .collect::<Vec<_>>();
         Ok(ResolveResponse::ok(facts))
     }
 }
@@ -1351,6 +1322,51 @@ mod tests {
     }
 
     #[test]
+    fn platform_adapter_does_not_synthesize_constructor_return_from_owner() {
+        let source = fixture_source();
+        let filter = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:ОтборКомпоновкиДанных",
+        ));
+        let index = fixture_index_without_constructor_result(
+            "platform-adapter-missing-constructor-result.sqlite",
+        );
+        let adapter = PlatformSearchSource::with_source_id(index, source);
+
+        let constructor = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: Some(&filter),
+                    name: "Новый ОтборКомпоновкиДанных()",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("constructor lookup must not fail");
+
+        assert_eq!(constructor.status, ResolveStatus::Ok);
+        assert_eq!(constructor.facts.len(), 1);
+        assert!(
+            constructor.facts[0].info.return_types.is_empty(),
+            "constructor return type must require explicit return/constructs evidence"
+        );
+
+        let constructs = adapter
+            .related(
+                &constructor.facts[0].id.0,
+                RelationKind::Constructs,
+                &ResolveContext::all(),
+            )
+            .expect("constructs traversal must not fail");
+        assert_eq!(constructs.status, ResolveStatus::Ok);
+        assert!(
+            constructs.facts.is_empty(),
+            "constructs traversal must require edge-specific source evidence"
+        );
+    }
+
+    #[test]
     fn language_adapter_preserves_domain_identity_and_ambiguity() {
         let path = language_fixture_index("language-resolver-ambiguity.sqlite");
         let shlang = SourceId::new("shlang");
@@ -1538,6 +1554,32 @@ mod tests {
     }
 
     fn fixture_index(file_name: &str) -> SearchIndex {
+        let path = fixture_index_path(file_name);
+        SearchIndex::open_read_only(path).expect("index must open")
+    }
+
+    fn fixture_index_without_constructor_result(file_name: &str) -> SearchIndex {
+        let path = fixture_index_path(file_name);
+        let connection = rusqlite::Connection::open(&path).expect("index must open for mutation");
+        let constructor_id =
+            "constructor:platform_type:ОтборКомпоновкиДанных:Новый ОтборКомпоновкиДанных()";
+        connection
+            .execute(
+                "DELETE FROM type_refs WHERE source_document_id = ?1 AND ref_kind = 'constructor_result'",
+                [constructor_id],
+            )
+            .expect("constructor result type ref must be removable");
+        connection
+            .execute(
+                "DELETE FROM relations WHERE source_id = ?1 AND edge_kind = 'constructs'",
+                [constructor_id],
+            )
+            .expect("constructor relation must be removable");
+        drop(connection);
+        SearchIndex::open_read_only(path).expect("index must open")
+    }
+
+    fn fixture_index_path(file_name: &str) -> PathBuf {
         let path = temp_path(file_name);
         let mut builder = SearchIndexBuilder::new();
         for record in [
@@ -1633,7 +1675,7 @@ mod tests {
             })
             .expect("query table must sink");
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
-        SearchIndex::open_read_only(path).expect("index must open")
+        path
     }
 
     fn platform_type(primary: &str, alias: Option<&str>) -> model::PlatformType {
