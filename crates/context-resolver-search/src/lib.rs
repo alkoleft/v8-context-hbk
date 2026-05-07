@@ -1746,6 +1746,7 @@ mod tests {
             .expect("constructor must sink");
         builder
             .query_table(model::QueryTable {
+                identity: None,
                 name: "Основная таблица".to_string(),
                 syntax: Some(name("ОсновнаяТаблица", None)),
                 identifier: Some("ОсновнаяТаблица".to_string()),
@@ -1796,6 +1797,7 @@ mod tests {
 
     fn platform_type(primary: &str, alias: Option<&str>) -> model::PlatformType {
         model::PlatformType {
+            identity: None,
             name: name(primary, alias),
             semantic: model::SemanticContext::default(),
             type_kind: model::PlatformTypeKind::Regular,

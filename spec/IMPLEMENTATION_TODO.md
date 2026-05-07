@@ -569,3 +569,111 @@ Verification:
 - SQLite checks confirmed no query table member id uses `query_table:Основная таблица`, the
   reported `<Имя общего реквизита>` field is absent under that generic owner id, and
   `query_table:Задача` owns `query_table_field:query_table:Задача:<Имя общего реквизита>`.
+
+### [x] T124. Fix type event ids to use semantic event owner identity
+
+Spec refs:
+
+- FR-SH-003
+- FR-SH-SEARCH-001
+- UAT-SH-004
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Ensure search-index `type_event` document ids use the composed TOC-derived semantic owner instead
+  of the generic event-group label such as `События` / `Events`.
+- Keep the schema version 10 consumer export rule unchanged: `type-events.json` still exposes one
+  composed `owner` string and no `owner_path`.
+- Do not change SQLite schema, query command shapes, provider JSON schema or duplicate-document
+  warning behavior.
+
+Verification:
+
+- Focused `syntax-helper-search` regression covers same-name type events under different semantic
+  owners and rejects `type_event:owner:События:*` identity collapse.
+- `cargo test -p syntax-helper-extract -p syntax-helper-search` passed on 2026-05-08.
+- `cargo run -p v8-context-hbk-cli -- syntax index
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output
+  target/type-event-owner-regression.sqlite` completed on 2026-05-08.
+- SQLite checks confirmed `type_event:owner:События:ОбработкаВыбора` is absent, same-name
+  `ОбработкаВыбора` type-event documents use composed semantic owners, and there are zero duplicate
+  final `documents.id` groups.
+
+### [x] T125. Centralize type-event owner identity projection in the domain model
+
+Spec refs:
+
+- FR-EXPORT-001
+- FR-SH-SEARCH-001
+- UAT-SH-004
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Move the accepted JSON-compatible type-event owner projection out of `hbk-syntax-export` and
+  `syntax-helper-search` into `syntax-helper-model`.
+- Keep `hbk-syntax-export` and `syntax-helper-search` on the same shared owner projection.
+- Preserve the existing consumer JSON contract: no `owner_path`, `id`, `owner_ref` or owner-kind
+  fields on type events.
+- Keep final search document ids search-specific; only the semantic owner projection is shared in
+  this task.
+- Do not change SQLite schema, query command shapes, provider JSON schema or duplicate-document
+  warning behavior.
+
+Verification:
+
+- Focused `syntax-helper-model` regression covers the JSON-compatible type-event owner projection.
+- Focused `hbk-syntax-export` and `syntax-helper-search` regressions continue to pass using the
+  shared projection.
+- `cargo test -p syntax-helper-model -p hbk-syntax-export -p syntax-helper-search` passed on
+  2026-05-08.
+
+### [x] T126. Compute Syntax Assistant parent identities during read phase
+
+Spec refs:
+
+- ADR-0011
+- FR-SH-003
+- FR-SH-SEARCH-001
+- FR-EXPORT-001
+- UAT-SH-004
+- UAT-SH-013
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Keep shared parent identity mechanics in `syntax-helper-model` for platform types, query tables,
+  enums, TOC duplicate-marker cleanup and type-event owner projection.
+- Fill `PlatformType.identity`, `QueryTable.identity` and `EnumDefinition.identity` in
+  `syntax-helper-extract` during TOC-aware reading before records reach `SyntaxHelperSink`.
+- Perform duplicate-aware parent identity normalization as a read-phase prepass over parent facts,
+  not inside `syntax-helper-search`.
+- Update `syntax-helper-search` so member document ids prefer precomputed parent identity and use
+  model-owned fallback helpers only for synthetic or legacy records without identity.
+- Keep `hbk-syntax-export` on model-owned type-event owner projection and preserve schema version
+  11 JSON shape.
+
+Verification:
+
+- Focused `syntax-helper-model` tests cover parent identity helpers and type-event owner
+  projection.
+- Focused `syntax-helper-extract` tests prove parent identities are filled by reading for platform
+  types, query tables and enums.
+- Focused `syntax-helper-search` regression proves member ids use precomputed parent identity.
+- Existing `hbk-syntax-export` regressions prove type-events JSON still emits the same `owner`
+  shape and no `owner_path`.
+- `cargo fmt --all --check` passed on 2026-05-08.
+- `cargo check -p syntax-helper-model -p syntax-helper-extract -p hbk-syntax-export -p
+  syntax-helper-search` passed on 2026-05-08.
+- `cargo test -p syntax-helper-model -p syntax-helper-extract -p hbk-syntax-export -p
+  syntax-helper-search` passed on 2026-05-08.
+- `cargo run -p v8-context-hbk-cli -- syntax index
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/adr-0011-identity.sqlite`
+  completed on 2026-05-08.
+- SQLite checks confirmed no `type_event:owner:События:ОбработкаВыбора`, no
+  `query_table_field` / `query_table_parameter` document under `query_table:Основная таблица`, and
+  zero duplicate final `documents.id` groups.

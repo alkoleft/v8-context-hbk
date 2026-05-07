@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::path::PathBuf;
 
@@ -113,12 +114,235 @@ impl SemanticContext {
         self.owner_path = owner_path;
         self
     }
+
+    pub fn type_event_owner(&self) -> Option<LocalizedName> {
+        if self.record_family != RecordFamily::TypeEvent {
+            return None;
+        }
+        let mut owner_path = self.owner_path.as_slice();
+        if owner_path
+            .last()
+            .is_some_and(|name| event_group_label(&name.primary))
+        {
+            owner_path = &owner_path[..owner_path.len() - 1];
+        }
+        match owner_path {
+            [] => None,
+            [owner] => Some(owner.clone()),
+            owners => Some(LocalizedName {
+                primary: owners
+                    .iter()
+                    .map(|name| name.primary.as_str())
+                    .collect::<Vec<_>>()
+                    .join("."),
+                alias: None,
+            }),
+        }
+    }
 }
 
 impl Default for SemanticContext {
     fn default() -> Self {
         Self::new(BranchKind::Unknown, RecordFamily::Unknown)
     }
+}
+
+fn event_group_label(label: &str) -> bool {
+    let label = label.trim().to_lowercase();
+    matches!(label.as_str(), "события" | "events")
+}
+
+pub fn platform_type_identity(
+    name_primary: &str,
+    semantic: &SemanticContext,
+    same_primary_count: usize,
+) -> String {
+    let base = clean_identity_part(name_primary);
+    if same_primary_count <= 1 {
+        format!("platform_type:{base}")
+    } else {
+        format!(
+            "platform_type:{base}:{}",
+            semantic_variant(&semantic.owner_path)
+        )
+    }
+}
+
+pub fn platform_type_identity_key(name_primary: &str) -> String {
+    base_name_key(name_primary)
+}
+
+pub fn platform_type_semantic_key(name_primary: &str, semantic: &SemanticContext) -> String {
+    semantic_record_key(name_primary, semantic)
+}
+
+pub fn query_table_identity(
+    name_primary: &str,
+    identifier: Option<&str>,
+    semantic: &SemanticContext,
+    same_base_count: usize,
+) -> String {
+    let base = query_table_identity_base(name_primary, identifier, semantic);
+    if same_base_count <= 1 {
+        format!("query_table:{base}")
+    } else {
+        format!(
+            "query_table:{base}:{}",
+            semantic_variant(&semantic.owner_path)
+        )
+    }
+}
+
+pub fn query_table_identity_key(
+    name_primary: &str,
+    identifier: Option<&str>,
+    semantic: &SemanticContext,
+) -> String {
+    normalize_identity_lookup_key(&query_table_identity_base(
+        name_primary,
+        identifier,
+        semantic,
+    ))
+}
+
+pub fn query_table_semantic_key(semantic: &SemanticContext, fallback: &str) -> String {
+    semantic_relation_key(semantic, fallback)
+}
+
+pub fn query_member_owner_fallback_identity(
+    owner: &LocalizedName,
+    semantic: &SemanticContext,
+) -> String {
+    let mut parts = semantic
+        .owner_path
+        .iter()
+        .map(|name| clean_identity_part(&name.primary))
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts.last().is_none_or(|last| {
+        normalize_identity_lookup_key(last) != normalize_identity_lookup_key(&owner.primary)
+    }) {
+        let owner = clean_identity_part(&owner.primary);
+        if !owner.is_empty() {
+            parts.push(owner);
+        }
+    }
+    if parts.is_empty() {
+        return format!("query_table:{}", clean_identity_part(&owner.primary));
+    }
+    format!("query_table:{}", parts.join(":"))
+}
+
+pub fn enum_identity(
+    name_primary: &str,
+    name_alias: Option<&str>,
+    source_html_path: &str,
+    same_key_count: usize,
+) -> String {
+    let base = clean_identity_part(name_primary);
+    let kind = enum_kind(source_html_path);
+    let identity = format!("enum:{kind}:{base}");
+    if same_key_count <= 1 {
+        return identity;
+    }
+    name_alias
+        .map(clean_identity_part)
+        .filter(|alias| !alias.is_empty())
+        .map(|alias| format!("{identity}:{alias}"))
+        .unwrap_or(identity)
+}
+
+pub fn enum_identity_key(name_primary: &str, source_html_path: &str) -> String {
+    format!(
+        "{}:{}",
+        enum_kind(source_html_path),
+        base_name_key(name_primary)
+    )
+}
+
+pub fn enum_kind(source_html_path: &str) -> &'static str {
+    if source_html_path.starts_with("objects/catalog2/")
+        || source_html_path == "objects/catalog2.html"
+    {
+        "system"
+    } else {
+        "metadata_property"
+    }
+}
+
+pub fn count_identity_keys(keys: impl Iterator<Item = String>) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for key in keys {
+        *counts.entry(key).or_insert(0) += 1;
+    }
+    counts
+}
+
+pub fn clean_identity_part(value: &str) -> String {
+    strip_toc_duplicate_marker(value).trim().to_string()
+}
+
+pub fn normalize_identity_lookup_key(value: &str) -> String {
+    strip_toc_duplicate_marker(value).trim().to_lowercase()
+}
+
+fn query_table_identity_base(
+    name_primary: &str,
+    identifier: Option<&str>,
+    semantic: &SemanticContext,
+) -> String {
+    if let Some(identifier) = identifier {
+        let identifier = clean_identity_part(identifier);
+        if !identifier.is_empty() {
+            return identifier;
+        }
+    }
+    semantic_record_key(name_primary, semantic)
+}
+
+fn semantic_relation_key(semantic: &SemanticContext, fallback: &str) -> String {
+    let mut parts = semantic
+        .owner_path
+        .iter()
+        .map(|name| name.primary.as_str())
+        .collect::<Vec<_>>();
+    if parts.last().is_none_or(|last| {
+        normalize_identity_lookup_key(last) != normalize_identity_lookup_key(fallback)
+    }) {
+        parts.push(fallback);
+    }
+    parts
+        .into_iter()
+        .map(normalize_identity_lookup_key)
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+fn semantic_record_key(name: &str, semantic: &SemanticContext) -> String {
+    let mut parts = semantic
+        .owner_path
+        .iter()
+        .map(|name| clean_identity_part(&name.primary))
+        .collect::<Vec<_>>();
+    parts.push(clean_identity_part(name));
+    parts.join(":")
+}
+
+fn semantic_variant(owner_path: &[LocalizedName]) -> String {
+    owner_path
+        .iter()
+        .rev()
+        .find(|name| !name.primary.trim().is_empty())
+        .map(|name| clean_identity_part(&name.primary))
+        .unwrap_or_else(|| "semantic_variant".to_string())
+}
+
+fn base_name_key(value: &str) -> String {
+    normalize_identity_lookup_key(value)
+}
+
+fn strip_toc_duplicate_marker(value: &str) -> &str {
+    value.split("#&^@^%&*^#").next().unwrap_or(value)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -137,6 +361,105 @@ pub struct SyntaxHelperDiagnostic {
     pub source: SyntaxHelperSource,
     pub parser_stage: &'static str,
     pub message: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn type_event_owner_uses_json_compatible_semantic_projection() {
+        let semantic = SemanticContext::new(BranchKind::ManagedForms, RecordFamily::TypeEvent)
+            .with_owner_path(vec![name("Форма"), name("Поле формы"), name("События")]);
+
+        let owner = semantic
+            .type_event_owner()
+            .expect("type event owner must be projected");
+
+        assert_eq!(owner.primary, "Форма.Поле формы");
+        assert_eq!(owner.alias, None);
+    }
+
+    #[test]
+    fn type_event_owner_ignores_non_type_event_records() {
+        let semantic = SemanticContext::new(BranchKind::ManagedForms, RecordFamily::ModuleEvent)
+            .with_owner_path(vec![name("События")]);
+
+        assert_eq!(semantic.type_event_owner(), None);
+    }
+
+    #[test]
+    fn parent_identity_helpers_build_domain_owned_parent_ids() {
+        let type_semantic =
+            SemanticContext::new(BranchKind::ManagedForms, RecordFamily::PlatformType)
+                .with_owner_path(vec![name("Обычная форма")]);
+        assert_eq!(
+            platform_type_identity("ЭлементыФормы#&^@^%&*^#1", &type_semantic, 2),
+            "platform_type:ЭлементыФормы:Обычная форма"
+        );
+        assert_eq!(
+            platform_type_semantic_key("ЭлементыФормы#&^@^%&*^#1", &type_semantic),
+            "Обычная форма:ЭлементыФормы"
+        );
+
+        let table_semantic =
+            SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTable)
+                .with_owner_path(vec![name("Таблицы задач")]);
+        assert_eq!(
+            query_table_identity("Основная таблица", Some("Задача"), &table_semantic, 1),
+            "query_table:Задача"
+        );
+        assert_eq!(
+            query_table_identity("Основная таблица", None, &table_semantic, 2),
+            "query_table:Таблицы задач:Основная таблица:Таблицы задач"
+        );
+
+        let member_semantic =
+            SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTableField)
+                .with_owner_path(vec![name("Таблицы задач"), name("Основная таблица")]);
+        assert_eq!(
+            query_member_owner_fallback_identity(&name("Основная таблица"), &member_semantic),
+            "query_table:Таблицы задач:Основная таблица"
+        );
+
+        assert_eq!(
+            enum_identity(
+                "ИспользованиеТекущейСтроки",
+                Some("UseCurrentRow"),
+                "objects/catalog2/catalog1/UseCurrentRow.html",
+                2,
+            ),
+            "enum:system:ИспользованиеТекущейСтроки:UseCurrentRow"
+        );
+        assert_eq!(
+            enum_identity(
+                "Вид",
+                None,
+                "objects/catalog1649/catalog1677/FormGroup/properties/View.html",
+                1,
+            ),
+            "enum:metadata_property:Вид"
+        );
+    }
+
+    #[test]
+    fn identity_lookup_keys_strip_toc_duplicate_markers() {
+        assert_eq!(
+            clean_identity_part(" Основная таблица#&^@^%&*^#1 "),
+            "Основная таблица"
+        );
+        assert_eq!(
+            normalize_identity_lookup_key(" Основная Таблица#&^@^%&*^#1 "),
+            "основная таблица"
+        );
+    }
+
+    fn name(primary: &str) -> LocalizedName {
+        LocalizedName {
+            primary: primary.to_string(),
+            alias: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -308,6 +631,8 @@ pub struct GlobalContextEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlatformType {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
     pub name: LocalizedName,
     pub semantic: SemanticContext,
     pub type_kind: PlatformTypeKind,
@@ -324,6 +649,8 @@ pub struct PlatformType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct QueryTable {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
     pub name: String,
     pub syntax: Option<LocalizedName>,
     pub identifier: Option<String>,
@@ -448,6 +775,8 @@ pub enum PlatformObjectKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EnumDefinition {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
     pub name: LocalizedName,
     pub value_links: Vec<MemberLink>,
     pub description: Option<String>,

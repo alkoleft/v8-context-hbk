@@ -688,6 +688,9 @@ Acceptance:
 - After semantic identity normalization, remaining duplicate final search document ids are reported
   during index build and resolved deterministically by keeping the last extracted record so index
   rebuild can complete on known documentation defects.
+- Parent fact identity for Syntax Assistant owning records is computed by the shared domain model
+  and filled during TOC-aware reading before search/export consumption. Search may use
+  search-specific id strings, but must not be the source of parent identity rules.
 - Distinct system enum pages with the same primary localized name and different aliases remain
   separate deterministic documents instead of colliding or hiding one enum behind the other.
 - Constructor JSON for `HTTPСоединение` exposes parameter names and type references without

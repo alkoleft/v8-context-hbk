@@ -26,6 +26,7 @@ struct RecordingSink {
     events: Vec<GlobalContextEvent>,
     platform_types: Vec<PlatformType>,
     query_tables: Vec<QueryTable>,
+    enums: Vec<EnumDefinition>,
     type_properties: Vec<PlatformProperty>,
     diagnostics: Vec<SyntaxHelperDiagnostic>,
 }
@@ -106,6 +107,7 @@ impl SyntaxHelperSink for RecordingSink {
 
     fn enum_definition(&mut self, record: EnumDefinition) -> Result<(), Self::Error> {
         self.push_name("enum", &record.name);
+        self.enums.push(record);
         Ok(())
     }
 
@@ -534,6 +536,10 @@ fn extraction_reports_missing_query_table_syntax_without_dropping_record() {
     assert!(table.syntax.is_none());
     assert!(table.identifier.is_none());
     assert_eq!(table.table_role, QueryTableRole::Unknown);
+    assert_eq!(
+        table.identity.as_deref(),
+        Some("query_table:Универсальные коллекции значений:Основная таблица")
+    );
 
     let diagnostic = sink
         .diagnostics
@@ -621,6 +627,10 @@ fn extraction_assigns_query_table_identity_from_toc_context() {
         Some("БизнесПроцессТаблицаТочекБизнесПроцессов")
     );
     assert_eq!(table.table_role, QueryTableRole::Additional);
+    assert_eq!(
+        table.identity.as_deref(),
+        Some("query_table:БизнесПроцессТаблицаТочекБизнесПроцессов")
+    );
     assert_eq!(table.semantic.record_family, RecordFamily::QueryTable);
     assert_eq!(table.semantic.branch_kind, BranchKind::QueryTables);
     assert!(sink.diagnostics.is_empty());
@@ -1849,6 +1859,12 @@ fn extracts_platform_context_from_fixture_toc() {
             .iter()
             .any(|platform_type| platform_type.name.alias.as_deref() == Some("Array"))
     );
+    let array = context
+        .platform_types
+        .iter()
+        .find(|platform_type| platform_type.name.alias.as_deref() == Some("Array"))
+        .expect("fixture platform type must be extracted");
+    assert_eq!(array.identity.as_deref(), Some("platform_type:Массив"));
     assert!(
         context
             .type_methods
@@ -1872,6 +1888,15 @@ fn extracts_platform_context_from_fixture_toc() {
             .enums
             .iter()
             .any(|enum_definition| enum_definition.name.alias.as_deref() == Some("JSONValueType"))
+    );
+    let enum_definition = context
+        .enums
+        .iter()
+        .find(|enum_definition| enum_definition.name.alias.as_deref() == Some("JSONValueType"))
+        .expect("fixture enum must be extracted");
+    assert_eq!(
+        enum_definition.identity.as_deref(),
+        Some("enum:system:ТипЗначенияJSON")
     );
     assert!(
         context
@@ -1911,6 +1936,20 @@ fn extraction_can_stream_fixture_records_in_deterministic_order() {
     .map(String::from)
     .to_vec();
     assert_eq!(sink.seen, expected);
+    assert_eq!(
+        sink.platform_types
+            .iter()
+            .find(|record| record.name.primary == "Массив")
+            .and_then(|record| record.identity.as_deref()),
+        Some("platform_type:Массив")
+    );
+    assert_eq!(
+        sink.enums
+            .iter()
+            .find(|record| record.name.primary == "ТипЗначенияJSON")
+            .and_then(|record| record.identity.as_deref()),
+        Some("enum:system:ТипЗначенияJSON")
+    );
 }
 
 #[test]

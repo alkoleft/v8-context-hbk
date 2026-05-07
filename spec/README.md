@@ -90,6 +90,10 @@ The current provisional Syntax Assistant consumer JSON contract is `schema_versi
 validated counts, schema-changing task conclusions and query-index baselines. The active task ledger
 owns current unchecked work.
 
+ADR-0011 owns cross-consumer Syntax Assistant fact identity. Parent fact identity is a
+`syntax-helper-model` / `syntax-helper-extract` responsibility and must be filled during reading;
+search and export consume that domain identity instead of reimplementing parent-owner rules.
+
 ## Current Documentation Site Direction
 
 ADR-0010 owns the documentation web-view direction. Do not route the full HBK documentation corpus

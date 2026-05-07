@@ -50,6 +50,9 @@ Solution-context Rust resolution is described in
   parsing crates or perform Syntax Assistant extraction in request paths. Later search and Syntax
   Assistant API endpoints must read generated/indexed data rather than parse HBK sources live.
 - `syntax-helper-model` must not depend on HBK container, HTML parsing or CLI code.
+- `syntax-helper-model` owns shared Syntax Assistant semantic identity helpers selected by
+  ADR-0011. It may define identity construction over typed names, semantic context and source
+  family evidence, but it must not read HBK files, parse HTML or depend on search/export crates.
 - `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages.
 - `syntax-helper-language` owns the first shared language-fact model and source-family parsers for
   non-platform HBK language pages. It must not add language facts to `PlatformContext` or
@@ -57,12 +60,18 @@ Solution-context Rust resolution is described in
   source-family-specific page discovery and parsing have selected the callable name, syntax,
   parameters, return/type references, description and anchor; the shared helper must not absorb
   page-shape-specific parser rules.
-- `hbk-syntax-export` owns Syntax Assistant output adapters for the Rust domain model.
+- `hbk-syntax-export` owns Syntax Assistant output adapters for the Rust domain model. It consumes
+  model-owned semantic identity/projection helpers and must not reimplement parent-owner identity
+  rules locally.
 - `syntax-helper-search` owns search-index schema, ranking and relationship traversal. It must not
   parse HBK files or perform CLI presentation. It may accept `syntax-helper-language` facts as
   pre-parsed documents for the T89 language-index fixture slice. Relation graph row construction is
   a single streaming internal builder reused by SQLite insertion and focused relation tests; tests
   must not carry a copied relation algorithm.
+- `syntax-helper-search` builds search-specific document id strings from domain fact identity. It
+  must not be the owner of Syntax Assistant parent identity rules; parent identities are filled by
+  `syntax-helper-extract` according to ADR-0011, with model-owned fallback helpers only for
+  synthetic fixtures or legacy records that do not yet carry identity.
 - `context-resolver-core` owns the generic in-process resolver model. It must not depend on HBK,
   SQLite, CLI, parser or Syntax Assistant storage crates.
 - `context-resolver-search` owns translation between `syntax-helper-search::SearchIndex` platform
@@ -531,9 +540,12 @@ passes it through when present. Event files do not expose `object_kind`, `owner_
 `owner_ref`, and derivative type members, constructors and nested query table records keep the
 schema version 8 `owner_path` omission rule.
 
-Schema version 10 removes semantic `owner_path` from `type-events.json`. `hbk-syntax-export` composes the
-type-event semantic owner chain into the single `owner` string so exact owner/event lookup remains
-unambiguous without adding a second owner field.
+Schema version 10 removes semantic `owner_path` from `type-events.json`. `syntax-helper-model` owns
+the shared type-event owner projection from TOC-derived semantic context: remove a trailing generic
+event-group label such as `События` / `Events`, then compose the remaining localized semantic owner
+chain into the single owner string used by JSON export and search identity. `hbk-syntax-export`
+emits this owner in `type-events.json`; `syntax-helper-search` may prefix it for search document
+ids, but must not reimplement type-event owner classification locally.
 
 Schema version 11 adds localized query table `syntax` and `identifier` to `query-tables.json`. The
 extractor parses the `Синтаксис` / `Syntax` section on query table pages, splits parenthesized
@@ -593,6 +605,10 @@ Implemented first slice:
   inputs, then writes documents and streams relation inserts into SQLite. The build path does not
   retain a full `PlatformContext`, complete search-document vector and complete relation vector at
   the same time.
+- ADR-0011 requires Syntax Assistant parent fact identities to be computed in the read phase and
+  stored on extracted domain records before they reach `SyntaxHelperSink`. The search builder may
+  still normalize duplicate final document ids as an index-build recovery step, but it must not
+  derive parent ownership by reinterpreting TOC labels independently from the model/extractor.
 - `syntax index` bulk-loads FTS input into an ordinary `document_search` content table and rebuilds
   the external-content `document_fts` table before validating and atomically replacing the target
   database. The index remains one SQLite artifact.

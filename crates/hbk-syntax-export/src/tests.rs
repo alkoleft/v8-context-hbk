@@ -422,6 +422,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         ],
         platform_types: vec![
             model::PlatformType {
+                identity: None,
                 name: name("Массив"),
                 semantic: semantic(
                     model::BranchKind::PlatformObjects,
@@ -439,6 +440,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 source: source.clone(),
             },
             model::PlatformType {
+                identity: None,
                 name: name("Форма"),
                 semantic: semantic(
                     model::BranchKind::ManagedForms,
@@ -456,6 +458,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 source: source.clone(),
             },
             model::PlatformType {
+                identity: None,
                 name: name("Расширение формы"),
                 semantic: semantic(
                     model::BranchKind::ManagedForms,
@@ -473,6 +476,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 source: source.clone(),
             },
             model::PlatformType {
+                identity: None,
                 name: name("ДокументОбъект.<Имя документа>"),
                 semantic: semantic(
                     model::BranchKind::MetadataObjects,
@@ -535,6 +539,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         }],
         query_tables: vec![
             model::QueryTable {
+                identity: None,
                 name: "Таблица бизнес-процессов".to_string(),
                 syntax: Some(localized(
                     "БизнесПроцесс.<Имя бизнес-процесса>",
@@ -551,6 +556,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 source: source.clone(),
             },
             model::QueryTable {
+                identity: None,
                 name: "Таблица критерия отбора".to_string(),
                 syntax: Some(name("КритерийОтбора.<Имя критерия отбора>")),
                 identifier: Some("КритерийОтбора".to_string()),
@@ -564,6 +570,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 source: source.clone(),
             },
             model::QueryTable {
+                identity: None,
                 name: "Основная таблица".to_string(),
                 syntax: None,
                 identifier: None,
@@ -635,6 +642,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             source: source.clone(),
         }],
         enums: vec![model::EnumDefinition {
+            identity: None,
             name: name("ТипЗначенияJSON"),
             value_links: vec![link("КонецМассива")],
             description: Some("Содержит типы значений JSON.".to_string()),
@@ -1003,6 +1011,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
         .expect("type event must be writable");
     export
         .query_table(model::QueryTable {
+            identity: None,
             name: "Основная таблица".to_string(),
             syntax: Some(name("Задача.<Имя задачи>")),
             identifier: Some("Задача".to_string()),
@@ -1057,6 +1066,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
         .expect("enum value must be buffered before enum definition");
     export
         .enum_definition(model::EnumDefinition {
+            identity: None,
             name: name("ТипЗначенияJSON"),
             value_links: Vec::new(),
             description: Some("JSON value types.".to_string()),

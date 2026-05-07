@@ -2391,6 +2391,7 @@ mod tests {
 
     fn platform_type_with_owner_path(primary: &str, owner: &str) -> model::PlatformType {
         model::PlatformType {
+            identity: None,
             name: name(primary),
             semantic: semantic(model::RecordFamily::PlatformType, owner),
             type_kind: model::PlatformTypeKind::Regular,

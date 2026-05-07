@@ -1151,6 +1151,30 @@ target/query-table-id-regression.sqlite` completed in 58.294 s, emitted existing
 owner id, and `query_table:Задача` owns
 `query_table_field:query_table:Задача:<Имя общего реквизита>`.
 
+T124 rebuilt the Russian index on 2026-05-08 after fixing search document identity for type events
+under generic `События` / `Events` TOC group nodes. The debug build command
+`cargo run -p v8-context-hbk-cli -- syntax index
+/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output
+target/type-event-owner-regression.sqlite` completed in 60.672 s, emitted existing
+`DUPLICATE_DOCUMENT_ID` warnings to `stderr`, produced 25,449 documents and left zero duplicate
+`documents.id` groups. SQLite checks confirmed that
+`type_event:owner:События:ОбработкаВыбора` is absent and that `ОбработкаВыбора` type-event
+documents use composed semantic owners such as
+`Поле формы.Расширение поля ввода`, `Форма клиентского приложения.ФормаКлиентскогоПриложения` and
+`Элементы управления.Табличное поле.ТабличноеПоле`.
+
+T126 completed ADR-0011's read-phase parent identity boundary for Syntax Assistant facts. Parent
+identity for platform types, query tables and enums is filled by `syntax-helper-extract` before
+records reach `SyntaxHelperSink`; `syntax-helper-search` consumes those identities for member
+document ids and keeps model-owned fallback helpers only for synthetic or legacy records without
+identity. The debug build command
+`cargo run -p v8-context-hbk-cli -- syntax index
+/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/adr-0011-identity.sqlite` completed in
+65.778 s, emitted existing `DUPLICATE_DOCUMENT_ID` warnings to `stderr`, produced 25,443 documents
+and 63,562 relations, and left zero duplicate `documents.id` groups. SQLite checks confirmed that
+`type_event:owner:События:ОбработкаВыбора` is absent and that no `query_table_field` /
+`query_table_parameter` document is owned by `query_table:Основная таблица`.
+
 T42 changed only the index build data flow. `syntax index` now streams extraction records into a
 search-index builder and inserts relations into SQLite without retaining the full `PlatformContext`,
 complete search document vector and complete relation vector together. The SQLite schema, atomic

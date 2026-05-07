@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use hbk_book::{HbkBook, Toc};
@@ -143,6 +143,7 @@ where
     let mut visited = BTreeSet::new();
     let record_detail_mode = sink.record_detail_mode();
     let RootDiscovery { roots, diagnostics } = discovery;
+    let parent_identities = parent_identities(&roots, &mut load_page)?;
 
     for diagnostic in diagnostics {
         sink.diagnostic(diagnostic)
@@ -190,6 +191,8 @@ where
                         parse_platform_type_for_mode(&content, source, record_detail_mode);
                     platform_type.semantic = catalog_page.semantic.clone();
                     apply_platform_type_semantics(&mut platform_type);
+                    platform_type.identity =
+                        parent_identities.platform_type(&catalog_page.source.html_path);
                     sink.platform_type(platform_type)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
@@ -199,6 +202,7 @@ where
                     table.name = name_from_text(&catalog_page.source.page_title).primary;
                     table.identifier = query_table_identifier(table.syntax.as_ref(), &table.name);
                     table.table_role = query_table_role(table.syntax.as_ref());
+                    table.identity = parent_identities.query_table(&catalog_page.source.html_path);
                     if table.syntax.is_none() {
                         sink.diagnostic(missing_query_table_syntax_diagnostic(&table))
                             .map_err(SyntaxHelperStreamError::Sink)?;
@@ -255,9 +259,14 @@ where
                     sink.constructor(constructor)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
-                PageClass::Enum => sink
-                    .enum_definition(parse_enum_for_mode(&content, source, record_detail_mode))
-                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::Enum => {
+                    let mut enum_definition =
+                        parse_enum_for_mode(&content, source, record_detail_mode);
+                    enum_definition.identity =
+                        parent_identities.enum_definition(&catalog_page.source.html_path);
+                    sink.enum_definition(enum_definition)
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
                 PageClass::EnumValue => sink
                     .enum_value(parse_enum_value(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
@@ -277,6 +286,188 @@ where
     }
 
     Ok(())
+}
+
+#[derive(Default)]
+struct ParentIdentities {
+    platform_types: BTreeMap<String, String>,
+    query_tables: BTreeMap<String, String>,
+    enums: BTreeMap<String, String>,
+}
+
+impl ParentIdentities {
+    fn platform_type(&self, html_path: &str) -> Option<String> {
+        self.platform_types.get(html_path).cloned()
+    }
+
+    fn query_table(&self, html_path: &str) -> Option<String> {
+        self.query_tables.get(html_path).cloned()
+    }
+
+    fn enum_definition(&self, html_path: &str) -> Option<String> {
+        self.enums.get(html_path).cloned()
+    }
+}
+
+struct PlatformTypeIdentityInput {
+    html_path: String,
+    name_primary: String,
+    semantic: SemanticContext,
+}
+
+struct QueryTableIdentityInput {
+    html_path: String,
+    name_primary: String,
+    identifier: Option<String>,
+    semantic: SemanticContext,
+}
+
+struct EnumIdentityInput {
+    html_path: String,
+    name: LocalizedName,
+}
+
+fn parent_identities(
+    roots: &[RootSection],
+    load_page: &mut impl FnMut(&str) -> Result<PageContent, SyntaxHelperError>,
+) -> Result<ParentIdentities, SyntaxHelperError> {
+    let mut visited = BTreeSet::new();
+    let mut platform_types = Vec::new();
+    let mut query_tables = Vec::new();
+    let mut enums = Vec::new();
+
+    for root in roots {
+        for catalog_page in &root.pages {
+            if matches!(catalog_page.class, PageClass::Catalog | PageClass::Unknown)
+                || !visited.insert(catalog_page.source.html_path.clone())
+            {
+                continue;
+            }
+            match catalog_page.class {
+                PageClass::ObjectType if !is_skipped_primitive_literal(&catalog_page.semantic) => {
+                    platform_types.push(PlatformTypeIdentityInput {
+                        html_path: catalog_page.source.html_path.clone(),
+                        name_primary: name_from_text(&catalog_page.source.page_title).primary,
+                        semantic: catalog_page.semantic.clone(),
+                    });
+                }
+                PageClass::QueryTable => {
+                    let content = load_page(&catalog_page.source.html_path)?;
+                    let mut table = parse_query_table(
+                        &content,
+                        source_from_content(&catalog_page.source, &content),
+                    );
+                    table.semantic = catalog_page.semantic.clone();
+                    table.name = name_from_text(&catalog_page.source.page_title).primary;
+                    table.identifier = query_table_identifier(table.syntax.as_ref(), &table.name);
+                    query_tables.push(QueryTableIdentityInput {
+                        html_path: catalog_page.source.html_path.clone(),
+                        name_primary: table.name,
+                        identifier: table.identifier,
+                        semantic: table.semantic,
+                    });
+                }
+                PageClass::Enum => {
+                    enums.push(EnumIdentityInput {
+                        html_path: catalog_page.source.html_path.clone(),
+                        name: name_from_text(&catalog_page.source.page_title),
+                    });
+                }
+                PageClass::Catalog
+                | PageClass::GlobalMethod
+                | PageClass::GlobalProperty
+                | PageClass::ModuleEvent
+                | PageClass::TypeEvent
+                | PageClass::UnknownEvent
+                | PageClass::ObjectType
+                | PageClass::ObjectMethod
+                | PageClass::ObjectProperty
+                | PageClass::QueryTableField
+                | PageClass::QueryTableParameter
+                | PageClass::Constructor
+                | PageClass::EnumValue
+                | PageClass::Unknown => {}
+            }
+        }
+    }
+
+    let platform_counts = count_identity_keys(
+        platform_types
+            .iter()
+            .map(|record| platform_type_identity_key(&record.name_primary)),
+    );
+    let query_counts = count_identity_keys(query_tables.iter().map(|record| {
+        query_table_identity_key(
+            &record.name_primary,
+            record.identifier.as_deref(),
+            &record.semantic,
+        )
+    }));
+    let enum_counts = count_identity_keys(
+        enums
+            .iter()
+            .map(|record| enum_identity_key(&record.name.primary, &record.html_path)),
+    );
+
+    let platform_types = platform_types
+        .into_iter()
+        .map(|record| {
+            let count = platform_counts
+                .get(&platform_type_identity_key(&record.name_primary))
+                .copied()
+                .unwrap_or_default();
+            (
+                record.html_path,
+                platform_type_identity(&record.name_primary, &record.semantic, count),
+            )
+        })
+        .collect();
+    let query_tables = query_tables
+        .into_iter()
+        .map(|record| {
+            let count = query_counts
+                .get(&query_table_identity_key(
+                    &record.name_primary,
+                    record.identifier.as_deref(),
+                    &record.semantic,
+                ))
+                .copied()
+                .unwrap_or_default();
+            (
+                record.html_path,
+                query_table_identity(
+                    &record.name_primary,
+                    record.identifier.as_deref(),
+                    &record.semantic,
+                    count,
+                ),
+            )
+        })
+        .collect();
+    let enums = enums
+        .into_iter()
+        .map(|record| {
+            let count = enum_counts
+                .get(&enum_identity_key(&record.name.primary, &record.html_path))
+                .copied()
+                .unwrap_or_default();
+            (
+                record.html_path.clone(),
+                enum_identity(
+                    &record.name.primary,
+                    record.name.alias.as_deref(),
+                    &record.html_path,
+                    count,
+                ),
+            )
+        })
+        .collect();
+
+    Ok(ParentIdentities {
+        platform_types,
+        query_tables,
+        enums,
+    })
 }
 
 fn missing_query_table_syntax_diagnostic(table: &QueryTable) -> SyntaxHelperDiagnostic {

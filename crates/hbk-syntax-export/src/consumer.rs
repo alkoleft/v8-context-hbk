@@ -124,14 +124,18 @@ pub(crate) struct ConsumerEvent<'a> {
 
 impl<'a> From<&'a model::GlobalContextEvent> for ConsumerEvent<'a> {
     fn from(event: &'a model::GlobalContextEvent) -> Self {
-        let type_owner_path = type_event_owner_path(&event.semantic);
         Self {
             record_family: event.semantic.record_family,
             branch_kind: event.semantic.branch_kind,
             module: (event.semantic.record_family == model::RecordFamily::ModuleEvent)
                 .then(|| ConsumerModuleContext::from(&event.module)),
             owner: (event.semantic.record_family == model::RecordFamily::TypeEvent)
-                .then(|| type_event_owner(&type_owner_path))
+                .then(|| {
+                    event
+                        .semantic
+                        .type_event_owner()
+                        .map(|owner| Cow::Owned(owner.primary))
+                })
                 .flatten(),
             name: ConsumerLocalizedName::from(&event.name),
             signatures: consumer_signatures(&event.signatures),
@@ -150,30 +154,6 @@ impl ConsumerEvent<'_> {
             _ => "unknown_event",
         }
     }
-}
-
-fn type_event_owner_path(semantic: &model::SemanticContext) -> Vec<&str> {
-    let mut owner_path = semantic_owner_path(semantic);
-    if owner_path
-        .last()
-        .is_some_and(|label| event_group_label(label))
-    {
-        owner_path.pop();
-    }
-    owner_path
-}
-
-fn type_event_owner<'a>(owner_path: &[&'a str]) -> Option<Cow<'a, str>> {
-    match owner_path {
-        [] => None,
-        [owner] => Some(Cow::Borrowed(owner)),
-        _ => Some(Cow::Owned(owner_path.join("."))),
-    }
-}
-
-fn event_group_label(label: &str) -> bool {
-    let label = label.trim().to_lowercase();
-    label == "события" || label == "events"
 }
 
 #[derive(Debug, Clone, Serialize)]

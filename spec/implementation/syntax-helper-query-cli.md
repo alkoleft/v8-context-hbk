@@ -281,6 +281,11 @@ general API presentation keys. They must not include HBK file paths, TOC paths, 
 titles, alias display strings such as `primary (alias)` or fallback source-path suffixes. Exact
 primary-name, alias and owner/member lookup belongs in `document_names`, not in `documents.id`.
 
+ADR-0011 owns the cross-consumer identity boundary for these facts. Parent fact identities are
+computed by `syntax-helper-model` / `syntax-helper-extract` during reading, before records reach the
+search-index builder. The search index may wrap those identities in search-specific document id
+strings, but it must not reinterpret TOC ownership locally.
+
 Query table documents use `QueryTable.identifier` as the base identity. If real source data contains
 more than one query table with the same `QueryTable.identifier`, the index must append the minimal
 semantic table-family variant needed to disambiguate the duplicate, derived from the semantic

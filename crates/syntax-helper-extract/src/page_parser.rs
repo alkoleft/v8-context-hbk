@@ -107,6 +107,7 @@ pub(crate) fn parse_platform_type_for_mode(
 ) -> PlatformType {
     let parse_links = mode == SyntaxHelperRecordDetailMode::Full;
     PlatformType {
+        identity: None,
         name: page_title_name(content),
         semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::PlatformType),
         type_kind: PlatformTypeKind::Regular,
@@ -134,6 +135,7 @@ pub(crate) fn parse_query_table(content: &PageContent, source: SyntaxHelperSourc
     let syntax = query_table_syntax(content);
     let name = query_table_name(content);
     QueryTable {
+        identity: None,
         name,
         syntax,
         identifier: None,
@@ -246,6 +248,7 @@ pub(crate) fn parse_enum_for_mode(
     mode: SyntaxHelperRecordDetailMode,
 ) -> EnumDefinition {
     EnumDefinition {
+        identity: None,
         name: page_title_name(content),
         value_links: if mode == SyntaxHelperRecordDetailMode::Full {
             links_in_section(content, &["Значения", "Values"])
