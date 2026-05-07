@@ -656,6 +656,16 @@ fn resolves_query_table_member_owner_from_toc_semantic_context() {
         ru_field_owner.alias.as_deref(),
         Some("Business Process Table")
     );
+    let ru_field_owner_path = ru_pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("Presentation464.html"))
+        .expect("field page must be collected")
+        .semantic
+        .owner_path
+        .iter()
+        .map(|name| name.primary.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(ru_field_owner_path, vec!["Таблица бизнес-процессов"]);
 
     let root_pages = collect_catalog_pages(
         Path::new("shcntx_root.hbk"),
@@ -691,6 +701,16 @@ fn resolves_query_table_member_owner_from_toc_semantic_context() {
         ru_parameter_owner.alias.as_deref(),
         Some("Filter Criterion Table")
     );
+    let ru_parameter_owner_path = ru_nested_pages
+        .iter()
+        .find(|page| page.source.html_path.ends_with("param82.html"))
+        .expect("parameter page must be collected")
+        .semantic
+        .owner_path
+        .iter()
+        .map(|name| name.primary.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(ru_parameter_owner_path, vec!["Таблица критерия отбора"]);
 
     let root_nested_pages = collect_catalog_pages(
         Path::new("shcntx_root.hbk"),

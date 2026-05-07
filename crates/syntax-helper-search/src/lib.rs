@@ -3295,7 +3295,7 @@ impl DocumentIdentities {
         self.query_table_ids
             .get(&semantic_relation_key(semantic, &owner.primary))
             .cloned()
-            .unwrap_or_else(|| format!("query_table:{}", clean_identity_part(&owner.primary)))
+            .unwrap_or_else(|| query_member_owner_fallback_identity(owner, semantic))
     }
 
     fn enum_identity_by(
@@ -3419,6 +3419,31 @@ fn query_table_identity_base(
         }
     }
     semantic_record_key(name_primary, semantic)
+}
+
+fn query_member_owner_fallback_identity(
+    owner: &model::LocalizedName,
+    semantic: &model::SemanticContext,
+) -> String {
+    let mut parts = semantic
+        .owner_path
+        .iter()
+        .map(|name| clean_identity_part(&name.primary))
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts
+        .last()
+        .is_none_or(|last| normalize_lookup_key(last) != normalize_lookup_key(&owner.primary))
+    {
+        let owner = clean_identity_part(&owner.primary);
+        if !owner.is_empty() {
+            parts.push(owner);
+        }
+    }
+    if parts.is_empty() {
+        return format!("query_table:{}", clean_identity_part(&owner.primary));
+    }
+    format!("query_table:{}", parts.join(":"))
 }
 
 fn enum_identity(
@@ -4881,6 +4906,86 @@ mod tests {
     }
 
     #[test]
+    fn query_table_member_identity_uses_toc_shaped_parent_table_identity() {
+        let mut table = query_table("Задача", "", "Основная таблица");
+        table.semantic = semantic_path(
+            model::RecordFamily::QueryTable,
+            &["Работа с запросами", "Таблицы запросов", "Таблицы задач"],
+        );
+        let mut field = query_table_field("Основная таблица", "", "<Имя общего реквизита>");
+        field.semantic = semantic_path(
+            model::RecordFamily::QueryTableField,
+            &[
+                "Работа с запросами",
+                "Таблицы запросов",
+                "Таблицы задач",
+                "Основная таблица",
+            ],
+        );
+        let context = model::PlatformContext {
+            query_tables: vec![table],
+            table_fields: vec![field],
+            ..model::PlatformContext::default()
+        };
+
+        let documents = builder_from_context(&context)
+            .into_documents()
+            .expect("query table member identity must use parent table")
+            .documents;
+        let ids = documents
+            .iter()
+            .map(|document| document.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(ids.contains(&"query_table:Задача"));
+        assert!(ids.contains(&"query_table_field:query_table:Задача:<Имя общего реквизита>"));
+        assert!(
+            !ids.contains(&"query_table_field:query_table:Основная таблица:<Имя общего реквизита>")
+        );
+
+        let relations = relations_from_documents(&documents);
+        assert!(relations.iter().any(|relation| {
+            relation.source_id == "query_table:Задача"
+                && relation.target_id
+                    == "query_table_field:query_table:Задача:<Имя общего реквизита>"
+        }));
+    }
+
+    #[test]
+    fn missing_query_table_parent_identity_fallback_keeps_semantic_path() {
+        let mut field = query_table_field("Основная таблица", "", "<Имя общего реквизита>");
+        field.semantic = semantic_path(
+            model::RecordFamily::QueryTableField,
+            &[
+                "Работа с запросами",
+                "Таблицы запросов",
+                "Таблицы задач",
+                "Основная таблица",
+            ],
+        );
+        let context = model::PlatformContext {
+            table_fields: vec![field],
+            ..model::PlatformContext::default()
+        };
+
+        let documents = builder_from_context(&context)
+            .into_documents()
+            .expect("semantic fallback identity must not collide")
+            .documents;
+        let ids = documents
+            .iter()
+            .map(|document| document.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(ids.contains(
+            &"query_table_field:query_table:Работа с запросами:Таблицы запросов:Таблицы задач:Основная таблица:<Имя общего реквизита>"
+        ));
+        assert!(
+            !ids.contains(&"query_table_field:query_table:Основная таблица:<Имя общего реквизита>")
+        );
+    }
+
+    #[test]
     fn missing_syntax_query_table_identity_uses_semantic_owner_path() {
         let mut task_table = query_table("", "Таблицы задач", "Основная таблица");
         task_table.syntax = None;
@@ -5604,8 +5709,15 @@ mod tests {
     }
 
     fn semantic(record_family: model::RecordFamily, owner_path: &str) -> model::SemanticContext {
+        semantic_path(record_family, &[owner_path])
+    }
+
+    fn semantic_path(
+        record_family: model::RecordFamily,
+        owner_path: &[&str],
+    ) -> model::SemanticContext {
         model::SemanticContext::new(model::BranchKind::PlatformObjects, record_family)
-            .with_owner_path(vec![name(owner_path, None)])
+            .with_owner_path(owner_path.iter().map(|value| name(value, None)).collect())
     }
 
     fn type_method(owner: &str, primary: &str, return_type: &str) -> model::PlatformMethod {

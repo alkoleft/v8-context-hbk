@@ -1140,6 +1140,17 @@ confirmed that the reported `МенеджерКриптографии` construct
 `ИспользованиеТекущейСтроки` system enum aliases exist as separate documents and duplicate
 `ОбновлениеПредопределенныхДанных:PredefinedDataUpdate` source pages resolve to one document.
 
+T123 rebuilt the Russian index on 2026-05-08 after fixing TOC-shaped query-table member owner
+identity. The debug build command
+`v8-context-hbk syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output
+target/query-table-id-regression.sqlite` completed in 58.294 s, emitted existing
+`DUPLICATE_DOCUMENT_ID` warnings to `stderr`, produced 24,970 documents and left zero duplicate
+`documents.id` groups. SQLite checks confirmed that
+`query_table_field:query_table:Основная таблица:<Имя общего реквизита>` is absent, no
+`query_table_field` / `query_table_parameter` document uses `query_table:Основная таблица` as its
+owner id, and `query_table:Задача` owns
+`query_table_field:query_table:Задача:<Имя общего реквизита>`.
+
 T42 changed only the index build data flow. `syntax index` now streams extraction records into a
 search-index builder and inserts relations into SQLite without retaining the full `PlatformContext`,
 complete search document vector and complete relation vector together. The SQLite schema, atomic

@@ -274,7 +274,12 @@ fn owner_path(
                 .filter(|ancestor| include_query_owner_path_node(ancestor))
                 .map(|ancestor| semantic_page_name(locale, ancestor))
                 .collect::<Vec<_>>();
-            owner_path.push(owner.clone());
+            if owner_path
+                .last()
+                .is_none_or(|current| !localized_name_matches(current, owner))
+            {
+                owner_path.push(owner.clone());
+            }
             owner_path
         }
         PageClass::ModuleEvent
@@ -327,6 +332,11 @@ fn semantic_page_name(locale: &str, page: &TocPage) -> LocalizedName {
         page.title.display()
     };
     name_from_text(title)
+}
+
+fn localized_name_matches(left: &LocalizedName, right: &LocalizedName) -> bool {
+    left.primary.trim() == right.primary.trim()
+        && left.alias.as_deref().map(str::trim) == right.alias.as_deref().map(str::trim)
 }
 
 fn normalized_title(page: &TocPage) -> String {

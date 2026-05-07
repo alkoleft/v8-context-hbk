@@ -537,3 +537,35 @@ Verification:
   target/repro-index.sqlite` completes and reports the duplicate constructor warning.
 - SQLite check confirms the reported `МенеджерКриптографии` constructor id exists once and both
   `ИспользованиеТекущейСтроки` system enum aliases exist as separate documents.
+
+### [x] T123. Fix query table member ids to use parent table identity
+
+Spec refs:
+
+- FR-SH-003
+- FR-SH-SEARCH-001
+- UAT-SH-004
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Fix query table field/parameter semantic owner paths so TOC traversal does not duplicate the
+  table node when the member page is a descendant of its table page.
+- Ensure search-index query table field/parameter document ids use the resolved final parent
+  query-table id instead of falling back to generic titles such as `query_table:Основная таблица`.
+- Keep fallback identities semantic-owner-path based when a parent query table record is missing.
+- Do not change SQLite schema, query command shapes, provider JSON schema or duplicate-document
+  warning behavior.
+
+Verification:
+
+- Focused `syntax-helper-extract` regression covers TOC-descended query table member owner paths.
+- Focused `syntax-helper-search` regressions cover parent-table id use and semantic fallback for
+  missing parent table records.
+- `cargo test -p syntax-helper-extract -p syntax-helper-search` passed on 2026-05-08.
+- `v8-context-hbk syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output
+  target/query-table-id-regression.sqlite` completed on 2026-05-08.
+- SQLite checks confirmed no query table member id uses `query_table:Основная таблица`, the
+  reported `<Имя общего реквизита>` field is absent under that generic owner id, and
+  `query_table:Задача` owns `query_table_field:query_table:Задача:<Имя общего реквизита>`.

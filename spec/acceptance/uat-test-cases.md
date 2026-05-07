@@ -977,6 +977,12 @@ assert cur.execute(
 assert cur.execute(
     "select 1 from relations where source_id like 'query_table:РегистрБухгалтерии:%' and target_id like 'query_table_field:query_table:РегистрБухгалтерии:%' limit 1"
 ).fetchone()
+assert not cur.execute(
+    "select 1 from documents where id like 'query_table_field:query_table:Основная таблица:%' or id like 'query_table_parameter:query_table:Основная таблица:%' limit 1"
+).fetchone()
+assert cur.execute(
+    "select 1 from relations where source_id='query_table:Задача' and target_id='query_table_field:query_table:Задача:<Имя общего реквизита>' limit 1"
+).fetchone()
 assert cur.execute(
     "select count(*) from documents where id='constructor:platform_type:МенеджерКриптографии:Новый МенеджерКриптографии(<ИспользованиеИнтерактивногоРежима>)'"
 ).fetchone()[0] == 1
@@ -1060,6 +1066,8 @@ Expected result:
 - Document ids do not contain HBK/HTML path fragments or TOC duplicate-title markers.
 - Duplicated query table identifiers use semantic table-family variants in document ids and
   relation endpoints.
+- Query table field and parameter ids use the final parent query-table id; generic table titles
+  such as `query_table:Основная таблица` are not used as member owners.
 - Duplicate source pages for the `МенеджерКриптографии` constructor signature are reported during
   index build and produce one constructor document instead of aborting the rebuild.
 - Distinct `ИспользованиеТекущейСтроки` system enums with different aliases produce separate
