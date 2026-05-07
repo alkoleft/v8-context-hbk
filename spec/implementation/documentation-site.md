@@ -111,6 +111,12 @@ Rules:
 - Merge same-level section nodes by normalized display title only when both nodes are section-like
   or their content relationship is proven equivalent.
 - Do not merge two page-bearing nodes solely because they have the same title.
+- Merge same-level page-bearing nodes when their normalized page address is identical. The first
+  deterministic source page owns the generated page data file, while aliases from duplicate source
+  books must still resolve Markdown links to that generated page.
+- Address-based page merging uses TOC page addresses as identity evidence, not HTML `<title>` or
+  heading text. Some HBK pages expose generic or unreliable HTML titles, so visible navigation
+  labels remain TOC-derived.
 - When duplicate output ids are needed, disambiguate by deterministic source book id and local TOC
   path data inside the generated id, not in the visible title.
 - Record merge diagnostics for conflicts such as same title with different page content.
@@ -190,6 +196,15 @@ The first documentation web app lives under `web/docs-viewer`.
 - Markdown rendering is intentionally small and safe for the first slice: headings, paragraphs,
   lists, fenced code blocks, strong text and links are rendered with DOM nodes rather than raw HTML
   injection.
+- The renderer must also handle generated GFM tables and Markdown blockquotes as DOM nodes because
+  ordinary HBK pages use both constructs for readable prose and visual launch-flow diagrams.
+- Generated service anchors used for Markdown `#fragment` targets are rendered as invisible DOM
+  anchors, not as raw text. Internal generated page links such as `<page-id>.md#fragment` are handled
+  by the web app so section links open the generated page and scroll to the target in-place.
+- The viewer follows the same navigation shape as `hbk-reader`: content-area link clicks are
+  intercepted by application code, then resolved to the current generated page id instead of being
+  left to the browser as raw file navigation. Therefore generated Markdown links to `page-*.md`
+  files must remain intact in the rendered DOM.
 
 Search, Syntax Assistant API endpoints, indexing status and `hbk-reader` route compatibility remain
 outside this slice.
@@ -254,3 +269,45 @@ The T117 full-corpus check also showed that bounded parallel page writing by sou
 improve the local 8.5.1.1150 run and increased peak RSS, so that worker-pool change was not kept.
 Further speed work should measure the remaining cost before adding concurrency or broader export
 pipeline changes.
+
+## T118 Address-Based TOC Merge Notes
+
+The global TOC merge now treats same-level page-bearing nodes with the same normalized page address
+as one navigation target. This fixes real full-corpus site roots where duplicate form/help pages
+appeared multiple times only because the previous first slice refused to merge page-bearing nodes.
+
+The merged node keeps the first deterministic TOC label and source page as the page-data owner,
+merges child TOC branches from later duplicates and records duplicate source-book aliases in the
+link-target table so `v8help://<book>/<page>` links from any merged source book still resolve to the
+single generated Markdown file. Page ids are address-stable for the generated locale/page address and
+no longer depend on the local TOC index path or page title text.
+
+When a same-level branch uses a `_CONTENTS_NODE_*` placeholder in one book and exactly one concrete
+page address in another equivalent branch, the placeholder branch resolves to the concrete page
+target. The generated page data owner is the concrete source page, while the placeholder
+`source-book + html-path` pair is registered as a Markdown link alias. Ambiguous placeholder
+branches with multiple concrete candidates remain placeholder-address based rather than choosing a
+hidden winner.
+
+## T121 Blockquote and Table Rendering Notes
+
+Ordinary HBK pages may use HTML blockquotes and nested tables either as real data tables or as
+layout-only visual diagrams. The generator should normalize layout-only non-code blockquote/table
+diagrams into readable quoted prose before Markdown conversion, while preserving real Markdown table
+output for data tables.
+
+The viewer remains a small safe renderer, but it must understand the generated Markdown block
+constructs that the accepted exporter emits: blockquotes, GFM tables and tables inside blockquotes.
+Those constructs are rendered by constructing DOM nodes, not by injecting Markdown or raw HTML.
+
+## T121 Blockquote/Table Readability Notes
+
+The single-book Markdown conversion path now treats non-code blockquote-wrapped layout table
+diagrams as presentation artifacts. If a blockquote contains multiple non-linked, non-Courier tables
+whose rows have at most one non-empty cell, the converter extracts those cell texts and emits quoted
+prose lines before `quick_html2md` runs. This fixes launch-flow diagrams such as `1cv8_ru.hbk` page
+`ZIF` without changing ordinary GFM tables, linked blockquotes or Courier code/query examples.
+
+The web viewer renderer supports both remaining generated GFM tables and Markdown blockquotes as DOM
+nodes, including quoted GFM tables that still represent real table content rather than layout-only
+diagrams.

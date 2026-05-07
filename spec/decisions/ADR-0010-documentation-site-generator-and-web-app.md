@@ -65,6 +65,9 @@ blindly:
 - keep deterministic ordering across runs;
 - merge section nodes by normalized display title only when they represent the same navigation
   branch at the same level;
+- merge same-level page-bearing nodes by identical normalized page address, not by page title;
+- resolve same-level placeholder page targets to a concrete page target only when there is exactly
+  one equivalent concrete branch, and keep the placeholder source address as a generated link alias;
 - do not use raw TOC indexes, raw HTML paths or raw HBK paths as public navigation labels;
 - assign stable page ids for duplicate titles and duplicate HTML paths without relying on mutable
   `locationIndex`-style state as the public identity.

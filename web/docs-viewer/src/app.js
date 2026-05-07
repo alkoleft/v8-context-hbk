@@ -1,5 +1,6 @@
 import { DocsDataClient } from "./data-client.js";
 import { renderMarkdown } from "./markdown.js";
+import { parseGeneratedPageLink } from "./page-links.js";
 
 const client = new DocsDataClient();
 const state = {
@@ -14,6 +15,21 @@ const pagePanel = document.querySelector("#pagePanel");
 
 main().catch((error) => {
   showStatus(pagePanel, error.message);
+});
+
+pagePanel.addEventListener("click", (event) => {
+  const link = event.target?.closest?.("a");
+  if (!link) {
+    return;
+  }
+  const target = parseGeneratedPageLink(link.getAttribute("href"));
+  if (!target) {
+    return;
+  }
+  event.preventDefault();
+  openPageId(target.pageId, target.pageId, target.fragment).catch((error) => {
+    showStatus(pagePanel, error.message);
+  });
 });
 
 async function main() {
@@ -80,7 +96,7 @@ function renderNode(node) {
   button.textContent = node.title;
   button.addEventListener("click", () => {
     if (node.page_id) {
-      openPage(node);
+      openPageId(node.page_id, node.title, null);
     } else if (node.has_children) {
       toggle.click();
     }
@@ -116,12 +132,15 @@ function renderNode(node) {
   return wrapper;
 }
 
-async function openPage(node) {
+async function openPageId(pageId, title, fragment) {
   showStatus(pagePanel, "Loading page...");
   const pageRoot = state.manifest.page_roots[state.locale];
-  const markdown = await client.page(state.locale, pageRoot, node.page_id);
+  const markdown = await client.page(state.locale, pageRoot, pageId);
   pagePanel.replaceChildren(renderMarkdown(markdown));
-  document.title = `${node.title} - 1C Documentation`;
+  if (fragment) {
+    document.getElementById(fragment)?.scrollIntoView();
+  }
+  document.title = `${title} - 1C Documentation`;
 }
 
 function showStatus(element, message) {

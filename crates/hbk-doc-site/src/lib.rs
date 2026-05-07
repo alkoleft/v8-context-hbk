@@ -600,9 +600,24 @@ struct TocSectionArtifact {
 #[derive(Debug, Clone)]
 struct SitePageArtifactPlan {
     book_id: SiteBookId,
+    link_aliases: BTreeSet<(SiteBookId, String)>,
     page_id: SitePageId,
     title: String,
     html_path: String,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedPageTarget {
+    book_id: SiteBookId,
+    page_key: String,
+    title: String,
+    html_path: String,
+}
+
+#[derive(Debug, Clone)]
+enum PlaceholderTargetCandidate {
+    One(ResolvedPageTarget),
+    Ambiguous,
 }
 
 #[derive(Debug)]
@@ -633,6 +648,8 @@ fn build_site_data(books: &[SourceBook]) -> SiteData {
     for (locale, books) in locale_books {
         let mut builders = Vec::new();
         let mut pages = Vec::new();
+        let mut page_plan_indexes = HashMap::new();
+        let resolved_placeholder_targets = collect_resolved_placeholder_targets(&books);
         let mut books_manifest = Vec::new();
         for book in books {
             books_manifest.push(ManifestBook {
@@ -645,8 +662,11 @@ fn build_site_data(books: &[SourceBook]) -> SiteData {
             append_toc_pages(
                 &mut builders,
                 &mut pages,
+                &mut page_plan_indexes,
+                &resolved_placeholder_targets,
                 book,
                 book.book.toc().pages(),
+                &[],
                 &[],
                 &[],
             );
@@ -701,10 +721,13 @@ fn build_site_data(books: &[SourceBook]) -> SiteData {
 fn append_toc_pages(
     output: &mut Vec<TocNodeBuilder>,
     page_plans: &mut Vec<SitePageArtifactPlan>,
+    page_plan_indexes: &mut HashMap<String, usize>,
+    resolved_placeholder_targets: &HashMap<String, ResolvedPageTarget>,
     book: &SourceBook,
     pages: &[TocPage],
     parent_toc_path: &[usize],
     parent_title_path: &[String],
+    parent_label_path: &[String],
 ) {
     for (index, page) in pages.iter().enumerate() {
         let mut toc_path = parent_toc_path.to_vec();
@@ -712,41 +735,88 @@ fn append_toc_pages(
         let title = display_title(page);
         let page_bearing = !page.html_path.trim().is_empty();
         if page_bearing {
-            let page_id = page_id(book, &title, &toc_path, &page.html_path);
-            page_plans.push(SitePageArtifactPlan {
-                book_id: book.id.clone(),
-                page_id: page_id.clone(),
-                title: title.clone(),
-                html_path: page.html_path.clone(),
-            });
+            let normalized_address = normalized_page_address(&page.html_path);
+            let placeholder_target = if is_content_node_placeholder_path(&normalized_address) {
+                resolved_placeholder_targets.get(&placeholder_branch_key(parent_label_path, &title))
+            } else {
+                None
+            };
+            let (owner_book_id, page_key, plan_title, plan_html_path) =
+                if let Some(target) = placeholder_target {
+                    (
+                        target.book_id.clone(),
+                        target.page_key.clone(),
+                        target.title.clone(),
+                        target.html_path.clone(),
+                    )
+                } else {
+                    (
+                        book.id.clone(),
+                        normalized_address.clone(),
+                        title.clone(),
+                        page.html_path.clone(),
+                    )
+                };
+            let merge_key = page_address_merge_key(&page_key);
+            let page_plan_index = match page_plan_indexes.get(&merge_key).copied() {
+                Some(index) => {
+                    page_plans[index]
+                        .link_aliases
+                        .insert((book.id.clone(), page.html_path.clone()));
+                    index
+                }
+                None => {
+                    let page_id = page_id(book, &page_key);
+                    let mut link_aliases =
+                        BTreeSet::from([(owner_book_id.clone(), plan_html_path.clone())]);
+                    link_aliases.insert((book.id.clone(), page.html_path.clone()));
+                    let index = page_plans.len();
+                    page_plans.push(SitePageArtifactPlan {
+                        book_id: owner_book_id,
+                        link_aliases,
+                        page_id: page_id.clone(),
+                        title: plan_title,
+                        html_path: plan_html_path,
+                    });
+                    page_plan_indexes.insert(merge_key.clone(), index);
+                    index
+                }
+            };
+            let page_id = page_plans[page_plan_index].page_id.clone();
+            let node_book_id = page_plans[page_plan_index].book_id.clone();
             let mut title_path = parent_title_path.to_vec();
             title_path.push(format!("page:{}", page_id.as_str()));
+            let mut label_path = parent_label_path.to_vec();
+            label_path.push(normalize_title_key(&title));
             let mut node = TocNodeBuilder {
                 title,
                 id_seed: format!("page|{}", page_id.as_str()),
-                merge_key: None,
-                book_id: Some(book.id.clone()),
+                merge_key: Some(merge_key),
+                book_id: Some(node_book_id),
                 page_id: Some(page_id),
                 children: Vec::new(),
             };
             append_toc_pages(
                 &mut node.children,
                 page_plans,
+                page_plan_indexes,
+                resolved_placeholder_targets,
                 book,
                 &page.children,
                 &toc_path,
                 &title_path,
+                &label_path,
             );
-            output.push(node);
+            append_or_merge_node(output, node);
         } else {
-            let merge_key = normalize_title_key(&title);
+            let merge_key = section_title_merge_key(&title);
             let id_seed = format!(
                 "section|{}|{}",
                 book.locale,
                 section_seed(parent_title_path, &title)
             );
             let mut incoming = TocNodeBuilder {
-                title,
+                title: title.clone(),
                 id_seed,
                 merge_key: Some(merge_key.clone()),
                 book_id: None,
@@ -754,39 +824,105 @@ fn append_toc_pages(
                 children: Vec::new(),
             };
             let mut title_path = parent_title_path.to_vec();
-            title_path.push(merge_key.clone());
+            title_path.push(normalize_title_key(&title));
+            let mut label_path = parent_label_path.to_vec();
+            label_path.push(normalize_title_key(&title));
             append_toc_pages(
                 &mut incoming.children,
                 page_plans,
+                page_plan_indexes,
+                resolved_placeholder_targets,
                 book,
                 &page.children,
                 &toc_path,
                 &title_path,
+                &label_path,
             );
-            if let Some(existing) = output
-                .iter_mut()
-                .find(|node| node.merge_key.as_deref() == Some(merge_key.as_str()))
-            {
-                merge_children(&mut existing.children, incoming.children);
-            } else {
-                output.push(incoming);
+            append_or_merge_node(output, incoming);
+        }
+    }
+}
+
+fn collect_resolved_placeholder_targets(
+    books: &[&SourceBook],
+) -> HashMap<String, ResolvedPageTarget> {
+    let mut candidates = HashMap::new();
+    for book in books {
+        collect_concrete_page_targets(&mut candidates, book, book.book.toc().pages(), &[]);
+    }
+    candidates
+        .into_iter()
+        .filter_map(|(key, candidate)| match candidate {
+            PlaceholderTargetCandidate::One(target) => Some((key, target)),
+            PlaceholderTargetCandidate::Ambiguous => None,
+        })
+        .collect()
+}
+
+fn collect_concrete_page_targets(
+    candidates: &mut HashMap<String, PlaceholderTargetCandidate>,
+    book: &SourceBook,
+    pages: &[TocPage],
+    parent_label_path: &[String],
+) {
+    for page in pages {
+        let title = display_title(page);
+        let normalized_address = normalized_page_address(&page.html_path);
+        if !normalized_address.is_empty() && !is_content_node_placeholder_path(&normalized_address)
+        {
+            let key = placeholder_branch_key(parent_label_path, &title);
+            let target = ResolvedPageTarget {
+                book_id: book.id.clone(),
+                page_key: normalized_address,
+                title: title.clone(),
+                html_path: page.html_path.clone(),
+            };
+            record_placeholder_target_candidate(candidates, key, target);
+        }
+        let mut label_path = parent_label_path.to_vec();
+        label_path.push(normalize_title_key(&title));
+        collect_concrete_page_targets(candidates, book, &page.children, &label_path);
+    }
+}
+
+fn record_placeholder_target_candidate(
+    candidates: &mut HashMap<String, PlaceholderTargetCandidate>,
+    key: String,
+    target: ResolvedPageTarget,
+) {
+    match candidates.entry(key) {
+        std::collections::hash_map::Entry::Vacant(entry) => {
+            entry.insert(PlaceholderTargetCandidate::One(target));
+        }
+        std::collections::hash_map::Entry::Occupied(mut entry) => {
+            let candidate = entry.get_mut();
+            match candidate {
+                PlaceholderTargetCandidate::One(existing) => {
+                    if existing.page_key != target.page_key {
+                        *candidate = PlaceholderTargetCandidate::Ambiguous;
+                    }
+                }
+                PlaceholderTargetCandidate::Ambiguous => {}
             }
         }
     }
 }
 
+fn append_or_merge_node(output: &mut Vec<TocNodeBuilder>, node: TocNodeBuilder) {
+    if let Some(merge_key) = node.merge_key.as_deref()
+        && let Some(existing) = output
+            .iter_mut()
+            .find(|candidate| candidate.merge_key.as_deref() == Some(merge_key))
+    {
+        merge_children(&mut existing.children, node.children);
+        return;
+    }
+    output.push(node);
+}
+
 fn merge_children(output: &mut Vec<TocNodeBuilder>, incoming: Vec<TocNodeBuilder>) {
     for node in incoming {
-        if let Some(merge_key) = node.merge_key.as_deref() {
-            if let Some(existing) = output
-                .iter_mut()
-                .find(|candidate| candidate.merge_key.as_deref() == Some(merge_key))
-            {
-                merge_children(&mut existing.children, node.children);
-                continue;
-            }
-        }
-        output.push(node);
+        append_or_merge_node(output, node);
     }
 }
 
@@ -1001,21 +1137,23 @@ fn locale_link_targets(
     let mut prefixed_targets = HashMap::new();
     let mut book_targets: BTreeMap<SiteBookId, HashMap<String, PathBuf>> = BTreeMap::new();
     for page in locale_pages {
-        let normalized_html_path = normalize_storage_path(&page.html_path).to_string();
-        if normalized_html_path.is_empty() {
-            continue;
-        }
         let relative_path = page_markdown_relative_path(page);
-        book_targets
-            .entry(page.book_id.clone())
-            .or_default()
-            .entry(normalized_html_path.clone())
-            .or_insert_with(|| relative_path.clone());
-        if let Some(source_ids) = book_source_ids.get(&page.book_id) {
-            for source_id in source_ids {
-                prefixed_targets
-                    .entry(format!("{source_id}/{normalized_html_path}"))
-                    .or_insert_with(|| relative_path.clone());
+        for (book_id, html_path) in &page.link_aliases {
+            let normalized_html_path = normalize_storage_path(html_path).to_string();
+            if normalized_html_path.is_empty() {
+                continue;
+            }
+            book_targets
+                .entry(book_id.clone())
+                .or_default()
+                .entry(normalized_html_path.clone())
+                .or_insert_with(|| relative_path.clone());
+            if let Some(source_ids) = book_source_ids.get(book_id) {
+                for source_id in source_ids {
+                    prefixed_targets
+                        .entry(format!("{source_id}/{normalized_html_path}"))
+                        .or_insert_with(|| relative_path.clone());
+                }
             }
         }
     }
@@ -1118,20 +1256,9 @@ fn create_directory(path: &Path) -> Result<(), SiteGenerationError> {
     })
 }
 
-fn page_id(book: &SourceBook, title: &str, toc_path: &[usize], html_path: &str) -> SitePageId {
-    let toc_path = path_indexes_key(toc_path);
-    let hash = stable_hash_hex(&format!(
-        "{}|{}|{}|{}",
-        book.id.as_str(),
-        toc_path,
-        title,
-        html_path
-    ));
-    SitePageId::new(format!(
-        "page-{}-{}-{hash}",
-        book.id.as_str(),
-        slugify(title)
-    ))
+fn page_id(book: &SourceBook, page_key: &str) -> SitePageId {
+    let hash = stable_hash_hex(&format!("{}|{}", book.locale, page_key));
+    SitePageId::new(format!("page-{}-{hash}", book.locale))
 }
 
 fn node_id(locale: &str, builder: &TocNodeBuilder) -> SiteTocNodeId {
@@ -1145,12 +1272,26 @@ fn section_seed(parent_title_path: &[String], title: &str) -> String {
     path.join("/")
 }
 
-fn path_indexes_key(indexes: &[usize]) -> String {
-    indexes
-        .iter()
-        .map(usize::to_string)
-        .collect::<Vec<_>>()
-        .join(".")
+fn section_title_merge_key(title: &str) -> String {
+    format!("section-title|{}", normalize_title_key(title))
+}
+
+fn page_address_merge_key(page_key: &str) -> String {
+    format!("page-address|{page_key}")
+}
+
+fn normalized_page_address(html_path: &str) -> String {
+    normalize_storage_path(html_path).to_string()
+}
+
+fn is_content_node_placeholder_path(html_path: &str) -> bool {
+    html_path.starts_with("_CONTENTS_NODE_")
+}
+
+fn placeholder_branch_key(parent_label_path: &[String], title: &str) -> String {
+    let mut path = parent_label_path.to_vec();
+    path.push(normalize_title_key(title));
+    format!("placeholder-branch|{}", path.join("/"))
 }
 
 fn validate_locale_code(path: &Path, locale: &str) -> Result<(), SiteGenerationError> {
@@ -1476,6 +1617,279 @@ mod tests {
             file.path().file_name().and_then(|name| name.to_str())
                 == Some(alpha_page_file_name.as_str())
         }));
+    }
+
+    #[test]
+    fn merges_page_bearing_toc_nodes_by_normalized_address() {
+        let workspace = TempWorkspace::new("page-address-merge");
+        let first = workspace.path().join("alpha_ru.hbk");
+        let second = workspace.path().join("beta_ru.hbk");
+        write_book_fixture_with_toc(
+            &first,
+            "Alpha",
+            "alpha",
+            r#"{
+                3
+                {1,0,1,2,{0,0,{0,0,{"ru","Навигационный заголовок"}{"en","Navigation title"}},"/shared/page.html"}}
+                {2,1,0,{0,0,{0,0,{"ru","Дочерняя страница Alpha"}{"en","Alpha child"}},"/alpha/child.html"}}
+                {3,0,0,{0,0,{0,0,{"ru","Отдельная страница"}{"en","Separate page"}},"/alpha/separate.html"}}
+            }"#,
+            vec![
+                (
+                    "shared/page.html",
+                    r#"<html><head><title>Ненадежный HTML title</title></head><body><p>alpha body</p><a href="v8help://Beta/shared/page.html">duplicate</a></body></html>"#.as_bytes(),
+                ),
+                (
+                    "alpha/child.html",
+                    b"<html><body><h1>Alpha child</h1></body></html>",
+                ),
+                (
+                    "alpha/separate.html",
+                    b"<html><body><h1>Separate</h1></body></html>",
+                ),
+            ],
+        );
+        write_book_fixture_with_toc(
+            &second,
+            "Beta",
+            "beta",
+            r#"{
+                2
+                {1,0,1,2,{0,0,{0,0,{"ru","Другой TOC заголовок"}{"en","Other TOC title"}},"shared/page.html"}}
+                {2,1,0,{0,0,{0,0,{"ru","Дочерняя страница Beta"}{"en","Beta child"}},"/beta/child.html"}}
+            }"#,
+            vec![
+                (
+                    "shared/page.html",
+                    b"<html><body><h1>Beta HTML title</h1><p>beta body</p></body></html>",
+                ),
+                (
+                    "beta/child.html",
+                    b"<html><body><h1>Beta child</h1></body></html>",
+                ),
+            ],
+        );
+        let output = workspace.path().join("out");
+        let request =
+            SiteGenerationRequest::explicit_files(&output, vec![second.clone(), first.clone()])
+                .expect("explicit request must be valid");
+
+        let result = DocSiteGenerator::generate(&request).expect("site data must generate");
+
+        assert_eq!(result.page_count(), 4);
+        let root = read_json(output.join("data/locales/ru/toc-root.json"));
+        let root_nodes = root["nodes"]
+            .as_array()
+            .expect("root nodes must be an array");
+        assert_eq!(root_nodes.len(), 2, "{root}");
+        let merged = &root_nodes[0];
+        assert_eq!(merged["title"], "Навигационный заголовок");
+        assert_eq!(merged["book_id"], "alpha-ru");
+        let merged_page_id = merged["page_id"]
+            .as_str()
+            .expect("merged node must expose page_id");
+        let children_path = merged["children_path"]
+            .as_str()
+            .expect("merged node must keep merged child sections");
+        let children = read_json(output.join("data/locales/ru").join(children_path));
+        let child_titles: Vec<_> = children["nodes"]
+            .as_array()
+            .expect("child nodes must be an array")
+            .iter()
+            .map(|node| node["title"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            child_titles,
+            vec!["Дочерняя страница Alpha", "Дочерняя страница Beta"]
+        );
+
+        let page_files = fs::read_dir(output.join("data/locales/ru/pages"))
+            .expect("pages directory must exist")
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        assert_eq!(page_files.len(), 4);
+        assert!(
+            output
+                .join("data/locales/ru/pages")
+                .join(format!("{merged_page_id}.md"))
+                .exists()
+        );
+        let merged_markdown = fs::read_to_string(
+            output
+                .join("data/locales/ru/pages")
+                .join(format!("{merged_page_id}.md")),
+        )
+        .expect("merged page Markdown must be written");
+        assert!(merged_markdown.contains("alpha body"));
+        assert!(!merged_markdown.contains("beta body"));
+        assert!(merged_markdown.contains("[duplicate]("));
+        assert!(!merged_markdown.contains("v8help://Beta"));
+    }
+
+    #[test]
+    fn merges_content_node_placeholder_pages_by_address() {
+        let workspace = TempWorkspace::new("content-node-page-identity");
+        let first = workspace.path().join("alpha_ru.hbk");
+        let second = workspace.path().join("beta_ru.hbk");
+        write_book_fixture_with_toc(
+            &first,
+            "Alpha",
+            "alpha",
+            r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Раздел Alpha"}{"en","Alpha section"}},"_CONTENTS_NODE_file3"}}
+            }"#,
+            vec![],
+        );
+        write_book_fixture_with_toc(
+            &second,
+            "Beta",
+            "beta",
+            r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Раздел Beta"}{"en","Beta section"}},"_CONTENTS_NODE_file3"}}
+            }"#,
+            vec![],
+        );
+        let output = workspace.path().join("out");
+        let request = SiteGenerationRequest::explicit_files(&output, vec![second, first])
+            .expect("explicit request must be valid");
+
+        let result = DocSiteGenerator::generate(&request).expect("site data must generate");
+
+        assert_eq!(result.page_count(), 1);
+        let root = read_json(output.join("data/locales/ru/toc-root.json"));
+        let root_nodes = root["nodes"]
+            .as_array()
+            .expect("root nodes must be an array");
+        assert_eq!(root_nodes.len(), 1, "{root}");
+        assert_eq!(root_nodes[0]["title"], "Раздел Alpha");
+        assert_eq!(root_nodes[0]["book_id"], "alpha-ru");
+        assert!(
+            root_nodes[0]["page_id"]
+                .as_str()
+                .unwrap()
+                .starts_with("page-ru-")
+        );
+    }
+
+    #[test]
+    fn resolves_placeholder_page_branch_to_single_concrete_target() {
+        let workspace = TempWorkspace::new("placeholder-to-concrete-page");
+        let placeholder = workspace.path().join("alpha_ru.hbk");
+        let concrete = workspace.path().join("beta_ru.hbk");
+        write_book_fixture_with_toc(
+            &placeholder,
+            "Alpha",
+            "alpha",
+            r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Общий раздел"}{"en","Shared section"}},"_CONTENTS_NODE_file3"}}
+            }"#,
+            vec![],
+        );
+        write_book_fixture_with_toc(
+            &concrete,
+            "Beta",
+            "beta",
+            r##"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Общий раздел"}{"en","Shared section"}},"/real/page.html"}}
+            }"##,
+            vec![(
+                "real/page.html",
+                r##"<html><body><p>real body</p><a href="v8help://Alpha/_CONTENTS_NODE_file3#Details">placeholder link</a><h2 id="Details">Details</h2></body></html>"##.as_bytes(),
+            )],
+        );
+        let output = workspace.path().join("out");
+        let request = SiteGenerationRequest::explicit_files(&output, vec![placeholder, concrete])
+            .expect("explicit request must be valid");
+
+        let result = DocSiteGenerator::generate(&request).expect("site data must generate");
+
+        assert_eq!(result.page_count(), 1);
+        let root = read_json(output.join("data/locales/ru/toc-root.json"));
+        let root_nodes = root["nodes"]
+            .as_array()
+            .expect("root nodes must be an array");
+        assert_eq!(root_nodes.len(), 1, "{root}");
+        assert_eq!(root_nodes[0]["title"], "Общий раздел");
+        assert_eq!(root_nodes[0]["book_id"], "beta-ru");
+        let page_id = root_nodes[0]["page_id"]
+            .as_str()
+            .expect("resolved page must expose page id");
+        let markdown = fs::read_to_string(
+            output
+                .join("data/locales/ru/pages")
+                .join(format!("{page_id}.md")),
+        )
+        .expect("resolved page Markdown must be written");
+        assert!(markdown.contains("real body"));
+        assert!(markdown.contains("[placeholder link]("));
+        assert!(markdown.contains("#Details"));
+        assert!(!markdown.contains("v8help://Alpha"));
+        assert!(!markdown.contains("_CONTENTS_NODE_file3"));
+    }
+
+    #[test]
+    fn keeps_placeholder_page_when_concrete_target_is_ambiguous() {
+        let workspace = TempWorkspace::new("placeholder-ambiguous-page");
+        let placeholder = workspace.path().join("alpha_ru.hbk");
+        let first_concrete = workspace.path().join("beta_ru.hbk");
+        let second_concrete = workspace.path().join("gamma_ru.hbk");
+        write_book_fixture_with_toc(
+            &placeholder,
+            "Alpha",
+            "alpha",
+            r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Общий раздел"}{"en","Shared section"}},"_CONTENTS_NODE_file3"}}
+            }"#,
+            vec![],
+        );
+        write_book_fixture_with_toc(
+            &first_concrete,
+            "Beta",
+            "beta",
+            r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Общий раздел"}{"en","Shared section"}},"/first/page.html"}}
+            }"#,
+            vec![("first/page.html", b"<html><body><p>first</p></body></html>")],
+        );
+        write_book_fixture_with_toc(
+            &second_concrete,
+            "Gamma",
+            "gamma",
+            r#"{
+                1
+                {1,0,0,{0,0,{0,0,{"ru","Общий раздел"}{"en","Shared section"}},"/second/page.html"}}
+            }"#,
+            vec![(
+                "second/page.html",
+                b"<html><body><p>second</p></body></html>",
+            )],
+        );
+        let output = workspace.path().join("out");
+        let request = SiteGenerationRequest::explicit_files(
+            &output,
+            vec![placeholder, first_concrete, second_concrete],
+        )
+        .expect("explicit request must be valid");
+
+        let result = DocSiteGenerator::generate(&request).expect("site data must generate");
+
+        assert_eq!(result.page_count(), 3);
+        let root = read_json(output.join("data/locales/ru/toc-root.json"));
+        let root_nodes = root["nodes"]
+            .as_array()
+            .expect("root nodes must be an array");
+        assert_eq!(root_nodes.len(), 3, "{root}");
+        assert_eq!(root_nodes[0]["book_id"], "alpha-ru");
+        assert_eq!(root_nodes[1]["book_id"], "beta-ru");
+        assert_eq!(root_nodes[2]["book_id"], "gamma-ru");
+        assert_ne!(root_nodes[0]["page_id"], root_nodes[1]["page_id"]);
+        assert_ne!(root_nodes[0]["page_id"], root_nodes[2]["page_id"]);
     }
 
     #[test]

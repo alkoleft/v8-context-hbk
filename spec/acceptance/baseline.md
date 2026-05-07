@@ -1650,3 +1650,51 @@ four-book corpus produced 4 source books, 1 locale, 267 TOC nodes, 254 pages, 30
 122 ms and 7252 KiB peak RSS. A diagnostic full-corpus release run against all 116 local
 8.5.1.1150 HBK files produced 3 locales, 60686 TOC nodes, 54849 pages, 66730 files, 82233487 bytes,
 18293 ms and 222896 KiB peak RSS.
+
+T118 fixed documentation-site TOC duplication for same-address page targets. The global TOC now
+merges same-level page-bearing nodes by normalized page address, writes one generated page file for
+the merged target and registers source-book aliases so Markdown links from duplicate source books
+resolve to that page. Page ids are opaque locale/address ids and do not include TOC path or title
+text, because some HBK pages expose generic or unreliable HTML titles. A diagnostic full-corpus
+release run on 2026-05-07 against all 116 local 8.5.1.1150 HBK files produced 3 locales, 60453 TOC
+nodes, 54618 pages, 66076 files, 70318465 bytes, 15175 ms and 229064 KiB peak RSS. In the generated
+Russian root TOC, duplicate `form_plannerdimensionsdlg` entries merged from 2 nodes to 1; the three
+`1С:Предприятие` root entries remained separate because they are distinct page/section targets.
+
+T119 fixed generated section-link rendering in the documentation web viewer. Generated Markdown
+anchors such as `<a id="..."></a>` are rendered as invisible DOM anchors instead of visible raw
+text, and internal generated page links such as `<page-id>.md#fragment` are intercepted by the web
+app so page and section links open in-place. A follow-up check against `hbk-reader` showed the same
+content-area click interception pattern; the viewer renderer now preserves generated `page-*.md`
+hrefs so the existing click handler can route page-to-page links instead of receiving `#`.
+
+T120 fixed the mixed placeholder/concrete page-target case in documentation-site TOC merge. When a
+same-level TOC branch uses a `_CONTENTS_NODE_*` placeholder in one source book and exactly one
+equivalent branch in another source book has a concrete page address, the placeholder branch now
+merges into the concrete generated page target. The placeholder `source book + html path` is
+registered as a Markdown link alias for the concrete page, so generated links to the placeholder
+address resolve to the real page file. A diagnostic full-corpus check on 2026-05-07 with all
+116 local 8.5.1.1150 HBK files produced 3 locales, 60481 TOC nodes, 54646 pages, 66013 files,
+70313065 bytes, 15284 ms and 247844 KiB peak RSS. In the generated Russian root TOC,
+`1С:Предприятие` entries reduced from 3 nodes to 2 after placeholder/concrete resolution, while
+`form_plannerdimensionsdlg` remained merged as one same-address node.
+
+T121 fixed documentation-site readability for Markdown blockquotes and tables. `hbk-book-export`
+now normalizes non-code blockquote/table launch-flow diagrams into quoted prose lines before
+`quick_html2md`, while preserving the existing Courier code/query-example paths. The documentation
+viewer now renders Markdown blockquotes, GFM tables and quoted GFM tables as DOM nodes instead of
+showing raw `>` or `| --- |` markup. A representative `site generate --include 1cv8_ru.hbk` run on
+2026-05-07 produced 1 source book, 1 locale, 397 TOC nodes, 365 pages, 410 files, 1127587 bytes,
+1761 ms and 14208 KiB peak RSS; the generated
+`Запуск 1С:Предприятие 8 и параметры запуска` page no longer contains raw `> |` quoted table
+markers in the reported launch-flow block.
+
+T121 fixed the reported launch-flow Markdown regression on
+`1cv8_ru.hbk` page `Запуск 1С:Предприятие 8 и параметры запуска` (`ZIF`). Layout-only non-code
+tables inside blockquotes now export as quoted prose lines instead of raw quoted GFM table
+scaffolding, while ordinary GFM tables and blockquotes remain renderer-supported in
+`web/docs-viewer`. A representative `site generate --include 1cv8_ru.hbk` run on 2026-05-07
+produced 1 source book, 1 locale, 397 TOC nodes, 365 pages, 410 files, 1127587 bytes, 133 ms and
+9540 KiB peak RSS. The generated page `page-ru-c5a12eeae852efad.md` contains
+`> Программа запуска - 1CEStart`, `> Интерактивная программа запуска - 1Cv8s` and
+`> Клиентское приложение`, and no longer contains `> |` table markup for that launch-flow block.

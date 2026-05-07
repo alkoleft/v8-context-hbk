@@ -342,3 +342,167 @@ Completion notes:
 - The diagnostic full-corpus release run against all 116 local 8.5.1.1150 HBK files produced
   3 locales, 60686 TOC nodes, 54849 pages, 66730 files, 82233487 bytes, 18293 ms and
   222896 KiB peak RSS.
+
+### [x] T118. Merge same-address site TOC nodes
+
+Spec refs:
+
+- FR-HBK-005
+- UAT-HBK-014
+- ADR-0010
+- `spec/implementation/documentation-site.md`
+
+Scope:
+
+- Merge same-level page-bearing documentation-site TOC nodes when they point to the same normalized
+  page address instead of leaving duplicate entries solely because they came from different TOC
+  nodes or source books.
+- Write one generated page data file for a merged same-address page and keep Markdown link aliases
+  from all duplicate source books resolving to that page file.
+- Keep same-title pages with different addresses distinct.
+- Keep the merge independent from HTML page titles because some source pages expose generic or
+  unreliable titles; visible navigation labels stay TOC-derived.
+- Do not add search, route compatibility, web-app link handling, new web dependencies or broad
+  frontend redesign.
+
+Verification:
+
+- Focused `hbk-doc-site` tests cover same-address page-bearing TOC merge and unique generated page
+  output.
+- Full-corpus UAT-HBK-014 diagnostic generation confirms real duplicate root entries merge by
+  address.
+- `cargo fmt --all --check` passed on 2026-05-07.
+- `cargo test -p hbk-doc-site` passed on 2026-05-07.
+- `cargo test --workspace` passed on 2026-05-07.
+
+Completion notes:
+
+- `hbk-doc-site` now merges same-level page-bearing TOC nodes by normalized page address and writes
+  one page data file for the merged target.
+- Source-book aliases from duplicate page targets are registered for Markdown link resolution.
+- Page ids are opaque locale/address ids and do not depend on TOC path or title text.
+- A full-corpus check against all 116 local 8.5.1.1150 HBK files confirmed that duplicate
+  `form_plannerdimensionsdlg` root entries merge while distinct `1С:Предприятие` root targets
+  remain separate.
+
+### [x] T119. Handle generated section links in the documentation web viewer
+
+Spec refs:
+
+- FR-HBK-005
+- UAT-HBK-015
+- ADR-0010
+- `spec/implementation/documentation-site.md`
+
+Scope:
+
+- Render generated service anchors such as `<a id="..."></a>` as invisible DOM anchors in the web
+  app instead of visible raw text.
+- Intercept internal generated page links such as `<page-id>.md#fragment` so page and section links
+  open inside the web app.
+- Do not add search, route compatibility, new web dependencies or broad frontend redesign.
+
+Verification:
+
+- Focused `web/docs-viewer` tests cover generated service anchors and internal page-fragment link
+  handling.
+- `npm --prefix web/docs-viewer test` passed on 2026-05-07.
+- `npm --prefix web/docs-viewer run build` passed on 2026-05-07.
+
+Completion notes:
+
+- The viewer renders generated `<a id="..."></a>` anchors as invisible DOM anchors.
+- Internal generated page links such as `<page-id>.md#fragment` are parsed and opened through the
+  viewer instead of navigating to raw Markdown files.
+- The Markdown renderer preserves generated `page-*.md` hrefs so the viewer click handler can route
+  page-to-page links; this mirrors the `hbk-reader` approach where content-area clicks are
+  intercepted and resolved by application navigation instead of browser file navigation.
+
+### [x] T120. Resolve placeholder page branches to concrete site page targets
+
+Spec refs:
+
+- FR-HBK-005
+- UAT-HBK-014
+- ADR-0010
+- `spec/implementation/documentation-site.md`
+
+Scope:
+
+- Detect same-level TOC branches where one source book uses a `_CONTENTS_NODE_*` placeholder page
+  address and exactly one equivalent branch from another source book has a concrete page address.
+- Merge the placeholder branch into the concrete generated page target instead of leaving an empty
+  placeholder page next to the real page.
+- Register the placeholder `source book + html path` pair as a Markdown link alias for the concrete
+  generated page.
+- Keep ambiguous placeholder branches with multiple concrete candidates on the existing
+  placeholder-address behavior; do not choose hidden winners.
+- Keep ordinary same-address page merge and generated section-link handling unchanged.
+
+Verification:
+
+- Focused `hbk-doc-site` tests cover placeholder-to-concrete target resolution and link aliasing.
+- Focused `hbk-doc-site` tests cover ambiguous placeholder branches without choosing a hidden
+  concrete target.
+- Full-corpus UAT-HBK-014 diagnostic generation confirms real root placeholder/concrete branches
+  merge where the concrete target is unambiguous.
+- `cargo fmt --all --check` passed on 2026-05-07.
+- `cargo test -p hbk-doc-site` passed on 2026-05-07.
+- `cargo test --workspace` passed on 2026-05-07.
+
+Completion notes:
+
+- `hbk-doc-site` now precomputes unambiguous concrete page targets by TOC label path before merging
+  locale TOC nodes.
+- `_CONTENTS_NODE_*` placeholder branches merge into a concrete page target only when there is
+  exactly one equivalent concrete candidate.
+- Placeholder source-book addresses are registered as link aliases for the concrete generated page.
+- A full-corpus check against all 116 local 8.5.1.1150 HBK files confirmed that the Russian root
+  `1С:Предприятие` branches reduce from three nodes to two after placeholder/concrete resolution,
+  while `form_plannerdimensionsdlg` remains merged as one same-address node.
+
+### [x] T121. Keep documentation-site blockquotes and tables readable
+
+Spec refs:
+
+- FR-HBK-004
+- FR-HBK-005
+- UAT-HBK-015
+- ADR-0010
+- `spec/implementation/documentation-site.md`
+
+Scope:
+
+- Ensure layout-only HTML blockquote/table diagrams from ordinary HBK pages export as readable
+  quoted prose lines, not as raw quoted Markdown table scaffolding.
+- Render generated Markdown blockquotes and GFM tables in `web/docs-viewer` as DOM nodes so page
+  content does not show raw `> | ... |` markup.
+- Preserve the existing safe renderer boundary: no raw HTML injection, no new web dependencies and
+  no broad frontend redesign.
+- Do not add search, route compatibility or Syntax Assistant API behavior.
+
+Verification:
+
+- Focused `hbk-book-export` regression covers the `1cv8_ru.hbk` launch-flow blockquote/table shape
+  from `Запуск 1С:Предприятие 8 и параметры запуска`.
+- Focused `web/docs-viewer` tests cover Markdown blockquotes, GFM tables and quoted GFM tables.
+- Regenerate a representative site data slice and inspect that the reported launch page no longer
+  contains raw `> |` quoted table markup.
+- `cargo fmt --all --check` passed on 2026-05-07.
+- `cargo test -p hbk-book-export` passed on 2026-05-07.
+- `cargo test --workspace` passed on 2026-05-07.
+- `npm --prefix web/docs-viewer test` passed on 2026-05-07.
+- `npm --prefix web/docs-viewer run build` passed on 2026-05-07.
+
+Completion notes:
+
+- `hbk-book-export` now rewrites non-code blockquote/table launch-flow diagrams into quoted prose
+  lines before `quick_html2md`, while leaving Courier code/query examples and linked blockquotes on
+  their existing paths.
+- The `1cv8_ru.hbk` `ZIF` page now exports the launch-flow diagram as:
+  `> Программа запуска - 1CEStart`,
+  `> Интерактивная программа запуска - 1Cv8s` and `> Клиентское приложение`.
+- The representative `site generate --include 1cv8_ru.hbk` run produced
+  1 source book, 1 locale, 397 TOC nodes, 365 pages, 410 files, 1127587 bytes, 1761 ms and
+  14208 KiB peak RSS. The generated page `page-ru-c5a12eeae852efad.md` no longer contains raw
+  quoted table scaffolding for the reported launch-flow block.

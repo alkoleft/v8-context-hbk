@@ -122,6 +122,8 @@ that reuses the same placeholder path. Source HTML tables that are used as singl
 example containers must export as Markdown `bsl` code blocks, not as one-cell data tables.
 Source HTML blockquotes that are used as Courier query-language examples must export as Markdown
 `sdbl` code blocks, not as quoted prose.
+Source HTML blockquotes that use nested non-code tables only as visual layout diagrams must export
+as readable quoted text lines instead of nested quoted Markdown tables.
 Internal same-book links with source HTML fragments must preserve their fragment anchors in Markdown
 links, and source heading anchors such as HTML `name` or `id` attributes must be materialized in the
 Markdown page so those fragments have a matching target.
@@ -138,6 +140,8 @@ Acceptance:
   represents them as single-cell Courier tables.
 - Markdown/toc export keeps query-language examples readable as `sdbl` code blocks when HBK HTML
   represents them as Courier blockquotes.
+- Markdown/toc export keeps layout-only blockquote table diagrams readable as quoted text, not as
+  raw quoted table markup.
 - Markdown/toc export preserves internal same-page and same-book `#fragment` link anchors.
 - Markdown/toc export materializes source heading anchors used by those fragments.
 - Unsupported format/hierarchy combinations fail with readable non-panic diagnostics.
@@ -178,10 +182,20 @@ eagerly loaded Markdown payload for every documentation page. It must not parse 
 Syntax Assistant extraction in request paths.
 
 The global TOC merge must preserve source book identity for page-bearing nodes, keep deterministic
-ordering, avoid raw HBK/HTML/TOC paths as visible labels and handle duplicate titles or duplicate
-page paths through stable generated ids. Title-based branch merging may be used only for same-level
-section-like nodes; page-bearing nodes with the same title must not be silently collapsed unless a
-later requirement proves a stronger equivalence rule.
+ordering, avoid raw HBK/HTML/TOC paths as visible labels and handle duplicate titles through stable
+generated ids. Title-based branch merging may be used only for same-level section-like nodes;
+page-bearing nodes with the same title must not be silently collapsed by title alone. Same-level
+page-bearing TOC nodes that point to the same normalized page address are one navigation target:
+merge their child TOC branches, write one page data file and keep internal links from all source
+books pointing to that generated page. Address-based page merges must not depend on HTML page
+titles, because some source pages expose generic or unreliable titles; the visible navigation label
+remains derived from the deterministic TOC entry selected for the merged node.
+
+Service content-node placeholder paths such as `_CONTENTS_NODE_*` are not reliable global page
+addresses by themselves. If a same-level TOC branch has a placeholder page address in one source
+book and exactly one equivalent branch with a concrete page address in another source book, the
+placeholder branch may merge into the concrete page target. Generated link resolution must then
+treat the placeholder source-book address as an alias for the concrete generated page.
 
 Acceptance:
 
@@ -192,6 +206,9 @@ Acceptance:
   lazy-child metadata.
 - A separate web application can serve or load the generated data and navigate from root TOC to a
   page without invoking HBK parsing in request paths.
+- Links from one generated Markdown page to another generated page, including `#fragment` section
+  links, open inside the web application and do not show generated service anchor markup as visible
+  page text.
 - The web application bundle or server response does not include all generated page Markdown.
 - Site generation reports source book count, page count, output size and timing/resource
   measurements in the acceptance baseline before performance optimization tasks.

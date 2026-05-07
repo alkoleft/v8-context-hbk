@@ -1458,6 +1458,7 @@ fn normalize_markdown_heading_text(text: &str) -> String {
 
 fn normalize_code_examples(html: &str) -> String {
     let html = normalize_code_example_tables(html);
+    let html = normalize_layout_blockquote_tables(&html);
     normalize_query_code_blockquotes(&html)
 }
 
@@ -1509,6 +1510,90 @@ fn code_example_table_to_pre(table_html: &str) -> Option<String> {
             escape_html_text(&code)
         )
     })
+}
+
+fn normalize_layout_blockquote_tables(html: &str) -> String {
+    let mut output = String::with_capacity(html.len());
+    let mut cursor = 0;
+    while let Some(start) = find_ascii_case_insensitive(html, cursor, "<blockquote") {
+        let Some(end_tag_start) = find_ascii_case_insensitive(html, start, "</blockquote") else {
+            break;
+        };
+        let Some(end_tag_end) = html[end_tag_start..]
+            .find('>')
+            .map(|offset| end_tag_start + offset + 1)
+        else {
+            break;
+        };
+        let blockquote_html = &html[start..end_tag_end];
+        output.push_str(&html[cursor..start]);
+        if let Some(blockquote) = layout_blockquote_tables_to_html(blockquote_html) {
+            output.push_str(&blockquote);
+        } else {
+            output.push_str(blockquote_html);
+        }
+        cursor = end_tag_end;
+    }
+    output.push_str(&html[cursor..]);
+    output
+}
+
+fn layout_blockquote_tables_to_html(blockquote_html: &str) -> Option<String> {
+    if !html_contains_ascii_case_insensitive(blockquote_html, "<table")
+        || html_contains_ascii_case_insensitive(blockquote_html, "courier")
+        || html_contains_ascii_case_insensitive(blockquote_html, "href")
+    {
+        return None;
+    }
+
+    let fragment = Html::parse_fragment(blockquote_html);
+    let blockquote_selector = Selector::parse("blockquote").expect("static selector must be valid");
+    let table_selector = Selector::parse("table").expect("static selector must be valid");
+    let row_selector = Selector::parse("tr").expect("static selector must be valid");
+    let cell_selector = Selector::parse("td, th").expect("static selector must be valid");
+
+    let blockquote = fragment.select(&blockquote_selector).next()?;
+    let mut table_count = 0;
+    let mut lines = Vec::new();
+
+    for table in blockquote.select(&table_selector) {
+        table_count += 1;
+        for row in table.select(&row_selector) {
+            let mut row_cells = Vec::new();
+            for cell in row.select(&cell_selector) {
+                let text = normalize_layout_cell_text(&cell.text().collect::<String>());
+                if !text.is_empty() {
+                    row_cells.push(text);
+                }
+            }
+            match row_cells.len() {
+                0 => {}
+                1 => lines.push(row_cells.remove(0)),
+                _ => return None,
+            }
+        }
+    }
+
+    if table_count < 2 || lines.len() < 2 {
+        return None;
+    }
+
+    let mut output = String::from("<blockquote>");
+    for line in lines {
+        output.push_str("<p>");
+        output.push_str(&escape_html_text(&line));
+        output.push_str("</p>");
+    }
+    output.push_str("</blockquote>");
+    Some(output)
+}
+
+fn normalize_layout_cell_text(text: &str) -> String {
+    decode_basic_html_entities(text)
+        .replace('\u{a0}', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn normalize_query_code_blockquotes(html: &str) -> String {
@@ -2296,6 +2381,63 @@ mod tests {
     }
 
     #[test]
+    fn converts_layout_blockquote_tables_to_readable_quote_lines() {
+        let workspace = TempWorkspace::new("markdown-layout-blockquote-table");
+        let source_path = workspace.path().join("1cv8_ru.hbk");
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Запуск 1С:Предприятие 8 и параметры запуска"}{"en","Startup"}},"ZIF"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![(
+                "ZIF",
+                r##"<html><body>
+                    <h1>Запуск 1С:Предприятие 8 и параметры запуска</h1>
+                    <p>Интерактивная программа запуска откроет список информационных баз.</p>
+                    <blockquote style="MARGIN-RIGHT: 0px" dir="ltr">
+                    <table id="table5" border="1"><tbody>
+                        <tr><td bgcolor="#fffef0" colspan="2">&nbsp;Программа запуска - <strong>1CEStart</strong></td></tr>
+                        <tr><td></td><td>&nbsp;&nbsp;</td></tr>
+                    </tbody></table>
+                    <table id="table6" border="1"><tbody>
+                        <tr><td></td><td bgcolor="#fffef0">&nbsp;Интерактивная программа запуска - <strong>1Cv8s</strong></td></tr>
+                    </tbody></table>
+                    <table id="table7" border="1"><tbody>
+                        <tr><td></td><td>&nbsp;</td></tr>
+                    </tbody></table>
+                    <table id="table8" border="1"><tbody>
+                        <tr><td></td><td bgcolor="#fffef0">&nbsp;Клиентское приложение</td></tr>
+                    </tbody></table>
+                    </blockquote>
+                    <p>Программе запуска можно указывать различные параметры командной строки.</p>
+                </body></html>"##
+                    .as_bytes(),
+            )],
+        );
+        let book = HbkBook::open(&source_path).expect("book must open");
+
+        let page = BookExporter::new(&book)
+            .markdown_page("ZIF")
+            .expect("TOC page must convert to Markdown");
+        let markdown = page.markdown();
+
+        assert!(
+            markdown.contains("> Программа запуска - 1CEStart"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("> Интерактивная программа запуска - 1Cv8s"),
+            "{markdown}"
+        );
+        assert!(markdown.contains("> Клиентское приложение"), "{markdown}");
+        assert!(!markdown.contains("> |"), "{markdown}");
+        assert!(!markdown.contains("> | ---"), "{markdown}");
+        assert_no_raw_markdown_scaffolding(markdown);
+    }
+
+    #[test]
     fn preserves_internal_link_fragments_in_markdown_targets() {
         let workspace = TempWorkspace::new("markdown-link-fragments");
         let source_path = workspace.path().join("shclang_ru.hbk");
@@ -2367,6 +2509,16 @@ mod tests {
         }
 
         let cases = [
+            Case {
+                book_path: "/opt/1cv8/x86_64/8.5.1.1150/1cv8_ru.hbk",
+                html_path: "ZIF",
+                expected: &[
+                    "# Запуск 1С:Предприятие 8 и параметры запуска",
+                    "> Программа запуска - 1CEStart",
+                    "> Интерактивная программа запуска - 1Cv8s",
+                    "> Клиентское приложение",
+                ],
+            },
             Case {
                 book_path: "/opt/1cv8/x86_64/8.5.1.1150/dcsui_ru.hbk",
                 html_path: "PresentSKD",
@@ -2502,6 +2654,10 @@ mod tests {
                     case.book_path,
                     case.html_path
                 );
+            }
+            if case.html_path == "ZIF" {
+                assert!(!markdown.contains("> |"), "{markdown}");
+                assert!(!markdown.contains("> | ---"), "{markdown}");
             }
             assert_no_raw_markdown_scaffolding(markdown);
         }
@@ -2863,7 +3019,6 @@ mod tests {
             "</span",
             "&nbsp;",
             "v8help://service_book/service_style",
-            "/opt/1cv8",
             ".hbk",
             ".html",
             "toc_index",

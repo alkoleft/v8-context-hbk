@@ -13,6 +13,18 @@ test("renderMarkdown displays html-like input as text", () => {
   assert.equal(rendered.children[1].innerHTML, "");
 });
 
+test("renderMarkdown turns generated heading anchors into invisible anchors", () => {
+  const document = new TestDocument();
+  globalThis.document = document;
+  const rendered = renderMarkdown('<a id="HierarchicalWorkaround"></a>\n## Section');
+  assert.equal(rendered.children[0].tagName, "a");
+  assert.equal(rendered.children[0].attributes.get("id"), "HierarchicalWorkaround");
+  assert.equal(rendered.children[0].attributes.get("aria-hidden"), "true");
+  assert.equal(rendered.children[0].textContent, "");
+  assert.equal(rendered.children[1].tagName, "h2");
+  assert.equal(rendered.children[1].textContent, "Section");
+});
+
 test("renderMarkdown handles basic inline formatting without raw html", () => {
   const document = new TestDocument();
   globalThis.document = document;
@@ -24,6 +36,55 @@ test("renderMarkdown handles basic inline formatting without raw html", () => {
   assert.equal(inlineElements[0].textContent, "Object");
   assert.equal(inlineElements[1].tagName, "a");
   assert.equal(inlineElements[1].attributes.get("href"), "#");
+});
+
+test("renderMarkdown preserves generated page links for app routing", () => {
+  const document = new TestDocument();
+  globalThis.document = document;
+  const rendered = renderMarkdown("[Next](page-ru-314485b4b83f6ad6.md#Details)");
+  const link = rendered.children[0].children[0];
+  assert.equal(link.tagName, "a");
+  assert.equal(link.attributes.get("href"), "page-ru-314485b4b83f6ad6.md#Details");
+});
+
+test("renderMarkdown renders blockquotes without raw markdown markers", () => {
+  const document = new TestDocument();
+  globalThis.document = document;
+  const rendered = renderMarkdown("> Программа запуска - 1CEStart\n>\n> Клиентское приложение");
+  const blockquote = rendered.children[0];
+  assert.equal(blockquote.tagName, "blockquote");
+  assert.equal(blockquote.children[0].tagName, "p");
+  assert.equal(blockquote.children[0].textContent, "Программа запуска - 1CEStart");
+  assert.equal(blockquote.children[1].tagName, "p");
+  assert.equal(blockquote.children[1].textContent, "Клиентское приложение");
+  assert.equal(blockquote.textContent.includes(">"), false);
+});
+
+test("renderMarkdown renders GFM tables as DOM tables", () => {
+  const document = new TestDocument();
+  globalThis.document = document;
+  const rendered = renderMarkdown("| Имя | Значение |\n| --- | --- |\n| ВЫБОР | CASE |");
+  const table = rendered.children[0];
+  assert.equal(table.tagName, "table");
+  assert.equal(table.children[0].tagName, "thead");
+  assert.equal(table.children[0].children[0].children[0].tagName, "th");
+  assert.equal(table.children[0].children[0].children[0].textContent, "Имя");
+  assert.equal(table.children[1].tagName, "tbody");
+  assert.equal(table.children[1].children[0].children[1].tagName, "td");
+  assert.equal(table.children[1].children[0].children[1].textContent, "CASE");
+});
+
+test("renderMarkdown renders quoted GFM tables inside blockquotes", () => {
+  const document = new TestDocument();
+  globalThis.document = document;
+  const rendered = renderMarkdown("> | Программа запуска | |\n> | --- | --- |\n> | Клиентское приложение | |");
+  const blockquote = rendered.children[0];
+  const table = blockquote.children[0];
+  assert.equal(blockquote.tagName, "blockquote");
+  assert.equal(table.tagName, "table");
+  assert.equal(table.children[0].children[0].children[0].textContent, "Программа запуска");
+  assert.equal(table.children[1].children[0].children[0].textContent, "Клиентское приложение");
+  assert.equal(blockquote.textContent.includes("> |"), false);
 });
 
 class TestDocument {
@@ -63,5 +124,9 @@ class TestElement {
 
   get href() {
     return this.attributes.get("href") ?? "";
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
   }
 }
