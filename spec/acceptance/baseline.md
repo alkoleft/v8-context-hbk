@@ -1131,6 +1131,15 @@ Read-only SQLite checks confirmed:
 - form/form-extension `Параметры формы` pages are no longer indexed as `platform_type` records and
   are indexed as type properties owned by the form or extension type.
 
+T122 rebuilt the Russian index on 2026-05-08 after changing index-build duplicate handling for
+real 8.5.1 documentation defects. The debug build command
+`v8-context-hbk syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output
+target/repro-index.sqlite` completed in 60.231 s, emitted `DUPLICATE_DOCUMENT_ID` warnings to
+`stderr`, produced 24,888 documents and left zero duplicate `documents.id` groups. SQLite checks
+confirmed that the reported `МенеджерКриптографии` constructor id exists once, both
+`ИспользованиеТекущейСтроки` system enum aliases exist as separate documents and duplicate
+`ОбновлениеПредопределенныхДанных:PredefinedDataUpdate` source pages resolve to one document.
+
 T42 changed only the index build data flow. `syntax index` now streams extraction records into a
 search-index builder and inserts relations into SQLite without retaining the full `PlatformContext`,
 complete search document vector and complete relation vector together. The SQLite schema, atomic

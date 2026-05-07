@@ -15,9 +15,11 @@ use hbk_doc_site::{
 use hbk_syntax_export::JsonExporter;
 use serde_json::{Value, json};
 use syntax_helper_extract::{SyntaxHelperReader, SyntaxHelperStreamError};
+#[cfg(test)]
+use syntax_helper_search::build_index_from_builder;
 use syntax_helper_search::{
     IndexMetadata, RelatedHit, SearchDocument, SearchHit, SearchIndex, SearchIndexBuilder,
-    SearchMode, build_index_from_builder,
+    SearchMode, build_index_from_builder_with_report,
 };
 
 const DEFAULT_SEARCH_LIMIT: usize = 20;
@@ -678,7 +680,10 @@ fn syntax_index(
         source_hbk: book.path().display().to_string(),
         source_extraction_schema_version: 11,
     };
-    build_index_from_builder(&output, &metadata, builder)?;
+    let report = build_index_from_builder_with_report(&output, &metadata, builder)?;
+    for warning in report.warnings {
+        eprintln!("warning[{}]: {}", warning.code, warning.message);
+    }
     println!("index: {}", output.display());
     println!(
         "locale: {} (source: {})",

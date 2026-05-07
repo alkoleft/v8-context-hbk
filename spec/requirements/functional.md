@@ -682,6 +682,14 @@ Acceptance:
   to post-process relationship JSON.
 - Constructor lookup offers a detailed text mode that includes available owner and description
   context while preserving signature-only output as the default.
+- Duplicate source documentation pages that describe the same constructor signature for the same
+  platform type do not abort index rebuild. The index keeps one constructor document, reports the
+  duplicate during index build and preserves deterministic document ids.
+- After semantic identity normalization, remaining duplicate final search document ids are reported
+  during index build and resolved deterministically by keeping the last extracted record so index
+  rebuild can complete on known documentation defects.
+- Distinct system enum pages with the same primary localized name and different aliases remain
+  separate deterministic documents instead of colliding or hiding one enum behind the other.
 - Constructor JSON for `HTTPСоединение` exposes parameter names and type references without
   interleaving both kinds of values in one ambiguous array, preferably using the export-compatible
   parameter shape with `name`, `required`, `types` and optional `description`.

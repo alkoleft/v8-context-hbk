@@ -287,6 +287,17 @@ pub struct SearchDocument {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexBuildReport {
+    pub warnings: Vec<IndexBuildWarning>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexBuildWarning {
+    pub code: &'static str,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchSignature {
     pub text: String,
     pub parameters: Vec<SearchParameter>,
@@ -338,7 +349,7 @@ impl SearchIndexBuilder {
         ));
     }
 
-    fn into_documents(self) -> Result<Vec<SearchDocument>, SearchError> {
+    fn into_documents(self) -> Result<DocumentsBuild, SearchError> {
         let identities =
             DocumentIdentities::from_inputs(&self.platform_types, &self.query_tables, &self.enums);
         let mut documents = self
@@ -351,8 +362,12 @@ impl SearchIndexBuilder {
                 .cmp(&kind_priority(right.kind))
                 .then_with(|| left.id.cmp(&right.id))
         });
+        let warnings = deduplicate_documents(&mut documents);
         validate_document_id_collisions(&documents)?;
-        Ok(documents)
+        Ok(DocumentsBuild {
+            documents,
+            warnings,
+        })
     }
 }
 
@@ -615,6 +630,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
     fn enum_definition(&mut self, record: model::EnumDefinition) -> Result<(), Self::Error> {
         self.enums.push(EnumIdentityInput {
             name_primary: record.name.primary.clone(),
+            name_alias: record.name.alias.clone(),
             source_html_path: record.source.html_path.clone(),
         });
         self.drafts.push(DocumentDraft::new(
@@ -630,6 +646,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
             ),
             DraftIdentity::Enum {
                 name_primary: record.name.primary,
+                name_alias: record.name.alias,
                 source_html_path: record.source.html_path,
             },
         ));
@@ -764,7 +781,19 @@ pub fn build_index_from_builder(
     metadata: &IndexMetadata,
     builder: SearchIndexBuilder,
 ) -> Result<(), SearchError> {
-    build_index_from_documents(path, metadata, builder.into_documents()?)
+    build_index_from_builder_with_report(path, metadata, builder).map(|_| ())
+}
+
+pub fn build_index_from_builder_with_report(
+    path: impl AsRef<Path>,
+    metadata: &IndexMetadata,
+    builder: SearchIndexBuilder,
+) -> Result<IndexBuildReport, SearchError> {
+    let build = builder.into_documents()?;
+    build_index_from_documents(path, metadata, build.documents)?;
+    Ok(IndexBuildReport {
+        warnings: build.warnings,
+    })
 }
 
 fn build_index_from_documents(
@@ -827,6 +856,39 @@ fn build_index_file(
         source,
     })?;
     validate_index(&connection, path)
+}
+
+fn deduplicate_documents(documents: &mut Vec<SearchDocument>) -> Vec<IndexBuildWarning> {
+    let mut counts = BTreeMap::<String, usize>::new();
+    for document in documents.iter() {
+        *counts.entry(document.id.clone()).or_default() += 1;
+    }
+    let warnings = counts
+        .iter()
+        .filter(|(_, count)| **count > 1)
+        .map(|(id, count)| IndexBuildWarning {
+            code: "DUPLICATE_DOCUMENT_ID",
+            message: format!(
+                "duplicate Syntax Assistant search document id '{id}': {count} documents; kept the last document"
+            ),
+        })
+        .collect::<Vec<_>>();
+    if warnings.is_empty() {
+        return warnings;
+    }
+
+    let mut remaining = counts;
+    documents.retain(|document| {
+        let Some(count) = remaining.get_mut(&document.id) else {
+            return true;
+        };
+        if *count <= 1 {
+            return true;
+        }
+        *count -= 1;
+        false
+    });
+    warnings
 }
 
 fn validate_document_id_collisions(documents: &[SearchDocument]) -> Result<(), SearchError> {
@@ -1762,6 +1824,11 @@ struct DocumentDraft {
     identity: DraftIdentity,
 }
 
+struct DocumentsBuild {
+    documents: Vec<SearchDocument>,
+    warnings: Vec<IndexBuildWarning>,
+}
+
 impl DocumentDraft {
     fn new(document: SearchDocument, identity: DraftIdentity) -> Self {
         Self { document, identity }
@@ -1818,9 +1885,14 @@ impl DocumentDraft {
             }
             DraftIdentity::Enum {
                 name_primary,
+                name_alias,
                 source_html_path,
             } => {
-                self.document.id = identities.enum_identity_by(&name_primary, &source_html_path);
+                self.document.id = identities.enum_identity_by(
+                    &name_primary,
+                    name_alias.as_deref(),
+                    &source_html_path,
+                );
                 self.document
                     .relation_keys
                     .push(identity_relation_key(&self.document.id));
@@ -1861,6 +1933,7 @@ enum DraftIdentity {
     },
     Enum {
         name_primary: String,
+        name_alias: Option<String>,
         source_html_path: String,
     },
     EnumValue {
@@ -1884,6 +1957,7 @@ struct QueryTableIdentityInput {
 #[derive(Debug)]
 struct EnumIdentityInput {
     name_primary: String,
+    name_alias: Option<String>,
     source_html_path: String,
 }
 
@@ -3116,6 +3190,7 @@ impl DocumentIdentities {
                 .map(|record| base_name_key(&record.name_primary)),
         );
         let query_table_counts = count_by(query_tables.iter().map(query_table_identity_key));
+        let enum_counts = count_by(enums.iter().map(enum_identity_key));
         let platform_type_ids = platform_types
             .iter()
             .map(|record| {
@@ -3148,7 +3223,12 @@ impl DocumentIdentities {
             .map(|record| {
                 (
                     enum_base_key(&record.name_primary, &record.source_html_path),
-                    enum_identity(&record.name_primary, &record.source_html_path),
+                    enum_identity(
+                        &record.name_primary,
+                        record.name_alias.as_deref(),
+                        &record.source_html_path,
+                        &enum_counts,
+                    ),
                 )
             })
             .collect();
@@ -3218,11 +3298,19 @@ impl DocumentIdentities {
             .unwrap_or_else(|| format!("query_table:{}", clean_identity_part(&owner.primary)))
     }
 
-    fn enum_identity_by(&self, name_primary: &str, source_html_path: &str) -> String {
+    fn enum_identity_by(
+        &self,
+        name_primary: &str,
+        name_alias: Option<&str>,
+        source_html_path: &str,
+    ) -> String {
         self.enum_ids
             .get(&enum_base_key(name_primary, source_html_path))
             .cloned()
-            .unwrap_or_else(|| enum_identity(name_primary, source_html_path))
+            .unwrap_or_else(|| {
+                let counts = BTreeMap::new();
+                enum_identity(name_primary, name_alias, source_html_path, &counts)
+            })
     }
 
     fn enum_owner_identity(&self, owner: &model::LocalizedName) -> String {
@@ -3234,11 +3322,30 @@ impl DocumentIdentities {
             .collect::<Vec<_>>();
         matches
             .iter()
-            .find(|identity| identity.starts_with("enum:system:"))
+            .find(|identity| {
+                owner
+                    .alias
+                    .as_ref()
+                    .is_some_and(|alias| identity_primary_matches(identity, "enum", alias))
+            })
             .cloned()
+            .or_else(|| {
+                matches
+                    .iter()
+                    .find(|identity| identity.starts_with("enum:system:"))
+                    .cloned()
+            })
             .or_else(|| matches.into_iter().next())
             .unwrap_or_else(|| document_identity("enum", None, owner))
     }
+}
+
+fn enum_identity_key(record: &EnumIdentityInput) -> String {
+    format!(
+        "{}:{}",
+        enum_kind(&record.source_html_path),
+        base_name_key(&record.name_primary)
+    )
 }
 
 fn count_by(keys: impl Iterator<Item = String>) -> BTreeMap<String, usize> {
@@ -3314,10 +3421,28 @@ fn query_table_identity_base(
     semantic_record_key(name_primary, semantic)
 }
 
-fn enum_identity(name_primary: &str, source_html_path: &str) -> String {
+fn enum_identity(
+    name_primary: &str,
+    name_alias: Option<&str>,
+    source_html_path: &str,
+    counts: &BTreeMap<String, usize>,
+) -> String {
     let base = clean_identity_part(name_primary);
     let kind = enum_kind(source_html_path);
-    format!("enum:{kind}:{base}")
+    let identity = format!("enum:{kind}:{base}");
+    if counts
+        .get(&format!("{kind}:{}", base_name_key(name_primary)))
+        .copied()
+        .unwrap_or(0)
+        <= 1
+    {
+        return identity;
+    }
+    name_alias
+        .map(clean_identity_part)
+        .filter(|alias| !alias.is_empty())
+        .map(|alias| format!("{identity}:{alias}"))
+        .unwrap_or(identity)
 }
 
 fn document_identity(
@@ -3389,9 +3514,10 @@ fn semantic_variant(owner_path: &[model::LocalizedName]) -> String {
 
 fn enum_base_key(name_primary: &str, source_html_path: &str) -> String {
     format!(
-        "{}:{}",
+        "{}:{}:{}",
         enum_kind(source_html_path),
-        base_name_key(name_primary)
+        base_name_key(name_primary),
+        source_html_path
     )
 }
 
@@ -4292,11 +4418,57 @@ mod tests {
     }
 
     #[test]
+    fn constructor_duplicate_ids_keep_last_document_with_warning() {
+        let context = model::PlatformContext {
+            platform_types: vec![platform_type(
+                "МенеджерКриптографии",
+                None,
+                "Crypto manager.",
+            )],
+            constructors: vec![
+                constructor_with_name(
+                    "МенеджерКриптографии",
+                    "Без инициализации модуля криптографии",
+                    "Новый МенеджерКриптографии(<ИспользованиеИнтерактивногоРежима>)",
+                ),
+                constructor_with_name(
+                    "МенеджерКриптографии",
+                    "Для инициализации",
+                    "Новый МенеджерКриптографии(<ИспользованиеИнтерактивногоРежима>)",
+                ),
+            ],
+            ..model::PlatformContext::default()
+        };
+
+        let build = builder_from_context(&context)
+            .into_documents()
+            .expect("same-signature constructor duplicates must not collide");
+        assert_eq!(build.warnings.len(), 1);
+        assert_eq!(build.warnings[0].code, "DUPLICATE_DOCUMENT_ID");
+        assert!(build.warnings[0].message.contains("kept the last document"));
+        let constructors = build
+            .documents
+            .iter()
+            .filter(|document| document.kind == SearchDocumentKind::Constructor)
+            .collect::<Vec<_>>();
+        assert_eq!(constructors.len(), 1);
+        assert_eq!(
+            constructors[0].id,
+            "constructor:platform_type:МенеджерКриптографии:Новый МенеджерКриптографии(<ИспользованиеИнтерактивногоРежима>)"
+        );
+        assert_eq!(
+            constructors[0].description.as_deref(),
+            Some("Для инициализации description")
+        );
+    }
+
+    #[test]
     fn streaming_builder_preserves_expected_document_and_relation_shape() {
         let context = fixture_context();
         let builder_documents = builder_from_context(&context)
             .into_documents()
-            .expect("fixture documents must not collide");
+            .expect("fixture documents must not collide")
+            .documents;
         let ids = builder_documents
             .iter()
             .map(|document| document.id.as_str())
@@ -4402,7 +4574,8 @@ mod tests {
         let path = temp_path("relation-builder-parity.sqlite");
         let documents = builder_from_context(&fixture_context())
             .into_documents()
-            .expect("fixture documents must not collide");
+            .expect("fixture documents must not collide")
+            .documents;
         let expected = relations_from_documents(&documents)
             .into_iter()
             .map(|relation| {
@@ -4487,7 +4660,7 @@ mod tests {
     }
 
     #[test]
-    fn streaming_builder_reports_toc_marker_identity_collisions() {
+    fn streaming_builder_keeps_last_toc_marker_duplicate_with_warning() {
         let path = temp_path("builder-duplicate-document-id.sqlite");
         let context = model::PlatformContext {
             platform_types: vec![platform_type_with_owner_path("ГруппаФормы", "Форма")],
@@ -4503,19 +4676,32 @@ mod tests {
             ..model::PlatformContext::default()
         };
 
-        let error = build_index_from_builder(&path, &metadata(), builder_from_context(&context))
-            .expect_err("TOC-marker duplicates must reject index build");
+        let report = build_index_from_builder_with_report(
+            &path,
+            &metadata(),
+            builder_from_context(&context),
+        )
+        .expect("TOC-marker duplicates must not reject index build");
 
-        assert!(matches!(
-            error,
-            SearchError::DuplicateDocumentId {
-                ref id,
-                count: 2,
-            } if id == "type_property:platform_type:ГруппаФормы:Видимость"
-        ));
-        assert!(!path.exists());
-        assert!(!path.with_extension("sqlite-wal").exists());
-        assert!(!path.with_extension("sqlite-shm").exists());
+        assert_eq!(report.warnings.len(), 1);
+        assert_eq!(report.warnings[0].code, "DUPLICATE_DOCUMENT_ID");
+        assert!(
+            report.warnings[0]
+                .message
+                .contains("type_property:platform_type:ГруппаФормы:Видимость")
+        );
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        assert_eq!(
+            index
+                .connection
+                .query_row(
+                    "SELECT COUNT(*) FROM documents WHERE id = 'type_property:platform_type:ГруппаФормы:Видимость'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("document count must be readable"),
+            1
+        );
     }
 
     #[test]
@@ -4662,7 +4848,8 @@ mod tests {
 
         let documents = builder_from_context(&context)
             .into_documents()
-            .expect("query table identities must not collide");
+            .expect("query table identities must not collide")
+            .documents;
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -4711,7 +4898,8 @@ mod tests {
 
         let documents = builder_from_context(&context)
             .into_documents()
-            .expect("missing-syntax query table identities must not collide");
+            .expect("missing-syntax query table identities must not collide")
+            .documents;
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -4747,7 +4935,8 @@ mod tests {
 
         let documents = builder_from_context(&context)
             .into_documents()
-            .expect("semantic type variants must not collide");
+            .expect("semantic type variants must not collide")
+            .documents;
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -5008,7 +5197,8 @@ mod tests {
 
         let documents = builder_from_context(&context)
             .into_documents()
-            .expect("enum semantic variants must not collide");
+            .expect("enum semantic variants must not collide")
+            .documents;
         let ids = documents
             .iter()
             .map(|document| document.id.as_str())
@@ -5021,6 +5211,51 @@ mod tests {
                 .filter(|id| **id == "enum_value:enum:system:Видимость:Использовать")
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn enum_identity_uses_alias_variant_for_duplicate_system_enum_names() {
+        let context = model::PlatformContext {
+            enums: vec![
+                enum_definition_with_alias(
+                    "ИспользованиеТекущейСтроки",
+                    "SelectedRowsUse",
+                    "objects/catalog2/catalog111/SelectedRowsUse.html",
+                ),
+                enum_definition_with_alias(
+                    "ИспользованиеТекущейСтроки",
+                    "CurrentRowUse",
+                    "objects/catalog2/catalog222/CurrentRowUse.html",
+                ),
+            ],
+            enum_values: vec![
+                enum_value_with_owner_alias(
+                    "ИспользованиеТекущейСтроки",
+                    "SelectedRowsUse",
+                    "Авто",
+                ),
+                enum_value_with_owner_alias("ИспользованиеТекущейСтроки", "CurrentRowUse", "Авто"),
+            ],
+            ..model::PlatformContext::default()
+        };
+
+        let documents = builder_from_context(&context)
+            .into_documents()
+            .expect("alias-backed enum variants must not collide")
+            .documents;
+        let ids = documents
+            .iter()
+            .map(|document| document.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(ids.contains(&"enum:system:ИспользованиеТекущейСтроки:SelectedRowsUse"));
+        assert!(ids.contains(&"enum:system:ИспользованиеТекущейСтроки:CurrentRowUse"));
+        assert!(
+            ids.contains(&"enum_value:enum:system:ИспользованиеТекущейСтроки:SelectedRowsUse:Авто")
+        );
+        assert!(
+            ids.contains(&"enum_value:enum:system:ИспользованиеТекущейСтроки:CurrentRowUse:Авто")
         );
     }
 
@@ -5333,8 +5568,16 @@ mod tests {
     }
 
     fn enum_definition(primary: &str, html_path: &str) -> model::EnumDefinition {
+        enum_definition_with_alias(primary, "", html_path)
+    }
+
+    fn enum_definition_with_alias(
+        primary: &str,
+        alias: &str,
+        html_path: &str,
+    ) -> model::EnumDefinition {
         model::EnumDefinition {
-            name: name(primary, None),
+            name: name(primary, (!alias.is_empty()).then_some(alias)),
             value_links: Vec::new(),
             description: Some("enum description".to_string()),
             facts: model::SectionFacts::default(),
@@ -5343,8 +5586,16 @@ mod tests {
     }
 
     fn enum_value(owner: &str, primary: &str) -> model::EnumValue {
+        enum_value_with_owner_alias(owner, "", primary)
+    }
+
+    fn enum_value_with_owner_alias(
+        owner: &str,
+        owner_alias: &str,
+        primary: &str,
+    ) -> model::EnumValue {
         model::EnumValue {
-            owner: name(owner, None),
+            owner: name(owner, (!owner_alias.is_empty()).then_some(owner_alias)),
             name: name(primary, None),
             description: Some("value description".to_string()),
             facts: model::SectionFacts::default(),
@@ -5377,16 +5628,20 @@ mod tests {
     }
 
     fn constructor(owner: &str, signature: &str) -> model::Constructor {
+        constructor_with_name(owner, signature, signature)
+    }
+
+    fn constructor_with_name(owner: &str, primary: &str, signature: &str) -> model::Constructor {
         model::Constructor {
             owner: name(owner, None),
-            name: name("По умолчанию", None),
+            name: name(primary, None),
             semantic: model::SemanticContext::default(),
             signatures: vec![model::Signature {
                 text: signature.to_string(),
                 parameters: Vec::new(),
                 variant: None,
             }],
-            description: None,
+            description: Some(format!("{primary} description")),
             facts: model::SectionFacts::default(),
             source: source(signature),
         }

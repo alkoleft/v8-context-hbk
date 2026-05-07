@@ -506,3 +506,34 @@ Completion notes:
   1 source book, 1 locale, 397 TOC nodes, 365 pages, 410 files, 1127587 bytes, 1761 ms and
   14208 KiB peak RSS. The generated page `page-ru-c5a12eeae852efad.md` no longer contains raw
   quoted table scaffolding for the reported launch-flow block.
+
+### [x] T122. Recover from Syntax Assistant index identity collisions found in 8.5.1
+
+Spec refs:
+
+- FR-SH-SEARCH-001
+- NFR-QUERY-001
+- UAT-SH-004
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Treat duplicate constructor source pages with the same final owner identity and signature-text
+  document id as a documentation defect, not an index rebuild blocker.
+- Keep one deterministic document for unresolved duplicate final search document ids, choosing the
+  last extracted source record.
+- Report each duplicate during `syntax index` rebuild on `stderr`.
+- Preserve distinct same-primary system enums by using alias as the minimal semantic variant when
+  aliases differ.
+- Do not change SQLite schema, query command shapes or provider JSON schema.
+
+Verification:
+
+- Focused `syntax-helper-search` regressions cover duplicate final document ids, last-record
+  selection and build warning.
+- Focused `syntax-helper-search` regression covers same-primary system enum identities
+  distinguished by alias and enum-value ownership through the final enum identity.
+- `v8-context-hbk syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output
+  target/repro-index.sqlite` completes and reports the duplicate constructor warning.
+- SQLite check confirms the reported `МенеджерКриптографии` constructor id exists once and both
+  `ИспользованиеТекущейСтроки` system enum aliases exist as separate documents.

@@ -310,7 +310,18 @@ the same final owner identity and primary name has already been indexed, the mar
 not create a second document or receive a source-path suffix. This rule applies across document
 families, including methods, properties, constructors, enums and enum values.
 
-Constructor documents are owned by the final type identity and constructor primary name.
+Constructor documents are owned by the final type identity and constructor signature text used by
+the query index. If real source documentation emits duplicate constructor pages with the same final
+owner identity and signature text, the index keeps the last extracted document for that id and
+reports a build warning instead of aborting the rebuild. This is a documentation-defect recovery
+rule applied after semantic identity normalization: unresolved duplicate final document ids keep the
+last extracted document and emit a build warning so the source defect remains visible.
+
+System enum documents normally use the primary enum name as their identity. If real source data
+contains distinct system enums with the same primary name and different aliases, the index appends
+the alias as the minimal semantic variant and owns enum-value document ids through that final enum
+identity. Duplicate enum ids that cannot be distinguished by alias fall under the same
+last-document warning rule after identity normalization.
 
 Enum documents use the primary name as the base identity, but metadata-object property enums are a
 separate enum kind from ordinary system enums. Enum value documents are owned by the final enum

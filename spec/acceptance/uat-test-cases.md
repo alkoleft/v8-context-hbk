@@ -977,6 +977,12 @@ assert cur.execute(
 assert cur.execute(
     "select 1 from relations where source_id like 'query_table:РегистрБухгалтерии:%' and target_id like 'query_table_field:query_table:РегистрБухгалтерии:%' limit 1"
 ).fetchone()
+assert cur.execute(
+    "select count(*) from documents where id='constructor:platform_type:МенеджерКриптографии:Новый МенеджерКриптографии(<ИспользованиеИнтерактивногоРежима>)'"
+).fetchone()[0] == 1
+assert cur.execute(
+    "select count(*) from documents where id in ('enum:system:ИспользованиеТекущейСтроки:SelectedRowsUse', 'enum:system:ИспользованиеТекущейСтроки:CurrentRowUse')"
+).fetchone()[0] == 2
 for table in ["type_identities", "members", "callables", "signatures", "parameters", "type_refs"]:
     assert cur.execute(f"select count(*) from {table}").fetchone()[0] > 0, table
 assert cur.execute("""
@@ -1054,6 +1060,10 @@ Expected result:
 - Document ids do not contain HBK/HTML path fragments or TOC duplicate-title markers.
 - Duplicated query table identifiers use semantic table-family variants in document ids and
   relation endpoints.
+- Duplicate source pages for the `МенеджерКриптографии` constructor signature are reported during
+  index build and produce one constructor document instead of aborting the rebuild.
+- Distinct `ИспользованиеТекущейСтроки` system enums with different aliases produce separate
+  enum documents.
 - Form/form-extension `Параметры формы` pages are not indexed as `platform_type` records.
 
 Cleanup:
