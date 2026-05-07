@@ -224,7 +224,6 @@ impl HbkBook {
         let path = container.path().to_path_buf();
         let meta_text = entity_utf8(&container, BookEntityKind::Book)?;
         let meta = parse_book_meta(&meta_text)?;
-        let file_storage = container.read_entity(BookEntityKind::FileStorage.entity_name())?;
         let toc = match container.read_entity(BookEntityKind::PackBlock.entity_name()) {
             Ok(pack_block) => {
                 let toc_bytes = read_first_zip_entry(&path, PACK_BLOCK_NAME, &pack_block)?;
@@ -239,6 +238,8 @@ impl HbkBook {
             Err(ContainerError::EntityHasNoBody { entity_name, .. })
                 if entity_name == PACK_BLOCK_NAME =>
             {
+                let file_storage =
+                    container.read_entity(BookEntityKind::FileStorage.entity_name())?;
                 Toc::from_storage_paths(list_storage_page_paths(&path, &file_storage)?)
             }
             Err(source) => return Err(BookError::Container(source)),

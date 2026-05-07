@@ -1616,11 +1616,16 @@ usable navigation and page readability without overlapping text.
 
 T114 added visible progress for long-running `site generate` runs without changing the final
 `stdout` summary keys. `hbk-doc-site` now exposes `DocSiteGenerator::generate_with_progress`, while
-the CLI prints progress to `stderr` for source discovery, each source book load, site-data planning
-and artifact writing. Page artifact output is throttled to coarse milestones. UAT-HBK-014 was
-re-run on 2026-05-07 against the same representative corpus and confirmed `stderr` progress lines
-such as `progress: discovered 4 source book(s)`, `progress: loading source book 1/4`,
-`progress: planned site data: locales=1, toc_nodes=267, pages=254` and page artifact milestones.
+the CLI prints progress to `stderr` for source discovery, source-book loading, site-data planning
+and artifact writing. Progress output was simplified on 2026-05-07 to avoid full paths and
+per-artifact-family chatter. Interactive terminal progress updates one line in place and shows the
+latest source/artifact file name, with file-level redraws throttled to avoid terminal flicker;
+redirected progress logs use bounded sparse milestones so large corpora still update regularly after
+the first item. UAT-HBK-014 was re-run on 2026-05-07 against the same representative corpus and
+confirmed redirected `stderr` progress lines such as
+`progress: source books discovered: 4`, `progress: loading source books: 1/4 (fmtdui_ru.hbk)`,
+`progress: site data planned: locales=1, toc_nodes=267, pages=254` and sparse
+`progress: writing artifacts: <current>/<total>` milestones.
 The final `stdout` summary remained `output`, `source_books`, `locales`, `toc_nodes`, `pages`,
 `files`, `bytes`, `elapsed_ms` and `peak_rss_kib`; the representative rerun produced 4 source
 books, 1 locale, 267 TOC nodes, 254 pages, 302 files, 931369 bytes, 3052 ms and 11924 KiB peak RSS.
@@ -1634,3 +1639,14 @@ release-profile UAT-HBK-014 rerun on 2026-05-07 against the representative four-
 RSS. A broader diagnostic full-corpus release run against all 116 local 8.5.1.1150 HBK files
 produced 3 locales, 60686 TOC nodes, 54849 pages, 66730 files, 82233487 bytes, 23351 ms and
 253696 KiB peak RSS.
+
+T117 removed additional repeated work from documentation site generation while preserving the full
+generated data output from the pre-change full-corpus run. The site Markdown path now reads raw page
+HTML through the existing per-book page loader and avoids building full `PageContent`/link
+diagnostics for every generated page; `HbkBook::open` no longer reads `FileStorage` when `PackBlock`
+already provides TOC data; generated JSON and Markdown writers no longer call `fs::metadata` after
+every file write. A release-profile UAT-HBK-014 rerun on 2026-05-07 against the representative
+four-book corpus produced 4 source books, 1 locale, 267 TOC nodes, 254 pages, 302 files, 931369 bytes,
+122 ms and 7252 KiB peak RSS. A diagnostic full-corpus release run against all 116 local
+8.5.1.1150 HBK files produced 3 locales, 60686 TOC nodes, 54849 pages, 66730 files, 82233487 bytes,
+18293 ms and 222896 KiB peak RSS.

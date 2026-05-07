@@ -1,5 +1,6 @@
+use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use hbk_book::HbkBook;
@@ -9,8 +10,7 @@ use hbk_book_export::{
 };
 use hbk_container::HbkContainer;
 use hbk_doc_site::{
-    DocSiteGenerator, GeneratedSiteFileKind, SiteGenerationProgress, SiteGenerationRequest,
-    SiteGenerationResult,
+    DocSiteGenerator, SiteGenerationProgress, SiteGenerationRequest, SiteGenerationResult,
 };
 use hbk_syntax_export::JsonExporter;
 use serde_json::{Value, json};
@@ -22,6 +22,7 @@ use syntax_helper_search::{
 
 const DEFAULT_SEARCH_LIMIT: usize = 20;
 const DEFAULT_RELATED_LIMIT: usize = 200;
+const INTERACTIVE_PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Parser)]
 #[command(version, about = "Read and inspect 1C HBK help book containers")]
@@ -377,8 +378,12 @@ fn generate_site_data(
 ) -> Result<SiteGenerationRun, hbk_doc_site::SiteGenerationError> {
     let started = Instant::now();
     let request = SiteGenerationRequest::source_directory(output, source_dir, include_file_names);
-    let result =
-        DocSiteGenerator::generate_with_progress(&request, print_site_generation_progress)?;
+    let mut progress_printer = SiteGenerationProgressPrinter::new();
+    let result = DocSiteGenerator::generate_with_progress(&request, |progress| {
+        progress_printer.print(progress)
+    });
+    progress_printer.finish();
+    let result = result?;
     Ok(SiteGenerationRun {
         result,
         elapsed_ms: started.elapsed().as_millis(),
@@ -386,70 +391,152 @@ fn generate_site_data(
     })
 }
 
-fn print_site_generation_progress(progress: SiteGenerationProgress<'_>) {
+#[derive(Debug)]
+struct SiteGenerationProgressPrinter {
+    interactive: bool,
+    last_line_len: usize,
+    last_interactive_update_at: Option<Instant>,
+}
+
+impl SiteGenerationProgressPrinter {
+    fn new() -> Self {
+        Self {
+            interactive: io::stderr().is_terminal(),
+            last_line_len: 0,
+            last_interactive_update_at: None,
+        }
+    }
+
+    fn print(&mut self, progress: SiteGenerationProgress<'_>) {
+        if self.interactive {
+            self.print_interactive(progress);
+        } else {
+            print_line_progress(progress);
+        }
+    }
+
+    fn print_interactive(&mut self, progress: SiteGenerationProgress<'_>) {
+        if !should_render_interactive_progress(
+            progress,
+            self.last_interactive_update_at
+                .map(|updated_at| updated_at.elapsed()),
+        ) {
+            return;
+        }
+        let Some(message) = progress_message(progress, true) else {
+            return;
+        };
+        let clear_len = self.last_line_len.saturating_sub(message.chars().count());
+        let mut stderr = io::stderr().lock();
+        let _ = write!(stderr, "\r{message}{}", " ".repeat(clear_len));
+        let _ = stderr.flush();
+        self.last_line_len = message.chars().count();
+        self.last_interactive_update_at = Some(Instant::now());
+    }
+
+    fn finish(&mut self) {
+        if self.interactive && self.last_line_len > 0 {
+            let _ = writeln!(io::stderr());
+            self.last_line_len = 0;
+        }
+    }
+}
+
+fn should_render_interactive_progress(
+    progress: SiteGenerationProgress<'_>,
+    elapsed_since_update: Option<Duration>,
+) -> bool {
+    match progress {
+        SiteGenerationProgress::SourceBooksDiscovered { .. }
+        | SiteGenerationProgress::SourceBooksLoaded { .. }
+        | SiteGenerationProgress::SiteDataBuilt { .. } => true,
+        SiteGenerationProgress::SourceBookLoading { current, total, .. }
+        | SiteGenerationProgress::ArtifactWriting { current, total, .. } => {
+            current == 1
+                || current == total
+                || match elapsed_since_update {
+                    Some(elapsed) => elapsed >= INTERACTIVE_PROGRESS_UPDATE_INTERVAL,
+                    None => true,
+                }
+        }
+    }
+}
+
+fn print_line_progress(progress: SiteGenerationProgress<'_>) {
+    if let Some(message) = progress_message(progress, false) {
+        eprintln!("{message}");
+    }
+}
+
+fn progress_message(progress: SiteGenerationProgress<'_>, interactive: bool) -> Option<String> {
     match progress {
         SiteGenerationProgress::SourceBooksDiscovered { count } => {
-            eprintln!("progress: discovered {count} source book(s)");
+            Some(format!("progress: source books discovered: {count}"))
         }
         SiteGenerationProgress::SourceBookLoading {
             current,
             total,
             path,
         } => {
-            eprintln!(
-                "progress: loading source book {current}/{total}: {}",
-                path.display()
-            );
+            if interactive || should_print_source_book_progress(current, total) {
+                Some(format!(
+                    "progress: loading source books: {current}/{total} ({})",
+                    progress_file_name(path)
+                ))
+            } else {
+                None
+            }
         }
         SiteGenerationProgress::SourceBooksLoaded { count } => {
-            eprintln!("progress: loaded {count} source book(s)");
+            Some(format!("progress: source books loaded: {count}"))
         }
         SiteGenerationProgress::SiteDataBuilt {
             locale_count,
             toc_node_count,
             page_count,
-        } => {
-            eprintln!(
-                "progress: planned site data: locales={locale_count}, toc_nodes={toc_node_count}, pages={page_count}"
-            );
-        }
+        } => Some(format!(
+            "progress: site data planned: locales={locale_count}, toc_nodes={toc_node_count}, pages={page_count}"
+        )),
         SiteGenerationProgress::ArtifactWriting {
             current,
             total,
-            kind,
             path,
+            ..
         } => {
-            if should_print_artifact_progress(current, total, kind) {
-                eprintln!(
-                    "progress: writing artifact {current}/{total} ({}): {}",
-                    site_file_kind_label(kind),
-                    path.display()
-                );
+            if interactive || should_print_artifact_progress(current, total) {
+                Some(format!(
+                    "progress: writing artifacts: {current}/{total} ({})",
+                    progress_file_name(path)
+                ))
+            } else {
+                None
             }
         }
     }
 }
 
-fn should_print_artifact_progress(
-    current: usize,
-    total: usize,
-    kind: GeneratedSiteFileKind,
-) -> bool {
-    match kind {
-        GeneratedSiteFileKind::Manifest | GeneratedSiteFileKind::TocRoot => true,
-        GeneratedSiteFileKind::TocSection | GeneratedSiteFileKind::Page => {
-            current == total || current % 100 == 0
-        }
-    }
+fn progress_file_name(path: &std::path::Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("-")
+        .to_string()
 }
 
-fn site_file_kind_label(kind: GeneratedSiteFileKind) -> &'static str {
-    match kind {
-        GeneratedSiteFileKind::Manifest => "manifest",
-        GeneratedSiteFileKind::TocRoot => "toc-root",
-        GeneratedSiteFileKind::TocSection => "toc-section",
-        GeneratedSiteFileKind::Page => "page",
-    }
+fn should_print_artifact_progress(current: usize, total: usize) -> bool {
+    total > 0 && (current == 1 || current == total || current % artifact_progress_step(total) == 0)
+}
+
+fn artifact_progress_step(total: usize) -> usize {
+    total.div_ceil(20).clamp(100, 2_500)
+}
+
+fn should_print_source_book_progress(current: usize, total: usize) -> bool {
+    total > 0
+        && (current == 1 || current == total || current % source_book_progress_step(total) == 0)
+}
+
+fn source_book_progress_step(total: usize) -> usize {
+    total.div_ceil(10).clamp(10, 50)
 }
 
 fn peak_rss_kib() -> Option<u64> {
@@ -2036,36 +2123,110 @@ mod tests {
     }
 
     #[test]
-    fn site_generate_page_progress_is_coarse() {
-        assert!(!should_print_artifact_progress(
-            99,
-            250,
-            GeneratedSiteFileKind::Page
+    fn site_generate_artifact_progress_uses_sparse_milestones() {
+        assert!(should_print_artifact_progress(1, 250));
+        assert!(!should_print_artifact_progress(62, 250));
+        assert!(should_print_artifact_progress(100, 250));
+        assert!(should_print_artifact_progress(200, 250));
+        assert!(!should_print_artifact_progress(201, 250));
+        assert!(should_print_artifact_progress(250, 250));
+        assert!(!should_print_artifact_progress(2_499, 66_730));
+        assert!(should_print_artifact_progress(2_500, 66_730));
+        assert!(should_print_artifact_progress(66_730, 66_730));
+        assert!(!should_print_artifact_progress(1, 0));
+    }
+
+    #[test]
+    fn site_generate_source_book_progress_uses_sparse_milestones() {
+        assert!(should_print_source_book_progress(1, 116));
+        assert!(!should_print_source_book_progress(11, 116));
+        assert!(should_print_source_book_progress(12, 116));
+        assert!(should_print_source_book_progress(24, 116));
+        assert!(should_print_source_book_progress(116, 116));
+        assert!(!should_print_source_book_progress(1, 0));
+    }
+
+    #[test]
+    fn site_generate_progress_messages_include_last_file_name() {
+        let book_path = PathBuf::from("/tmp/platform/shcntx_ru.hbk");
+        let page_path = PathBuf::from("/tmp/site/data/locales/ru/pages/page-1.md");
+
+        assert_eq!(
+            progress_message(
+                SiteGenerationProgress::SourceBookLoading {
+                    current: 1,
+                    total: 116,
+                    path: &book_path,
+                },
+                true,
+            )
+            .as_deref(),
+            Some("progress: loading source books: 1/116 (shcntx_ru.hbk)")
+        );
+        assert_eq!(
+            progress_message(
+                SiteGenerationProgress::ArtifactWriting {
+                    current: 2_500,
+                    total: 66_730,
+                    kind: hbk_doc_site::GeneratedSiteFileKind::Page,
+                    path: &page_path,
+                },
+                false,
+            )
+            .as_deref(),
+            Some("progress: writing artifacts: 2500/66730 (page-1.md)")
+        );
+    }
+
+    #[test]
+    fn site_generate_interactive_progress_is_time_throttled() {
+        let page_path = PathBuf::from("/tmp/site/data/locales/ru/pages/page-1.md");
+        let recent_update = Some(INTERACTIVE_PROGRESS_UPDATE_INTERVAL / 2);
+        let delayed_update = Some(INTERACTIVE_PROGRESS_UPDATE_INTERVAL);
+
+        assert!(should_render_interactive_progress(
+            SiteGenerationProgress::SiteDataBuilt {
+                locale_count: 1,
+                toc_node_count: 267,
+                page_count: 254,
+            },
+            recent_update,
         ));
-        assert!(should_print_artifact_progress(
-            100,
-            250,
-            GeneratedSiteFileKind::Page
+        assert!(should_render_interactive_progress(
+            SiteGenerationProgress::ArtifactWriting {
+                current: 1,
+                total: 66_730,
+                kind: hbk_doc_site::GeneratedSiteFileKind::Page,
+                path: &page_path,
+            },
+            recent_update,
         ));
-        assert!(should_print_artifact_progress(
-            250,
-            250,
-            GeneratedSiteFileKind::Page
+        assert!(!should_render_interactive_progress(
+            SiteGenerationProgress::ArtifactWriting {
+                current: 2,
+                total: 66_730,
+                kind: hbk_doc_site::GeneratedSiteFileKind::Page,
+                path: &page_path,
+            },
+            recent_update,
         ));
-        assert!(should_print_artifact_progress(
-            1,
-            250,
-            GeneratedSiteFileKind::Manifest
+        assert!(should_render_interactive_progress(
+            SiteGenerationProgress::ArtifactWriting {
+                current: 2,
+                total: 66_730,
+                kind: hbk_doc_site::GeneratedSiteFileKind::Page,
+                path: &page_path,
+            },
+            delayed_update,
         ));
-        assert!(!should_print_artifact_progress(
-            99,
-            250,
-            GeneratedSiteFileKind::TocSection
-        ));
-        assert!(should_print_artifact_progress(
-            100,
-            250,
-            GeneratedSiteFileKind::TocSection
+        assert!(should_render_interactive_progress(
+            SiteGenerationProgress::ArtifactWriting {
+                current: 66_730,
+                total: 66_730,
+                kind: hbk_doc_site::GeneratedSiteFileKind::Page,
+                path: &page_path,
+            },
+            recent_update,
         ));
     }
 

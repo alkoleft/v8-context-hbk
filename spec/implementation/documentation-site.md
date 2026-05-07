@@ -156,6 +156,10 @@ The first implementation slice should stop at a usable documentation site withou
    planning and artifact writing. The final `stdout` summary remains unchanged.
 7. Remove avoidable repeated work in page generation. Completed in T115 with locale-level link
    target precomputation, per-book Markdown page loader reuse and per-loader TOC HTML-path indexes.
+8. Remove the next measured repeated I/O/parsing costs. Completed in T117 by avoiding full
+   `PageContent` construction for site Markdown pages, skipping unnecessary `FileStorage` reads
+   during `HbkBook::open` when `PackBlock` is available and avoiding per-file metadata calls after
+   generated artifact writes.
 
 Search and Syntax Assistant API behavior are intentionally later slices. When added, they should use
 generated local index artifacts or existing accepted local index contracts, not HBK parsing in web
@@ -203,11 +207,15 @@ Progress covers:
 - currently loading source book;
 - loaded book count;
 - planned locale, TOC-node and page counts;
-- artifact writing progress for manifest, TOC roots, TOC sections and coarse page milestones.
+- sparse artifact writing milestones over the total generated file count.
 
-The progress stream is intentionally coarse. Page artifact messages are throttled so a full corpus
-does not produce one terminal line per generated page. The final summary stays on `stdout` with the
-same keys as T112.
+The progress stream is intentionally coarse. When `stderr` is a terminal, the CLI updates one
+progress line in place, includes the latest source/artifact file name without full paths and
+throttles file-level redraws so the terminal does not flicker. Stage boundaries, first item and final
+item still render immediately. When `stderr` is redirected, it prints line-based bounded sparse
+milestones so logs remain readable: small corpora stay compact, while large corpora still update
+regularly instead of appearing stuck after the first item. The final summary stays on `stdout` with
+the same keys as T112.
 
 ## T115 Site Generation Performance Notes
 
@@ -221,7 +229,28 @@ corpus-scale work for every page:
   readers are not reopened for every page;
 - each documentation page loader builds a TOC HTML-path index once and reuses it for page provenance
   and link resolution;
-- CLI artifact progress is throttled for both TOC section and page artifact families.
+- CLI artifact progress is throttled as bounded sparse milestones over the total generated file
+  count.
 
 This is intentionally not a worker-pool or tuning-knob change. Later parallelization still requires
 separate measurements and must preserve deterministic artifact order and diagnostics.
+
+## T117 Site Generation Performance Notes
+
+The second site-generation performance pass keeps the generated artifact contract unchanged and
+continues to use a sequential deterministic write order, but removes repeated work that remained
+after T115:
+
+- the site Markdown path reads raw HTML through the existing per-book page loader and skips full
+  documentation `PageContent`/link diagnostics construction for every generated page;
+- the fast path still rewrites page links, preserves fragment anchors, keeps heading-only fallback
+  pages and uses HTML `<title>`/`<h1>` when a Markdown heading must be synthesized;
+- `HbkBook::open` reads `FileStorage` only for the storage-derived TOC fallback, not for ordinary
+  books that already have a `PackBlock` TOC;
+- generated JSON and Markdown writers use the known serialized/text byte length instead of issuing
+  a filesystem metadata call after every file write.
+
+The T117 full-corpus check also showed that bounded parallel page writing by source book did not
+improve the local 8.5.1.1150 run and increased peak RSS, so that worker-pool change was not kept.
+Further speed work should measure the remaining cost before adding concurrency or broader export
+pipeline changes.

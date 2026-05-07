@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
-use std::fs::{self, File};
+use std::fs;
 use std::hash::Hasher;
-use std::io::{self, BufWriter, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use hbk_book::{BookError, HbkBook, TocPage, normalize_storage_path};
@@ -1087,25 +1087,15 @@ fn write_json(
     if let Some(parent) = path.parent() {
         create_directory(parent)?;
     }
-    let file = File::create(&path).map_err(|source| SiteGenerationError::Io {
+    let bytes = serde_json::to_vec(value).map_err(|source| SiteGenerationError::Json {
         path: path.clone(),
         source,
     })?;
-    let mut writer = BufWriter::new(file);
-    serde_json::to_writer(&mut writer, value).map_err(|source| SiteGenerationError::Json {
+    let bytes_written = bytes.len() as u64;
+    fs::write(&path, bytes).map_err(|source| SiteGenerationError::Io {
         path: path.clone(),
         source,
     })?;
-    writer.flush().map_err(|source| SiteGenerationError::Io {
-        path: path.clone(),
-        source,
-    })?;
-    let bytes_written = fs::metadata(&path)
-        .map_err(|source| SiteGenerationError::Io {
-            path: path.clone(),
-            source,
-        })?
-        .len();
     Ok(GeneratedSiteFile::new(path, bytes_written))
 }
 
@@ -1113,16 +1103,11 @@ fn write_text(path: PathBuf, text: &str) -> Result<GeneratedSiteFile, SiteGenera
     if let Some(parent) = path.parent() {
         create_directory(parent)?;
     }
+    let bytes_written = text.len() as u64;
     fs::write(&path, text.as_bytes()).map_err(|source| SiteGenerationError::Io {
         path: path.clone(),
         source,
     })?;
-    let bytes_written = fs::metadata(&path)
-        .map_err(|source| SiteGenerationError::Io {
-            path: path.clone(),
-            source,
-        })?
-        .len();
     Ok(GeneratedSiteFile::new(path, bytes_written))
 }
 

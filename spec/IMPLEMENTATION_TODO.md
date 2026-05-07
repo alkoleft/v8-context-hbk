@@ -214,10 +214,10 @@ Completion notes:
 - Added `SiteGenerationProgress`, `GeneratedSiteFileKind` and
   `DocSiteGenerator::generate_with_progress` while preserving the no-progress
   `DocSiteGenerator::generate` wrapper for library callers.
-- `v8-context-hbk site generate` now writes progress to `stderr`: source discovery, per-book
+- `v8-context-hbk site generate` writes progress to `stderr`: source discovery, source-book
   loading, loaded book count, planned locale/TOC/page counts and artifact writing milestones.
-- The final T112 stdout summary shape is unchanged. Page artifact progress is throttled to coarse
-  milestones so full-corpus generation does not print one line per page.
+- The final T112 stdout summary shape is unchanged. Artifact progress is throttled to coarse
+  milestones so full-corpus generation does not print one line per page or TOC section.
 
 ### [x] T115. Remove avoidable repeated work from documentation site page generation
 
@@ -261,5 +261,84 @@ Completion notes:
   the same book `FileStorage`/ZIP reader is not reopened for every page.
 - `hbk-docs` now builds a TOC HTML-path index once per `DocumentationPageLoader`, avoiding repeated
   `flat_pages()` expansion for every page and link in large books.
-- CLI artifact progress remains deterministic but is throttled for both TOC section and page
-  artifacts.
+- CLI artifact progress remains deterministic but is throttled as bounded sparse milestones over the
+  total generated file count.
+
+### [x] T116. Simplify documentation site generation progress output
+
+Spec refs:
+
+- FR-HBK-005
+- NFR-SITE-001
+- UAT-HBK-014
+- `spec/acceptance/baseline.md`
+- `spec/implementation/documentation-site.md`
+
+Scope:
+
+- Reduce noisy `v8-context-hbk site generate` progress output while keeping progress on `stderr`
+  and the final T112 `stdout` summary unchanged.
+- Keep generator progress events available for library callers; simplify only the CLI rendering.
+- Do not add quiet/verbose flags, worker pools, tuning knobs or generated data shape changes.
+
+Verification:
+
+- Focused `v8-context-hbk-cli` test covers sparse artifact progress milestones.
+
+Completion notes:
+
+- CLI progress no longer prints source HBK paths, generated artifact paths or artifact-kind labels.
+- Interactive terminal progress updates one `stderr` line in place, shows the latest
+  source/artifact file name and throttles file-level redraws to avoid terminal flicker.
+- Redirected source loading is rendered as bounded sparse `<current>/<total>` milestones instead of
+  one visible line per source book.
+- Redirected artifact writing is rendered as bounded sparse `<current>/<total>` milestones over the
+  total generated file count so large corpora still update regularly after the first artifact.
+
+### [x] T117. Reduce repeated I/O and parsing in documentation site generation
+
+Spec refs:
+
+- FR-HBK-005
+- NFR-SITE-001
+- UAT-HBK-014
+- `spec/acceptance/baseline.md`
+- `spec/implementation/documentation-site.md`
+
+Scope:
+
+- Add a site-generation Markdown path that reads raw page HTML through the existing per-book page
+  loader and avoids building full documentation `PageContent`/link diagnostics for every generated
+  page.
+- Avoid reading `FileStorage` during `HbkBook::open` when `PackBlock` already provides TOC data.
+- Avoid a filesystem metadata call after every generated JSON/Markdown file write when the byte
+  count is already known.
+- Preserve generated data shape, page ids, Markdown link rewriting behavior, heading-only fallback
+  behavior and final stdout summary keys.
+- Keep the change sequential and deterministic. Do not add worker pools, caches, tuning knobs,
+  search endpoints or broad parser refactors.
+- Re-measure representative and full-corpus release-profile `site generate` runs after the change.
+
+Verification:
+
+- Focused `hbk-book-export` tests cover raw site Markdown link rewriting and missing-page fallback.
+- Focused `hbk-doc-site` tests continue to cover same-book and cross-book generated Markdown links.
+- Representative and full-corpus release-profile UAT-HBK-014 measurements are updated in
+  `spec/acceptance/baseline.md`.
+- `cargo test -p hbk-book -p hbk-book-export -p hbk-doc-site` passed on 2026-05-07.
+- `cargo test --workspace` passed on 2026-05-07.
+
+Completion notes:
+
+- `BookMarkdownPageLoader::linked_markdown_toc_page` now uses raw page HTML for the site-generation
+  path, preserving link rewriting, heading-only fallback and HTML title behavior without building
+  full `PageContent` diagnostics for every page.
+- `HbkBook::open` no longer reads the full `FileStorage` entity when `PackBlock` is available; the
+  storage fallback remains for books without a `PackBlock` body.
+- Generated JSON/text writers now use known serialized/text byte lengths instead of `fs::metadata`
+  after each file write.
+- Release-profile UAT-HBK-014 on the representative four-book corpus produced 4 source books,
+  1 locale, 267 TOC nodes, 254 pages, 302 files, 931369 bytes, 122 ms and 7252 KiB peak RSS.
+- The diagnostic full-corpus release run against all 116 local 8.5.1.1150 HBK files produced
+  3 locales, 60686 TOC nodes, 54849 pages, 66730 files, 82233487 bytes, 18293 ms and
+  222896 KiB peak RSS.

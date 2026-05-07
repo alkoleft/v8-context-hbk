@@ -312,9 +312,11 @@ impl BookMarkdownPageLoader<'_> {
         let markdown = if is_heading_only_toc_path(normalized_html_path) {
             heading_only_markdown(title)
         } else {
-            match self.loader.load_page(normalized_html_path) {
-                Ok(page) => page_content_to_linked_markdown(
-                    &page,
+            match self.loader.load_raw_page(normalized_html_path) {
+                Ok(raw_html) => raw_page_to_linked_markdown(
+                    &raw_html,
+                    normalized_html_path,
+                    title,
                     current_output_path,
                     link_targets,
                     source_book_ids,
@@ -953,6 +955,107 @@ fn page_content_to_linked_markdown(
     let markdown = html_to_markdown_with_options(&html, &options);
     let markdown = ensure_markdown_heading(&page.title, normalize_markdown(markdown));
     materialize_markdown_heading_anchors(&markdown, &anchor_targets)
+}
+
+fn raw_page_to_linked_markdown(
+    raw_html: &str,
+    html_path: &str,
+    title: &str,
+    current_output_path: &Path,
+    link_targets: &impl MarkdownLinkTargets,
+    source_book_ids: &HashSet<String>,
+) -> String {
+    let empty_replacements = HashMap::new();
+    let html = replace_href_attributes(
+        raw_html,
+        &empty_replacements,
+        html_path,
+        current_output_path,
+        link_targets,
+        source_book_ids,
+    );
+    let anchor_targets = markdown_heading_anchor_targets(&html);
+    let html = normalize_code_examples(&html);
+    let options = MarkdownOptions::new()
+        .include_links(true)
+        .include_images(false)
+        .preserve_tables(true)
+        .escape_special_chars(false);
+    let markdown = html_to_markdown_with_options(&html, &options);
+    let markdown = normalize_markdown(markdown);
+    let title = if markdown_starts_with_heading(&markdown) {
+        title.to_string()
+    } else {
+        raw_html_page_title(raw_html, title)
+    };
+    let markdown = ensure_markdown_heading(&title, markdown);
+    materialize_markdown_heading_anchors(&markdown, &anchor_targets)
+}
+
+fn markdown_starts_with_heading(markdown: &str) -> bool {
+    markdown
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .is_some_and(|line| line.starts_with('#'))
+}
+
+fn raw_html_page_title(raw_html: &str, fallback: &str) -> String {
+    first_html_element_text(raw_html, "title")
+        .or_else(|| first_html_element_text(raw_html, "h1"))
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn first_html_element_text(raw_html: &str, tag_name: &str) -> Option<String> {
+    let open_pattern = format!("<{tag_name}");
+    let close_pattern = format!("</{tag_name}");
+    let mut cursor = 0;
+    while let Some(open_start) = find_ascii_case_insensitive(raw_html, cursor, &open_pattern) {
+        let Some(open_end) = raw_html[open_start..]
+            .find('>')
+            .map(|offset| open_start + offset + 1)
+        else {
+            return None;
+        };
+        let Some(close_start) = find_ascii_case_insensitive(raw_html, open_end, &close_pattern)
+        else {
+            return None;
+        };
+        let text = normalize_html_text(&raw_html[open_end..close_start]);
+        if !text.is_empty() {
+            return Some(text);
+        }
+        cursor = close_start + close_pattern.len();
+    }
+    None
+}
+
+fn normalize_html_text(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for character in html.chars() {
+        match character {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(character),
+            _ => {}
+        }
+    }
+    decode_basic_html_entities(&text)
+        .replace('\u{a0}', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn decode_basic_html_entities(text: &str) -> String {
+    text.replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#34;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
 }
 
 fn markdown_link_targets(plans: &[MarkdownTocExportPlan]) -> HashMap<String, PathBuf> {
@@ -1822,6 +1925,124 @@ mod tests {
                 html_path: "docs/unlisted.html".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn markdown_page_loader_rewrites_links_from_raw_html() {
+        let workspace = TempWorkspace::new("markdown-loader-links");
+        let source_path = workspace.path().join("fmtdui_ru.hbk");
+        let toc = r##"{
+            2
+            {1,0,0,{0,0,{0,0,{"ru","Корень"}},"/docs/root.html"}}
+            {2,0,0,{0,0,{0,0,{"ru","Цель"}},"/docs/target.html"}}
+        }"##;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![
+                (
+                    "docs/root.html",
+                    r##"<html><body>
+                        <h1>Корень</h1>
+                        <p><a href="target.html#Details">Цель</a></p>
+                    </body></html>"##
+                        .as_bytes(),
+                ),
+                (
+                    "docs/target.html",
+                    r##"<html><body><h1 id="Details">Цель</h1></body></html>"##.as_bytes(),
+                ),
+            ],
+        );
+        let book = HbkBook::open(&source_path).expect("book must open");
+        let mut link_targets = HashMap::new();
+        link_targets.insert(
+            "docs/target.html".to_string(),
+            PathBuf::from("target-page.md"),
+        );
+        let mut loader = BookExporter::new(&book)
+            .markdown_page_loader()
+            .expect("markdown page loader must open");
+
+        let page = loader
+            .linked_markdown_toc_page(
+                "docs/root.html",
+                "Корень",
+                Path::new("root-page.md"),
+                &link_targets,
+                &source_book_link_ids(&book),
+            )
+            .expect("loader must convert raw HTML to linked Markdown");
+
+        assert!(page.markdown().contains("[Цель](target-page.md#Details)"));
+        assert!(!page.markdown().contains("target.html"));
+    }
+
+    #[test]
+    fn markdown_page_loader_prefers_html_title_over_toc_title() {
+        let workspace = TempWorkspace::new("markdown-loader-title");
+        let source_path = workspace.path().join("fmtdui_ru.hbk");
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","TOC title"}},"/docs/page.html"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![(
+                "docs/page.html",
+                r#"<html><head><title>HTML&nbsp;title</title></head><body><p>body</p></body></html>"#
+                    .as_bytes(),
+            )],
+        );
+        let book = HbkBook::open(&source_path).expect("book must open");
+        let mut loader = BookExporter::new(&book)
+            .markdown_page_loader()
+            .expect("markdown page loader must open");
+
+        let page = loader
+            .linked_markdown_toc_page(
+                "docs/page.html",
+                "TOC title",
+                Path::new("page.md"),
+                &HashMap::new(),
+                &source_book_link_ids(&book),
+            )
+            .expect("loader must convert page Markdown");
+
+        assert!(
+            page.markdown().starts_with("# HTML title\n"),
+            "{}",
+            page.markdown()
+        );
+        assert!(!page.markdown().starts_with("# TOC title\n"));
+    }
+
+    #[test]
+    fn markdown_page_loader_keeps_missing_toc_page_as_heading_only() {
+        let workspace = TempWorkspace::new("markdown-loader-missing");
+        let source_path = workspace.path().join("fmtdui_ru.hbk");
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Отсутствует"}},"/docs/missing.html"}}
+        }"#;
+        write_book_fixture_with_toc(&source_path, toc, Vec::new());
+        let book = HbkBook::open(&source_path).expect("book must open");
+        let mut loader = BookExporter::new(&book)
+            .markdown_page_loader()
+            .expect("markdown page loader must open");
+
+        let page = loader
+            .linked_markdown_toc_page(
+                "docs/missing.html",
+                "Отсутствует",
+                Path::new("missing.md"),
+                &HashMap::new(),
+                &source_book_link_ids(&book),
+            )
+            .expect("missing TOC storage page must become heading-only Markdown");
+
+        assert_eq!(page.markdown(), "# Отсутствует\n");
     }
 
     #[test]

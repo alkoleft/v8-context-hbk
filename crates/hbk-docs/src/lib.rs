@@ -49,15 +49,18 @@ pub struct DocumentationPageLoader<'a> {
 }
 
 impl DocumentationPageLoader<'_> {
+    pub fn load_raw_page(&mut self, html_path: &str) -> Result<String, DocumentationError> {
+        self.storage
+            .read_page(html_path)
+            .map_err(|source| DocumentationError::PageRead {
+                path: self.book.path().to_path_buf(),
+                html_path: normalize_storage_path_owned(html_path),
+                source: Box::new(source),
+            })
+    }
+
     pub fn load_page(&mut self, html_path: &str) -> Result<PageContent, DocumentationError> {
-        let raw_html =
-            self.storage
-                .read_page(html_path)
-                .map_err(|source| DocumentationError::PageRead {
-                    path: self.book.path().to_path_buf(),
-                    html_path: normalize_storage_path_owned(html_path),
-                    source: Box::new(source),
-                })?;
+        let raw_html = self.load_raw_page(html_path)?;
         Ok(parse_page_html_with_toc_pages(
             self.book.path(),
             self.book.locale().source_code(),
