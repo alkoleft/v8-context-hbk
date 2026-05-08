@@ -100,6 +100,38 @@ Solution-context Rust resolution is described in
 - Validation belongs at file/container input, external command input, parsing boundaries,
   serialization/export boundaries and public API boundaries.
 
+## Static-Analysis Dependency Surface
+
+ADR-0008 owns the in-process Rust surface for a downstream static-analysis project that consumes
+this workspace as library dependencies. The selected integration shape is direct Cargo dependency
+or workspace membership, not HTTP, daemon, MCP or CLI transport in the analyzer lookup hot path.
+
+Recommended dependency layers:
+
+- `context-resolver-core`: the source-neutral public surface for static-analysis code. Consumers
+  should depend on its typed ids, fact DTOs, `ContextSource`, `ContextResolver`,
+  `CompositeResolver`, `ResolveContext` and `ResolveResponse`.
+- `context-resolver-search`: HBK-backed platform and language adapters over a prebuilt
+  `syntax-helper-search::SearchIndex`. Consumers may depend on this crate when they need this
+  repository's extracted platform/language facts as resolver sources. It exposes read-only
+  adapter constructors such as `PlatformSearchSource::open_read_only*` and
+  `LanguageSearchSource::open_*_read_only` so lookup-only consumers do not need to import
+  `syntax-helper-search` only to open an existing provider index.
+- `syntax-helper-search`: local index open/build primitives. The Rust API may be used to create or
+  open the rebuildable provider index, but SQLite table names, FTS columns, row ids and schema
+  internals remain private implementation details.
+- `hbk-book`, `syntax-helper-extract` and `syntax-helper-language`: setup/index-refresh phase only,
+  when the embedding application chooses to rebuild HBK-backed provider indexes in process.
+
+Static-analysis hot-path code should not depend on `v8-context-hbk-cli`, `hbk-syntax-export`,
+`hbk-book-export`, `hbk-doc-site`, web-app code, Syntax Assistant page parser internals or
+container/page provenance fields. Those components remain CLI/export/documentation or
+setup-boundary concerns unless a later ADR creates a concrete adapter for them.
+
+A broad facade crate is not selected yet. Add one only if a real downstream integration proves that
+`context-resolver-core` plus concrete source-adapter crates creates avoidable coupling or repeated
+boilerplate.
+
 ## Pre-Rework Legacy Cleanup Boundary
 
 Before the resolver and non-platform Syntax Assistant rework expands the implementation surface, the

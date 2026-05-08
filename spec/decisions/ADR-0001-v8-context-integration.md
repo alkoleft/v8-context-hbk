@@ -132,3 +132,17 @@ constraints on the internal model. No current consumer requires the legacy shape
 - [x] Decision references T9 Syntax Assistant acceptance evidence.
 - [x] Decision references T10 all-HBK smoke evidence.
 - [x] `README.md` and `spec/README.md` point to the numbered ADR path.
+
+## More Information
+
+### 2026-05-08: Static-Analysis Library Integration Is Separate
+
+This ADR continues to own the first `/home/alko/develop/open-source/v8-context/` batch-ingestion
+surface: file-level `syntax export` remains the initial normalized export path for that downstream
+platform-model import experiment.
+
+It does not prohibit the separate ADR-0008 Rust resolver boundary. For a Rust static-analysis
+application that includes this workspace as Cargo dependencies, normal lookup should use
+`context-resolver-core` and concrete source adapters in process, not HTTP, daemon, MCP or CLI
+transport. That dependency-based static-analysis surface is governed by ADR-0008 and does not make
+`v8-context` query paths parse HBK containers or Syntax Assistant HTML directly.

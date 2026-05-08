@@ -20,6 +20,8 @@ Future BSL analyzer integration is an intended consumer direction for the `synta
 repository still extracts documentation from HBK sources and does not implement BSL parsing or
 runtime introspection, but `syntax` query/export contracts should be designed so they can become a
 typed local provider for a BSL analyzer without re-parsing HBK books in analyzer query paths.
+For Rust static-analysis integration, the preferred surface is in-process library dependency on the
+resolver/provider crates, not HTTP, daemon, MCP or CLI-spawn calls in the analyzer hot path.
 
 ## Goals
 
@@ -717,7 +719,9 @@ or `syntax related` and consume the versioned provider envelope. The SQLite inde
 rebuildable internal provider artifact, not a public table-level contract. Rust library APIs,
 batch-only analyzer artifacts and service boundaries for this CLI provider require a future ADR or
 task with a concrete consumer need. ADR-0008 separately defines the in-process Rust
-solution-context resolver boundary without changing this CLI JSON contract.
+solution-context resolver boundary without changing this CLI JSON contract. Rust static-analysis
+consumers that can include this project as a Cargo dependency should use FR-CTX-RESOLVE-001 for
+hot-path lookup instead of treating CLI JSON as the only integration surface.
 
 Provider-oriented outputs must:
 
@@ -798,6 +802,21 @@ The resolver API must be source-neutral and fact-oriented:
 - reserve Rust errors for infrastructure failures such as missing indexes, unsupported schema
   versions, unreadable source artifacts or invalid source routing.
 
+Dependency-based static-analysis integration must use this boundary directly:
+
+- depend on `context-resolver-core` for source-neutral traits, typed ids and response DTOs;
+- depend on concrete source adapters such as `context-resolver-search` for HBK-backed platform and
+  language facts;
+- open prebuilt local indexes through adapter-owned APIs instead of parsing HBK files for each
+  analyzer query;
+- use `syntax-helper-search` directly for provider index build/refresh flows, while allowing
+  lookup-only flows to open existing indexes through `context-resolver-search` adapter
+  constructors;
+- keep index build or refresh as a setup phase, separate from source-file diagnostics and lookup
+  hot paths;
+- avoid making `v8-context-hbk-cli`, HTTP routes, network transports, SQLite table names, HBK paths
+  or Syntax Assistant HTML parser internals part of the public static-analysis contract.
+
 The first implementation may provide only the source-neutral core API and the HBK-backed platform
 adapter over `syntax-helper-search`. Configuration metadata extraction, BSL parser/source indexing,
 query parser/source indexing, diagnostics and code actions are out of scope for this repository
@@ -839,6 +858,9 @@ Acceptance:
 - Existing `query_table`, `query_table_field` and `query_table_parameter` provider facts are not
   exposed through the platform adapter. T66 selected them to remain CLI/provider facts until a later
   language-domain task defines an explicit resolver mapping or relation shape.
+- A Rust static-analysis host can compose `CompositeResolver` with HBK-backed source adapters in
+  process from Cargo dependencies and perform lookup calls without spawning the CLI or calling a
+  local network service.
 
 ## FR-SH-SEARCH-002: Syntax Assistant Relationship Graph
 

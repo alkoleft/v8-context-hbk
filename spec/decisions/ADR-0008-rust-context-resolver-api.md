@@ -20,6 +20,10 @@ The concrete next consumer is now a Rust application that forms a complete solut
 - BSL language facts and type system facts;
 - query-language facts and type system facts.
 
+The integration mode for that consumer is dependency-based: the downstream static-analysis project
+will include this workspace's library crates as Cargo dependencies or workspace members. It will not
+call an HTTP API, daemon, MCP server or similar transport for normal resolver queries.
+
 The installed platform HBK set already contains separate source books for some of these domains:
 
 - `shlang_ru.hbk` / `shlang_root.hbk` for BSL language syntax and language-level type facts;
@@ -41,6 +45,17 @@ The Rust API is a second provider boundary beside the accepted CLI JSON boundary
 for it. CLI JSON remains the language-agnostic local integration surface. The Rust API exists for
 Rust applications that need repeated low-latency lookups and a typed source-neutral interface across
 platform, configuration, BSL-language and query-language providers.
+
+For Rust static-analysis integration, the selected surface is direct library dependency on:
+
+- `context-resolver-core` for source-neutral traits, typed identities, facts and lookup responses;
+- `context-resolver-search` for HBK-backed platform/language source adapters over a prebuilt local
+  search index;
+- `syntax-helper-search` only as the local index open/build primitive behind those adapters.
+
+Downstream analysis code should compose these providers in process. It must not depend on CLI
+command wiring, SQLite table names, HBK parser internals or a transport/service boundary for normal
+lookup calls.
 
 The API must be centered on context facts, not only platform types:
 
@@ -92,7 +107,7 @@ The boundary does not promise:
 - configuration metadata extraction in this repository;
 - runtime 1C introspection;
 - public SQLite table, row or FTS-token contracts;
-- a daemon, MCP server, network service or async runtime requirement;
+- a daemon, MCP server, HTTP API, network service or async runtime requirement;
 - hidden compatibility with older provisional CLI/provider JSON shapes.
 
 ## Domain Separation Rules
@@ -124,7 +139,8 @@ The boundary does not promise:
 ## Consequences
 
 - ADR-0007 remains valid for CLI JSON consumers. This ADR adds a new boundary because the
-  downstream consumer is now concrete and Rust-only enough to justify in-process lookup.
+  downstream consumer is now concrete and Rust-only enough to justify in-process lookup by Cargo
+  dependency instead of command or network transport.
 - `syntax-helper-search` may expose a platform-source adapter, but it must not become the
   source-neutral resolver model. The resolver core must not depend on SQLite or HBK crates.
 - `syntax-helper-model` remains the HBK/Syntax Assistant extraction domain model. The resolver core
@@ -185,6 +201,9 @@ language, query language, metadata-generated and source-code facts.
    domain separation and member lookup behavior before adding real configuration-source providers.
 8. Keep CLI JSON and existing UAT behavior unchanged unless a later task deliberately aligns both
    surfaces.
+9. Document the dependency-based static-analysis wiring in the implementation spec: hot-path
+   consumers depend on resolver crates and open prebuilt indexes; setup/index-refresh code may use
+   HBK extraction crates, but analyzer lookup code must not parse HBK files per query.
 
 ## Verification
 
@@ -197,3 +216,26 @@ language, query language, metadata-generated and source-code facts.
       introspection in this repository.
 - [x] A follow-up task can implement the first slice without depending on public SQLite tables or
       query-time HBK parsing.
+
+## More Information
+
+### 2026-05-08: Dependency-Based Static-Analysis Integration
+
+The downstream integration target is a Rust static-analysis project that will include the resolver
+surface as a library dependency. This confirms the in-process boundary selected above and narrows
+the integration surface away from HTTP, daemon, MCP or other transport-oriented APIs.
+
+The intended dependency layers are:
+
+- analysis hot path: `context-resolver-core` plus concrete source adapters such as
+  `context-resolver-search`;
+- HBK-backed platform provider state: a prebuilt `syntax-helper-search` index opened read-only by
+  the adapter;
+- setup or index-refresh phase only: `hbk-book`, `syntax-helper-extract` and
+  `syntax-helper-search::SearchIndexBuilder` when the embedding application chooses to rebuild the
+  provider index in process.
+
+Do not make `v8-context-hbk-cli`, the SQLite schema, Syntax Assistant HTML parsing functions,
+ordinary book export, documentation-site generation or web-app code part of the static-analysis
+library contract. A future facade crate is allowed only if real downstream wiring shows that the
+current `core + adapter + index` dependency set is too leaky.

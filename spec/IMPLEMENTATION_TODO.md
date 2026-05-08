@@ -728,3 +728,72 @@ Verification:
   zero query-table field/parameter documents under generic `query_table:Основная таблица` /
   `query_table:Main table`, zero constructor callables without `owner_type_id`, and zero
   constructor result type references without `target_type_id`.
+
+### [x] T128. Specify dependency-based static-analysis integration surface
+
+Spec refs:
+
+- ADR-0001
+- ADR-0007
+- ADR-0008
+- FR-SH-PROVIDER-001
+- FR-CTX-RESOLVE-001
+- UC-CTX-002
+- NFR-RESOLVE-001
+- `spec/implementation/components.md`
+- `spec/implementation/solution-context-resolve.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Record that the static-analysis integration mode is Cargo dependency or workspace membership, not
+  HTTP, daemon, MCP, CLI-spawn or JSON-over-process transport in the analyzer hot path.
+- Keep ADR-0007 valid for language-agnostic CLI JSON provider consumers, while pointing Rust
+  static-analysis consumers to ADR-0008.
+- Define the dependency layers: `context-resolver-core` for source-neutral traits/DTOs,
+  `context-resolver-search` for HBK-backed source adapters, `syntax-helper-search` for local index
+  open/build primitives and HBK extraction crates only for setup/index-refresh.
+- Keep SQLite tables, HBK paths, Syntax Assistant HTML parser internals, CLI wiring, export crates,
+  documentation-site code and web-app code out of the static-analysis library contract.
+- Do not add a new facade crate, transport, code implementation or compatibility layer in this
+  spec-only task.
+
+Verification:
+
+- ADR-0008 records dependency-based static-analysis integration and rejects transport-oriented
+  resolver APIs for the hot path.
+- ADR-0001 and ADR-0007 clarify their relationship to the ADR-0008 Rust dependency boundary.
+- `functional.md`, `non-functional.md`, `use-cases.md`, `components.md`,
+  `solution-context-resolve.md` and `syntax-helper-query-cli.md` describe the selected integration
+  surface consistently.
+- No Rust code, CLI behavior, JSON schema, SQLite schema or public export shape changed in this
+  task.
+
+### [x] T129. Add adapter-level read-only index open constructors
+
+Spec refs:
+
+- ADR-0008
+- FR-CTX-RESOLVE-001
+- NFR-RESOLVE-001
+- UC-CTX-002
+- `spec/implementation/components.md`
+- `spec/implementation/solution-context-resolve.md`
+
+Scope:
+
+- Add `context-resolver-search` constructors that open an existing read-only
+  `syntax-helper-search` provider index and return the relevant source adapter.
+- Cover platform source with default and explicit source id constructors.
+- Cover language sources with generic and source-family constructors for `shlang`, `shquery` and
+  `dcsui`.
+- Keep `syntax-helper-search` as the owner of SQLite schema, index build/open mechanics and lower
+  level `SearchIndex` APIs.
+- Do not change SQLite schema, CLI behavior, provider JSON, export JSON or resolver fact shapes.
+
+Verification:
+
+- Focused `context-resolver-search` tests cover opening platform and language adapters from an
+  index path and resolving a fact through the opened adapter.
+- `cargo fmt --all --check` passes.
+- `cargo test -p context-resolver-search` passes.

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use context_resolver_core::{
     CallableId, CallableInfo, CallableKind, CallableLookup, ContextFact, ContextSource,
     FactDetails, FactId, FactKind, FactRelation, LanguageDomain, MemberId, MemberInfo, MemberKind,
@@ -22,6 +24,13 @@ pub struct LanguageSearchSource {
     index: SearchIndex,
 }
 
+fn search_source_failure(source_id: &SourceId, source: SearchError) -> ResolveError {
+    ResolveError::SourceFailure {
+        source_id: source_id.clone(),
+        message: source.to_string(),
+    }
+}
+
 impl PlatformSearchSource {
     pub fn new(index: SearchIndex) -> Self {
         Self {
@@ -30,15 +39,25 @@ impl PlatformSearchSource {
         }
     }
 
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self, ResolveError> {
+        Self::open_read_only_with_source_id(path, SourceId::new(DEFAULT_SOURCE_ID))
+    }
+
     pub fn with_source_id(index: SearchIndex, source_id: SourceId) -> Self {
         Self { source_id, index }
     }
 
+    pub fn open_read_only_with_source_id(
+        path: impl AsRef<Path>,
+        source_id: SourceId,
+    ) -> Result<Self, ResolveError> {
+        SearchIndex::open_read_only(path)
+            .map(|index| Self::with_source_id(index, source_id.clone()))
+            .map_err(|source| search_source_failure(&source_id, source))
+    }
+
     fn source_failure(&self, source: SearchError) -> ResolveError {
-        ResolveError::SourceFailure {
-            source_id: self.source_id.clone(),
-            message: source.to_string(),
-        }
+        search_source_failure(&self.source_id, source)
     }
 
     fn fact_id(&self, kind: FactKind, local_id: impl Into<String>) -> FactId {
@@ -321,12 +340,24 @@ impl LanguageSearchSource {
         Self::new("shlang", LanguageDomain::BslLanguage, index)
     }
 
+    pub fn open_shlang_read_only(path: impl AsRef<Path>) -> Result<Self, ResolveError> {
+        Self::open_read_only(path, "shlang", LanguageDomain::BslLanguage)
+    }
+
     pub fn shquery(index: SearchIndex) -> Self {
         Self::new("shquery", LanguageDomain::QueryLanguage, index)
     }
 
+    pub fn open_shquery_read_only(path: impl AsRef<Path>) -> Result<Self, ResolveError> {
+        Self::open_read_only(path, "shquery", LanguageDomain::QueryLanguage)
+    }
+
     pub fn dcsui(index: SearchIndex) -> Self {
         Self::new("dcsui", LanguageDomain::QueryLanguage, index)
+    }
+
+    pub fn open_dcsui_read_only(path: impl AsRef<Path>) -> Result<Self, ResolveError> {
+        Self::open_read_only(path, "dcsui", LanguageDomain::QueryLanguage)
     }
 
     pub fn new(source_id: impl Into<String>, domain: LanguageDomain, index: SearchIndex) -> Self {
@@ -337,11 +368,23 @@ impl LanguageSearchSource {
         }
     }
 
+    pub fn open_read_only(
+        path: impl AsRef<Path>,
+        source_id: impl Into<String>,
+        domain: LanguageDomain,
+    ) -> Result<Self, ResolveError> {
+        let source_id = SourceId::new(source_id);
+        SearchIndex::open_read_only(path)
+            .map(|index| Self {
+                source_id: source_id.clone(),
+                domain,
+                index,
+            })
+            .map_err(|source| search_source_failure(&source_id, source))
+    }
+
     fn source_failure(&self, source: SearchError) -> ResolveError {
-        ResolveError::SourceFailure {
-            source_id: self.source_id.clone(),
-            message: source.to_string(),
-        }
+        search_source_failure(&self.source_id, source)
     }
 
     fn fact_id(&self, kind: FactKind, local_id: impl Into<String>) -> FactId {
@@ -1197,6 +1240,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn platform_adapter_opens_read_only_index_from_path() {
+        let source = fixture_source();
+        let path = fixture_index_path("platform-adapter-open-read-only.sqlite");
+        let adapter = PlatformSearchSource::open_read_only_with_source_id(&path, source.clone())
+            .expect("platform adapter must open index path");
+
+        assert_eq!(adapter.descriptor().id, source.clone());
+
+        let response = adapter
+            .resolve_type(
+                TypeLookup::ExactName {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    name: "ОтборКомпоновкиДанных",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("type lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ok);
+        assert_eq!(response.facts.len(), 1);
+    }
+
+    #[test]
     fn platform_adapter_resolves_type_member_callable_and_relations() {
         let source = fixture_source();
         let filter = TypeId(FactId::new(
@@ -1448,6 +1515,30 @@ mod tests {
             constructs.facts.is_empty(),
             "constructs traversal must require edge-specific source evidence"
         );
+    }
+
+    #[test]
+    fn language_adapter_opens_read_only_index_from_path() {
+        let path = language_fixture_index("language-adapter-open-read-only.sqlite");
+        let source = SourceId::new("shlang");
+        let adapter = LanguageSearchSource::open_shlang_read_only(&path)
+            .expect("language adapter must open index path");
+
+        assert_eq!(adapter.descriptor().id, source.clone());
+
+        let response = adapter
+            .resolve_type(
+                TypeLookup::ExactName {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::BslLanguage),
+                    name: "Строка",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("type lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ok);
+        assert_eq!(response.facts.len(), 1);
     }
 
     #[test]

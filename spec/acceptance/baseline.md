@@ -1197,6 +1197,25 @@ T127 debug real-corpus verification used:
   `query_table:Main table`, zero constructor callables without `owner_type_id`, and zero
   constructor result type references without `target_type_id`.
 
+T128 clarified the dependency-based static-analysis integration surface as a spec-only decision.
+Rust static-analysis consumers should integrate through Cargo dependencies on
+`context-resolver-core` and concrete source adapters such as `context-resolver-search`, using
+`syntax-helper-search` only as a local index open/build primitive. HTTP, daemon, MCP, CLI-spawn and
+JSON-over-process transports are out of scope for resolver hot-path lookup. `hbk-book` and
+`syntax-helper-extract` may participate in setup/index-refresh flows, while SQLite tables, HBK
+paths, Syntax Assistant HTML parser internals, CLI wiring, export crates, documentation-site code
+and web-app code remain outside the static-analysis library contract. This did not change Rust
+code, CLI behavior, provider JSON, SQLite schema or consumer export JSON.
+
+T129 added the first code-level convenience slice for that surface. `context-resolver-search` now
+opens read-only provider indexes through adapter-level constructors:
+`PlatformSearchSource::open_read_only`, `PlatformSearchSource::open_read_only_with_source_id`,
+`LanguageSearchSource::open_read_only`, `LanguageSearchSource::open_shlang_read_only`,
+`LanguageSearchSource::open_shquery_read_only` and `LanguageSearchSource::open_dcsui_read_only`.
+The database schema, index build ownership and lower-level `SearchIndex` implementation remain in
+`syntax-helper-search`; the new constructors only remove the need for lookup-only analyzer code to
+import `syntax-helper-search` directly just to open an existing index.
+
 T42 changed only the index build data flow. `syntax index` now streams extraction records into a
 search-index builder and inserts relations into SQLite without retaining the full `PlatformContext`,
 complete search document vector and complete relation vector together. The SQLite schema, atomic

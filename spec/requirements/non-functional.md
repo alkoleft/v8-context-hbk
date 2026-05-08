@@ -96,6 +96,9 @@ Requirements:
 
 - Resolver calls must use prebuilt provider indexes or in-memory provider snapshots. They must not
   parse HBK files, configuration source files, BSL source or query text in the lookup hot path.
+- Static-analysis integration must use direct Rust library calls in the lookup hot path. HTTP,
+  daemon, MCP, CLI-spawn and JSON-over-process transports are out of scope for the first resolver
+  surface.
 - The first platform adapter should be at least as deterministic as the CLI JSON provider and should
   preserve explicit `not_found`, `ambiguous` and `unsupported` outcomes.
 - Same input, active source set and source artifacts must produce deterministic candidate ordering.

@@ -34,6 +34,11 @@ As a Rust application that validates, reviews and assists development of a full 
 one source-neutral resolver for platform API facts, BSL language types, query-language types,
 configuration metadata types and source-code declarations.
 
+### Static Analysis Host Application
+
+As a Rust static-analysis application, I need to include HBK-backed context providers as Cargo
+dependencies and call them in process, without HTTP, daemon or CLI transport in the lookup hot path.
+
 ### Syntax Assistant CLI User
 
 As a developer or agent, I need to quickly find platform API facts by exact name, purpose,
@@ -199,6 +204,17 @@ Examples:
   source-qualified candidates instead of picking a hidden winner.
 - Given a resolved query table field, follow explicit type-reference relations to the relevant
   BSL, query-language or platform type facts.
+
+Related requirements: FR-CTX-RESOLVE-001, NFR-RESOLVE-001 and ADR-0008.
+
+## UC-CTX-002: Embed HBK-Backed Resolver as a Library Dependency
+
+Primary user: static analysis host application.
+
+Outcome: a Rust analyzer composes `context-resolver-core` with HBK-backed source adapters from this
+workspace, opens a prebuilt local provider index and resolves platform/language facts without
+spawning `v8-context-hbk`, calling HTTP/MCP, reading SQLite tables directly or parsing HBK/HTML in
+each source-code analysis query.
 
 Related requirements: FR-CTX-RESOLVE-001, NFR-RESOLVE-001 and ADR-0008.
 

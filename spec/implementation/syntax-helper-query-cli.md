@@ -176,6 +176,10 @@ requires a separate ADR or task with a concrete consumer and verification path.
 ADR-0008 adds a separate Rust solution-context resolver boundary for an in-process full-context
 application. That boundary composes platform, BSL-language, query-language, configuration and
 source-code providers; it does not change the CLI JSON contract or make the SQLite index public.
+When a downstream static-analysis project can include this workspace as Cargo dependencies, its
+hot-path integration should use ADR-0008's resolver/source traits and adapters instead of spawning
+these CLI commands or introducing HTTP/MCP transport. The CLI JSON provider remains the
+language-agnostic tool boundary and UAT-friendly compatibility surface.
 
 ### Index Path Resolution
 

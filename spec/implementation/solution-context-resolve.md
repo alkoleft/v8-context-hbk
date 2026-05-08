@@ -7,6 +7,9 @@ HBK-backed platform adapter slice.
 
 The resolver API is the Rust integration boundary for a future application that builds a complete
 1C solution context and uses it for validation, review, development assistance and diagnostics.
+For the static-analysis integration path, the downstream application includes this boundary as
+Cargo dependencies and calls it in process. HTTP, daemon, MCP and CLI-spawn transports are out of
+scope for resolver hot-path lookup.
 
 The application needs fast in-process access to facts from multiple sources:
 
@@ -39,8 +42,76 @@ Non-goals:
 - no configuration metadata extractor in this repository;
 - no runtime 1C introspection;
 - no public SQLite table contract;
-- no daemon, MCP server or network dependency;
+- no daemon, MCP server, HTTP API or network dependency;
+- no CLI command execution as the normal Rust analyzer lookup path;
 - no hidden winner selection when multiple domains contain the same display name.
+
+## Dependency Integration Surface
+
+The dependency-facing surface has two phases.
+
+Analyzer lookup hot path:
+
+- depend on `context-resolver-core` for `ContextResolver`, `ContextSource`, `CompositeResolver`,
+  typed ids, fact DTOs and lookup response statuses;
+- depend on concrete source adapters, currently `context-resolver-search`, for HBK-backed platform
+  and language facts;
+- open prebuilt source artifacts read-only and compose sources in process;
+- call resolver methods directly from the analyzer without spawning `v8-context-hbk`, calling HTTP,
+  reading SQLite tables or parsing HBK/HTML pages.
+
+Provider setup or index-refresh phase:
+
+- may use `hbk-book` and `syntax-helper-extract::SyntaxHelperReader` to read `shcntx_*` books;
+- may stream extracted facts into `syntax-helper-search::SearchIndexBuilder` and write a local
+  provider index;
+- may rebuild source artifacts when platform HBK files or extractor versions change;
+- must keep refresh failures separate from per-source analyzer diagnostics.
+
+Minimal platform-provider wiring:
+
+```rust
+use context_resolver_core::{CompositeResolver, ContextResolver, ResolveContext, TypeLookup};
+use context_resolver_search::PlatformSearchSource;
+
+let platform = PlatformSearchSource::open_read_only("target/platform.sqlite")?;
+let resolver = CompositeResolver::new(vec![Box::new(platform)]);
+let response = resolver.resolve_type(
+    TypeLookup::ExactName {
+        source: None,
+        domain: None,
+        name: "HTTPСоединение",
+    },
+    &ResolveContext::all(),
+)?;
+```
+
+Index build may be in-process too, but it is not part of the source-analysis hot path:
+
+```rust
+use hbk_book::HbkBook;
+use syntax_helper_extract::SyntaxHelperReader;
+use syntax_helper_search::{IndexMetadata, SearchIndexBuilder, build_index_from_builder};
+
+let book = HbkBook::open("/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk")?;
+let mut builder = SearchIndexBuilder::new();
+SyntaxHelperReader::new(&book).extract_into(&mut builder)?;
+build_index_from_builder("target/platform.sqlite", &IndexMetadata {
+    locale: "ru".to_string(),
+    source_locale: "ru".to_string(),
+    source_hbk: book.path().display().to_string(),
+    source_extraction_schema_version: 11,
+}, builder)?;
+```
+
+The examples show ownership boundaries, not a stabilized copy-paste API contract. Exact helper
+names may evolve while the public decision remains: lookup integrates by Cargo dependency through
+resolver/source traits, not by transport or storage internals.
+
+T129 implementation note: `context-resolver-search` now exposes adapter-level read-only open
+constructors for the accepted source adapters. `syntax-helper-search` still owns the index schema
+and build/open mechanics, but lookup-only analyzer code can depend on `context-resolver-search`
+without importing `SearchIndex` directly just to open an existing provider database.
 
 ## Source And Language Domains
 

@@ -75,6 +75,9 @@ The boundary does not promise:
   boundary unless a later ADR changes it.
 - The `syntax-helper-search` crate can expose Rust APIs needed by the local CLI and tests, but those
   APIs are not a public analyzer integration contract yet.
+- ADR-0008 now owns the dependency-based Rust static-analysis surface for consumers that can link
+  this workspace as libraries. Such consumers should use resolver/source traits in process instead
+  of spawning CLI JSON or adding HTTP/MCP transport for hot-path lookup.
 - Analyzer callers that need more throughput should first prove the limitation with the CLI JSON
   boundary. A later task may then add a batch command or library boundary with measured evidence.
 - File-level `syntax export` remains the canonical consumer export boundary for batch platform facts
@@ -138,3 +141,12 @@ row layouts or internal FTS fields.
       this decision.
 - [x] T56 storage normalization completed without making SQLite tables the public analyzer
       integration contract.
+
+## More Information
+
+### 2026-05-08: Rust Static Analyzer Uses ADR-0008
+
+The first CLI JSON provider boundary remains valid for language-agnostic tools and existing UAT.
+For a Rust static-analysis project that includes this repository as dependencies, use ADR-0008's
+in-process resolver boundary instead. Do not reinterpret this ADR as requiring CLI JSON, HTTP, MCP
+or a daemon between two Rust crates in the same analyzer application.
