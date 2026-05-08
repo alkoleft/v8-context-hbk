@@ -1166,14 +1166,36 @@ documents use composed semantic owners such as
 T126 completed ADR-0011's read-phase parent identity boundary for Syntax Assistant facts. Parent
 identity for platform types, query tables and enums is filled by `syntax-helper-extract` before
 records reach `SyntaxHelperSink`; `syntax-helper-search` consumes those identities for member
-document ids and keeps model-owned fallback helpers only for synthetic or legacy records without
-identity. The debug build command
+document ids. T127 later removed the remaining child/member fallback path and made missing child
+`owner_identity` an index-build error. The debug build command
 `cargo run -p v8-context-hbk-cli -- syntax index
 /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/adr-0011-identity.sqlite` completed in
 65.778 s, emitted existing `DUPLICATE_DOCUMENT_ID` warnings to `stderr`, produced 25,443 documents
 and 63,562 relations, and left zero duplicate `documents.id` groups. SQLite checks confirmed that
 `type_event:owner:События:ОбработкаВыбора` is absent and that no `query_table_field` /
 `query_table_parameter` document is owned by `query_table:Основная таблица`.
+
+T127 removed the remaining consumer-side parent identity repair. Child/member domain records now
+carry `owner_identity`; `syntax-helper-search` fails index build when that child parent identity is
+missing, and `hbk-syntax-export` groups query-table members and enum values only by precomputed
+identity. `syntax-helper-extract` also reuses query-table records parsed during the parent-identity
+prepass instead of loading the same query-table page again during stream emission; real
+`/formparams/` pages are resolved through their platform parent path.
+
+T127 debug real-corpus verification used:
+
+- `cargo run -p v8-context-hbk-cli -- syntax index
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t127-parent-identity.sqlite`
+  completed in 37.506 s, emitted existing `DUPLICATE_DOCUMENT_ID` warnings, produced 25,415
+  documents and 64,981 relations.
+- `cargo run -p v8-context-hbk-cli -- syntax index
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output
+  target/t127-parent-identity-root.sqlite` completed in 29.492 s, emitted existing
+  `DUPLICATE_DOCUMENT_ID` warnings, produced 25,415 documents and 68,008 relations.
+- SQLite checks over both indexes found zero final duplicate `documents.id` groups, zero
+  query-table field/parameter documents under generic `query_table:Основная таблица` /
+  `query_table:Main table`, zero constructor callables without `owner_type_id`, and zero
+  constructor result type references without `target_type_id`.
 
 T42 changed only the index build data flow. `syntax index` now streams extraction records into a
 search-index builder and inserts relations into SQLite without retaining the full `PlatformContext`,

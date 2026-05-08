@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 
@@ -27,7 +27,12 @@ struct RecordingSink {
     platform_types: Vec<PlatformType>,
     query_tables: Vec<QueryTable>,
     enums: Vec<EnumDefinition>,
+    type_methods: Vec<PlatformMethod>,
     type_properties: Vec<PlatformProperty>,
+    table_fields: Vec<QueryTableField>,
+    table_parameters: Vec<QueryTableParameter>,
+    constructors: Vec<Constructor>,
+    enum_values: Vec<EnumValue>,
     diagnostics: Vec<SyntaxHelperDiagnostic>,
 }
 
@@ -75,6 +80,7 @@ impl SyntaxHelperSink for RecordingSink {
 
     fn type_method(&mut self, record: PlatformMethod) -> Result<(), Self::Error> {
         self.push_name("type_method", &record.name);
+        self.type_methods.push(record);
         Ok(())
     }
 
@@ -89,6 +95,7 @@ impl SyntaxHelperSink for RecordingSink {
             "table_field:{}:{}",
             record.owner.primary, record.name
         ));
+        self.table_fields.push(record);
         Ok(())
     }
 
@@ -97,11 +104,13 @@ impl SyntaxHelperSink for RecordingSink {
             "table_parameter:{}:{}",
             record.owner.primary, record.name
         ));
+        self.table_parameters.push(record);
         Ok(())
     }
 
     fn constructor(&mut self, record: Constructor) -> Result<(), Self::Error> {
         self.push_name("constructor", &record.name);
+        self.constructors.push(record);
         Ok(())
     }
 
@@ -113,6 +122,7 @@ impl SyntaxHelperSink for RecordingSink {
 
     fn enum_value(&mut self, record: EnumValue) -> Result<(), Self::Error> {
         self.push_name("enum_value", &record.name);
+        self.enum_values.push(record);
         Ok(())
     }
 
@@ -486,7 +496,6 @@ fn extraction_reports_missing_query_table_syntax_without_dropping_record() {
         }],
         diagnostics: Vec::new(),
     };
-
     parse_extraction_pages_into(
         Path::new("shcntx_ru.hbk"),
         "ru",
@@ -583,6 +592,7 @@ fn extraction_assigns_query_table_identity_from_toc_context() {
         }],
         diagnostics: Vec::new(),
     };
+    let mut load_counts = BTreeMap::<String, usize>::new();
 
     parse_extraction_pages_into(
         Path::new("shcntx_ru.hbk"),
@@ -590,6 +600,7 @@ fn extraction_assigns_query_table_identity_from_toc_context() {
         &toc,
         discovery,
         |html_path| {
+            *load_counts.entry(html_path.to_string()).or_default() += 1;
             let html = match html_path {
                 "objects/catalog234.html" => {
                     include_str!("../../../tests/fixtures/syntax-helper/root_catalog_types_ru.html")
@@ -630,6 +641,18 @@ fn extraction_assigns_query_table_identity_from_toc_context() {
     assert_eq!(
         table.identity.as_deref(),
         Some("query_table:БизнесПроцессТаблицаТочекБизнесПроцессов")
+    );
+    assert_eq!(
+        sink.table_fields
+            .iter()
+            .find(|field| field.name == "Наименование")
+            .and_then(|field| field.owner_identity.as_deref()),
+        Some("query_table:БизнесПроцессТаблицаТочекБизнесПроцессов")
+    );
+    assert_eq!(
+        load_counts.get("tables/catalog1/table2.html"),
+        Some(&1),
+        "query table page must be parsed once in the parent identity prepass and reused in the main stream"
     );
     assert_eq!(table.semantic.record_family, RecordFamily::QueryTable);
     assert_eq!(table.semantic.branch_kind, BranchKind::QueryTables);
@@ -983,7 +1006,7 @@ fn classifies_form_parameters_as_type_properties() {
                 {1,0,1,2,{0,0,{0,0,{"ru","Формы"}},"/objects/catalog1649.html"}}
                 {2,1,1,3,{0,0,{0,0,{"ru","Расширение формы клиентского приложения для документов"}},"/objects/catalog1649/catalog1890/Client application form extension for documents.html"}}
                 {3,2,1,4,{0,0,{0,0,{"ru","Параметры формы"}},"/objects/catalog1649/catalog1890/params.html"}}
-                {4,3,0,{0,0,{0,0,{"ru","Ключ"}{"en","Key"}},"/objects/catalog1649/catalog1890/Key.html"}}
+                {4,3,0,{0,0,{0,0,{"ru","Ключ"}{"en","Key"}},"/objects/catalog1649/catalog1890/Client application form extension for documents/formparams/Key.html"}}
             }"#,
     )
     .expect("fixture TOC must parse");
@@ -1048,6 +1071,10 @@ fn classifies_form_parameters_as_type_properties() {
     assert_eq!(
         property.owner.primary,
         "Расширение формы клиентского приложения для документов"
+    );
+    assert_eq!(
+        property.owner_identity.as_deref(),
+        Some("platform_type:Расширение формы клиентского приложения для документов")
     );
 }
 
@@ -1871,6 +1898,14 @@ fn extracts_platform_context_from_fixture_toc() {
             .iter()
             .any(|method| method.name.alias.as_deref() == Some("Add"))
     );
+    assert_eq!(
+        context
+            .type_methods
+            .iter()
+            .find(|method| method.name.alias.as_deref() == Some("Add"))
+            .and_then(|method| method.owner_identity.as_deref()),
+        Some("platform_type:Массив")
+    );
     assert!(
         context
             .type_properties
@@ -1882,6 +1917,14 @@ fn extracts_platform_context_from_fixture_toc() {
             .constructors
             .iter()
             .any(|constructor| constructor.name.primary == "По количеству элементов")
+    );
+    assert_eq!(
+        context
+            .constructors
+            .iter()
+            .find(|constructor| constructor.name.primary == "По количеству элементов")
+            .and_then(|constructor| constructor.owner_identity.as_deref()),
+        Some("platform_type:Массив")
     );
     assert!(
         context
@@ -1903,6 +1946,14 @@ fn extracts_platform_context_from_fixture_toc() {
             .enum_values
             .iter()
             .any(|enum_value| enum_value.name.alias.as_deref() == Some("ArrayEnd"))
+    );
+    assert_eq!(
+        context
+            .enum_values
+            .iter()
+            .find(|enum_value| enum_value.name.alias.as_deref() == Some("ArrayEnd"))
+            .and_then(|enum_value| enum_value.owner_identity.as_deref()),
+        Some("enum:system:ТипЗначенияJSON")
     );
     assert_eq!(context.diagnostics.len(), 1);
 }

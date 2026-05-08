@@ -69,9 +69,11 @@ Solution-context Rust resolution is described in
   a single streaming internal builder reused by SQLite insertion and focused relation tests; tests
   must not carry a copied relation algorithm.
 - `syntax-helper-search` builds search-specific document id strings from domain fact identity. It
-  must not be the owner of Syntax Assistant parent identity rules; parent identities are filled by
-  `syntax-helper-extract` according to ADR-0011, with model-owned fallback helpers only for
-  synthetic fixtures or legacy records that do not yet carry identity.
+  must not be the owner of Syntax Assistant parent identity rules. Parent records may derive their
+  own identity from model helpers when a fixture or input record has no precomputed identity, but
+  child/member records must arrive with `owner_identity` filled by `syntax-helper-extract`
+  according to ADR-0011; missing child parent identity is an index-build error, not a search/export
+  fallback.
 - `context-resolver-core` owns the generic in-process resolver model. It must not depend on HBK,
   SQLite, CLI, parser or Syntax Assistant storage crates.
 - `context-resolver-search` owns translation between `syntax-helper-search::SearchIndex` platform

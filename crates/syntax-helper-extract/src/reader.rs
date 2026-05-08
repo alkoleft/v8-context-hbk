@@ -164,10 +164,34 @@ where
             if !visited.insert(catalog_page.source.html_path.clone()) {
                 continue;
             }
+            if matches!(catalog_page.class, PageClass::QueryTable) {
+                let table = if let Some(table) =
+                    parent_identities.query_table_record(&catalog_page.source.html_path)
+                {
+                    table
+                } else {
+                    let content = load_page(&catalog_page.source.html_path)?;
+                    let source = source_from_content(&catalog_page.source, &content);
+                    let mut table = parse_query_table(&content, source);
+                    table.semantic = catalog_page.semantic.clone();
+                    table.name = name_from_text(&catalog_page.source.page_title).primary;
+                    table.identifier = query_table_identifier(table.syntax.as_ref(), &table.name);
+                    table.table_role = query_table_role(table.syntax.as_ref());
+                    table.identity = parent_identities.query_table(&catalog_page.source.html_path);
+                    table
+                };
+                if table.syntax.is_none() {
+                    sink.diagnostic(missing_query_table_syntax_diagnostic(&table))
+                        .map_err(SyntaxHelperStreamError::Sink)?;
+                }
+                sink.query_table(table)
+                    .map_err(SyntaxHelperStreamError::Sink)?;
+                continue;
+            }
             let content = load_page(&catalog_page.source.html_path)?;
             let source = source_from_content(&catalog_page.source, &content);
             match catalog_page.class {
-                PageClass::Catalog | PageClass::Unknown => unreachable!(),
+                PageClass::Catalog | PageClass::Unknown | PageClass::QueryTable => unreachable!(),
                 PageClass::GlobalMethod => sink
                     .global_method(parse_global_method(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
@@ -196,23 +220,11 @@ where
                     sink.platform_type(platform_type)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
-                PageClass::QueryTable => {
-                    let mut table = parse_query_table(&content, source);
-                    table.semantic = catalog_page.semantic.clone();
-                    table.name = name_from_text(&catalog_page.source.page_title).primary;
-                    table.identifier = query_table_identifier(table.syntax.as_ref(), &table.name);
-                    table.table_role = query_table_role(table.syntax.as_ref());
-                    table.identity = parent_identities.query_table(&catalog_page.source.html_path);
-                    if table.syntax.is_none() {
-                        sink.diagnostic(missing_query_table_syntax_diagnostic(&table))
-                            .map_err(SyntaxHelperStreamError::Sink)?;
-                    }
-                    sink.query_table(table)
-                        .map_err(SyntaxHelperStreamError::Sink)?
-                }
                 PageClass::ObjectMethod => {
                     let mut method = parse_platform_method(&content, source);
                     method.semantic = catalog_page.semantic.clone();
+                    method.owner_identity =
+                        parent_identities.platform_type_owner(&catalog_page, &method.owner);
                     sink.type_method(method)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
@@ -222,6 +234,8 @@ where
                     if let Some(owner) = form_parameter_owner(&property.semantic) {
                         property.owner = owner;
                     }
+                    property.owner_identity =
+                        parent_identities.platform_type_owner(&catalog_page, &property.owner);
                     sink.type_property(property)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
@@ -229,6 +243,8 @@ where
                     if let Some(owner) = query_table_member_owner(&catalog_page.semantic) {
                         let mut field = parse_query_table_field(&content, owner, source);
                         field.semantic = catalog_page.semantic.clone();
+                        field.owner_identity =
+                            parent_identities.query_table_owner(&catalog_page, &field.owner);
                         sink.table_field(field)
                             .map_err(SyntaxHelperStreamError::Sink)?;
                     } else {
@@ -243,6 +259,8 @@ where
                     if let Some(owner) = query_table_member_owner(&catalog_page.semantic) {
                         let mut parameter = parse_query_table_parameter(&content, owner, source);
                         parameter.semantic = catalog_page.semantic.clone();
+                        parameter.owner_identity =
+                            parent_identities.query_table_owner(&catalog_page, &parameter.owner);
                         sink.table_parameter(parameter)
                             .map_err(SyntaxHelperStreamError::Sink)?;
                     } else {
@@ -256,6 +274,8 @@ where
                 PageClass::Constructor => {
                     let mut constructor = parse_constructor(&content, source);
                     constructor.semantic = catalog_page.semantic.clone();
+                    constructor.owner_identity =
+                        parent_identities.platform_type_owner(&catalog_page, &constructor.owner);
                     sink.constructor(constructor)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
@@ -267,9 +287,13 @@ where
                     sink.enum_definition(enum_definition)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
-                PageClass::EnumValue => sink
-                    .enum_value(parse_enum_value(&content, source))
-                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::EnumValue => {
+                    let mut enum_value = parse_enum_value(&content, source);
+                    enum_value.owner_identity =
+                        parent_identities.enum_owner(&catalog_page.source.html_path);
+                    sink.enum_value(enum_value)
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
             }
         }
 
@@ -291,7 +315,10 @@ where
 #[derive(Default)]
 struct ParentIdentities {
     platform_types: BTreeMap<String, String>,
+    platform_types_by_semantic: BTreeMap<String, String>,
     query_tables: BTreeMap<String, String>,
+    query_tables_by_semantic: BTreeMap<String, String>,
+    query_table_records: BTreeMap<String, QueryTable>,
     enums: BTreeMap<String, String>,
 }
 
@@ -304,8 +331,50 @@ impl ParentIdentities {
         self.query_tables.get(html_path).cloned()
     }
 
+    fn query_table_record(&self, html_path: &str) -> Option<QueryTable> {
+        self.query_table_records.get(html_path).cloned()
+    }
+
     fn enum_definition(&self, html_path: &str) -> Option<String> {
         self.enums.get(html_path).cloned()
+    }
+
+    fn platform_type_owner(
+        &self,
+        catalog_page: &CatalogPage,
+        owner: &LocalizedName,
+    ) -> Option<String> {
+        platform_parent_html_path(&catalog_page.source.html_path)
+            .and_then(|html_path| self.platform_types.get(&html_path).cloned())
+            .or_else(|| {
+                self.platform_types_by_semantic
+                    .get(&platform_type_owner_semantic_key(
+                        owner,
+                        &catalog_page.semantic,
+                    ))
+                    .cloned()
+            })
+    }
+
+    fn query_table_owner(
+        &self,
+        catalog_page: &CatalogPage,
+        owner: &LocalizedName,
+    ) -> Option<String> {
+        query_table_parent_html_path(&catalog_page.source.html_path)
+            .and_then(|html_path| self.query_tables.get(&html_path).cloned())
+            .or_else(|| {
+                self.query_tables_by_semantic
+                    .get(&query_table_semantic_key(
+                        &catalog_page.semantic,
+                        &owner.primary,
+                    ))
+                    .cloned()
+            })
+    }
+
+    fn enum_owner(&self, html_path: &str) -> Option<String> {
+        enum_parent_html_path(html_path).and_then(|html_path| self.enums.get(&html_path).cloned())
     }
 }
 
@@ -317,9 +386,7 @@ struct PlatformTypeIdentityInput {
 
 struct QueryTableIdentityInput {
     html_path: String,
-    name_primary: String,
-    identifier: Option<String>,
-    semantic: SemanticContext,
+    record: QueryTable,
 }
 
 struct EnumIdentityInput {
@@ -360,11 +427,10 @@ fn parent_identities(
                     table.semantic = catalog_page.semantic.clone();
                     table.name = name_from_text(&catalog_page.source.page_title).primary;
                     table.identifier = query_table_identifier(table.syntax.as_ref(), &table.name);
+                    table.table_role = query_table_role(table.syntax.as_ref());
                     query_tables.push(QueryTableIdentityInput {
                         html_path: catalog_page.source.html_path.clone(),
-                        name_primary: table.name,
-                        identifier: table.identifier,
-                        semantic: table.semantic,
+                        record: table,
                     });
                 }
                 PageClass::Enum => {
@@ -398,9 +464,9 @@ fn parent_identities(
     );
     let query_counts = count_identity_keys(query_tables.iter().map(|record| {
         query_table_identity_key(
-            &record.name_primary,
-            record.identifier.as_deref(),
-            &record.semantic,
+            &record.record.name,
+            record.record.identifier.as_deref(),
+            &record.record.semantic,
         )
     }));
     let enum_counts = count_identity_keys(
@@ -409,40 +475,62 @@ fn parent_identities(
             .map(|record| enum_identity_key(&record.name.primary, &record.html_path)),
     );
 
-    let platform_types = platform_types
+    let platform_identity_entries = platform_types
         .into_iter()
         .map(|record| {
             let count = platform_counts
                 .get(&platform_type_identity_key(&record.name_primary))
                 .copied()
                 .unwrap_or_default();
+            let identity = platform_type_identity(&record.name_primary, &record.semantic, count);
             (
                 record.html_path,
-                platform_type_identity(&record.name_primary, &record.semantic, count),
+                platform_type_semantic_key(&record.name_primary, &record.semantic),
+                identity,
             )
         })
+        .collect::<Vec<_>>();
+    let platform_types = platform_identity_entries
+        .iter()
+        .map(|(html_path, _, identity)| (html_path.clone(), identity.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let platform_types_by_semantic = platform_identity_entries
+        .iter()
+        .map(|(_, semantic_key, identity)| (semantic_key.clone(), identity.clone()))
         .collect();
     let query_tables = query_tables
         .into_iter()
         .map(|record| {
             let count = query_counts
                 .get(&query_table_identity_key(
-                    &record.name_primary,
-                    record.identifier.as_deref(),
-                    &record.semantic,
+                    &record.record.name,
+                    record.record.identifier.as_deref(),
+                    &record.record.semantic,
                 ))
                 .copied()
                 .unwrap_or_default();
-            (
-                record.html_path,
-                query_table_identity(
-                    &record.name_primary,
-                    record.identifier.as_deref(),
-                    &record.semantic,
-                    count,
-                ),
-            )
+            let mut table = record.record;
+            table.identity = Some(query_table_identity(
+                &table.name,
+                table.identifier.as_deref(),
+                &table.semantic,
+                count,
+            ));
+            (record.html_path, table)
         })
+        .collect::<BTreeMap<_, _>>();
+    let query_tables_by_semantic = query_tables
+        .values()
+        .filter_map(|table| {
+            Some((
+                query_table_semantic_key(&table.semantic, &table.name),
+                table.identity.clone()?,
+            ))
+        })
+        .collect();
+    let query_table_identities = query_tables
+        .iter()
+        .filter_map(|(html_path, table)| Some((html_path.clone(), table.identity.clone()?)))
         .collect();
     let enums = enums
         .into_iter()
@@ -465,7 +553,10 @@ fn parent_identities(
 
     Ok(ParentIdentities {
         platform_types,
-        query_tables,
+        platform_types_by_semantic,
+        query_tables: query_table_identities,
+        query_tables_by_semantic,
+        query_table_records: query_tables,
         enums,
     })
 }
@@ -498,6 +589,35 @@ pub(crate) fn query_table_member_owner(semantic: &SemanticContext) -> Option<Loc
         return None;
     }
     semantic.owner_path.last().cloned()
+}
+
+fn platform_parent_html_path(html_path: &str) -> Option<String> {
+    parent_html_path_before(
+        html_path,
+        &[
+            "/methods/",
+            "/properties/",
+            "/formparams/",
+            "/ctors/",
+            "/events/",
+        ],
+    )
+}
+
+fn query_table_parent_html_path(html_path: &str) -> Option<String> {
+    parent_html_path_before(html_path, &["/fields/", "/params/"])
+}
+
+fn enum_parent_html_path(html_path: &str) -> Option<String> {
+    parent_html_path_before(html_path, &["/properties/"])
+}
+
+fn parent_html_path_before(html_path: &str, markers: &[&str]) -> Option<String> {
+    markers.iter().find_map(|marker| {
+        html_path
+            .split_once(marker)
+            .map(|(prefix, _)| format!("{prefix}.html"))
+    })
 }
 
 fn query_table_identifier(syntax: Option<&LocalizedName>, name: &str) -> Option<String> {

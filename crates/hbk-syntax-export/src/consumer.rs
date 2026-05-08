@@ -558,15 +558,11 @@ pub(crate) fn consumer_query_tables<'a>(
                 table,
                 fields
                     .iter()
-                    .filter(|field| {
-                        query_member_belongs_to_table(table, &field.owner, &field.semantic)
-                    })
+                    .filter(|field| query_member_belongs_to_table(table, field))
                     .collect(),
                 parameters
                     .iter()
-                    .filter(|parameter| {
-                        query_member_belongs_to_table(table, &parameter.owner, &parameter.semantic)
-                    })
+                    .filter(|parameter| query_parameter_belongs_to_table(table, parameter))
                     .collect(),
             )
         })
@@ -575,16 +571,25 @@ pub(crate) fn consumer_query_tables<'a>(
 
 fn query_member_belongs_to_table(
     table: &model::QueryTable,
-    owner: &model::LocalizedName,
-    semantic: &model::SemanticContext,
+    field: &model::QueryTableField,
 ) -> bool {
-    if owner.primary != table.name && owner.alias.as_deref() != Some(table.name.as_str()) {
-        return false;
-    }
-    let Some((table_owner, member_family_path)) = semantic.owner_path.split_last() else {
-        return table.semantic.owner_path.is_empty();
-    };
-    table_owner.primary == table.name && member_family_path == table.semantic.owner_path.as_slice()
+    matches!(
+        (table.identity.as_deref(), field.owner_identity.as_deref()),
+        (Some(table_identity), Some(owner_identity)) if table_identity == owner_identity
+    )
+}
+
+fn query_parameter_belongs_to_table(
+    table: &model::QueryTable,
+    parameter: &model::QueryTableParameter,
+) -> bool {
+    matches!(
+        (
+            table.identity.as_deref(),
+            parameter.owner_identity.as_deref()
+        ),
+        (Some(table_identity), Some(owner_identity)) if table_identity == owner_identity
+    )
 }
 
 fn group_enum_values<'a>(
@@ -604,37 +609,10 @@ fn enum_owner_index(
     enums: &[model::EnumDefinition],
     enum_value: &model::EnumValue,
 ) -> Option<usize> {
+    let owner_identity = enum_value.owner_identity.as_deref()?;
     enums
         .iter()
-        .position(|enum_definition| enum_definition.name == enum_value.owner)
-        .or_else(|| {
-            unique_enum_position(enums, |enum_definition| {
-                enum_definition.name.primary == enum_value.owner.primary
-            })
-        })
-        .or_else(|| {
-            unique_enum_position(enums, |enum_definition| {
-                enum_definition.name.matches(&enum_value.owner.primary)
-                    || enum_value.owner.matches(&enum_definition.name.primary)
-                    || enum_value
-                        .owner
-                        .alias
-                        .as_deref()
-                        .is_some_and(|alias| enum_definition.name.matches(alias))
-            })
-        })
-}
-
-fn unique_enum_position(
-    enums: &[model::EnumDefinition],
-    mut matches: impl FnMut(&model::EnumDefinition) -> bool,
-) -> Option<usize> {
-    let mut positions = enums
-        .iter()
-        .enumerate()
-        .filter_map(|(index, enum_definition)| matches(enum_definition).then_some(index));
-    let first = positions.next()?;
-    positions.next().is_none().then_some(first)
+        .position(|enum_definition| enum_definition.identity.as_deref() == Some(owner_identity))
 }
 
 fn consumer_signatures(signatures: &[model::Signature]) -> Vec<ConsumerSignature<'_>> {

@@ -496,6 +496,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         ],
         type_methods: vec![model::PlatformMethod {
             owner: name("Массив"),
+            owner_identity: Some("platform_type:Массив".to_string()),
             name: name("Добавить"),
             semantic: semantic(
                 model::BranchKind::PlatformObjects,
@@ -523,6 +524,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         }],
         type_properties: vec![model::PlatformProperty {
             owner: name("ГруппаФормы"),
+            owner_identity: Some("platform_type:ГруппаФормы".to_string()),
             name: name("Видимость"),
             semantic: semantic(
                 model::BranchKind::ManagedForms,
@@ -539,7 +541,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         }],
         query_tables: vec![
             model::QueryTable {
-                identity: None,
+                identity: Some("query_table:БизнесПроцесс".to_string()),
                 name: "Таблица бизнес-процессов".to_string(),
                 syntax: Some(localized(
                     "БизнесПроцесс.<Имя бизнес-процесса>",
@@ -556,7 +558,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 source: source.clone(),
             },
             model::QueryTable {
-                identity: None,
+                identity: Some("query_table:КритерийОтбора".to_string()),
                 name: "Таблица критерия отбора".to_string(),
                 syntax: Some(name("КритерийОтбора.<Имя критерия отбора>")),
                 identifier: Some("КритерийОтбора".to_string()),
@@ -570,7 +572,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 source: source.clone(),
             },
             model::QueryTable {
-                identity: None,
+                identity: Some("query_table:Таблицы задач:Основная таблица".to_string()),
                 name: "Основная таблица".to_string(),
                 syntax: None,
                 identifier: None,
@@ -586,6 +588,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         ],
         table_fields: vec![model::QueryTableField {
             owner: name("Таблица бизнес-процессов"),
+            owner_identity: Some("query_table:БизнесПроцесс".to_string()),
             name: "Представление".to_string(),
             semantic: semantic(
                 model::BranchKind::QueryTables,
@@ -604,6 +607,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         }],
         table_parameters: vec![model::QueryTableParameter {
             owner: name("Таблица критерия отбора"),
+            owner_identity: Some("query_table:КритерийОтбора".to_string()),
             name: "Значение".to_string(),
             semantic: semantic(
                 model::BranchKind::QueryTables,
@@ -620,6 +624,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         }],
         constructors: vec![model::Constructor {
             owner: name("Массив"),
+            owner_identity: Some("platform_type:Массив".to_string()),
             name: name("По количеству элементов"),
             semantic: semantic(
                 model::BranchKind::PlatformObjects,
@@ -642,7 +647,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             source: source.clone(),
         }],
         enums: vec![model::EnumDefinition {
-            identity: None,
+            identity: Some("enum:system:ТипЗначенияJSON".to_string()),
             name: name("ТипЗначенияJSON"),
             value_links: vec![link("КонецМассива")],
             description: Some("Содержит типы значений JSON.".to_string()),
@@ -652,6 +657,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         enum_values: vec![
             model::EnumValue {
                 owner: name("ТипЗначенияJSON"),
+                owner_identity: Some("enum:system:ТипЗначенияJSON".to_string()),
                 name: name("КонецМассива"),
                 description: None,
                 facts: enum_facts,
@@ -659,6 +665,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             },
             model::EnumValue {
                 owner: name("ТипЗначенияJSON"),
+                owner_identity: Some("enum:system:ТипЗначенияJSON".to_string()),
                 name: name("Булево"),
                 description: Some("Логическое значение JSON.".to_string()),
                 facts: model::SectionFacts {
@@ -1011,7 +1018,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
         .expect("type event must be writable");
     export
         .query_table(model::QueryTable {
-            identity: None,
+            identity: Some("query_table:Задача".to_string()),
             name: "Основная таблица".to_string(),
             syntax: Some(name("Задача.<Имя задачи>")),
             identifier: Some("Задача".to_string()),
@@ -1028,6 +1035,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
     export
         .table_field(model::QueryTableField {
             owner: name("Основная таблица"),
+            owner_identity: Some("query_table:Задача".to_string()),
             name: "<Имя измерения>".to_string(),
             semantic: semantic(
                 model::BranchKind::QueryTables,
@@ -1043,6 +1051,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
     export
         .table_parameter(model::QueryTableParameter {
             owner: name("Основная таблица"),
+            owner_identity: Some("query_table:Задача".to_string()),
             name: "Период".to_string(),
             semantic: semantic(
                 model::BranchKind::QueryTables,
@@ -1058,6 +1067,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
     export
         .enum_value(model::EnumValue {
             owner: name("ТипЗначенияJSON"),
+            owner_identity: Some("enum:system:ТипЗначенияJSON".to_string()),
             name: name("КонецМассива"),
             description: None,
             facts: model::SectionFacts::default(),
@@ -1066,7 +1076,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
         .expect("enum value must be buffered before enum definition");
     export
         .enum_definition(model::EnumDefinition {
-            identity: None,
+            identity: Some("enum:system:ТипЗначенияJSON".to_string()),
             name: name("ТипЗначенияJSON"),
             value_links: Vec::new(),
             description: Some("JSON value types.".to_string()),

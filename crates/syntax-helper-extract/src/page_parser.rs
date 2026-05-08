@@ -162,6 +162,7 @@ pub(crate) fn parse_platform_method(
 ) -> PlatformMethod {
     PlatformMethod {
         owner: title_name(content),
+        owner_identity: None,
         name: heading_name(content),
         semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::TypeMethod),
         signatures: parse_signatures(content),
@@ -181,6 +182,7 @@ pub(crate) fn parse_platform_property(
 ) -> PlatformProperty {
     PlatformProperty {
         owner: title_name(content),
+        owner_identity: None,
         name: heading_name(content),
         semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::TypeProperty),
         usage: section_text(content, &["Использование:", "Use:"]),
@@ -199,6 +201,7 @@ pub(crate) fn parse_query_table_field(
     let body = detail_body_after_heading(content);
     QueryTableField {
         owner,
+        owner_identity: None,
         name: page_title_name(content).primary,
         semantic: SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTableField),
         type_refs: parse_type_refs(&body),
@@ -216,6 +219,7 @@ pub(crate) fn parse_query_table_parameter(
     let body = first_chapter_body(content).unwrap_or_else(|| detail_body_after_heading(content));
     QueryTableParameter {
         owner,
+        owner_identity: None,
         name: page_title_name(content).primary,
         semantic: SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTableParameter),
         type_refs: parse_type_refs(&body),
@@ -228,6 +232,7 @@ pub(crate) fn parse_query_table_parameter(
 pub(crate) fn parse_constructor(content: &PageContent, source: SyntaxHelperSource) -> Constructor {
     Constructor {
         owner: title_name(content),
+        owner_identity: None,
         name: heading_name(content),
         semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::TypeConstructor),
         signatures: parse_signatures(content),
@@ -264,6 +269,7 @@ pub(crate) fn parse_enum_for_mode(
 pub(crate) fn parse_enum_value(content: &PageContent, source: SyntaxHelperSource) -> EnumValue {
     EnumValue {
         owner: title_name(content),
+        owner_identity: None,
         name: heading_name(content),
         description: section_text(content, &["Описание:", "Description:"]),
         facts: section_facts(content),

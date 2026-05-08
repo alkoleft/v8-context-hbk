@@ -561,14 +561,16 @@ Scope:
 Verification:
 
 - Focused `syntax-helper-extract` regression covers TOC-descended query table member owner paths.
-- Focused `syntax-helper-search` regressions cover parent-table id use and semantic fallback for
-  missing parent table records.
+- Focused `syntax-helper-search` regressions covered parent-table id use and the then-current
+  semantic fallback for missing parent table records.
 - `cargo test -p syntax-helper-extract -p syntax-helper-search` passed on 2026-05-08.
 - `v8-context-hbk syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output
   target/query-table-id-regression.sqlite` completed on 2026-05-08.
 - SQLite checks confirmed no query table member id uses `query_table:Основная таблица`, the
   reported `<Имя общего реквизита>` field is absent under that generic owner id, and
   `query_table:Задача` owns `query_table_field:query_table:Задача:<Имя общего реквизита>`.
+- Superseded by T127 for missing child parent identity behavior: search/export no longer keep a
+  consumer-side semantic fallback for child/member facts without `owner_identity`.
 
 ### [x] T124. Fix type event ids to use semantic event owner identity
 
@@ -652,10 +654,12 @@ Scope:
   `syntax-helper-extract` during TOC-aware reading before records reach `SyntaxHelperSink`.
 - Perform duplicate-aware parent identity normalization as a read-phase prepass over parent facts,
   not inside `syntax-helper-search`.
-- Update `syntax-helper-search` so member document ids prefer precomputed parent identity and use
-  model-owned fallback helpers only for synthetic or legacy records without identity.
+- At T126 time, update `syntax-helper-search` so member document ids prefer precomputed parent
+  identity while still allowing synthetic/legacy fallback records without identity.
 - Keep `hbk-syntax-export` on model-owned type-event owner projection and preserve schema version
   11 JSON shape.
+- Superseded by T127 for child/member facts: missing child `owner_identity` is now an index-build
+  error, not a search/export fallback.
 
 Verification:
 
@@ -677,3 +681,50 @@ Verification:
 - SQLite checks confirmed no `type_event:owner:События:ОбработкаВыбора`, no
   `query_table_field` / `query_table_parameter` document under `query_table:Основная таблица`, and
   zero duplicate final `documents.id` groups.
+
+### [x] T127. Remove remaining consumer-side parent identity repair
+
+Spec refs:
+
+- ADR-0011
+- FR-SH-003
+- FR-SH-SEARCH-001
+- FR-EXPORT-001
+- UAT-SH-004
+- UAT-SH-013
+- `spec/implementation/components.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Extend child domain records with precomputed parent identity where ADR-0011 requires it:
+  platform type members/constructors, query table fields/parameters and enum values.
+- Fill child parent identities in `syntax-helper-extract` during the TOC-aware read phase before
+  records reach `SyntaxHelperSink`.
+- Update `syntax-helper-search` and `hbk-syntax-export` to consume child parent identities instead
+  of reconstructing owner identity from localized names, broad owner scans or generic TOC labels.
+- Fix constructor relation construction to use the resolved parent identity, not `owner.primary`.
+- Remove avoidable query-table page double parsing introduced by the parent-identity prepass.
+- Preserve schema version 11 JSON shape, search-specific final document ids, duplicate final
+  document-id warning behavior, CLI command shapes and SQLite schema version.
+
+Verification:
+
+- Focused `syntax-helper-model`, `syntax-helper-extract`, `hbk-syntax-export` and
+  `syntax-helper-search` regressions cover child parent identity propagation and grouping.
+- Focused extraction regression proves query-table pages are not loaded twice for identity prepass
+  plus record emission.
+- `cargo fmt --all` passed on 2026-05-08.
+- `cargo check --workspace` passed on 2026-05-08.
+- `cargo test --workspace` passed on 2026-05-08.
+- `cargo run -p v8-context-hbk-cli -- syntax index
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t127-parent-identity.sqlite`
+  completed on 2026-05-08 with existing `DUPLICATE_DOCUMENT_ID` warnings.
+- `cargo run -p v8-context-hbk-cli -- syntax index
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk --output
+  target/t127-parent-identity-root.sqlite` completed on 2026-05-08 with existing
+  `DUPLICATE_DOCUMENT_ID` warnings.
+- SQLite assertions over both T127 indexes confirmed zero final duplicate `documents.id` groups,
+  zero query-table field/parameter documents under generic `query_table:Основная таблица` /
+  `query_table:Main table`, zero constructor callables without `owner_type_id`, and zero
+  constructor result type references without `target_type_id`.

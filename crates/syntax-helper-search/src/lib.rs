@@ -356,7 +356,7 @@ impl SearchIndexBuilder {
             .drafts
             .into_iter()
             .map(|draft| draft.into_document(&identities))
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
         documents.sort_by(|left, right| {
             kind_priority(left.kind)
                 .cmp(&kind_priority(right.kind))
@@ -526,8 +526,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 String::new(),
             ),
             DraftIdentity::TypeOwned {
-                owner: record.owner,
-                semantic: record.semantic,
+                owner_identity: record.owner_identity,
             },
         ));
         Ok(())
@@ -546,8 +545,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 String::new(),
             ),
             DraftIdentity::TypeOwned {
-                owner: record.owner,
-                semantic: record.semantic,
+                owner_identity: record.owner_identity,
             },
         ));
         Ok(())
@@ -570,8 +568,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 String::new(),
             ),
             DraftIdentity::QueryMember {
-                owner: record.owner,
-                semantic: record.semantic,
+                owner_identity: record.owner_identity,
             },
         ));
         Ok(())
@@ -594,8 +591,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 String::new(),
             ),
             DraftIdentity::QueryMember {
-                owner: record.owner,
-                semantic: record.semantic,
+                owner_identity: record.owner_identity,
             },
         ));
         Ok(())
@@ -622,8 +618,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 String::new(),
             ),
             DraftIdentity::TypeOwned {
-                owner: record.owner,
-                semantic: record.semantic,
+                owner_identity: record.owner_identity,
             },
         ));
         Ok(())
@@ -669,7 +664,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 String::new(),
             ),
             DraftIdentity::EnumValue {
-                owner: record.owner,
+                owner_identity: record.owner_identity,
             },
         ));
         Ok(())
@@ -704,6 +699,11 @@ pub enum SearchError {
     DuplicateDocumentId {
         id: String,
         count: usize,
+    },
+    MissingParentIdentity {
+        kind: String,
+        name: String,
+        owner: String,
     },
     AmbiguousLookup {
         name: String,
@@ -755,6 +755,12 @@ impl fmt::Display for SearchError {
                     "duplicate Syntax Assistant search document id '{id}': {count} documents"
                 )
             }
+            Self::MissingParentIdentity { kind, name, owner } => {
+                write!(
+                    f,
+                    "missing Syntax Assistant parent identity for {kind} '{name}' owned by '{owner}'"
+                )
+            }
             Self::AmbiguousLookup { name, matches } => {
                 write!(
                     f,
@@ -774,6 +780,7 @@ impl std::error::Error for SearchError {
             | Self::MissingIndex { .. }
             | Self::UnsupportedSchemaVersion { .. }
             | Self::DuplicateDocumentId { .. }
+            | Self::MissingParentIdentity { .. }
             | Self::AmbiguousLookup { .. } => None,
         }
     }
@@ -1837,7 +1844,10 @@ impl DocumentDraft {
         Self { document, identity }
     }
 
-    fn into_document(mut self, identities: &DocumentIdentities) -> SearchDocument {
+    fn into_document(
+        mut self,
+        identities: &DocumentIdentities,
+    ) -> Result<SearchDocument, SearchError> {
         match self.identity {
             DraftIdentity::Immediate(id) => {
                 self.document.id = id;
@@ -1851,8 +1861,8 @@ impl DocumentDraft {
                     .relation_keys
                     .push(identity_relation_key(&self.document.id));
             }
-            DraftIdentity::TypeOwned { owner, semantic } => {
-                let owner_identity = identities.type_owner_identity(&owner, &semantic);
+            DraftIdentity::TypeOwned { owner_identity } => {
+                let owner_identity = missing_owner_identity_error(&self.document, owner_identity)?;
                 self.document.id = owned_document_identity(
                     self.document.kind.as_str(),
                     &owner_identity,
@@ -1877,8 +1887,8 @@ impl DocumentDraft {
                     .relation_keys
                     .push(identity_relation_key(&self.document.id));
             }
-            DraftIdentity::QueryMember { owner, semantic } => {
-                let owner_identity = identities.query_member_owner_identity(&owner, &semantic);
+            DraftIdentity::QueryMember { owner_identity } => {
+                let owner_identity = missing_owner_identity_error(&self.document, owner_identity)?;
                 self.document.id = owned_document_identity(
                     self.document.kind.as_str(),
                     &owner_identity,
@@ -1900,8 +1910,8 @@ impl DocumentDraft {
                     .relation_keys
                     .push(identity_relation_key(&self.document.id));
             }
-            DraftIdentity::EnumValue { owner } => {
-                let owner_identity = identities.enum_owner_identity(&owner);
+            DraftIdentity::EnumValue { owner_identity } => {
+                let owner_identity = missing_owner_identity_error(&self.document, owner_identity)?;
                 self.document.id = owned_document_identity(
                     SearchDocumentKind::EnumValue.as_str(),
                     &owner_identity,
@@ -1910,8 +1920,23 @@ impl DocumentDraft {
                 self.document.owner_relation_key = Some(identity_relation_key(&owner_identity));
             }
         }
-        self.document
+        Ok(self.document)
     }
+}
+
+fn missing_owner_identity_error(
+    document: &SearchDocument,
+    owner_identity: Option<String>,
+) -> Result<String, SearchError> {
+    owner_identity.ok_or_else(|| SearchError::MissingParentIdentity {
+        kind: document.kind.as_str().to_string(),
+        name: document.name.primary.clone(),
+        owner: document
+            .owner
+            .as_ref()
+            .map(model::LocalizedName::display_name)
+            .unwrap_or_default(),
+    })
 }
 
 #[derive(Debug)]
@@ -1922,8 +1947,7 @@ enum DraftIdentity {
         semantic: model::SemanticContext,
     },
     TypeOwned {
-        owner: model::LocalizedName,
-        semantic: model::SemanticContext,
+        owner_identity: Option<String>,
     },
     QueryTable {
         name_primary: String,
@@ -1931,8 +1955,7 @@ enum DraftIdentity {
         semantic: model::SemanticContext,
     },
     QueryMember {
-        owner: model::LocalizedName,
-        semantic: model::SemanticContext,
+        owner_identity: Option<String>,
     },
     Enum {
         name_primary: String,
@@ -1940,7 +1963,7 @@ enum DraftIdentity {
         source_html_path: String,
     },
     EnumValue {
-        owner: model::LocalizedName,
+        owner_identity: Option<String>,
     },
 }
 
@@ -2328,14 +2351,7 @@ fn insert_normalized_facts(
     }
 
     for document in documents {
-        let owner_type_id =
-            owner_type_id(document, &by_name, &type_id_by_normalized_id).or_else(|| {
-                document
-                    .owner
-                    .as_ref()
-                    .and_then(|owner| type_id_by_key.get(&normalize_lookup_key(&owner.primary)))
-                    .and_then(|type_id| type_id.clone())
-            });
+        let owner_type_id = owner_type_id(document, &by_name, &type_id_by_normalized_id);
 
         if let Some(owner_type_id) = owner_type_id.as_deref()
             && matches!(
@@ -2737,10 +2753,11 @@ fn visit_constructor_relation<E>(
     if document.kind != SearchDocumentKind::Constructor {
         return Ok(());
     }
-    let Some(owner) = &document.owner else {
+    let (Some(owner), Some(owner_key)) = (&document.owner, document.owner_relation_key.as_deref())
+    else {
         return Ok(());
     };
-    let Some((_, owner_id)) = by_name.get(&normalize_lookup_key(&owner.primary)) else {
+    let Some((_, owner_id)) = by_name.get(owner_key) else {
         return Ok(());
     };
     visit(Relation {
@@ -3285,25 +3302,6 @@ impl DocumentIdentities {
             })
     }
 
-    fn type_owner_identity(
-        &self,
-        owner: &model::LocalizedName,
-        semantic: &model::SemanticContext,
-    ) -> String {
-        self.platform_type_ids
-            .get(&model::platform_type_semantic_key(&owner.primary, semantic))
-            .cloned()
-            .or_else(|| {
-                self.platform_type_ids
-                    .values()
-                    .find(|identity| {
-                        identity_primary_matches(identity, "platform_type", &owner.primary)
-                    })
-                    .cloned()
-            })
-            .unwrap_or_else(|| document_identity("platform_type", None, owner))
-    }
-
     fn query_table_identity_by(
         &self,
         name_primary: &str,
@@ -3316,17 +3314,6 @@ impl DocumentIdentities {
             .unwrap_or_else(|| model::query_table_identity(name_primary, identifier, semantic, 1))
     }
 
-    fn query_member_owner_identity(
-        &self,
-        owner: &model::LocalizedName,
-        semantic: &model::SemanticContext,
-    ) -> String {
-        self.query_table_ids
-            .get(&model::query_table_semantic_key(semantic, &owner.primary))
-            .cloned()
-            .unwrap_or_else(|| model::query_member_owner_fallback_identity(owner, semantic))
-    }
-
     fn enum_identity_by(
         &self,
         name_primary: &str,
@@ -3337,32 +3324,6 @@ impl DocumentIdentities {
             .get(&enum_record_key(name_primary, source_html_path))
             .cloned()
             .unwrap_or_else(|| model::enum_identity(name_primary, name_alias, source_html_path, 1))
-    }
-
-    fn enum_owner_identity(&self, owner: &model::LocalizedName) -> String {
-        let matches = self
-            .enum_ids
-            .values()
-            .filter(|identity| identity_primary_matches(identity, "enum", &owner.primary))
-            .cloned()
-            .collect::<Vec<_>>();
-        matches
-            .iter()
-            .find(|identity| {
-                owner
-                    .alias
-                    .as_ref()
-                    .is_some_and(|alias| identity_primary_matches(identity, "enum", alias))
-            })
-            .cloned()
-            .or_else(|| {
-                matches
-                    .iter()
-                    .find(|identity| identity.starts_with("enum:system:"))
-                    .cloned()
-            })
-            .or_else(|| matches.into_iter().next())
-            .unwrap_or_else(|| document_identity("enum", None, owner))
     }
 }
 
@@ -3390,19 +3351,6 @@ fn owned_document_identity(kind: &str, owner_identity: &str, name: &str) -> Stri
 
 fn identity_relation_key(identity: &str) -> String {
     format!("id:{}", normalize_lookup_key(identity))
-}
-
-fn identity_primary_matches(identity: &str, kind: &str, primary: &str) -> bool {
-    let primary = model::clean_identity_part(primary);
-    identity
-        .strip_prefix(kind)
-        .and_then(|tail| tail.strip_prefix(':'))
-        .is_some_and(|tail| {
-            tail == primary
-                || tail.starts_with(&format!("{primary}:"))
-                || tail.ends_with(&format!(":{primary}"))
-                || tail.contains(&format!(":{primary}:"))
-        })
 }
 
 fn enum_record_key(name_primary: &str, source_html_path: &str) -> String {
@@ -4079,6 +4027,7 @@ mod tests {
         let mut context = fixture_context();
         context.type_properties.push(model::PlatformProperty {
             owner: name("НастройкиКомпоновкиДанных", None),
+            owner_identity: None,
             name: name("ПользовательскийОтбор", Some("CustomFilter")),
             semantic: model::SemanticContext::default(),
             usage: None,
@@ -4091,6 +4040,7 @@ mod tests {
         });
         context.type_methods.push(model::PlatformMethod {
             owner: name("ОтборКомпоновкиДанных", None),
+            owner_identity: None,
             name: name("Найти", Some("Find")),
             semantic: model::SemanticContext::default(),
             signatures: vec![model::Signature {
@@ -4809,7 +4759,12 @@ mod tests {
     }
 
     #[test]
-    fn missing_query_table_parent_identity_fallback_keeps_semantic_path() {
+    fn missing_query_table_parent_identity_rejects_member_indexing() {
+        let mut builder = SearchIndexBuilder::new();
+        let mut table = query_table("Задача", "Таблицы задач", "Основная таблица");
+        table.identity = Some("query_table:Задача".to_string());
+        builder.query_table(table).unwrap();
+
         let mut field = query_table_field("Основная таблица", "", "<Имя общего реквизита>");
         field.semantic = semantic_path(
             model::RecordFamily::QueryTableField,
@@ -4820,26 +4775,21 @@ mod tests {
                 "Основная таблица",
             ],
         );
-        let context = model::PlatformContext {
-            table_fields: vec![field],
-            ..model::PlatformContext::default()
+        builder.table_field(field).unwrap();
+
+        let error = match builder.into_documents() {
+            Ok(_) => panic!("missing parent identity must reject query table members"),
+            Err(error) => error,
         };
 
-        let documents = builder_from_context(&context)
-            .into_documents()
-            .expect("semantic fallback identity must not collide")
-            .documents;
-        let ids = documents
-            .iter()
-            .map(|document| document.id.as_str())
-            .collect::<Vec<_>>();
-
-        assert!(ids.contains(
-            &"query_table_field:query_table:Работа с запросами:Таблицы запросов:Таблицы задач:Основная таблица:<Имя общего реквизита>"
+        assert!(matches!(
+            error,
+            SearchError::MissingParentIdentity {
+                ref kind,
+                ref name,
+                ..
+            } if kind == "query_table_field" && name == "<Имя общего реквизита>"
         ));
-        assert!(
-            !ids.contains(&"query_table_field:query_table:Основная таблица:<Имя общего реквизита>")
-        );
     }
 
     #[test]
@@ -4851,15 +4801,17 @@ mod tests {
             model::RecordFamily::QueryTableField,
             &["Таблицы задач", "Основная таблица"],
         );
+        task_field.owner_identity = Some("query_table:precomputed-task-table".to_string());
 
         let mut form_items = platform_type_with_owner_path("ЭлементыФормы", "Формы");
         form_items.identity = Some("platform_type:ЭлементыФормы:precomputed".to_string());
-        let form_property = type_property_with_owner_path(
+        let mut form_property = type_property_with_owner_path(
             "ЭлементыФормы",
             "Формы:ЭлементыФормы",
             "ТекущийЭлемент",
             "ПолеФормы",
         );
+        form_property.owner_identity = Some("platform_type:ЭлементыФормы:precomputed".to_string());
 
         let context = model::PlatformContext {
             query_tables: vec![task_table],
@@ -5216,6 +5168,8 @@ mod tests {
 
     #[test]
     fn enum_identity_distinguishes_metadata_property_enums() {
+        let mut enum_value = enum_value("Видимость", "Использовать");
+        enum_value.owner_identity = Some("enum:system:Видимость".to_string());
         let context = model::PlatformContext {
             enums: vec![
                 enum_definition("Видимость", "objects/catalog2/catalog999/Visible.html"),
@@ -5224,7 +5178,7 @@ mod tests {
                     "objects/catalog1649/Form/properties/Visible.html",
                 ),
             ],
-            enum_values: vec![enum_value("Видимость", "Использовать")],
+            enum_values: vec![enum_value],
             ..model::PlatformContext::default()
         };
 
@@ -5416,6 +5370,11 @@ mod tests {
                     Some("DataCompositionFilterItem"),
                     "Элемент отбора.",
                 ),
+                platform_type(
+                    "БиблиотекаКартинок",
+                    Some("PictureLib"),
+                    "Библиотека картинок.",
+                ),
             ],
             type_properties: vec![
                 type_property("БиблиотекаКартинок", "ОтборКомпоновкиДанных", "Картинка"),
@@ -5457,6 +5416,7 @@ mod tests {
     }
 
     fn builder_from_context(context: &model::PlatformContext) -> SearchIndexBuilder {
+        let context = context_with_test_owner_identities(context);
         let mut builder = SearchIndexBuilder::new();
         for record in context.global_contexts.iter().cloned() {
             builder.global_context(record).unwrap();
@@ -5503,6 +5463,135 @@ mod tests {
         builder
     }
 
+    fn context_with_test_owner_identities(
+        context: &model::PlatformContext,
+    ) -> model::PlatformContext {
+        let mut context = context.clone();
+        let identities = DocumentIdentities::from_inputs(
+            &context
+                .platform_types
+                .iter()
+                .map(|record| PlatformTypeIdentityInput {
+                    identity: record.identity.clone(),
+                    name_primary: record.name.primary.clone(),
+                    semantic: record.semantic.clone(),
+                })
+                .collect::<Vec<_>>(),
+            &context
+                .query_tables
+                .iter()
+                .map(|record| QueryTableIdentityInput {
+                    identity: record.identity.clone(),
+                    name_primary: record.name.clone(),
+                    identifier: record.identifier.clone(),
+                    semantic: record.semantic.clone(),
+                })
+                .collect::<Vec<_>>(),
+            &context
+                .enums
+                .iter()
+                .map(|record| EnumIdentityInput {
+                    identity: record.identity.clone(),
+                    name_primary: record.name.primary.clone(),
+                    name_alias: record.name.alias.clone(),
+                    source_html_path: record.source.html_path.clone(),
+                })
+                .collect::<Vec<_>>(),
+        );
+        for record in &mut context.type_methods {
+            if record.owner_identity.is_none() {
+                record.owner_identity = identities
+                    .platform_type_ids
+                    .get(&model::platform_type_semantic_key(
+                        &record.owner.primary,
+                        &record.semantic,
+                    ))
+                    .cloned();
+            }
+        }
+        for record in &mut context.type_properties {
+            if record.owner_identity.is_none() {
+                record.owner_identity = identities
+                    .platform_type_ids
+                    .get(&model::platform_type_semantic_key(
+                        &record.owner.primary,
+                        &record.semantic,
+                    ))
+                    .cloned();
+            }
+        }
+        for record in &mut context.constructors {
+            if record.owner_identity.is_none() {
+                record.owner_identity = identities
+                    .platform_type_ids
+                    .get(&model::platform_type_semantic_key(
+                        &record.owner.primary,
+                        &record.semantic,
+                    ))
+                    .cloned();
+            }
+        }
+        for record in &mut context.table_fields {
+            if record.owner_identity.is_none() {
+                record.owner_identity = identities
+                    .query_table_ids
+                    .get(&model::query_table_semantic_key(
+                        &record.semantic,
+                        &record.owner.primary,
+                    ))
+                    .cloned();
+            }
+        }
+        for record in &mut context.table_parameters {
+            if record.owner_identity.is_none() {
+                record.owner_identity = identities
+                    .query_table_ids
+                    .get(&model::query_table_semantic_key(
+                        &record.semantic,
+                        &record.owner.primary,
+                    ))
+                    .cloned();
+            }
+        }
+        for record in &mut context.enum_values {
+            if record.owner_identity.is_none() {
+                record.owner_identity =
+                    unique_enum_owner_identity(&identities, &context.enums, record);
+            }
+        }
+        context
+    }
+
+    fn unique_enum_owner_identity(
+        identities: &DocumentIdentities,
+        enums: &[model::EnumDefinition],
+        enum_value: &model::EnumValue,
+    ) -> Option<String> {
+        let mut matches = enums.iter().filter_map(|enum_definition| {
+            enum_definition
+                .name
+                .matches(
+                    enum_value
+                        .owner
+                        .alias
+                        .as_deref()
+                        .unwrap_or(&enum_value.owner.primary),
+                )
+                .then(|| {
+                    identities
+                        .enum_ids
+                        .get(&enum_record_key(
+                            &enum_definition.name.primary,
+                            &enum_definition.source.html_path,
+                        ))
+                        .cloned()
+                })
+                .flatten()
+        });
+        let first = matches.next()?;
+        matches.next().is_none().then_some(first)
+    }
+
     fn build_test_index_from_context(
         path: impl AsRef<Path>,
         metadata: &IndexMetadata,
@@ -5538,6 +5627,7 @@ mod tests {
     fn type_property(owner: &str, primary: &str, type_ref: &str) -> model::PlatformProperty {
         model::PlatformProperty {
             owner: name(owner, None),
+            owner_identity: None,
             name: name(primary, None),
             semantic: model::SemanticContext::default(),
             usage: None,
@@ -5577,6 +5667,7 @@ mod tests {
     fn query_table_field(owner: &str, owner_path: &str, primary: &str) -> model::QueryTableField {
         model::QueryTableField {
             owner: name(owner, None),
+            owner_identity: None,
             name: primary.to_string(),
             semantic: semantic(model::RecordFamily::QueryTableField, owner_path),
             type_refs: Vec::new(),
@@ -5593,6 +5684,7 @@ mod tests {
     ) -> model::QueryTableParameter {
         model::QueryTableParameter {
             owner: name(owner, None),
+            owner_identity: None,
             name: primary.to_string(),
             semantic: semantic(model::RecordFamily::QueryTableParameter, owner_path),
             type_refs: Vec::new(),
@@ -5632,6 +5724,7 @@ mod tests {
     ) -> model::EnumValue {
         model::EnumValue {
             owner: name(owner, (!owner_alias.is_empty()).then_some(owner_alias)),
+            owner_identity: None,
             name: name(primary, None),
             description: Some("value description".to_string()),
             facts: model::SectionFacts::default(),
@@ -5654,6 +5747,7 @@ mod tests {
     fn type_method(owner: &str, primary: &str, return_type: &str) -> model::PlatformMethod {
         model::PlatformMethod {
             owner: name(owner, None),
+            owner_identity: None,
             name: name(primary, None),
             semantic: model::SemanticContext::default(),
             signatures: vec![model::Signature {
@@ -5677,6 +5771,7 @@ mod tests {
     fn constructor_with_name(owner: &str, primary: &str, signature: &str) -> model::Constructor {
         model::Constructor {
             owner: name(owner, None),
+            owner_identity: None,
             name: name(primary, None),
             semantic: model::SemanticContext::default(),
             signatures: vec![model::Signature {
@@ -5693,6 +5788,7 @@ mod tests {
     fn http_connection_constructor() -> model::Constructor {
         model::Constructor {
             owner: name("HTTPСоединение", Some("HTTPConnection")),
+            owner_identity: None,
             name: name("По параметрам соединения", None),
             semantic: model::SemanticContext::default(),
             signatures: vec![model::Signature {

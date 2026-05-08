@@ -1940,7 +1940,12 @@ mod tests {
                 "Форма клиентского приложения",
             ))
             .unwrap();
-        builder.constructor(constructor("ЭлементыФормы")).unwrap();
+        builder
+            .constructor(constructor(
+                "ЭлементыФормы",
+                "platform_type:ЭлементыФормы:Форма",
+            ))
+            .unwrap();
         build_index_from_builder(&path, &metadata(), builder).unwrap();
 
         let index = SearchIndex::open_read_only(&path).unwrap();
@@ -2414,6 +2419,7 @@ mod tests {
     ) -> model::PlatformMethod {
         model::PlatformMethod {
             owner: name(owner),
+            owner_identity: Some(format!("platform_type:{owner}:{owner_path}")),
             name: name(primary),
             semantic: semantic(model::RecordFamily::TypeMethod, owner_path),
             signatures: vec![model::Signature {
@@ -2428,9 +2434,10 @@ mod tests {
         }
     }
 
-    fn constructor(owner: &str) -> model::Constructor {
+    fn constructor(owner: &str, owner_identity: &str) -> model::Constructor {
         model::Constructor {
             owner: name(owner),
+            owner_identity: Some(owner_identity.to_string()),
             name: name("По умолчанию"),
             semantic: model::SemanticContext::default(),
             signatures: vec![model::Signature {

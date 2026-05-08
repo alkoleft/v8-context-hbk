@@ -176,6 +176,13 @@ pub fn platform_type_semantic_key(name_primary: &str, semantic: &SemanticContext
     semantic_record_key(name_primary, semantic)
 }
 
+pub fn platform_type_owner_semantic_key(
+    owner: &LocalizedName,
+    semantic: &SemanticContext,
+) -> String {
+    semantic_relation_key(semantic, &owner.primary)
+}
+
 pub fn query_table_identity(
     name_primary: &str,
     identifier: Option<&str>,
@@ -207,30 +214,6 @@ pub fn query_table_identity_key(
 
 pub fn query_table_semantic_key(semantic: &SemanticContext, fallback: &str) -> String {
     semantic_relation_key(semantic, fallback)
-}
-
-pub fn query_member_owner_fallback_identity(
-    owner: &LocalizedName,
-    semantic: &SemanticContext,
-) -> String {
-    let mut parts = semantic
-        .owner_path
-        .iter()
-        .map(|name| clean_identity_part(&name.primary))
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>();
-    if parts.last().is_none_or(|last| {
-        normalize_identity_lookup_key(last) != normalize_identity_lookup_key(&owner.primary)
-    }) {
-        let owner = clean_identity_part(&owner.primary);
-        if !owner.is_empty() {
-            parts.push(owner);
-        }
-    }
-    if parts.is_empty() {
-        return format!("query_table:{}", clean_identity_part(&owner.primary));
-    }
-    format!("query_table:{}", parts.join(":"))
 }
 
 pub fn enum_identity(
@@ -412,14 +395,6 @@ mod tests {
         assert_eq!(
             query_table_identity("Основная таблица", None, &table_semantic, 2),
             "query_table:Таблицы задач:Основная таблица:Таблицы задач"
-        );
-
-        let member_semantic =
-            SemanticContext::new(BranchKind::QueryTables, RecordFamily::QueryTableField)
-                .with_owner_path(vec![name("Таблицы задач"), name("Основная таблица")]);
-        assert_eq!(
-            query_member_owner_fallback_identity(&name("Основная таблица"), &member_semantic),
-            "query_table:Таблицы задач:Основная таблица"
         );
 
         assert_eq!(
@@ -671,6 +646,8 @@ pub enum QueryTableRole {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlatformMethod {
     pub owner: LocalizedName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_identity: Option<String>,
     pub name: LocalizedName,
     pub semantic: SemanticContext,
     pub signatures: Vec<Signature>,
@@ -683,6 +660,8 @@ pub struct PlatformMethod {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlatformProperty {
     pub owner: LocalizedName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_identity: Option<String>,
     pub name: LocalizedName,
     pub semantic: SemanticContext,
     pub usage: Option<String>,
@@ -695,6 +674,8 @@ pub struct PlatformProperty {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct QueryTableField {
     pub owner: LocalizedName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_identity: Option<String>,
     pub name: String,
     pub semantic: SemanticContext,
     pub type_refs: Vec<TypeRef>,
@@ -706,6 +687,8 @@ pub struct QueryTableField {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct QueryTableParameter {
     pub owner: LocalizedName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_identity: Option<String>,
     pub name: String,
     pub semantic: SemanticContext,
     pub type_refs: Vec<TypeRef>,
@@ -717,6 +700,8 @@ pub struct QueryTableParameter {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Constructor {
     pub owner: LocalizedName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_identity: Option<String>,
     pub name: LocalizedName,
     pub semantic: SemanticContext,
     pub signatures: Vec<Signature>,
@@ -787,6 +772,8 @@ pub struct EnumDefinition {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EnumValue {
     pub owner: LocalizedName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_identity: Option<String>,
     pub name: LocalizedName,
     pub description: Option<String>,
     pub facts: SectionFacts,

@@ -1679,6 +1679,7 @@ mod tests {
         builder
             .type_property(model::PlatformProperty {
                 owner: name("НастройкиКомпоновкиДанных", None),
+                owner_identity: Some("platform_type:НастройкиКомпоновкиДанных".to_string()),
                 name: name("Отбор", None),
                 semantic: model::SemanticContext::default(),
                 usage: None,
@@ -1693,6 +1694,7 @@ mod tests {
         builder
             .type_property(model::PlatformProperty {
                 owner: name("ОтборКомпоновкиДанных", None),
+                owner_identity: Some("platform_type:ОтборКомпоновкиДанных".to_string()),
                 name: name("Элементы", None),
                 semantic: model::SemanticContext::default(),
                 usage: None,
@@ -1707,6 +1709,7 @@ mod tests {
         builder
             .type_method(model::PlatformMethod {
                 owner: name("ОтборКомпоновкиДанных", None),
+                owner_identity: Some("platform_type:ОтборКомпоновкиДанных".to_string()),
                 name: name("Найти", None),
                 semantic: model::SemanticContext::default(),
                 signatures: vec![model::Signature {
@@ -1732,6 +1735,7 @@ mod tests {
         builder
             .constructor(model::Constructor {
                 owner: name("ОтборКомпоновкиДанных", None),
+                owner_identity: Some("platform_type:ОтборКомпоновкиДанных".to_string()),
                 name: name("Новый ОтборКомпоновкиДанных()", None),
                 semantic: model::SemanticContext::default(),
                 signatures: vec![model::Signature {
@@ -1746,7 +1750,7 @@ mod tests {
             .expect("constructor must sink");
         builder
             .query_table(model::QueryTable {
-                identity: None,
+                identity: Some("query_table:ОсновнаяТаблица".to_string()),
                 name: "Основная таблица".to_string(),
                 syntax: Some(name("ОсновнаяТаблица", None)),
                 identifier: Some("ОсновнаяТаблица".to_string()),
@@ -1762,6 +1766,7 @@ mod tests {
         builder
             .table_field(model::QueryTableField {
                 owner: name("ОсновнаяТаблица", None),
+                owner_identity: Some("query_table:ОсновнаяТаблица".to_string()),
                 name: "Период".to_string(),
                 semantic: model::SemanticContext::new(
                     model::BranchKind::QueryTables,
@@ -1778,6 +1783,7 @@ mod tests {
         builder
             .table_parameter(model::QueryTableParameter {
                 owner: name("ОсновнаяТаблица", None),
+                owner_identity: Some("query_table:ОсновнаяТаблица".to_string()),
                 name: "Дата".to_string(),
                 semantic: model::SemanticContext::new(
                     model::BranchKind::QueryTables,

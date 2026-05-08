@@ -126,9 +126,11 @@ same owner rules and duplicate-disambiguation rules.
    - If duplicate-aware final identity needs all parent records, perform that normalization in the
      read phase, not in `syntax-helper-search`.
    - Keep raw provenance only in `SyntaxHelperSource` and diagnostics.
-4. Update `syntax-helper-search` to prefer precomputed parent identity from records and to use
-   model-owned fallback helpers only for synthetic test records or legacy in-memory fixtures that do
-   not carry identity.
+4. Update `syntax-helper-search` to consume precomputed child parent identity from records.
+   Missing child/member `owner_identity` is an index-build error, not a search-side owner-name or
+   semantic-path fallback. Test fixtures that build child/member records directly must provide the
+   same identity explicitly or use private test-only fixture preparation before reaching the
+   production builder contract.
 5. Update `hbk-syntax-export` to consume model-owned semantic projections instead of local
    duplicated owner logic.
 6. Preserve FR-EXPORT-001 JSON shape unless a separate schema task explicitly adds public ids.
