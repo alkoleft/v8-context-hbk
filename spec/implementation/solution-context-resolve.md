@@ -113,6 +113,13 @@ constructors for the accepted source adapters. `syntax-helper-search` still owns
 and build/open mechanics, but lookup-only analyzer code can depend on `context-resolver-search`
 without importing `SearchIndex` directly just to open an existing provider database.
 
+T130 verification note: the static-analysis dependency surface is covered by a consumer-style
+integration smoke in `context-resolver-search`. The test keeps provider setup/index refresh and
+analyzer lookup as separate modules: setup may build a deterministic index through
+`syntax-helper-search`, while lookup opens that existing index only through
+`context-resolver-search` read-only adapter constructors and composes sources through
+`context-resolver-core`.
+
 ## Source And Language Domains
 
 Resolution is domain-aware. A name alone is not identity.

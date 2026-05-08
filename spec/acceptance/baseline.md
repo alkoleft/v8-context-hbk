@@ -1216,6 +1216,16 @@ The database schema, index build ownership and lower-level `SearchIndex` impleme
 `syntax-helper-search`; the new constructors only remove the need for lookup-only analyzer code to
 import `syntax-helper-search` directly just to open an existing index.
 
+T130 proved that surface with a consumer-style integration smoke in
+`crates/context-resolver-search/tests/static_analysis_consumer_smoke.rs`. The setup phase builds a
+small deterministic provider index through `syntax-helper-search::SearchIndexBuilder` and existing
+domain/language fixture builders. The lookup phase composes `context-resolver-core` and
+`context-resolver-search` only, opens the existing index through adapter-level read-only
+constructors, and resolves one platform type, one platform member/callable path and one BSL
+language fact. No separate smoke crate, facade crate, CLI command, SQLite schema change, provider
+JSON change or export JSON change was added. Verification passed `cargo fmt --all --check` and
+`cargo test -p context-resolver-search`.
+
 T42 changed only the index build data flow. `syntax index` now streams extraction records into a
 search-index builder and inserts relations into SQLite without retaining the full `PlatformContext`,
 complete search document vector and complete relation vector together. The SQLite schema, atomic

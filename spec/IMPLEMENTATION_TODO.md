@@ -797,3 +797,44 @@ Verification:
   index path and resolving a fact through the opened adapter.
 - `cargo fmt --all --check` passes.
 - `cargo test -p context-resolver-search` passes.
+
+### [x] T130. Prove the static-analysis dependency surface with a consumer-style smoke
+
+Spec refs:
+
+- ADR-0008
+- FR-CTX-RESOLVE-001
+- UC-CTX-002
+- NFR-RESOLVE-001
+- `spec/implementation/components.md`
+- `spec/implementation/solution-context-resolve.md`
+
+Scope:
+
+- Add a focused consumer-style integration smoke that models two explicit phases:
+  provider setup/index refresh and analyzer lookup.
+- In the setup phase, build a small deterministic provider index through the owning crates
+  (`syntax-helper-search` plus existing fixture/domain builders; real HBK input is not required for
+  this task).
+- In the lookup phase, compose `context-resolver-core` and `context-resolver-search` only, opening
+  the existing index through adapter-level constructors from T129.
+- Assert the lookup phase resolves at least one platform type, one member/callable path and one
+  language fact without importing `SearchIndex`, reading SQLite tables directly, spawning
+  `v8-context-hbk` or parsing HBK/HTML.
+- Keep the smoke inside the existing workspace test structure unless a concrete downstream repo
+  integration target is provided.
+- Do not add a facade crate, transport, CLI command, SQLite schema change, provider JSON change or
+  export JSON change.
+
+Verification:
+
+- Completed with `crates/context-resolver-search/tests/static_analysis_consumer_smoke.rs`.
+- The smoke separates provider setup and analyzer lookup modules. Setup builds a deterministic
+  provider index through `syntax-helper-search`; lookup composes only `context-resolver-core` and
+  `context-resolver-search` adapter constructors and does not import
+  `syntax-helper-search::SearchIndex`.
+- `cargo fmt --all --check` passed.
+- `cargo test -p context-resolver-search` passed.
+- If the implementation adds a separate smoke crate or example package, its package-specific test
+  command is recorded here when T130 is completed. No separate smoke crate or example package was
+  added.
