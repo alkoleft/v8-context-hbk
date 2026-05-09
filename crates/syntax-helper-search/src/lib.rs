@@ -1916,9 +1916,15 @@ fn validate_schema_version(connection: &Connection, path: &Path) -> Result<(), S
             [],
             |row| row.get::<_, String>(0),
         )
-        .map_err(|source| SearchError::Sqlite {
-            path: path.to_path_buf(),
-            source,
+        .map_err(|source| match source {
+            rusqlite::Error::QueryReturnedNoRows => SearchError::MissingMetadata {
+                path: path.to_path_buf(),
+                key: "schema_version",
+            },
+            source => SearchError::Sqlite {
+                path: path.to_path_buf(),
+                source,
+            },
         })?;
     if actual == INDEX_SCHEMA_VERSION.to_string() {
         Ok(())
@@ -4701,6 +4707,25 @@ mod tests {
             error.to_string().contains("rebuild the index"),
             "stale schema error should tell the user how to recover"
         );
+    }
+
+    #[test]
+    fn read_only_open_reports_missing_schema_metadata() {
+        let path = temp_path("missing-schema-metadata.sqlite");
+        build_test_index_from_context(&path, &metadata(), &fixture_context())
+            .expect("index must build");
+        {
+            let connection = Connection::open(&path).expect("index must open for fixture mutation");
+            connection
+                .execute("DELETE FROM meta WHERE key = 'schema_version'", [])
+                .expect("schema metadata deletion must work");
+        }
+
+        match SearchIndex::open_read_only(&path) {
+            Err(SearchError::MissingMetadata { key, .. }) => assert_eq!(key, "schema_version"),
+            Ok(_) => panic!("expected missing schema metadata error, got open index"),
+            Err(error) => panic!("expected missing schema metadata error, got {error}"),
+        }
     }
 
     #[test]
