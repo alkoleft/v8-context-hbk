@@ -102,6 +102,23 @@ mod provider_setup {
     }
 
     fn platform_type(primary: &str) -> model::PlatformType {
+        let facts = if primary == "ОтборКомпоновкиДанных" {
+            model::SectionFacts {
+                availability: model::Availability {
+                    contexts: vec![
+                        model::AvailabilityContext::ThinClient,
+                        model::AvailabilityContext::Server,
+                    ],
+                },
+                available_since: Some(model::VersionFact {
+                    version: Some("8.3.6".to_string()),
+                    text: "Available since 8.3.6".to_string(),
+                }),
+                ..model::SectionFacts::default()
+            }
+        } else {
+            model::SectionFacts::default()
+        };
         model::PlatformType {
             identity: None,
             name: name(primary),
@@ -117,7 +134,7 @@ mod provider_setup {
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: Some(format!("{primary} description.")),
-            facts: model::SectionFacts::default(),
+            facts,
             source: source_ref(primary),
         }
     }
@@ -167,8 +184,8 @@ mod analyzer_lookup {
     use std::path::Path;
 
     use context_resolver_core::{
-        CallableLookup, CompositeResolver, ContextResolver, LanguageDomain, MemberQuery,
-        ResolveContext, ResolveStatus, SourceId, TypeLookup,
+        AvailabilityContext, CallableLookup, CompositeResolver, ContextResolver, LanguageDomain,
+        MemberQuery, ResolveContext, ResolveStatus, SourceId, TypeLookup,
     };
     use context_resolver_search::{LanguageSearchSource, PlatformSearchSource};
 
@@ -239,6 +256,19 @@ mod analyzer_lookup {
             .first()
             .and_then(|type_ref| type_ref.id.clone())
             .expect("member type id must be available for callable owner lookup");
+
+        let availability = resolver
+            .availability(&filter_type.0, &ResolveContext::all())
+            .expect("availability lookup must not fail");
+        assert_eq!(availability.status, ResolveStatus::Ok);
+        assert_eq!(
+            availability.facts[0].availability.contexts,
+            vec![AvailabilityContext::ThinClient, AvailabilityContext::Server]
+        );
+        assert_eq!(
+            availability.facts[0].availability.since.as_deref(),
+            Some("8.3.6")
+        );
 
         let callable = resolver
             .callable(

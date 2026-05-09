@@ -189,6 +189,31 @@ pub struct ContextFact {
     pub relations: Vec<FactRelation>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AvailabilityContext {
+    ThinClient,
+    WebClient,
+    MobileClient,
+    Server,
+    ThickClient,
+    ExternalConnection,
+    MobileApplicationClient,
+    MobileApplicationServer,
+    MobileStandaloneServer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvailabilityInfo {
+    pub contexts: Vec<AvailabilityContext>,
+    pub since: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvailabilityFact {
+    pub id: FactId,
+    pub availability: AvailabilityInfo,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedType {
     pub id: TypeId,
@@ -410,6 +435,16 @@ pub trait ContextSource {
         kind: RelationKind,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError>;
+
+    fn availability(
+        &self,
+        _source: &FactId,
+        _context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<AvailabilityFact>, ResolveError> {
+        Ok(ResolveResponse::unsupported(
+            "context source does not expose availability facts",
+        ))
+    }
 }
 
 pub trait ContextResolver {
@@ -444,6 +479,12 @@ pub trait ContextResolver {
         kind: RelationKind,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError>;
+
+    fn availability(
+        &self,
+        source: &FactId,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<AvailabilityFact>, ResolveError>;
 }
 
 pub struct CompositeResolver {
@@ -673,6 +714,24 @@ impl ContextResolver for CompositeResolver {
             )));
         };
         source.related(source_id, kind, context)
+    }
+
+    fn availability(
+        &self,
+        source_id: &FactId,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<AvailabilityFact>, ResolveError> {
+        let Some(source) = self
+            .active_sources(context)
+            .into_iter()
+            .find(|source| source.descriptor().id == source_id.source)
+        else {
+            return Ok(ResolveResponse::not_found(format!(
+                "source `{}` is not active",
+                source_id.source
+            )));
+        };
+        source.availability(source_id, context)
     }
 }
 

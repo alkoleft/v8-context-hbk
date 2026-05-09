@@ -1,11 +1,12 @@
 use std::path::Path;
 
 use context_resolver_core::{
-    CallableId, CallableInfo, CallableKind, CallableLookup, ContextFact, ContextSource,
-    FactDetails, FactId, FactKind, FactRelation, LanguageDomain, MemberId, MemberInfo, MemberKind,
-    MemberQuery, MemberQueryKind, Name, Parameter, RelationKind, ResolveContext, ResolveError,
-    ResolveResponse, ResolvedCallable, ResolvedMember, ResolvedType, Signature, SourceCapabilities,
-    SourceDescriptor, SourceId, TypeId, TypeInfo, TypeLookup, TypeRef,
+    AvailabilityContext, AvailabilityFact, AvailabilityInfo, CallableId, CallableInfo,
+    CallableKind, CallableLookup, ContextFact, ContextSource, FactDetails, FactId, FactKind,
+    FactRelation, LanguageDomain, MemberId, MemberInfo, MemberKind, MemberQuery, MemberQueryKind,
+    Name, Parameter, RelationKind, ResolveContext, ResolveError, ResolveResponse, ResolvedCallable,
+    ResolvedMember, ResolvedType, Signature, SourceCapabilities, SourceDescriptor, SourceId,
+    TypeId, TypeInfo, TypeLookup, TypeRef,
 };
 use syntax_helper_search::{
     RelatedHit, SearchDocument, SearchDocumentKind, SearchError, SearchHit, SearchIndex,
@@ -1039,6 +1040,43 @@ impl ContextSource for PlatformSearchSource {
             .collect::<Vec<_>>();
         Ok(ResolveResponse::ok(facts))
     }
+
+    fn availability(
+        &self,
+        source: &FactId,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<AvailabilityFact>, ResolveError> {
+        if !context.is_source_active(&self.source_id)
+            || source.source != self.source_id
+            || source.domain != LanguageDomain::PlatformApi
+        {
+            return Ok(ResolveResponse::not_found("platform source fact not found"));
+        }
+        let Some(hit) = self
+            .index
+            .get_by_id(&source.local_id)
+            .map_err(|source| self.source_failure(source))?
+        else {
+            return Ok(ResolveResponse::not_found("platform fact not found"));
+        };
+        if !is_platform_document_kind(hit.document.kind) {
+            return Ok(ResolveResponse::not_found(
+                "non-platform document is hidden",
+            ));
+        }
+        Ok(ResolveResponse::ok(vec![AvailabilityFact {
+            id: source.clone(),
+            availability: AvailabilityInfo {
+                contexts: hit
+                    .document
+                    .availability_contexts
+                    .iter()
+                    .filter_map(|context| availability_context_from_code(context))
+                    .collect(),
+                since: hit.document.available_since,
+            },
+        }]))
+    }
 }
 
 fn map_name(document: &SearchDocument) -> Name {
@@ -1144,6 +1182,21 @@ fn member_query_matches(query: MemberQueryKind, kind: MemberKind) -> bool {
             | (MemberQueryKind::Event, MemberKind::Event)
             | (MemberQueryKind::EnumValue, MemberKind::EnumValue)
     )
+}
+
+fn availability_context_from_code(value: &str) -> Option<AvailabilityContext> {
+    match value {
+        "thin_client" => Some(AvailabilityContext::ThinClient),
+        "web_client" => Some(AvailabilityContext::WebClient),
+        "mobile_client" => Some(AvailabilityContext::MobileClient),
+        "server" => Some(AvailabilityContext::Server),
+        "thick_client" => Some(AvailabilityContext::ThickClient),
+        "external_connection" => Some(AvailabilityContext::ExternalConnection),
+        "mobile_application_client" => Some(AvailabilityContext::MobileApplicationClient),
+        "mobile_application_server" => Some(AvailabilityContext::MobileApplicationServer),
+        "mobile_standalone_server" => Some(AvailabilityContext::MobileStandaloneServer),
+        _ => None,
+    }
 }
 
 fn edge_from_relation_kind(kind: RelationKind) -> Option<&'static str> {

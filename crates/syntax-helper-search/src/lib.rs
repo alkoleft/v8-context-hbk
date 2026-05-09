@@ -12,7 +12,7 @@ use strsim::levenshtein;
 use syntax_helper_language as language;
 use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 6;
+pub const INDEX_SCHEMA_VERSION: u32 = 7;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 #[derive(Debug, Clone)]
@@ -284,6 +284,8 @@ pub struct SearchDocument {
     pub owner_relation_key: Option<String>,
     pub explicit_type_ref_ids: Vec<Option<String>>,
     pub explicit_return_type_ref_ids: Vec<Option<String>>,
+    pub availability_contexts: Vec<String>,
+    pub available_since: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -320,6 +322,20 @@ impl SearchDocument {
             .map(|signature| signature.text.clone())
             .filter(|text| !text.is_empty())
             .collect()
+    }
+
+    fn with_section_facts(mut self, facts: &model::SectionFacts) -> Self {
+        self.availability_contexts = facts
+            .availability
+            .contexts
+            .iter()
+            .map(|context| availability_context_code(*context).to_string())
+            .collect();
+        self.available_since = facts
+            .available_since
+            .as_ref()
+            .and_then(|fact| fact.version.clone());
+        self
     }
 }
 
@@ -389,7 +405,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 &[],
                 record.description.as_deref(),
                 String::new(),
-            ),
+            )
+            .with_section_facts(&record.facts),
             DraftIdentity::Immediate(document_identity(
                 SearchDocumentKind::GlobalMethod.as_str(),
                 None,
@@ -410,7 +427,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 &record.type_refs,
                 record.description.as_deref(),
                 String::new(),
-            ),
+            )
+            .with_section_facts(&record.facts),
             DraftIdentity::Immediate(document_identity(
                 SearchDocumentKind::GlobalProperty.as_str(),
                 None,
@@ -440,7 +458,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 &[],
                 record.description.as_deref(),
                 String::new(),
-            ),
+            )
+            .with_section_facts(&record.facts),
             DraftIdentity::Immediate(document_identity(
                 kind.as_str(),
                 owner.as_ref(),
@@ -470,7 +489,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                     .collect::<Vec<_>>(),
                 record.description.as_deref(),
                 String::new(),
-            ),
+            )
+            .with_section_facts(&record.facts),
             DraftIdentity::PlatformType {
                 name_primary: record.name.primary,
                 semantic: record.semantic,
@@ -524,7 +544,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 &[],
                 record.description.as_deref(),
                 String::new(),
-            ),
+            )
+            .with_section_facts(&record.facts),
             DraftIdentity::TypeOwned {
                 owner_identity: record.owner_identity,
             },
@@ -543,7 +564,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 &record.type_refs,
                 record.description.as_deref(),
                 String::new(),
-            ),
+            )
+            .with_section_facts(&record.facts),
             DraftIdentity::TypeOwned {
                 owner_identity: record.owner_identity,
             },
@@ -616,7 +638,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 &[],
                 record.description.as_deref(),
                 String::new(),
-            ),
+            )
+            .with_section_facts(&record.facts),
             DraftIdentity::TypeOwned {
                 owner_identity: record.owner_identity,
             },
@@ -641,7 +664,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 &[],
                 record.description.as_deref(),
                 String::new(),
-            ),
+            )
+            .with_section_facts(&record.facts),
             DraftIdentity::Enum {
                 name_primary: record.name.primary,
                 name_alias: record.name.alias,
@@ -662,7 +686,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 &[],
                 record.description.as_deref(),
                 String::new(),
-            ),
+            )
+            .with_section_facts(&record.facts),
             DraftIdentity::EnumValue {
                 owner_identity: record.owner_identity,
             },
@@ -982,7 +1007,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.description \
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since \
                  FROM members m \
                  JOIN documents d ON d.id = m.document_id \
                  WHERE m.owner_type_id = ?1 \
@@ -1013,7 +1038,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.description \
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since \
                  FROM document_names n \
                  JOIN members m INDEXED BY members_document_owner_idx \
                    ON m.document_id = n.document_id \
@@ -1066,7 +1091,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.description \
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since \
                  FROM document_names n \
                  JOIN callables c INDEXED BY callables_document_owner_idx \
                    ON c.document_id = n.document_id \
@@ -1279,7 +1304,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.description \
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since \
                  FROM document_names n \
                  JOIN documents d ON d.id = n.document_id \
                  WHERE n.key = ?1 \
@@ -1324,7 +1349,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.description \
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since \
                  FROM document_names n \
                  JOIN type_identities t ON t.document_id = n.document_id \
                  JOIN documents d ON d.id = t.document_id \
@@ -1383,7 +1408,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.description \
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since \
                  FROM relations r \
                  JOIN documents d ON d.id = r.target_id \
                  WHERE r.source_id = ?1 AND r.edge_kind = 'owns' AND d.kind = ?2 \
@@ -1414,7 +1439,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.description, \
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since, \
                  CAST(bm25(document_fts) * 1000000 AS INTEGER) \
                  FROM document_fts \
                  JOIN documents d ON d.id = document_fts.document_id \
@@ -1428,7 +1453,7 @@ impl SearchIndex {
             .query_map(params![fts_query, sql_limit], |row| {
                 Ok(SearchHit {
                     document: document_from_row(row)?,
-                    score: row.get(8)?,
+                    score: row.get(10)?,
                 })
             })
             .map_err(|source| self.sqlite(source))?;
@@ -1489,7 +1514,7 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
-                 d.owner_alias, d.signature_text, d.description \
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since \
                  FROM document_names n \
                  JOIN documents d ON d.id = n.document_id \
                  WHERE n.key LIKE ?1 \
@@ -1611,7 +1636,7 @@ impl SearchIndex {
             .connection
             .query_row(
                 "SELECT id, kind, name_primary, name_alias, owner_primary, owner_alias, \
-                 signature_text, description \
+                 signature_text, description, availability_contexts, available_since \
                  FROM documents WHERE id = ?1",
                 [id],
                 document_from_row,
@@ -2010,7 +2035,9 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  owner_primary TEXT,
                  owner_alias TEXT,
                  signature_text TEXT NOT NULL,
-                 description TEXT
+                 description TEXT,
+                 availability_contexts TEXT NOT NULL,
+                 available_since TEXT
              );
              CREATE TABLE type_identities (
                  type_id TEXT PRIMARY KEY,
@@ -2171,8 +2198,8 @@ fn insert_documents(
         .prepare(
             "INSERT INTO documents(
                 id, kind, kind_priority, name_primary, name_alias, owner_primary, owner_alias,
-                signature_text, description
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                signature_text, description, availability_contexts, available_since
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )
         .map_err(|source| SearchError::Sqlite {
             path: path.to_path_buf(),
@@ -2219,6 +2246,8 @@ fn insert_documents(
                 owner_alias,
                 signatures,
                 document.description,
+                document.availability_contexts.join("\n"),
+                document.available_since,
             ])
             .map_err(|source| SearchError::Sqlite {
                 path: path.to_path_buf(),
@@ -2900,6 +2929,8 @@ fn document(
         owner_relation_key: None,
         explicit_type_ref_ids: Vec::new(),
         explicit_return_type_ref_ids: Vec::new(),
+        availability_contexts: Vec::new(),
+        available_since: None,
     }
 }
 
@@ -3013,6 +3044,8 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         owner_relation_key: None,
         explicit_type_ref_ids,
         explicit_return_type_ref_ids,
+        availability_contexts: Vec::new(),
+        available_since: None,
     }
 }
 
@@ -3173,7 +3206,23 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
         owner_relation_key: None,
         explicit_type_ref_ids: Vec::new(),
         explicit_return_type_ref_ids: Vec::new(),
+        availability_contexts: split_lines(row.get(8)?),
+        available_since: row.get(9)?,
     })
+}
+
+fn availability_context_code(context: model::AvailabilityContext) -> &'static str {
+    match context {
+        model::AvailabilityContext::ThinClient => "thin_client",
+        model::AvailabilityContext::WebClient => "web_client",
+        model::AvailabilityContext::MobileClient => "mobile_client",
+        model::AvailabilityContext::Server => "server",
+        model::AvailabilityContext::ThickClient => "thick_client",
+        model::AvailabilityContext::ExternalConnection => "external_connection",
+        model::AvailabilityContext::MobileApplicationClient => "mobile_application_client",
+        model::AvailabilityContext::MobileApplicationServer => "mobile_application_server",
+        model::AvailabilityContext::MobileStandaloneServer => "mobile_standalone_server",
+    }
 }
 
 fn optional_localized_name(
@@ -5040,7 +5089,7 @@ mod tests {
             .prepare(
                 "EXPLAIN QUERY PLAN
                  SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary,
-                 d.owner_alias, d.signature_text, d.description
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since
                  FROM document_names n
                  JOIN type_identities t ON t.document_id = n.document_id
                  JOIN documents d ON d.id = t.document_id
@@ -5084,7 +5133,7 @@ mod tests {
             .prepare(
                 "EXPLAIN QUERY PLAN
                  SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary,
-                 d.owner_alias, d.signature_text, d.description
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since
                  FROM document_names n
                  JOIN members m INDEXED BY members_document_owner_idx
                    ON m.document_id = n.document_id
@@ -5127,7 +5176,7 @@ mod tests {
             .prepare(
                 "EXPLAIN QUERY PLAN
                  SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary,
-                 d.owner_alias, d.signature_text, d.description
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since
                  FROM document_names n
                  JOIN callables c INDEXED BY callables_document_owner_idx
                    ON c.document_id = n.document_id
