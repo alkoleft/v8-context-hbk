@@ -734,6 +734,16 @@ pub enum SearchError {
         name: String,
         matches: usize,
     },
+    InvalidMetadata {
+        path: PathBuf,
+        key: &'static str,
+        value: String,
+        source: std::num::ParseIntError,
+    },
+    MissingMetadata {
+        path: PathBuf,
+        key: &'static str,
+    },
 }
 
 impl fmt::Display for SearchError {
@@ -792,6 +802,22 @@ impl fmt::Display for SearchError {
                     "ambiguous Syntax Assistant lookup for '{name}': {matches} matches"
                 )
             }
+            Self::InvalidMetadata {
+                path, key, value, ..
+            } => {
+                write!(
+                    f,
+                    "invalid search index metadata in '{}': key '{key}' has value '{value}'",
+                    path.display()
+                )
+            }
+            Self::MissingMetadata { path, key } => {
+                write!(
+                    f,
+                    "missing search index metadata in '{}': key '{key}'",
+                    path.display()
+                )
+            }
         }
     }
 }
@@ -801,12 +827,30 @@ impl std::error::Error for SearchError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Sqlite { source, .. } => Some(source),
+            Self::InvalidMetadata { source, .. } => Some(source),
             Self::WriterLockTimeout { .. }
             | Self::MissingIndex { .. }
             | Self::UnsupportedSchemaVersion { .. }
             | Self::DuplicateDocumentId { .. }
             | Self::MissingParentIdentity { .. }
-            | Self::AmbiguousLookup { .. } => None,
+            | Self::AmbiguousLookup { .. }
+            | Self::MissingMetadata { .. } => None,
+        }
+    }
+}
+
+impl SearchError {
+    fn metadata_parse(
+        path: PathBuf,
+        key: &'static str,
+        value: String,
+        source: std::num::ParseIntError,
+    ) -> Self {
+        Self::InvalidMetadata {
+            path,
+            key,
+            value,
+            source,
         }
     }
 }
@@ -945,6 +989,14 @@ pub struct SearchIndex {
     connection: Connection,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredIndexMetadata {
+    pub locale: String,
+    pub source_locale: String,
+    pub source_hbk: String,
+    pub source_extraction_schema_version: u32,
+}
+
 impl SearchIndex {
     pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self, SearchError> {
         let path = path.as_ref();
@@ -965,6 +1017,26 @@ impl SearchIndex {
         Ok(Self {
             path: path.to_path_buf(),
             connection,
+        })
+    }
+
+    pub fn metadata(&self) -> Result<StoredIndexMetadata, SearchError> {
+        let source_extraction_schema_version =
+            self.metadata_value("source_extraction_schema_version")?;
+        Ok(StoredIndexMetadata {
+            locale: self.metadata_value("locale")?,
+            source_locale: self.metadata_value("source_locale")?,
+            source_hbk: self.metadata_value("source_hbk")?,
+            source_extraction_schema_version: source_extraction_schema_version.parse().map_err(
+                |source| {
+                    SearchError::metadata_parse(
+                        self.path.clone(),
+                        "source_extraction_schema_version",
+                        source_extraction_schema_version.clone(),
+                        source,
+                    )
+                },
+            )?,
         })
     }
 
@@ -1818,6 +1890,22 @@ impl SearchIndex {
             path: self.path.clone(),
             source,
         }
+    }
+
+    fn metadata_value(&self, key: &'static str) -> Result<String, SearchError> {
+        self.connection
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .map_err(|source| match source {
+                rusqlite::Error::QueryReturnedNoRows => SearchError::MissingMetadata {
+                    path: self.path.clone(),
+                    key,
+                },
+                source => self.sqlite(source),
+            })
     }
 }
 
@@ -4383,15 +4471,13 @@ mod tests {
             .expect("streaming builder must build SQLite index");
 
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
-        let schema_version: String = index
-            .connection
-            .query_row(
-                "SELECT value FROM meta WHERE key = 'schema_version'",
-                [],
-                |row| row.get(0),
-            )
-            .expect("schema version must be stored");
-        assert_eq!(schema_version, INDEX_SCHEMA_VERSION.to_string());
+        assert_eq!(
+            index
+                .metadata()
+                .expect("index metadata must be readable")
+                .source_extraction_schema_version,
+            metadata().source_extraction_schema_version
+        );
         let search_rows: usize = index
             .connection
             .query_row("SELECT COUNT(*) FROM document_search", [], |row| row.get(0))
@@ -4615,6 +4701,25 @@ mod tests {
             error.to_string().contains("rebuild the index"),
             "stale schema error should tell the user how to recover"
         );
+    }
+
+    #[test]
+    fn metadata_reader_reports_missing_metadata_key() {
+        let path = temp_path("missing-metadata.sqlite");
+        build_test_index_from_context(&path, &metadata(), &fixture_context())
+            .expect("index must build");
+        {
+            let connection = Connection::open(&path).expect("index must open for fixture mutation");
+            connection
+                .execute("DELETE FROM meta WHERE key = 'source_hbk'", [])
+                .expect("metadata fixture mutation must work");
+        }
+        let index = SearchIndex::open_read_only(&path).expect("schema-compatible index must open");
+
+        match index.metadata() {
+            Err(SearchError::MissingMetadata { key, .. }) => assert_eq!(key, "source_hbk"),
+            other => panic!("expected missing metadata error, got {other:?}"),
+        }
     }
 
     #[test]
