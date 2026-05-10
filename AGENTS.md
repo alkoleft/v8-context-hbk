@@ -47,7 +47,11 @@ Optimize for simple, direct, maintainable code.
 - DRY: extract shared behavior when duplication starts encoding the same rule in more than one place. Do not create premature abstractions for merely similar code.
 - Big Design Up Front: do enough upfront design to define context boundaries, data contracts, invariants and failure modes before implementation. Do not turn this into speculative architecture for unvalidated future integrations.
 - Occam's Razor: when two designs satisfy the same contract, choose the one with fewer moving parts.
-- Law of Demeter: keep modules talking through their immediate public interfaces. Avoid reaching through nested internals or binding one context to another context's representation details.
+- Править не следствия, а причины: при возникновении проблем определяем
+  причину и правим именно ее.
+- Law of Demeter: keep modules talking through their immediate public
+interfaces. Avoid reaching through nested provider internals or binding one
+context to another context's representation details.
 - SRP: each module/type should have one reason to change.
 - ISP: expose small interfaces focused on real consumers. Do not force CLI, extractor, exporter and library users through one broad facade.
 - Minimize boilerplate. Prefer language features, small helpers and clear domain types over repetitive templates.
