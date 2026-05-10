@@ -181,6 +181,11 @@ hot-path integration should use ADR-0008's resolver/source traits and adapters i
 these CLI commands or introducing HTTP/MCP transport. The CLI JSON provider remains the
 language-agnostic tool boundary and UAT-friendly compatibility surface.
 
+T131 implementation note: schema version 8 stores platform metadata-template facts for resolver
+consumers: metadata kind and template parameters for `PlatformTypeKind::MetadataTemplate` records.
+The data is exposed through `context-resolver-core::TypeInfo`, not as a public SQLite schema
+contract or CLI JSON expansion.
+
 ### Index Path Resolution
 
 `syntax index`, `syntax get`, `syntax constructors`, `syntax search` and `syntax related` resolve

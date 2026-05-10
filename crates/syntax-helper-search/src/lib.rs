@@ -12,7 +12,7 @@ use strsim::levenshtein;
 use syntax_helper_language as language;
 use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 7;
+pub const INDEX_SCHEMA_VERSION: u32 = 8;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 #[derive(Debug, Clone)]
@@ -286,6 +286,8 @@ pub struct SearchDocument {
     pub explicit_return_type_ref_ids: Vec<Option<String>>,
     pub availability_contexts: Vec<String>,
     pub available_since: Option<String>,
+    pub metadata_kind: Option<String>,
+    pub template_parameters: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -475,22 +477,29 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
             name_primary: record.name.primary.clone(),
             semantic: record.semantic.clone(),
         });
+        let mut document = document(
+            SearchDocumentKind::PlatformType,
+            None,
+            &record.name,
+            &[],
+            &[],
+            &record
+                .extends
+                .iter()
+                .map(type_ref_from_name)
+                .collect::<Vec<_>>(),
+            record.description.as_deref(),
+            String::new(),
+        )
+        .with_section_facts(&record.facts);
+        if record.type_kind == model::PlatformTypeKind::MetadataTemplate
+            && let Some(metadata_kind) = record.metadata_kind
+        {
+            document.metadata_kind = Some(metadata_kind);
+            document.template_parameters = record.template_parameters;
+        }
         self.drafts.push(DocumentDraft::new(
-            document(
-                SearchDocumentKind::PlatformType,
-                None,
-                &record.name,
-                &[],
-                &[],
-                &record
-                    .extends
-                    .iter()
-                    .map(type_ref_from_name)
-                    .collect::<Vec<_>>(),
-                record.description.as_deref(),
-                String::new(),
-            )
-            .with_section_facts(&record.facts),
+            document,
             DraftIdentity::PlatformType {
                 name_primary: record.name.primary,
                 semantic: record.semantic,
@@ -1741,7 +1750,30 @@ impl SearchIndex {
         document.return_types = self.type_ref_names(&document.id, "return_type")?;
         document.signatures = self.signatures_for(&document)?;
         document.parameter_terms = self.parameter_terms_for(&document)?;
+        if let Some((metadata_kind, template_parameters)) = self.type_template_for(&document.id)? {
+            document.metadata_kind = Some(metadata_kind);
+            document.template_parameters = template_parameters;
+        }
         Ok(document)
+    }
+
+    fn type_template_for(
+        &self,
+        document_id: &str,
+    ) -> Result<Option<(String, Vec<String>)>, SearchError> {
+        self.connection
+            .query_row(
+                "SELECT metadata_kind, template_parameters FROM type_templates WHERE document_id = ?1",
+                [document_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        split_lines(row.get::<_, String>(1)?),
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|source| self.sqlite(source))
     }
 
     fn type_ref_names(
@@ -2139,6 +2171,11 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  name_primary TEXT NOT NULL,
                  name_alias TEXT
              );
+             CREATE TABLE type_templates (
+                 document_id TEXT PRIMARY KEY REFERENCES documents(id),
+                 metadata_kind TEXT NOT NULL,
+                 template_parameters TEXT NOT NULL
+             );
              CREATE TABLE members (
                  member_id TEXT PRIMARY KEY,
                  owner_type_id TEXT NOT NULL REFERENCES type_identities(type_id),
@@ -2408,6 +2445,15 @@ fn insert_normalized_facts(
             path: path.to_path_buf(),
             source,
         })?;
+    let mut type_template_statement = connection
+        .prepare(
+            "INSERT INTO type_templates(document_id, metadata_kind, template_parameters)
+             VALUES (?1, ?2, ?3)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
     let mut member_statement = connection
         .prepare(
             "INSERT INTO members(member_id, owner_type_id, member_kind, name_primary, name_alias, document_id)
@@ -2471,6 +2517,18 @@ fn insert_normalized_facts(
                 path: path.to_path_buf(),
                 source,
             })?;
+        if let Some(metadata_kind) = &document.metadata_kind {
+            type_template_statement
+                .execute(params![
+                    document.id,
+                    metadata_kind,
+                    document.template_parameters.join("\n"),
+                ])
+                .map_err(|source| SearchError::Sqlite {
+                    path: path.to_path_buf(),
+                    source,
+                })?;
+        }
     }
 
     for document in documents {
@@ -3025,6 +3083,8 @@ fn document(
         explicit_return_type_ref_ids: Vec::new(),
         availability_contexts: Vec::new(),
         available_since: None,
+        metadata_kind: None,
+        template_parameters: Vec::new(),
     }
 }
 
@@ -3140,6 +3200,8 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         explicit_return_type_ref_ids,
         availability_contexts: Vec::new(),
         available_since: None,
+        metadata_kind: None,
+        template_parameters: Vec::new(),
     }
 }
 
@@ -3302,6 +3364,8 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
         explicit_return_type_ref_ids: Vec::new(),
         availability_contexts: split_lines(row.get(8)?),
         available_since: row.get(9)?,
+        metadata_kind: None,
+        template_parameters: Vec::new(),
     })
 }
 
@@ -3858,6 +3922,44 @@ mod tests {
         assert!(ids.contains("shlang:def_String"));
         assert!(ids.contains("shquery:STRING"));
         assert!(ids.contains("shquery:LitString"));
+    }
+
+    #[test]
+    fn metadata_template_type_info_survives_index_roundtrip() {
+        let path = temp_path("metadata-template.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        let mut manager = platform_type(
+            "СправочникМенеджер.<Имя справочника>",
+            Some("CatalogManager.<Catalog name>"),
+            "Catalog manager template.",
+        );
+        manager.type_kind = model::PlatformTypeKind::MetadataTemplate;
+        manager.metadata_kind = Some("СправочникМенеджер".to_string());
+        manager.template_parameters = vec!["Имя справочника".to_string()];
+        builder
+            .platform_type(manager)
+            .expect("platform template must sink");
+        build_index_from_builder(&path, &metadata(), builder).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let hit = index
+            .type_identities_by_alias("CatalogManager.<Catalog name>")
+            .expect("alias lookup must not fail")
+            .pop()
+            .expect("template type must resolve by alias");
+
+        assert_eq!(
+            hit.document.id,
+            "platform_type:СправочникМенеджер.<Имя справочника>"
+        );
+        assert_eq!(
+            hit.document.metadata_kind.as_deref(),
+            Some("СправочникМенеджер")
+        );
+        assert_eq!(
+            hit.document.template_parameters,
+            vec!["Имя справочника".to_string()]
+        );
     }
 
     #[test]

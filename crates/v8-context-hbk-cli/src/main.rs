@@ -1827,6 +1827,10 @@ mod tests {
             owner_relation_key: None,
             explicit_type_ref_ids: Vec::new(),
             explicit_return_type_ref_ids: Vec::new(),
+            availability_contexts: Vec::new(),
+            available_since: None,
+            metadata_kind: None,
+            template_parameters: Vec::new(),
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Compact);
@@ -1867,6 +1871,10 @@ mod tests {
             owner_relation_key: None,
             explicit_type_ref_ids: Vec::new(),
             explicit_return_type_ref_ids: Vec::new(),
+            availability_contexts: Vec::new(),
+            available_since: None,
+            metadata_kind: None,
+            template_parameters: Vec::new(),
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Full);

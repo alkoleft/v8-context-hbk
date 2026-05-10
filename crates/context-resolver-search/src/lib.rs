@@ -4,9 +4,9 @@ use context_resolver_core::{
     AvailabilityContext, AvailabilityFact, AvailabilityInfo, CallableId, CallableInfo,
     CallableKind, CallableLookup, ContextFact, ContextSource, FactDetails, FactId, FactKind,
     FactRelation, LanguageDomain, MemberId, MemberInfo, MemberKind, MemberQuery, MemberQueryKind,
-    Name, Parameter, RelationKind, ResolveContext, ResolveError, ResolveResponse, ResolvedCallable,
-    ResolvedMember, ResolvedType, Signature, SourceCapabilities, SourceDescriptor, SourceId,
-    TypeId, TypeInfo, TypeLookup, TypeRef,
+    MetadataTemplateInfo, Name, Parameter, RelationKind, ResolveContext, ResolveError,
+    ResolveResponse, ResolvedCallable, ResolvedMember, ResolvedType, Signature, SourceCapabilities,
+    SourceDescriptor, SourceId, TypeId, TypeInfo, TypeLookup, TypeRef,
 };
 use syntax_helper_search::{
     RelatedHit, SearchDocument, SearchDocumentKind, SearchError, SearchHit, SearchIndex,
@@ -119,9 +119,7 @@ impl PlatformSearchSource {
     }
 
     fn map_type(&self, hit: SearchHit) -> ResolvedType {
-        let info = TypeInfo {
-            description: hit.document.description.clone(),
-        };
+        let info = type_info(&hit.document);
         let id = self.type_id(hit.document.id.clone());
         let fact = ContextFact {
             id: id.0.clone(),
@@ -310,9 +308,7 @@ impl PlatformSearchSource {
             id: self.fact_id(kind, hit.document.id.clone()),
             name: map_name(&hit.document),
             owner: None,
-            details: FactDetails::Type(TypeInfo {
-                description: hit.document.description,
-            }),
+            details: FactDetails::Type(type_info(&hit.document)),
             relations: hit
                 .via
                 .into_iter()
@@ -441,6 +437,7 @@ impl LanguageSearchSource {
         let info = if kind == FactKind::Type {
             FactDetails::Type(TypeInfo {
                 description: hit.document.description.clone(),
+                metadata_template: None,
             })
         } else if kind == FactKind::Callable {
             FactDetails::Callable(self.callable_info(&hit.document))
@@ -465,6 +462,7 @@ impl LanguageSearchSource {
         }
         let info = TypeInfo {
             description: hit.document.description.clone(),
+            metadata_template: None,
         };
         let id = self.type_id(self.local_id(&hit.document));
         let fact = ContextFact {
@@ -503,6 +501,7 @@ impl LanguageSearchSource {
         let details = if id.kind == FactKind::Type {
             FactDetails::Type(TypeInfo {
                 description: hit.document.description.clone(),
+                metadata_template: None,
             })
         } else if id.kind == FactKind::Callable {
             FactDetails::Callable(self.callable_info(&hit.document))
@@ -691,6 +690,24 @@ impl ContextSource for LanguageSearchSource {
                         .map_err(|source| self.source_failure(source))?
                         .into_iter()
                         .filter(|hit| self.document_belongs_to_source(&hit.document))
+                        .filter_map(|hit| self.map_type(hit))
+                        .collect()
+                }
+            }
+            TypeLookup::ExactAlias {
+                source,
+                domain,
+                alias,
+            } => {
+                if !self.source_matches(source) || !self.domain_matches(domain) {
+                    Vec::new()
+                } else {
+                    self.index
+                        .get_by_name(alias)
+                        .map_err(|source| self.source_failure(source))?
+                        .into_iter()
+                        .filter(|hit| self.document_belongs_to_source(&hit.document))
+                        .filter(|hit| hit.document.name.alias.as_deref() == Some(alias))
                         .filter_map(|hit| self.map_type(hit))
                         .collect()
                 }
@@ -910,6 +927,22 @@ impl ContextSource for PlatformSearchSource {
                         .collect()
                 }
             }
+            TypeLookup::ExactAlias {
+                source,
+                domain,
+                alias,
+            } => {
+                if !self.source_matches(source) || !self.domain_matches(domain) {
+                    Vec::new()
+                } else {
+                    self.index
+                        .type_identities_by_alias(alias)
+                        .map_err(|source| self.source_failure(source))?
+                        .into_iter()
+                        .map(|hit| self.map_type(hit))
+                        .collect()
+                }
+            }
         };
         Ok(response_from_resolved_types(
             facts,
@@ -1081,6 +1114,18 @@ impl ContextSource for PlatformSearchSource {
 
 fn map_name(document: &SearchDocument) -> Name {
     Name::new(document.name.primary.clone(), document.name.alias.clone())
+}
+
+fn type_info(document: &SearchDocument) -> TypeInfo {
+    TypeInfo {
+        description: document.description.clone(),
+        metadata_template: document.metadata_kind.as_ref().map(|metadata_kind| {
+            MetadataTemplateInfo {
+                metadata_kind: metadata_kind.clone(),
+                parameters: document.template_parameters.clone(),
+            }
+        }),
+    }
 }
 
 fn is_platform_document_kind(kind: SearchDocumentKind) -> bool {
@@ -1314,6 +1359,44 @@ mod tests {
 
         assert_eq!(response.status, ResolveStatus::Ok);
         assert_eq!(response.facts.len(), 1);
+    }
+
+    #[test]
+    fn platform_adapter_resolves_alias_and_metadata_template_info() {
+        let source = fixture_source();
+        let index = fixture_index("platform-adapter-template-alias.sqlite");
+        let adapter = PlatformSearchSource::with_source_id(index, source.clone());
+
+        let response = adapter
+            .resolve_type(
+                TypeLookup::ExactAlias {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    alias: "CatalogManager.<Catalog name>",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("alias type lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ok);
+        let template = response.facts.first().expect("template must resolve");
+        assert_eq!(
+            template.id.0.local_id,
+            "platform_type:СправочникМенеджер.<Имя справочника>"
+        );
+        assert_eq!(
+            template
+                .info
+                .metadata_template
+                .as_ref()
+                .expect("template metadata must be exposed")
+                .metadata_kind,
+            "СправочникМенеджер"
+        );
+        assert_eq!(
+            template.info.metadata_template.as_ref().unwrap().parameters,
+            vec!["Имя справочника".to_string()]
+        );
     }
 
     #[test]
@@ -1813,6 +1896,12 @@ mod tests {
         for record in [
             platform_type("НастройкиКомпоновкиДанных", None),
             platform_type("ОтборКомпоновкиДанных", Some("DataCompositionFilter")),
+            platform_template_type(
+                "СправочникМенеджер.<Имя справочника>",
+                "CatalogManager.<Catalog name>",
+                "СправочникМенеджер",
+                "Имя справочника",
+            ),
             platform_type("КоллекцияЭлементовОтбораКомпоновкиДанных", None),
             platform_type("ЭлементОтбораКомпоновкиДанных", None),
         ] {
@@ -1961,6 +2050,19 @@ mod tests {
             facts: model::SectionFacts::default(),
             source: source_ref(primary),
         }
+    }
+
+    fn platform_template_type(
+        primary: &str,
+        alias: &str,
+        metadata_kind: &str,
+        template_parameter: &str,
+    ) -> model::PlatformType {
+        let mut record = platform_type(primary, Some(alias));
+        record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+        record.metadata_kind = Some(metadata_kind.to_string());
+        record.template_parameters = vec![template_parameter.to_string()];
+        record
     }
 
     fn name(primary: &str, alias: Option<&str>) -> model::LocalizedName {

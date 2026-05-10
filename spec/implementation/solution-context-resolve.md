@@ -120,6 +120,14 @@ analyzer lookup as separate modules: setup may build a deterministic index throu
 `context-resolver-search` read-only adapter constructors and composes sources through
 `context-resolver-core`.
 
+T131 implementation note: platform type resolution now includes `TypeLookup::ExactAlias` so
+downstream analyzers can resolve stable English aliases through the resolver boundary instead of
+carrying analyzer-owned localized-name tables. `TypeInfo.metadata_template` exposes the
+Syntax Assistant-owned metadata-template facts for platform types: metadata kind and template
+parameters. The SQLite storage used to preserve those facts remains internal to
+`syntax-helper-search`; resolver consumers receive only the public DTOs from
+`context-resolver-core`.
+
 ## Source And Language Domains
 
 Resolution is domain-aware. A name alone is not identity.

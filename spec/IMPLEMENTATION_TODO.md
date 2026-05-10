@@ -838,3 +838,48 @@ Verification:
 - If the implementation adds a separate smoke crate or example package, its package-specific test
   command is recorded here when T130 is completed. No separate smoke crate or example package was
   added.
+
+### [x] T131. Expose platform template aliases and metadata-template facts through the resolver
+
+Spec refs:
+
+- ADR-0008
+- ADR-0011
+- FR-CTX-RESOLVE-001
+- UC-CTX-002
+- NFR-RESOLVE-001
+- `spec/implementation/solution-context-resolve.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Add a public resolver type lookup path for exact platform type aliases so downstream analyzer
+  adapters can use English aliases without analyzer-owned localized name tables.
+- Persist and expose platform metadata-template information already owned by Syntax Assistant
+  extraction: metadata kind and template parameters for `PlatformTypeKind::MetadataTemplate`
+  records.
+- Keep SQLite table details internal to `syntax-helper-search`; expose the data through
+  `context-resolver-core` / `context-resolver-search` DTOs.
+- Do not implement downstream analyzer generic refinement, generated configuration type mapping,
+  CLI behavior, transport layers, compatibility fallbacks or public SQLite schema commitments.
+
+Verification:
+
+- Focused `syntax-helper-search` test proves metadata-template information survives index build and
+  read-only open.
+- Focused `context-resolver-search` test proves exact alias type lookup and resolver DTO template
+  metadata for a catalog metadata-template type.
+- `cargo fmt --all --check` passes.
+- `cargo test -p syntax-helper-search` passes.
+- `cargo test -p context-resolver-search` passes.
+
+Completed 2026-05-10:
+
+- Added `TypeLookup::ExactAlias` and `TypeInfo.metadata_template` to the resolver core boundary.
+- Persisted metadata-template facts in search index schema version 8 and hydrated them through
+  resolver search DTOs.
+- Added focused index/resolver tests plus CLI fixture updates for the expanded `SearchDocument`
+  shape.
+- Verified with `cargo fmt --all --check`, `cargo test -p syntax-helper-search`,
+  `cargo test -p context-resolver-core`, `cargo test -p context-resolver-search` and
+  `cargo test -p v8-context-hbk-cli`.

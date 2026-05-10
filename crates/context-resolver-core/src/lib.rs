@@ -136,6 +136,13 @@ pub struct Signature {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeInfo {
     pub description: Option<String>,
+    pub metadata_template: Option<MetadataTemplateInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetadataTemplateInfo {
+    pub metadata_kind: String,
+    pub parameters: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -350,6 +357,11 @@ pub enum TypeLookup<'a> {
         source: Option<&'a SourceId>,
         domain: Option<LanguageDomain>,
         name: &'a str,
+    },
+    ExactAlias {
+        source: Option<&'a SourceId>,
+        domain: Option<LanguageDomain>,
+        alias: &'a str,
     },
 }
 
@@ -586,6 +598,10 @@ impl ContextResolver for CompositeResolver {
             if let TypeLookup::ExactName {
                 source: Some(query_source),
                 ..
+            }
+            | TypeLookup::ExactAlias {
+                source: Some(query_source),
+                ..
             } = query
                 && source.descriptor().id != *query_source
             {
@@ -808,7 +824,10 @@ mod tests {
                 FactKind::Type,
                 local_id,
             ));
-            let info = TypeInfo { description: None };
+            let info = TypeInfo {
+                description: None,
+                metadata_template: None,
+            };
             let fact = ContextFact {
                 id: id.0.clone(),
                 name: Name::new(name, None::<String>),
@@ -987,6 +1006,18 @@ mod tests {
                     .filter(|resolved| source.is_none_or(|source| source == &resolved.id.0.source))
                     .filter(|resolved| domain.is_none_or(|domain| domain == resolved.id.0.domain))
                     .filter(|resolved| resolved.fact.name.primary == name)
+                    .cloned()
+                    .collect(),
+                TypeLookup::ExactAlias {
+                    source,
+                    domain,
+                    alias,
+                } => self
+                    .types
+                    .iter()
+                    .filter(|resolved| source.is_none_or(|source| source == &resolved.id.0.source))
+                    .filter(|resolved| domain.is_none_or(|domain| domain == resolved.id.0.domain))
+                    .filter(|resolved| resolved.fact.name.alias.as_deref() == Some(alias))
                     .cloned()
                     .collect(),
             };
@@ -1326,7 +1357,10 @@ mod tests {
             id: platform_type.0.clone(),
             name: Name::new("СправочникСсылка", None::<String>),
             owner: None,
-            details: FactDetails::Type(TypeInfo { description: None }),
+            details: FactDetails::Type(TypeInfo {
+                description: None,
+                metadata_template: None,
+            }),
             relations: Vec::new(),
         };
         let fake = FakeSource::new("query-fixture", LanguageDomain::QueryLanguage).with_relation(
