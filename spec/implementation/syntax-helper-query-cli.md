@@ -189,15 +189,17 @@ contract or CLI JSON expansion.
 T132 implementation note: schema version 9 stored semantic generic platform template facts and
 generic owner-parameter bindings for type references.
 
-T133 implementation note: schema version 10 supersedes the closed semantic-kind shape. The index
-stores open generic template families and generated variants derived from HBK facts, while keeping
-SQLite tables and columns private rebuildable provider state. Consumers must use the Rust
-search/resolver APIs instead of depending on SQLite table or column names. This does not change the
-CLI JSON provider envelope or the canonical `syntax export` consumer schema.
+T133 implementation note: schema version 11 supersedes the closed semantic-kind shape. The index
+stores open generic template families, generated variants, classification evidence diagnostics and
+generic owner-parameter binding arguments derived from HBK facts, while keeping SQLite tables and
+columns private rebuildable provider state. Consumers must use the Rust search/resolver APIs instead
+of depending on SQLite table or column names. This does not change the CLI JSON provider envelope or
+the canonical `syntax export` consumer schema.
 
 T133 generic template classification rule:
 
-- use each template's `alias_base` or fallback root-locale `primary_base`;
+- use each template's `alias_base` or fallback root-locale `primary_base`; non-root localized
+  primary names without aliases are left unclassified with diagnostics instead of becoming families;
 - derive family roots from `*Manager` templates;
 - assign templates by longest manager-root prefix;
 - do not create fallback-prefix families for unassigned templates;

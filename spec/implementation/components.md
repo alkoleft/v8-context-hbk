@@ -623,7 +623,7 @@ than building from consumer JSON export directories.
 
 Implemented first slice:
 
-- `syntax-helper-search` owns `index.sqlite` schema version `6`, read-only query opens, FTS5 keyword
+- `syntax-helper-search` owns `index.sqlite` schema version `11`, read-only query opens, FTS5 keyword
   search, prefix-bounded fuzzy candidate selection, exact name/alias and owner/member lookup, and
   directed owner/type-reference relationship traversal.
 - `SearchHit`, `SearchDocument`, `RelatedHit` and `RelationStep` are Rust query result structs for
@@ -665,6 +665,11 @@ Implemented first slice:
   extracted language `type_refs` / `return_types`, normalizing `language_function` signatures and
   parameters as callable rows, and deriving relation rows from explicit extracted type references.
   This does not create a public SQLite table contract.
+- T131-T133 raised the private rebuildable search-index schema through versions `8`, `9`, `10` and
+  `11` to store metadata-template facts, open generic family/variant keys, persisted generic
+  classification evidence and multi-argument owner-parameter generic bindings. Consumers must use
+  the Rust search/resolver APIs for those facts; SQLite tables and columns remain private provider
+  state and older indexes are rejected with rebuild instructions.
 
 T87 classifies the remaining duplicate-looking query/provider mechanisms as boundary decisions
 rather than immediate cleanup work:

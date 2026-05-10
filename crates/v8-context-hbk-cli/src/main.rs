@@ -1839,6 +1839,7 @@ mod tests {
             metadata_kind: None,
             template_parameters: Vec::new(),
             generic_template_key: None,
+            generic_template_classification_diagnostic: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Compact);
@@ -1887,6 +1888,7 @@ mod tests {
             metadata_kind: None,
             template_parameters: Vec::new(),
             generic_template_key: None,
+            generic_template_classification_diagnostic: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Full);

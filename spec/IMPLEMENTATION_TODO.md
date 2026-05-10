@@ -984,7 +984,7 @@ Scope:
 
 Verification:
 
-- Focused `syntax-helper-model` tests cover alias/fallback base selection, manager-root discovery,
+- Focused `syntax-helper-model` tests cover alias/root-primary fallback base selection, manager-root discovery,
   longest-prefix assignment and unclassified diagnostics.
 - Focused classification tests prove overlapping roots such as `DocumentJournal` before `Document`
   and `ExternalDataSourceTable` before `ExternalDataSource`.
@@ -1011,12 +1011,15 @@ Completed 2026-05-11:
   family discovery, longest-prefix assignment, no fallback-prefix families and direct-ref scoring
   for remaining templates.
 - Preserved generic parameter names as source template parameters and exposed generic bindings as
-  owner/target parameter-slot indexes on returned type references.
-- Updated SQLite provider storage to schema version 10 with private family/variant columns and
-  parameter-slot binding columns.
+  owner/target parameter-slot indexes on returned type references, including multi-parameter
+  bindings when owner and target template parameter labels match by slot name.
+- Updated SQLite provider storage to schema version 11 with private family/variant columns,
+  persisted classification evidence diagnostics and parameter-slot binding argument storage.
 - Representative local 8.5.1.1150 `shcntx_ru.hbk` corpus indexing produced 121 generic template
   rows, 0 unclassified rows and assigned `BaseCalculationTypes*`, `LeadingCalculationTypes*` and
   `DisplacingCalculationTypes*` to `ChartOfCalculationTypes`.
+- Representative local 8.5.1.1150 `shcntx_root.hbk` corpus indexing also produced 121 generic
+  template rows and 0 unclassified rows, proving the root-primary fallback path on real source data.
 - Verified with focused model/search/resolver/extract/export/CLI tests, `cargo fmt --all --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` and local
   corpus SQL evidence recorded in `spec/acceptance/baseline.md`.

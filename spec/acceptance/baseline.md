@@ -1815,23 +1815,32 @@ platform_type:ДокументСсылка.<Имя документа>`, semanti
 `ДокументСсылка`.
 
 T133 replaced the closed T132 generic-template enum contract with data-driven open
-family/variant keys. The search index schema version is `10`; SQLite remains a private rebuildable
+family/variant keys. The search index schema version is `11`; SQLite remains a private rebuildable
 provider artifact. Generic template classification now uses alias-base or root-locale primary-base,
 manager-root family discovery, longest-prefix assignment and direct generic type-reference scoring
-for templates left unassigned by manager roots. Generic parameter labels are preserved as source
-parameter slots, not as family semantics.
+for templates left unassigned by manager roots. Non-root localized primary names without aliases are
+left unclassified with persisted diagnostics instead of becoming families. Generic parameter labels
+are preserved as source parameter slots and matching owner/target parameter labels produce
+parameter-slot binding arguments, not family semantics.
 
 Focused tests cover alias/fallback base extraction, manager-root longest-prefix classification,
 direct-reference family assignment for previously unassigned templates, unclassified diagnostics,
 family/variant lookup and resolver-visible parameter-slot generic bindings. A representative
 release `syntax index` run on 2026-05-11 against
 `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced
-`target/t133-generic-template.sqlite` with 25415 documents in 11243 ms. SQL evidence confirmed
+`target/t133-review-generic-template.sqlite` with 25415 documents in 11409 ms. SQL evidence confirmed
 `121` generic `type_templates` rows and `0` unclassified rows. The previously disputed templates
 `БазовыеВидыРасчета`, `БазовыеВидыРасчетаСтрока`, `ВедущиеВидыРасчета`,
 `ВедущиеВидыРасчетаСтрока`, `ВытесняющиеВидыРасчета` and
 `ВытесняющиеВидыРасчетаСтрока` are assigned to family `ChartOfCalculationTypes` through direct
-generic type-reference evidence. The representative source-backed member
+generic type-reference evidence and their persisted classification diagnostics record
+`direct_type_ref` evidence. The representative source-backed member
 `ДокументОбъект.<Имя документа>.Ссылка` stores `target_type_id =
 platform_type:ДокументСсылка.<Имя документа>`, target family/variant `Document/Ref` and
 `owner_parameter` binding indexes `0 -> 0`.
+
+A representative release `syntax index` run on 2026-05-11 against
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` produced
+`target/t133-review-root-generic-template.sqlite` with 25415 documents in 8754 ms. SQL evidence
+confirmed schema version `11`, `121` generic `type_templates` rows and `0` unclassified rows,
+covering the real root-primary fallback path.

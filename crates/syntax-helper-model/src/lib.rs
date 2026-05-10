@@ -184,10 +184,21 @@ pub fn platform_type_owner_semantic_key(
 }
 
 pub fn generic_platform_template_base(name: &LocalizedName) -> Option<String> {
+    generic_platform_template_base_for_source(name, false)
+}
+
+pub fn generic_platform_template_base_for_source(
+    name: &LocalizedName,
+    allow_primary_fallback: bool,
+) -> Option<String> {
     name.alias
         .as_deref()
         .and_then(generic_platform_template_base_from_name)
-        .or_else(|| generic_platform_template_base_from_name(&name.primary))
+        .or_else(|| {
+            allow_primary_fallback
+                .then(|| generic_platform_template_base_from_name(&name.primary))
+                .flatten()
+        })
         .map(str::to_string)
 }
 
@@ -436,7 +447,7 @@ mod tests {
     }
 
     #[test]
-    fn generic_platform_template_base_prefers_alias_then_primary() {
+    fn generic_platform_template_base_prefers_alias_and_requires_explicit_primary_fallback() {
         assert_eq!(
             generic_platform_template_base(&LocalizedName {
                 primary: "СправочникСсылка.<Имя справочника>".to_string(),
@@ -449,6 +460,16 @@ mod tests {
                 primary: "DocumentObject.<Document name>".to_string(),
                 alias: None,
             }),
+            None
+        );
+        assert_eq!(
+            generic_platform_template_base_for_source(
+                &LocalizedName {
+                    primary: "DocumentObject.<Document name>".to_string(),
+                    alias: None,
+                },
+                true,
+            ),
             Some("DocumentObject".to_string())
         );
         assert_eq!(

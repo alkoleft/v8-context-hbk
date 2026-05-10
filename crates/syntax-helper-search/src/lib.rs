@@ -12,14 +12,21 @@ use strsim::levenshtein;
 use syntax_helper_language as language;
 pub use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 10;
+pub const INDEX_SCHEMA_VERSION: u32 = 11;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 type TypeTemplateRow = (
     String,
     Vec<String>,
     Option<model::GenericPlatformTemplateKey>,
+    Option<String>,
 );
+
+#[derive(Debug, Clone)]
+struct GenericTemplateFact {
+    key: model::GenericPlatformTemplateKey,
+    parameters: Vec<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct IndexMetadata {
@@ -297,6 +304,7 @@ pub struct SearchDocument {
     pub metadata_kind: Option<String>,
     pub template_parameters: Vec<String>,
     pub generic_template_key: Option<model::GenericPlatformTemplateKey>,
+    pub generic_template_classification_diagnostic: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -385,7 +393,7 @@ impl SearchIndexBuilder {
         ));
     }
 
-    fn into_documents(self) -> Result<DocumentsBuild, SearchError> {
+    fn into_documents(self, source_locale: &str) -> Result<DocumentsBuild, SearchError> {
         let identities =
             DocumentIdentities::from_inputs(&self.platform_types, &self.query_tables, &self.enums);
         let mut documents = self
@@ -399,7 +407,7 @@ impl SearchIndexBuilder {
                 .then_with(|| left.id.cmp(&right.id))
         });
         let mut warnings = deduplicate_documents(&mut documents);
-        warnings.extend(classify_generic_templates(&mut documents));
+        warnings.extend(classify_generic_templates(&mut documents, source_locale));
         validate_document_id_collisions(&documents)?;
         Ok(DocumentsBuild {
             documents,
@@ -897,7 +905,7 @@ pub fn build_index_from_builder_with_report(
     metadata: &IndexMetadata,
     builder: SearchIndexBuilder,
 ) -> Result<IndexBuildReport, SearchError> {
-    let build = builder.into_documents()?;
+    let build = builder.into_documents(&metadata.source_locale)?;
     build_index_from_documents(path, metadata, build.documents)?;
     Ok(IndexBuildReport {
         warnings: build.warnings,
@@ -999,7 +1007,11 @@ fn deduplicate_documents(documents: &mut Vec<SearchDocument>) -> Vec<IndexBuildW
     warnings
 }
 
-fn classify_generic_templates(documents: &mut [SearchDocument]) -> Vec<IndexBuildWarning> {
+fn classify_generic_templates(
+    documents: &mut [SearchDocument],
+    source_locale: &str,
+) -> Vec<IndexBuildWarning> {
+    let allow_primary_fallback = source_locale == "root";
     let by_name = relation_lookup(documents);
     let type_id_by_normalized_id = documents
         .iter()
@@ -1014,32 +1026,48 @@ fn classify_generic_templates(documents: &mut [SearchDocument]) -> Vec<IndexBuil
         .filter_map(|document| {
             Some(GenericTemplateInfo {
                 id: document.id.clone(),
-                base: model::generic_platform_template_base(&document.name)?,
+                base: model::generic_platform_template_base_for_source(
+                    &document.name,
+                    allow_primary_fallback,
+                ),
                 metadata_kind: document.metadata_kind.clone()?,
             })
         })
         .collect::<Vec<_>>();
     let mut family_roots = template_infos
         .iter()
-        .filter_map(|template| manager_family_root(&template.base).map(str::to_string))
+        .filter_map(|template| {
+            template
+                .base
+                .as_deref()
+                .and_then(manager_family_root)
+                .map(str::to_string)
+        })
         .collect::<Vec<_>>();
     family_roots.sort_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
     family_roots.dedup();
 
     let mut classified = BTreeMap::<String, model::GenericPlatformTemplateKey>::new();
+    let mut diagnostics = BTreeMap::<String, String>::new();
     let mut unassigned = BTreeSet::<String>::new();
     for template in &template_infos {
+        let Some(base) = template.base.as_deref() else {
+            unassigned.insert(template.id.clone());
+            continue;
+        };
         if let Some(root) = family_roots
             .iter()
-            .find(|root| template.base.starts_with(root.as_str()))
+            .find(|root| base.starts_with(root.as_str()))
         {
-            classified.insert(
-                template.id.clone(),
-                model::GenericPlatformTemplateKey::new(
-                    root.clone(),
-                    generic_template_variant(root, &template.base),
-                ),
+            let key = model::GenericPlatformTemplateKey::new(
+                root.clone(),
+                generic_template_variant(root, base),
             );
+            diagnostics.insert(
+                template.id.clone(),
+                format!("manager_root family={} variant={}", key.family, key.variant),
+            );
+            classified.insert(template.id.clone(), key);
         } else {
             unassigned.insert(template.id.clone());
         }
@@ -1092,38 +1120,59 @@ fn classify_generic_templates(documents: &mut [SearchDocument]) -> Vec<IndexBuil
         .iter()
         .filter(|template| unassigned.contains(template.id.as_str()))
     {
+        let Some(base) = template.base.as_deref() else {
+            let message = format!(
+                "generic template '{}' has no alias base and primary fallback is only allowed for root source locale",
+                template.id
+            );
+            diagnostics.insert(template.id.clone(), message.clone());
+            warnings.push(IndexBuildWarning {
+                code: "GENERIC_TEMPLATE_UNCLASSIFIED",
+                message,
+            });
+            continue;
+        };
         match direct_scores.get(&template.id) {
             Some(scores) if scores.len() == 1 => {
-                let (family, _) = scores.iter().next().expect("one score must exist");
-                classified.insert(
+                let (family, score) = scores.iter().next().expect("one score must exist");
+                let key = model::GenericPlatformTemplateKey::new(
+                    family.clone(),
+                    generic_template_variant(family, base),
+                );
+                diagnostics.insert(
                     template.id.clone(),
-                    model::GenericPlatformTemplateKey::new(
-                        family.clone(),
-                        generic_template_variant(family, &template.base),
+                    format!(
+                        "direct_type_ref family={} variant={} score={}",
+                        key.family, key.variant, score
                     ),
                 );
+                classified.insert(template.id.clone(), key);
             }
             Some(scores) if !scores.is_empty() => {
+                let message = format!(
+                    "generic template '{}' has multiple direct generic family candidates: {}",
+                    template.id,
+                    scores
+                        .keys()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                diagnostics.insert(template.id.clone(), message.clone());
                 warnings.push(IndexBuildWarning {
                     code: "GENERIC_TEMPLATE_AMBIGUOUS_FAMILY",
-                    message: format!(
-                        "generic template '{}' has multiple direct generic family candidates: {}",
-                        template.id,
-                        scores
-                            .keys()
-                            .map(String::as_str)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
+                    message,
                 });
             }
             _ => {
+                let message = format!(
+                    "generic template '{}' has no manager-root or direct generic type-reference family evidence",
+                    template.id
+                );
+                diagnostics.insert(template.id.clone(), message.clone());
                 warnings.push(IndexBuildWarning {
                     code: "GENERIC_TEMPLATE_UNCLASSIFIED",
-                    message: format!(
-                        "generic template '{}' has no manager-root or direct generic type-reference family evidence",
-                        template.id
-                    ),
+                    message,
                 });
             }
         }
@@ -1133,6 +1182,9 @@ fn classify_generic_templates(documents: &mut [SearchDocument]) -> Vec<IndexBuil
         if let Some(key) = classified.get(&document.id) {
             document.generic_template_key = Some(key.clone());
         }
+        if let Some(diagnostic) = diagnostics.get(&document.id) {
+            document.generic_template_classification_diagnostic = Some(diagnostic.clone());
+        }
     }
     warnings
 }
@@ -1140,7 +1192,7 @@ fn classify_generic_templates(documents: &mut [SearchDocument]) -> Vec<IndexBuil
 #[derive(Debug)]
 struct GenericTemplateInfo {
     id: String,
-    base: String,
+    base: Option<String>,
     metadata_kind: String,
 }
 
@@ -2004,12 +2056,18 @@ impl SearchIndex {
             .collect();
         document.signatures = self.signatures_for(&document)?;
         document.parameter_terms = self.parameter_terms_for(&document)?;
-        if let Some((metadata_kind, template_parameters, generic_template_key)) =
-            self.type_template_for(&document.id)?
+        if let Some((
+            metadata_kind,
+            template_parameters,
+            generic_template_key,
+            generic_template_classification_diagnostic,
+        )) = self.type_template_for(&document.id)?
         {
             document.metadata_kind = Some(metadata_kind);
             document.template_parameters = template_parameters;
             document.generic_template_key = generic_template_key;
+            document.generic_template_classification_diagnostic =
+                generic_template_classification_diagnostic;
         }
         Ok(document)
     }
@@ -2017,7 +2075,8 @@ impl SearchIndex {
     fn type_template_for(&self, document_id: &str) -> Result<Option<TypeTemplateRow>, SearchError> {
         self.connection
             .query_row(
-                "SELECT metadata_kind, template_parameters, generic_family, generic_variant
+                "SELECT metadata_kind, template_parameters, generic_family, generic_variant,
+                        generic_classification_diagnostic
                  FROM type_templates WHERE document_id = ?1",
                 [document_id],
                 |row| {
@@ -2028,6 +2087,7 @@ impl SearchIndex {
                             row.get::<_, Option<String>>(2)?,
                             row.get::<_, Option<String>>(3)?,
                         ),
+                        row.get::<_, Option<String>>(4)?,
                     ))
                 },
             )
@@ -2045,7 +2105,9 @@ impl SearchIndex {
             .prepare(
                 "SELECT target_type_name, target_type_id, generic_template_family,
                         generic_template_variant, generic_binding_kind,
-                        generic_binding_owner_parameter_index, generic_binding_target_parameter_index
+                        generic_binding_owner_parameter_index,
+                        generic_binding_target_parameter_index,
+                        generic_binding_arguments
                  FROM type_refs
                  WHERE source_document_id = ?1 AND ref_kind = ?2
                  ORDER BY source_signature_ordinal, source_parameter_ordinal, ordinal, target_type_name",
@@ -2158,7 +2220,9 @@ impl SearchIndex {
             .prepare(
                 "SELECT target_type_name, target_type_id, generic_template_family,
                         generic_template_variant, generic_binding_kind,
-                        generic_binding_owner_parameter_index, generic_binding_target_parameter_index
+                        generic_binding_owner_parameter_index,
+                        generic_binding_target_parameter_index,
+                        generic_binding_arguments
                  FROM type_refs
                  WHERE source_signature_id = ?1
                    AND source_parameter_ordinal = ?2
@@ -2491,7 +2555,8 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  generic_template_variant TEXT,
                  generic_binding_kind TEXT,
                  generic_binding_owner_parameter_index INTEGER,
-                 generic_binding_target_parameter_index INTEGER
+                 generic_binding_target_parameter_index INTEGER,
+                 generic_binding_arguments TEXT
              );
              CREATE TABLE document_names (
                  key TEXT NOT NULL,
@@ -2725,7 +2790,13 @@ fn insert_normalized_facts(
             );
         }
         if let Some(kind) = &document.generic_template_key {
-            generic_template_by_type_id.insert(document.id.clone(), kind.clone());
+            generic_template_by_type_id.insert(
+                document.id.clone(),
+                GenericTemplateFact {
+                    key: kind.clone(),
+                    parameters: document.template_parameters.clone(),
+                },
+            );
         }
     }
 
@@ -2792,8 +2863,8 @@ fn insert_normalized_facts(
                 source_signature_ordinal, source_parameter_ordinal, target_type_name,
                 target_type_id, generic_template_family, generic_template_variant,
                 generic_binding_kind, generic_binding_owner_parameter_index,
-                generic_binding_target_parameter_index
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                generic_binding_target_parameter_index, generic_binding_arguments
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         )
         .map_err(|source| SearchError::Sqlite {
             path: path.to_path_buf(),
@@ -2824,7 +2895,9 @@ fn insert_normalized_facts(
                     document.template_parameters.join("\n"),
                     generic_template_key.map(|kind| kind.family.as_str()),
                     generic_template_key.map(|kind| kind.variant.as_str()),
-                    Option::<&str>::None,
+                    document
+                        .generic_template_classification_diagnostic
+                        .as_deref(),
                 ])
                 .map_err(|source| SearchError::Sqlite {
                     path: path.to_path_buf(),
@@ -3014,7 +3087,7 @@ fn insert_type_ref(
     path: &Path,
     type_id_by_key: &BTreeMap<String, Option<String>>,
     type_id_by_metadata_kind: &BTreeMap<String, Option<String>>,
-    generic_template_by_type_id: &BTreeMap<String, model::GenericPlatformTemplateKey>,
+    generic_template_by_type_id: &BTreeMap<String, GenericTemplateFact>,
     row: TypeRefRow<'_>,
 ) -> Result<(), SearchError> {
     let mut target_type_id = type_id_by_key
@@ -3042,11 +3115,18 @@ fn insert_type_ref(
             row.source_parameter_ordinal.map(|value| value as i64),
             row.target_type_name,
             target_type_id,
-            generic_template_key.map(|kind| kind.family.as_str()),
-            generic_template_key.map(|kind| kind.variant.as_str()),
+            generic_template_key.map(|fact| fact.key.family.as_str()),
+            generic_template_key.map(|fact| fact.key.variant.as_str()),
             generic_binding.as_ref().map(|_| "owner_parameter"),
-            generic_binding.map(|binding| binding.owner_parameter_index as i64),
-            generic_binding.map(|binding| binding.target_parameter_index as i64),
+            generic_binding
+                .as_ref()
+                .and_then(|binding| binding.arguments.first())
+                .map(|argument| argument.owner_parameter_index as i64),
+            generic_binding
+                .as_ref()
+                .and_then(|binding| binding.arguments.first())
+                .map(|argument| argument.target_parameter_index as i64),
+            generic_binding.as_ref().map(binding_arguments_to_storage),
         ])
         .map(|_| ())
         .map_err(|source| SearchError::Sqlite {
@@ -3055,8 +3135,13 @@ fn insert_type_ref(
         })
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct OwnerParameterBinding {
+    arguments: Vec<OwnerParameterBindingArgument>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OwnerParameterBindingArgument {
     owner_parameter_index: usize,
     target_parameter_index: usize,
 }
@@ -3064,14 +3149,42 @@ struct OwnerParameterBinding {
 fn generic_template_binding(
     owner_type_id: Option<&str>,
     target_type_id: Option<&str>,
-    generic_template_by_type_id: &BTreeMap<String, model::GenericPlatformTemplateKey>,
+    generic_template_by_type_id: &BTreeMap<String, GenericTemplateFact>,
 ) -> Option<OwnerParameterBinding> {
-    let owner_kind = generic_template_by_type_id.get(owner_type_id?)?;
-    let target_kind = generic_template_by_type_id.get(target_type_id?)?;
-    (owner_kind.family == target_kind.family).then_some(OwnerParameterBinding {
-        owner_parameter_index: 0,
-        target_parameter_index: 0,
-    })
+    let owner = generic_template_by_type_id.get(owner_type_id?)?;
+    let target = generic_template_by_type_id.get(target_type_id?)?;
+    if owner.key.family != target.key.family {
+        return None;
+    }
+    let mut owner_parameters = BTreeMap::<&str, usize>::new();
+    for (index, parameter) in owner.parameters.iter().enumerate() {
+        if owner_parameters.insert(parameter.as_str(), index).is_some() {
+            return None;
+        }
+    }
+    let mut arguments = Vec::new();
+    for (target_parameter_index, parameter) in target.parameters.iter().enumerate() {
+        let owner_parameter_index = *owner_parameters.get(parameter.as_str())?;
+        arguments.push(OwnerParameterBindingArgument {
+            owner_parameter_index,
+            target_parameter_index,
+        });
+    }
+    (!arguments.is_empty()).then_some(OwnerParameterBinding { arguments })
+}
+
+fn binding_arguments_to_storage(binding: &OwnerParameterBinding) -> String {
+    binding
+        .arguments
+        .iter()
+        .map(|argument| {
+            format!(
+                "{}:{}",
+                argument.owner_parameter_index, argument.target_parameter_index
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn insert_type_lookup_key(
@@ -3441,6 +3554,7 @@ fn document(
         metadata_kind: None,
         template_parameters: Vec::new(),
         generic_template_key: None,
+        generic_template_classification_diagnostic: None,
     }
 }
 
@@ -3563,6 +3677,7 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         metadata_kind: None,
         template_parameters: Vec::new(),
         generic_template_key: None,
+        generic_template_classification_diagnostic: None,
     }
 }
 
@@ -3730,6 +3845,7 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
         metadata_kind: None,
         template_parameters: Vec::new(),
         generic_template_key: None,
+        generic_template_classification_diagnostic: None,
     })
 }
 
@@ -3741,21 +3857,33 @@ fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchT
     let binding_kind: Option<String> = row.get(4)?;
     let owner_parameter_index: Option<i64> = row.get(5)?;
     let target_parameter_index: Option<i64> = row.get(6)?;
+    let binding_arguments: Option<String> = row.get(7)?;
     let generic_binding = match (
         generic_template_key.clone(),
         binding_kind.as_deref(),
         owner_parameter_index,
         target_parameter_index,
+        binding_arguments.as_deref(),
     ) {
-        (Some(template_key), Some("owner_parameter"), Some(owner_index), Some(target_index)) => {
+        (Some(template_key), Some("owner_parameter"), _, _, Some(arguments)) => {
             Some(model::GenericTypeBinding {
                 template_key,
-                arguments: vec![model::GenericArgumentBinding::OwnerParameter {
-                    owner_parameter_index: owner_index as usize,
-                    target_parameter_index: target_index as usize,
-                }],
+                arguments: parse_binding_arguments(arguments),
             })
         }
+        (
+            Some(template_key),
+            Some("owner_parameter"),
+            Some(owner_index),
+            Some(target_index),
+            None,
+        ) => Some(model::GenericTypeBinding {
+            template_key,
+            arguments: vec![model::GenericArgumentBinding::OwnerParameter {
+                owner_parameter_index: owner_index as usize,
+                target_parameter_index: target_index as usize,
+            }],
+        }),
         _ => None,
     };
     Ok(SearchTypeRef {
@@ -3764,6 +3892,19 @@ fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchT
         generic_template_key,
         generic_binding,
     })
+}
+
+fn parse_binding_arguments(value: &str) -> Vec<model::GenericArgumentBinding> {
+    value
+        .lines()
+        .filter_map(|line| {
+            let (owner, target) = line.split_once(':')?;
+            Some(model::GenericArgumentBinding::OwnerParameter {
+                owner_parameter_index: owner.parse().ok()?,
+                target_parameter_index: target.parse().ok()?,
+            })
+        })
+        .collect()
 }
 
 fn availability_context_code(context: model::AvailabilityContext) -> &'static str {
@@ -4426,6 +4567,116 @@ mod tests {
     }
 
     #[test]
+    fn generic_template_classification_uses_external_data_source_table_before_source() {
+        let path = temp_path("generic-template-external-data-source-longest-root.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        for (primary, alias) in [
+            (
+                "ВнешнийИсточникДанныхМенеджер.<Имя внешнего источника>",
+                "ExternalDataSourceManager.<External data source name>",
+            ),
+            (
+                "ВнешнийИсточникДанныхТаблицаМенеджер.<Имя внешнего источника, Имя таблицы>",
+                "ExternalDataSourceTableManager.<External data source name, Table name>",
+            ),
+            (
+                "ВнешнийИсточникДанныхТаблицаСсылка.<Имя внешнего источника, Имя таблицы>",
+                "ExternalDataSourceTableRef.<External data source name, Table name>",
+            ),
+        ] {
+            let mut record = platform_type(primary, Some(alias), "Template.");
+            record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+            record.metadata_kind = record.name.primary.split('.').next().map(str::to_string);
+            record.template_parameters = vec![
+                "Имя внешнего источника".to_string(),
+                "Имя таблицы".to_string(),
+            ];
+            builder
+                .platform_type(record)
+                .expect("platform template must sink");
+        }
+
+        build_index_from_builder(&path, &metadata(), builder).expect("index must build");
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let hit = index
+            .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
+                "ExternalDataSourceTable",
+                "Ref",
+            ))
+            .expect("generic lookup must not fail")
+            .pop()
+            .expect("external data source table ref must resolve");
+
+        assert_eq!(
+            hit.document.generic_template_key,
+            Some(model::GenericPlatformTemplateKey::new(
+                "ExternalDataSourceTable",
+                "Ref",
+            ))
+        );
+    }
+
+    #[test]
+    fn generic_template_classification_allows_primary_fallback_only_for_root_source() {
+        let mut root_metadata = metadata();
+        root_metadata.locale = "en".to_string();
+        root_metadata.source_locale = "root".to_string();
+        let root_path = temp_path("generic-template-root-primary-fallback.sqlite");
+        let mut root_builder = SearchIndexBuilder::new();
+        for primary in [
+            "DocumentManager.<Document name>",
+            "DocumentRef.<Document name>",
+        ] {
+            let mut record = platform_type(primary, None, "Template.");
+            record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+            record.metadata_kind = record.name.primary.split('.').next().map(str::to_string);
+            record.template_parameters = vec!["Document name".to_string()];
+            root_builder
+                .platform_type(record)
+                .expect("platform template must sink");
+        }
+        build_index_from_builder(&root_path, &root_metadata, root_builder)
+            .expect("root index must build");
+        let root_index = SearchIndex::open_read_only(&root_path).expect("index must open");
+        assert_eq!(
+            root_index
+                .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
+                    "Document", "Ref"
+                ))
+                .expect("generic lookup must not fail")
+                .len(),
+            1
+        );
+
+        let ru_path = temp_path("generic-template-ru-primary-no-fallback.sqlite");
+        let mut ru_builder = SearchIndexBuilder::new();
+        let mut record = platform_type("ДокументСсылка.<Имя документа>", None, "Template.");
+        record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+        record.metadata_kind = Some("ДокументСсылка".to_string());
+        record.template_parameters = vec!["Имя документа".to_string()];
+        ru_builder
+            .platform_type(record)
+            .expect("platform template must sink");
+        let report = build_index_from_builder_with_report(&ru_path, &metadata(), ru_builder)
+            .expect("ru index must build");
+
+        assert_eq!(report.warnings.len(), 1);
+        assert_eq!(report.warnings[0].code, "GENERIC_TEMPLATE_UNCLASSIFIED");
+        let ru_index = SearchIndex::open_read_only(&ru_path).expect("index must open");
+        let hit = ru_index
+            .type_identity_by_id("platform_type:ДокументСсылка.<Имя документа>")
+            .expect("lookup must not fail")
+            .expect("template must exist");
+        assert!(hit.document.generic_template_key.is_none());
+        assert!(
+            hit.document
+                .generic_template_classification_diagnostic
+                .as_deref()
+                .is_some_and(|value| value.contains("primary fallback"))
+        );
+    }
+
+    #[test]
     fn generic_template_classification_uses_direct_refs_for_unassigned_templates() {
         let path = temp_path("generic-template-direct-ref-family.sqlite");
         let mut builder = SearchIndexBuilder::new();
@@ -4447,8 +4698,24 @@ mod tests {
                 "BaseCalculationTypes.<Chart name>",
             ),
             (
-                "СтрокаБазовыхВидовРасчета.<Имя плана видов расчета>",
+                "БазовыеВидыРасчетаСтрока.<Имя плана видов расчета>",
                 "BaseCalculationTypesRow.<Chart name>",
+            ),
+            (
+                "ВедущиеВидыРасчета.<Имя плана видов расчета>",
+                "LeadingCalculationTypes.<Chart name>",
+            ),
+            (
+                "ВедущиеВидыРасчетаСтрока.<Имя плана видов расчета>",
+                "LeadingCalculationTypesRow.<Chart name>",
+            ),
+            (
+                "ВытесняющиеВидыРасчета.<Имя плана видов расчета>",
+                "DisplacingCalculationTypes.<Chart name>",
+            ),
+            (
+                "ВытесняющиеВидыРасчетаСтрока.<Имя плана видов расчета>",
+                "DisplacingCalculationTypesRow.<Chart name>",
             ),
         ] {
             let mut record = platform_type(primary, Some(alias), "Template.");
@@ -4459,46 +4726,75 @@ mod tests {
                 .platform_type(record)
                 .expect("platform template must sink");
         }
-        builder
-            .type_property(model::PlatformProperty {
-                owner: name(
-                    "ПланВидовРасчетаОбъект.<Имя плана видов расчета>",
-                    Some("ChartOfCalculationTypesObject.<Chart name>"),
-                ),
-                owner_identity: Some(
-                    "platform_type:ПланВидовРасчетаОбъект.<Имя плана видов расчета>".to_string(),
-                ),
-                name: name("БазовыеВидыРасчета", Some("BaseCalculationTypes")),
-                semantic: model::SemanticContext::default(),
-                usage: None,
-                type_refs: vec![model::TypeRef {
-                    name: "БазовыеВидыРасчета".to_string(),
-                }],
-                description: None,
-                facts: model::SectionFacts::default(),
-                source: source("chart-object-base-calculation-types"),
-            })
-            .expect("property must sink");
-        builder
-            .type_property(model::PlatformProperty {
-                owner: name(
-                    "СтрокаБазовыхВидовРасчета.<Имя плана видов расчета>",
-                    Some("BaseCalculationTypesRow.<Chart name>"),
-                ),
-                owner_identity: Some(
-                    "platform_type:СтрокаБазовыхВидовРасчета.<Имя плана видов расчета>".to_string(),
-                ),
-                name: name("ВидРасчета", Some("CalculationType")),
-                semantic: model::SemanticContext::default(),
-                usage: None,
-                type_refs: vec![model::TypeRef {
-                    name: "ПланВидовРасчетаСсылка".to_string(),
-                }],
-                description: None,
-                facts: model::SectionFacts::default(),
-                source: source("base-calculation-row-calculation-type"),
-            })
-            .expect("property must sink");
+        for (name_primary, name_alias, target_type) in [
+            (
+                "БазовыеВидыРасчета",
+                "BaseCalculationTypes",
+                "БазовыеВидыРасчета",
+            ),
+            (
+                "ВедущиеВидыРасчета",
+                "LeadingCalculationTypes",
+                "ВедущиеВидыРасчета",
+            ),
+            (
+                "ВытесняющиеВидыРасчета",
+                "DisplacingCalculationTypes",
+                "ВытесняющиеВидыРасчета",
+            ),
+        ] {
+            builder
+                .type_property(model::PlatformProperty {
+                    owner: name(
+                        "ПланВидовРасчетаОбъект.<Имя плана видов расчета>",
+                        Some("ChartOfCalculationTypesObject.<Chart name>"),
+                    ),
+                    owner_identity: Some(
+                        "platform_type:ПланВидовРасчетаОбъект.<Имя плана видов расчета>"
+                            .to_string(),
+                    ),
+                    name: name(name_primary, Some(name_alias)),
+                    semantic: model::SemanticContext::default(),
+                    usage: None,
+                    type_refs: vec![model::TypeRef {
+                        name: target_type.to_string(),
+                    }],
+                    description: None,
+                    facts: model::SectionFacts::default(),
+                    source: source(name_primary),
+                })
+                .expect("property must sink");
+        }
+        for (owner_primary, owner_alias) in [
+            (
+                "БазовыеВидыРасчетаСтрока.<Имя плана видов расчета>",
+                "BaseCalculationTypesRow.<Chart name>",
+            ),
+            (
+                "ВедущиеВидыРасчетаСтрока.<Имя плана видов расчета>",
+                "LeadingCalculationTypesRow.<Chart name>",
+            ),
+            (
+                "ВытесняющиеВидыРасчетаСтрока.<Имя плана видов расчета>",
+                "DisplacingCalculationTypesRow.<Chart name>",
+            ),
+        ] {
+            builder
+                .type_property(model::PlatformProperty {
+                    owner: name(owner_primary, Some(owner_alias)),
+                    owner_identity: Some(format!("platform_type:{owner_primary}")),
+                    name: name("ВидРасчета", Some("CalculationType")),
+                    semantic: model::SemanticContext::default(),
+                    usage: None,
+                    type_refs: vec![model::TypeRef {
+                        name: "ПланВидовРасчетаСсылка".to_string(),
+                    }],
+                    description: None,
+                    facts: model::SectionFacts::default(),
+                    source: source(owner_primary),
+                })
+                .expect("property must sink");
+        }
 
         let report = build_index_from_builder_with_report(&path, &metadata(), builder)
             .expect("index must build");
@@ -4516,7 +4812,23 @@ mod tests {
             ),
             (
                 "BaseCalculationTypesRow",
-                "platform_type:СтрокаБазовыхВидовРасчета.<Имя плана видов расчета>",
+                "platform_type:БазовыеВидыРасчетаСтрока.<Имя плана видов расчета>",
+            ),
+            (
+                "LeadingCalculationTypes",
+                "platform_type:ВедущиеВидыРасчета.<Имя плана видов расчета>",
+            ),
+            (
+                "LeadingCalculationTypesRow",
+                "platform_type:ВедущиеВидыРасчетаСтрока.<Имя плана видов расчета>",
+            ),
+            (
+                "DisplacingCalculationTypes",
+                "platform_type:ВытесняющиеВидыРасчета.<Имя плана видов расчета>",
+            ),
+            (
+                "DisplacingCalculationTypesRow",
+                "platform_type:ВытесняющиеВидыРасчетаСтрока.<Имя плана видов расчета>",
             ),
         ] {
             let hits = index
@@ -4527,6 +4839,13 @@ mod tests {
                 .expect("generic lookup must not fail");
             assert_eq!(hits.len(), 1);
             assert_eq!(hits[0].document.id, expected_id);
+            assert!(
+                hits[0]
+                    .document
+                    .generic_template_classification_diagnostic
+                    .as_deref()
+                    .is_some_and(|value| value.starts_with("direct_type_ref "))
+            );
         }
     }
 
@@ -4550,6 +4869,78 @@ mod tests {
             .expect("index must build");
         assert_eq!(report.warnings.len(), 1);
         assert_eq!(report.warnings[0].code, "GENERIC_TEMPLATE_UNCLASSIFIED");
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let hit = index
+            .type_identity_by_id("platform_type:ОдиночныйШаблон.<Имя>")
+            .expect("lookup must not fail")
+            .expect("template must exist");
+        assert_eq!(
+            hit.document
+                .generic_template_classification_diagnostic
+                .as_deref(),
+            Some(report.warnings[0].message.as_str())
+        );
+    }
+
+    #[test]
+    fn generic_template_classification_persists_ambiguous_diagnostics() {
+        let path = temp_path("generic-template-ambiguous.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        for (primary, alias) in [
+            ("ПервыйМенеджер.<Имя>", "FirstManager.<Name>"),
+            ("ПервыйОбъект.<Имя>", "FirstObject.<Name>"),
+            ("ВторойМенеджер.<Имя>", "SecondManager.<Name>"),
+            ("ВторойОбъект.<Имя>", "SecondObject.<Name>"),
+            ("ОбщийШаблон.<Имя>", "SharedTemplate.<Name>"),
+        ] {
+            let mut record = platform_type(primary, Some(alias), "Template.");
+            record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+            record.metadata_kind = record.name.primary.split('.').next().map(str::to_string);
+            record.template_parameters = vec!["Имя".to_string()];
+            builder
+                .platform_type(record)
+                .expect("platform template must sink");
+        }
+        for (owner_primary, owner_alias, property_primary) in [
+            ("ПервыйОбъект.<Имя>", "FirstObject.<Name>", "ОбщийИзПервого"),
+            (
+                "ВторойОбъект.<Имя>",
+                "SecondObject.<Name>",
+                "ОбщийИзВторого",
+            ),
+        ] {
+            builder
+                .type_property(model::PlatformProperty {
+                    owner: name(owner_primary, Some(owner_alias)),
+                    owner_identity: Some(format!("platform_type:{owner_primary}")),
+                    name: name(property_primary, None),
+                    semantic: model::SemanticContext::default(),
+                    usage: None,
+                    type_refs: vec![model::TypeRef {
+                        name: "ОбщийШаблон".to_string(),
+                    }],
+                    description: None,
+                    facts: model::SectionFacts::default(),
+                    source: source(property_primary),
+                })
+                .expect("property must sink");
+        }
+
+        let report = build_index_from_builder_with_report(&path, &metadata(), builder)
+            .expect("index must build");
+        assert_eq!(report.warnings.len(), 1);
+        assert_eq!(report.warnings[0].code, "GENERIC_TEMPLATE_AMBIGUOUS_FAMILY");
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let hit = index
+            .type_identity_by_id("platform_type:ОбщийШаблон.<Имя>")
+            .expect("lookup must not fail")
+            .expect("template must exist");
+        assert_eq!(
+            hit.document
+                .generic_template_classification_diagnostic
+                .as_deref(),
+            Some(report.warnings[0].message.as_str())
+        );
     }
 
     #[test]
@@ -4622,6 +5013,93 @@ mod tests {
                 owner_parameter_index: 0,
                 target_parameter_index: 0,
             }]
+        );
+    }
+
+    #[test]
+    fn generic_template_type_refs_preserve_multiple_owner_parameter_bindings() {
+        let path = temp_path("generic-template-multi-binding.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        for mut record in [
+            platform_type(
+                "ВнешнийИсточникДанныхТаблицаМенеджер.<Имя внешнего источника, Имя таблицы>",
+                Some("ExternalDataSourceTableManager.<External data source name, Table name>"),
+                "External table manager template.",
+            ),
+            platform_type(
+                "ВнешнийИсточникДанныхТаблицаОбъект.<Имя внешнего источника, Имя таблицы>",
+                Some("ExternalDataSourceTableObject.<External data source name, Table name>"),
+                "External table object template.",
+            ),
+            platform_type(
+                "ВнешнийИсточникДанныхТаблицаСсылка.<Имя внешнего источника, Имя таблицы>",
+                Some("ExternalDataSourceTableRef.<External data source name, Table name>"),
+                "External table reference template.",
+            ),
+        ] {
+            record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+            record.metadata_kind = record.name.primary.split('.').next().map(str::to_string);
+            record.template_parameters = vec![
+                "Имя внешнего источника".to_string(),
+                "Имя таблицы".to_string(),
+            ];
+            builder
+                .platform_type(record)
+                .expect("platform template must sink");
+        }
+        builder
+            .type_property(model::PlatformProperty {
+                owner: name(
+                    "ВнешнийИсточникДанныхТаблицаОбъект.<Имя внешнего источника, Имя таблицы>",
+                    Some("ExternalDataSourceTableObject.<External data source name, Table name>"),
+                ),
+                owner_identity: Some(
+                    "platform_type:ВнешнийИсточникДанныхТаблицаОбъект.<Имя внешнего источника, Имя таблицы>"
+                        .to_string(),
+                ),
+                name: name("Ссылка", Some("Ref")),
+                semantic: model::SemanticContext::default(),
+                usage: None,
+                type_refs: vec![model::TypeRef {
+                    name: "ВнешнийИсточникДанныхТаблицаСсылка".to_string(),
+                }],
+                description: Some("External table reference.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source("external-data-source-table-object-ref"),
+            })
+            .expect("generic property must sink");
+        build_index_from_builder(&path, &metadata(), builder).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let property = index
+            .member_by_owner_type_id(
+                "platform_type:ВнешнийИсточникДанныхТаблицаОбъект.<Имя внешнего источника, Имя таблицы>",
+                "Ссылка",
+            )
+            .expect("property lookup must not fail")
+            .pop()
+            .expect("property must resolve");
+
+        let binding = property.document.type_ref_facts[0]
+            .generic_binding
+            .as_ref()
+            .expect("type ref must preserve generic binding");
+        assert_eq!(
+            binding.template_key,
+            model::GenericPlatformTemplateKey::new("ExternalDataSourceTable", "Ref")
+        );
+        assert_eq!(
+            binding.arguments,
+            vec![
+                model::GenericArgumentBinding::OwnerParameter {
+                    owner_parameter_index: 0,
+                    target_parameter_index: 0,
+                },
+                model::GenericArgumentBinding::OwnerParameter {
+                    owner_parameter_index: 1,
+                    target_parameter_index: 1,
+                },
+            ]
         );
     }
 
@@ -5242,7 +5720,7 @@ mod tests {
         };
 
         let build = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("same-signature constructor duplicates must not collide");
         assert_eq!(build.warnings.len(), 1);
         assert_eq!(build.warnings[0].code, "DUPLICATE_DOCUMENT_ID");
@@ -5267,7 +5745,7 @@ mod tests {
     fn streaming_builder_preserves_expected_document_and_relation_shape() {
         let context = fixture_context();
         let builder_documents = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("fixture documents must not collide")
             .documents;
         let ids = builder_documents
@@ -5372,7 +5850,7 @@ mod tests {
     fn sqlite_relation_rows_match_shared_relation_builder() {
         let path = temp_path("relation-builder-parity.sqlite");
         let documents = builder_from_context(&fixture_context())
-            .into_documents()
+            .into_documents("ru")
             .expect("fixture documents must not collide")
             .documents;
         let expected = relations_from_documents(&documents)
@@ -5684,7 +6162,7 @@ mod tests {
         };
 
         let documents = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("query table identities must not collide")
             .documents;
         let ids = documents
@@ -5741,7 +6219,7 @@ mod tests {
         };
 
         let documents = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("query table member identity must use parent table")
             .documents;
         let ids = documents
@@ -5782,7 +6260,7 @@ mod tests {
         );
         builder.table_field(field).unwrap();
 
-        let error = match builder.into_documents() {
+        let error = match builder.into_documents("ru") {
             Ok(_) => panic!("missing parent identity must reject query table members"),
             Err(error) => error,
         };
@@ -5827,7 +6305,7 @@ mod tests {
         };
 
         let documents = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("precomputed parent identities must index")
             .documents;
         let ids = documents
@@ -5857,7 +6335,7 @@ mod tests {
         };
 
         let documents = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("type event identities must use semantic owner")
             .documents;
         let ids = documents
@@ -5887,7 +6365,7 @@ mod tests {
         };
 
         let documents = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("missing-syntax query table identities must not collide")
             .documents;
         let ids = documents
@@ -5924,7 +6402,7 @@ mod tests {
         };
 
         let documents = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("semantic type variants must not collide")
             .documents;
         let ids = documents
@@ -6188,7 +6666,7 @@ mod tests {
         };
 
         let documents = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("enum semantic variants must not collide")
             .documents;
         let ids = documents
@@ -6233,7 +6711,7 @@ mod tests {
         };
 
         let documents = builder_from_context(&context)
-            .into_documents()
+            .into_documents("ru")
             .expect("alias-backed enum variants must not collide")
             .documents;
         let ids = documents
