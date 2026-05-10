@@ -77,21 +77,21 @@ Verification:
 References: T135, FR-SH-002, FR-SH-003, FR-SH-PROVIDER-001, NFR-DIAG-001,
 `acceptance/baseline.md`, `acceptance/uat-test-cases.md`.
 
-- [ ] Reflect the accepted measurement outputs in `spec/acceptance/baseline.md`; add or update
+- [x] Reflect the accepted measurement outputs in `spec/acceptance/baseline.md`; add or update
       `spec/acceptance/uat-test-cases.md` only when a gate is externally observable through
       CLI/provider behavior. T136 should not need a new ADR.
-- [ ] Define acceptance baseline gates for type work: unresolved type-reference count, ambiguous
+- [x] Define acceptance baseline gates for type work: unresolved type-reference count, ambiguous
       type-reference count, classified metadata-template count, unclassified template diagnostics,
       template binding count and expression-chain provider scenario status.
-- [ ] Document which gates are strict regressions and which are tracked informational metrics until
+- [x] Document which gates are strict regressions and which are tracked informational metrics until
       a later task tightens them.
-- [ ] Add or update UAT coverage only for externally observable CLI/provider behavior; keep
+- [x] Add or update UAT coverage only for externally observable CLI/provider behavior; keep
       implementation-only counters out of public JSON unless a requirement explicitly adds them.
 
 Verification:
 
-- [ ] `spec/acceptance/baseline.md` contains the current gate values and update rule.
-- [ ] `rg -n "type-reference|template|quality gate|quality gates" spec/acceptance`
+- [x] `spec/acceptance/baseline.md` contains the current gate values and update rule.
+- [x] `rg -n "type-reference|template|quality gate|quality gates" spec/acceptance`
 
 ### T137: Specify Explicit Type Domain Separation
 

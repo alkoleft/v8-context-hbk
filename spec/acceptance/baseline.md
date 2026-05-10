@@ -1904,3 +1904,51 @@ a safe platform-type hidden-winner rule. The RU report's ambiguous rows are narr
 platform type-name cases: `ЭлементыФормы` in `property_type` rows and `Настройка сервиса` /
 `НастройкаСервиса` in `parameter_type` and `return_type` rows; the report lists candidate type ids
 and source document examples so a later parser/model/index task can choose an explicit rule.
+
+T136 promotes the T135 type-reference and type-template measurements into acceptance quality gates
+for the current 8.5.1.1150 Syntax Assistant baseline. These gates are evaluated from fresh
+`syntax index` artifacts plus `syntax type-ref-gaps --format json`; they do not add provider JSON
+fields, consumer export fields or SQLite table-level public contracts.
+
+Current gate values:
+
+| Source | Unresolved type references | Ambiguous type references | Classified metadata/type templates | Unclassified type-template diagnostics | Type-template bindings | Expression-chain provider scenario |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `shcntx_ru.hbk` | 17367 | 13 | 121 | 0 | 353 | UAT-SH-018 passed on the accepted provider workflow |
+| `shcntx_root.hbk` | 17211 | 0 | 121 | 0 | 335 | UAT-SH-018 is language-neutral provider coverage; RU remains the representative real-index run |
+
+Strict regression gates:
+
+- `syntax type-ref-gaps` output must remain deterministic for the same prebuilt index.
+- Query/report commands must continue to read a prebuilt local index and must not parse
+  `shcntx_*.hbk` per query.
+- Unresolved type-reference counts must not increase above the current source-specific baseline
+  unless the task records a source-backed explanation and updates this baseline in the same change.
+- Ambiguous type-reference counts must not increase above the current source-specific baseline.
+  Hidden first-match selection remains forbidden; reducing ambiguity is acceptable.
+- Classified metadata/type-template count must remain at least `121` for each target source, and
+  unclassified type-template diagnostics must remain `0` unless a parser/model task deliberately
+  exposes a real source ambiguity and records the follow-up.
+- Type-template binding count must not drop below the current source-specific baseline without a
+  source-backed explanation. Higher counts are allowed only with an updated baseline and evidence
+  that the added bindings are source-backed.
+- The accepted expression-chain provider scenario must remain passing for the current provider
+  workflow; failures are regressions even if the raw type-reference counters stay unchanged.
+
+Tracked informational metrics until later tightening tasks:
+
+- role-level `type-ref-gaps` breakdowns;
+- top unresolved and ambiguous target names and examples;
+- index build timings associated with the measurement run;
+- whether unresolved primitive/domain names are resolved by type-domain separation work rather than
+  by platform-type guessing.
+
+Baseline update rule:
+
+- Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,
+  rerun `syntax type-ref-gaps --format json` twice and compare the reports before changing gate
+  values.
+- Promote only conclusions, counts and update rationale into this file. Raw JSON reports, SQLite
+  indexes and command logs remain service data under `target/`.
+- If a change intentionally tightens a gate, record the old value, the new value and the task or
+  ADR that owns the behavioral reason.

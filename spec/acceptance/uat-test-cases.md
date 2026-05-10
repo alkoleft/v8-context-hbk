@@ -1987,7 +1987,8 @@ Related use case: UC-SH-005D.
 
 Related requirements: FR-SH-002, FR-SH-003, FR-SH-PROVIDER-001, NFR-QUERY-001.
 
-Status: implementation UAT for T135.
+Status: implementation UAT for T135 and the externally observable report source for the T136
+quality gates.
 
 Preconditions:
 
@@ -2029,6 +2030,9 @@ Expected result:
 - The report contains overall totals, role totals, template-binding subset count and top
   unresolved/ambiguous names with source fact context.
 - The command reads the prebuilt index path and does not accept an HBK source path.
+- T136 baseline gates consume this report as an acceptance measurement. The report remains a
+  measurement command output, not a provider JSON expansion for `syntax get`, `syntax constructors`,
+  `syntax search` or `syntax related`.
 
 Cleanup:
 
