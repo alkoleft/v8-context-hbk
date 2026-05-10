@@ -1010,16 +1010,10 @@ fn first_html_element_text(raw_html: &str, tag_name: &str) -> Option<String> {
     let close_pattern = format!("</{tag_name}");
     let mut cursor = 0;
     while let Some(open_start) = find_ascii_case_insensitive(raw_html, cursor, &open_pattern) {
-        let Some(open_end) = raw_html[open_start..]
+        let open_end = raw_html[open_start..]
             .find('>')
-            .map(|offset| open_start + offset + 1)
-        else {
-            return None;
-        };
-        let Some(close_start) = find_ascii_case_insensitive(raw_html, open_end, &close_pattern)
-        else {
-            return None;
-        };
+            .map(|offset| open_start + offset + 1)?;
+        let close_start = find_ascii_case_insensitive(raw_html, open_end, &close_pattern)?;
         let text = normalize_html_text(&raw_html[open_end..close_start]);
         if !text.is_empty() {
             return Some(text);

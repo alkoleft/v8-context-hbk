@@ -115,6 +115,7 @@ pub(crate) fn parse_platform_type_for_mode(
         extends: Vec::new(),
         metadata_kind: None,
         template_parameters: Vec::new(),
+        generic_template_kind: None,
         method_links: if parse_links {
             links_in_section(content, &["Методы:", "Methods:"])
         } else {

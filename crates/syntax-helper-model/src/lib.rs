@@ -183,6 +183,25 @@ pub fn platform_type_owner_semantic_key(
     semantic_relation_key(semantic, &owner.primary)
 }
 
+pub fn generic_platform_template_kind(name: &LocalizedName) -> Option<GenericPlatformTemplateKind> {
+    generic_platform_template_kind_from_name(&name.primary).or_else(|| {
+        name.alias
+            .as_deref()
+            .and_then(generic_platform_template_kind_from_name)
+    })
+}
+
+pub fn generic_platform_template_kind_from_metadata_kind(
+    metadata_kind: &str,
+) -> Option<GenericPlatformTemplateKind> {
+    let (metadata_object_kind, generated_type_role) = split_template_base(metadata_kind.trim())?;
+    Some(GenericPlatformTemplateKind::new(
+        metadata_object_kind,
+        generated_type_role,
+        GenericParameterRole::MetadataObjectName,
+    ))
+}
+
 pub fn query_table_identity(
     name_primary: &str,
     identifier: Option<&str>,
@@ -328,6 +347,98 @@ fn strip_toc_duplicate_marker(value: &str) -> &str {
     value.split("#&^@^%&*^#").next().unwrap_or(value)
 }
 
+fn generic_platform_template_kind_from_name(name: &str) -> Option<GenericPlatformTemplateKind> {
+    if !name.contains('<') || !name.contains('>') {
+        return None;
+    }
+    let base = name
+        .split(['.', '<'])
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let (metadata_object_kind, generated_type_role) = split_template_base(base)?;
+    Some(GenericPlatformTemplateKind::new(
+        metadata_object_kind,
+        generated_type_role,
+        GenericParameterRole::MetadataObjectName,
+    ))
+}
+
+fn split_template_base(base: &str) -> Option<(MetadataObjectKind, GeneratedTypeRole)> {
+    const PREFIXES: &[(&str, MetadataObjectKind)] = &[
+        (
+            "ПланВидовХарактеристик",
+            MetadataObjectKind::ChartOfCharacteristicTypes,
+        ),
+        (
+            "ChartOfCharacteristicTypes",
+            MetadataObjectKind::ChartOfCharacteristicTypes,
+        ),
+        (
+            "ПланВидовРасчета",
+            MetadataObjectKind::ChartOfCalculationTypes,
+        ),
+        (
+            "ChartOfCalculationTypes",
+            MetadataObjectKind::ChartOfCalculationTypes,
+        ),
+        ("РегистрБухгалтерии", MetadataObjectKind::AccountingRegister),
+        ("AccountingRegister", MetadataObjectKind::AccountingRegister),
+        (
+            "РегистрНакопления",
+            MetadataObjectKind::AccumulationRegister,
+        ),
+        (
+            "AccumulationRegister",
+            MetadataObjectKind::AccumulationRegister,
+        ),
+        ("РегистрСведений", MetadataObjectKind::InformationRegister),
+        (
+            "InformationRegister",
+            MetadataObjectKind::InformationRegister,
+        ),
+        ("РегистрРасчета", MetadataObjectKind::CalculationRegister),
+        (
+            "CalculationRegister",
+            MetadataObjectKind::CalculationRegister,
+        ),
+        ("БизнесПроцесс", MetadataObjectKind::BusinessProcess),
+        ("BusinessProcess", MetadataObjectKind::BusinessProcess),
+        ("ПланСчетов", MetadataObjectKind::ChartOfAccounts),
+        ("ChartOfAccounts", MetadataObjectKind::ChartOfAccounts),
+        ("Справочник", MetadataObjectKind::Catalog),
+        ("Catalog", MetadataObjectKind::Catalog),
+        ("Документ", MetadataObjectKind::Document),
+        ("Document", MetadataObjectKind::Document),
+        ("Перечисление", MetadataObjectKind::Enum),
+        ("Enum", MetadataObjectKind::Enum),
+        ("Задача", MetadataObjectKind::Task),
+        ("Task", MetadataObjectKind::Task),
+    ];
+    for (prefix, metadata_object_kind) in PREFIXES {
+        let Some(role_part) = base.strip_prefix(prefix) else {
+            continue;
+        };
+        let role = generated_type_role(role_part)?;
+        return Some((*metadata_object_kind, role));
+    }
+    None
+}
+
+fn generated_type_role(value: &str) -> Option<GeneratedTypeRole> {
+    match value {
+        "Менеджер" | "Manager" => Some(GeneratedTypeRole::Manager),
+        "Объект" | "Object" => Some(GeneratedTypeRole::Object),
+        "Ссылка" | "Ref" | "Reference" => Some(GeneratedTypeRole::Reference),
+        "Выборка" | "Selection" => Some(GeneratedTypeRole::Selection),
+        "Список" | "List" => Some(GeneratedTypeRole::List),
+        "НаборЗаписей" | "RecordSet" => Some(GeneratedTypeRole::RecordSet),
+        "Запись" | "Record" => Some(GeneratedTypeRole::Record),
+        "КлючЗаписи" | "RecordKey" => Some(GeneratedTypeRole::RecordKey),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SyntaxHelperSource {
     pub hbk_path: PathBuf,
@@ -414,6 +525,47 @@ mod tests {
                 1,
             ),
             "enum:metadata_property:Вид"
+        );
+    }
+
+    #[test]
+    fn generic_platform_template_kind_uses_semantic_discriminators() {
+        assert_eq!(
+            generic_platform_template_kind(&LocalizedName {
+                primary: "СправочникСсылка.<Имя справочника>".to_string(),
+                alias: Some("CatalogRef.<Catalog name>".to_string()),
+            }),
+            Some(GenericPlatformTemplateKind::new(
+                MetadataObjectKind::Catalog,
+                GeneratedTypeRole::Reference,
+                GenericParameterRole::MetadataObjectName,
+            ))
+        );
+        assert_eq!(
+            generic_platform_template_kind(&LocalizedName {
+                primary: "DocumentObject.<Document name>".to_string(),
+                alias: None,
+            }),
+            Some(GenericPlatformTemplateKind::new(
+                MetadataObjectKind::Document,
+                GeneratedTypeRole::Object,
+                GenericParameterRole::MetadataObjectName,
+            ))
+        );
+        assert_eq!(
+            generic_platform_template_kind(&LocalizedName {
+                primary: "HTTPСоединение".to_string(),
+                alias: Some("HTTPConnection".to_string()),
+            }),
+            None
+        );
+        assert_eq!(
+            generic_platform_template_kind_from_metadata_kind("ДокументСсылка"),
+            Some(GenericPlatformTemplateKind::new(
+                MetadataObjectKind::Document,
+                GeneratedTypeRole::Reference,
+                GenericParameterRole::MetadataObjectName,
+            ))
         );
     }
 
@@ -615,6 +767,7 @@ pub struct PlatformType {
     pub extends: Vec<LocalizedName>,
     pub metadata_kind: Option<String>,
     pub template_parameters: Vec<String>,
+    pub generic_template_kind: Option<GenericPlatformTemplateKind>,
     pub method_links: Vec<MemberLink>,
     pub constructor_links: Vec<MemberLink>,
     pub description: Option<String>,
@@ -756,6 +909,75 @@ pub enum PlatformObjectKind {
     ManagedForm,
     FormExtension,
     MetadataObject,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct GenericPlatformTemplateKind {
+    pub metadata_object_kind: MetadataObjectKind,
+    pub generated_type_role: GeneratedTypeRole,
+    pub generic_parameter_role: GenericParameterRole,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MetadataObjectKind {
+    Catalog,
+    Document,
+    InformationRegister,
+    AccumulationRegister,
+    AccountingRegister,
+    CalculationRegister,
+    ChartOfAccounts,
+    ChartOfCalculationTypes,
+    ChartOfCharacteristicTypes,
+    BusinessProcess,
+    Task,
+    Enum,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneratedTypeRole {
+    Manager,
+    Object,
+    Reference,
+    Selection,
+    List,
+    RecordSet,
+    Record,
+    RecordKey,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenericParameterRole {
+    MetadataObjectName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GenericTypeBinding {
+    pub template_kind: GenericPlatformTemplateKind,
+    pub arguments: Vec<GenericArgumentBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenericArgumentBinding {
+    OwnerParameter { role: GenericParameterRole },
+}
+
+impl GenericPlatformTemplateKind {
+    pub fn new(
+        metadata_object_kind: MetadataObjectKind,
+        generated_type_role: GeneratedTypeRole,
+        generic_parameter_role: GenericParameterRole,
+    ) -> Self {
+        Self {
+            metadata_object_kind,
+            generated_type_role,
+            generic_parameter_role,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

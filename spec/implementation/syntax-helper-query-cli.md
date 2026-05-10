@@ -186,6 +186,12 @@ consumers: metadata kind and template parameters for `PlatformTypeKind::Metadata
 The data is exposed through `context-resolver-core::TypeInfo`, not as a public SQLite schema
 contract or CLI JSON expansion.
 
+T132 implementation note: schema version 9 stores semantic generic platform template facts and
+generic owner-parameter bindings for type references. The index may use private columns to preserve
+template kind and binding evidence, but consumers must use the Rust search/resolver APIs instead of
+depending on SQLite table or column names. This does not change the CLI JSON provider envelope or
+the canonical `syntax export` consumer schema.
+
 ### Index Path Resolution
 
 `syntax index`, `syntax get`, `syntax constructors`, `syntax search` and `syntax related` resolve

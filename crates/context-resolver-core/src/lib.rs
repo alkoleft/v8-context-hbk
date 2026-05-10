@@ -116,6 +116,7 @@ pub struct FactRelation {
 pub struct TypeRef {
     pub name: String,
     pub id: Option<TypeId>,
+    pub generic_binding: Option<GenericTypeBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,12 +138,78 @@ pub struct Signature {
 pub struct TypeInfo {
     pub description: Option<String>,
     pub metadata_template: Option<MetadataTemplateInfo>,
+    pub generic_template_kind: Option<GenericPlatformTemplateKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetadataTemplateInfo {
     pub metadata_kind: String,
     pub parameters: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GenericPlatformTemplateKind {
+    pub metadata_object_kind: MetadataObjectKind,
+    pub generated_type_role: GeneratedTypeRole,
+    pub generic_parameter_role: GenericParameterRole,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MetadataObjectKind {
+    Catalog,
+    Document,
+    InformationRegister,
+    AccumulationRegister,
+    AccountingRegister,
+    CalculationRegister,
+    ChartOfAccounts,
+    ChartOfCalculationTypes,
+    ChartOfCharacteristicTypes,
+    BusinessProcess,
+    Task,
+    Enum,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum GeneratedTypeRole {
+    Manager,
+    Object,
+    Reference,
+    Selection,
+    List,
+    RecordSet,
+    Record,
+    RecordKey,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum GenericParameterRole {
+    MetadataObjectName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenericTypeBinding {
+    pub template_kind: GenericPlatformTemplateKind,
+    pub arguments: Vec<GenericArgumentBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenericArgumentBinding {
+    OwnerParameter { role: GenericParameterRole },
+}
+
+impl GenericPlatformTemplateKind {
+    pub fn new(
+        metadata_object_kind: MetadataObjectKind,
+        generated_type_role: GeneratedTypeRole,
+        generic_parameter_role: GenericParameterRole,
+    ) -> Self {
+        Self {
+            metadata_object_kind,
+            generated_type_role,
+            generic_parameter_role,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -353,6 +420,11 @@ pub enum MemberQueryKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeLookup<'a> {
     Id(&'a TypeId),
+    GenericTemplate {
+        source: Option<&'a SourceId>,
+        domain: Option<LanguageDomain>,
+        kind: &'a GenericPlatformTemplateKind,
+    },
     ExactName {
         source: Option<&'a SourceId>,
         domain: Option<LanguageDomain>,
@@ -602,6 +674,10 @@ impl ContextResolver for CompositeResolver {
             | TypeLookup::ExactAlias {
                 source: Some(query_source),
                 ..
+            }
+            | TypeLookup::GenericTemplate {
+                source: Some(query_source),
+                ..
             } = query
                 && source.descriptor().id != *query_source
             {
@@ -827,6 +903,7 @@ mod tests {
             let info = TypeInfo {
                 description: None,
                 metadata_template: None,
+                generic_template_kind: None,
             };
             let fact = ContextFact {
                 id: id.0.clone(),
@@ -836,6 +913,11 @@ mod tests {
                 relations: Vec::new(),
             };
             self.types.push(ResolvedType { id, fact, info });
+            self
+        }
+
+        fn with_resolved_type(mut self, resolved: ResolvedType) -> Self {
+            self.types.push(resolved);
             self
         }
 
@@ -1018,6 +1100,18 @@ mod tests {
                     .filter(|resolved| source.is_none_or(|source| source == &resolved.id.0.source))
                     .filter(|resolved| domain.is_none_or(|domain| domain == resolved.id.0.domain))
                     .filter(|resolved| resolved.fact.name.alias.as_deref() == Some(alias))
+                    .cloned()
+                    .collect(),
+                TypeLookup::GenericTemplate {
+                    source,
+                    domain,
+                    kind,
+                } => self
+                    .types
+                    .iter()
+                    .filter(|resolved| source.is_none_or(|source| source == &resolved.id.0.source))
+                    .filter(|resolved| domain.is_none_or(|domain| domain == resolved.id.0.domain))
+                    .filter(|resolved| resolved.info.generic_template_kind.as_ref() == Some(kind))
                     .cloned()
                     .collect(),
             };
@@ -1236,6 +1330,7 @@ mod tests {
         let target = TypeRef {
             name: "Строка".to_string(),
             id: None,
+            generic_binding: None,
         };
         let fake = FakeSource::new("fake", LanguageDomain::PlatformApi)
             .with_member(
@@ -1269,6 +1364,60 @@ mod tests {
     }
 
     #[test]
+    fn generic_template_lookup_uses_semantic_kind() {
+        let source = SourceId::new("platform");
+        let kind = GenericPlatformTemplateKind::new(
+            MetadataObjectKind::Document,
+            GeneratedTypeRole::Reference,
+            GenericParameterRole::MetadataObjectName,
+        );
+        let id = TypeId(FactId::new(
+            source,
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:ДокументСсылка.<Имя документа>",
+        ));
+        let info = TypeInfo {
+            description: None,
+            metadata_template: Some(MetadataTemplateInfo {
+                metadata_kind: "ДокументСсылка".to_string(),
+                parameters: vec!["Имя документа".to_string()],
+            }),
+            generic_template_kind: Some(kind.clone()),
+        };
+        let fact = ContextFact {
+            id: id.0.clone(),
+            name: Name::new(
+                "ДокументСсылка.<Имя документа>",
+                Some("DocumentRef.<Document name>"),
+            ),
+            owner: None,
+            details: FactDetails::Type(info.clone()),
+            relations: Vec::new(),
+        };
+        let fake = FakeSource::new("platform", LanguageDomain::PlatformApi)
+            .with_resolved_type(ResolvedType { id, fact, info });
+        let resolver = CompositeResolver::new(vec![Box::new(fake)]);
+
+        let response = resolver
+            .resolve_type(
+                TypeLookup::GenericTemplate {
+                    source: None,
+                    domain: Some(LanguageDomain::PlatformApi),
+                    kind: &kind,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("generic template lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ok);
+        assert_eq!(
+            response.facts[0].info.generic_template_kind.as_ref(),
+            Some(&kind)
+        );
+    }
+
+    #[test]
     fn callable_lookup_preserves_identity_parameter_order_and_return_types() {
         let owner = TypeId(FactId::new(
             SourceId::new("platform"),
@@ -1289,6 +1438,7 @@ mod tests {
                 types: vec![TypeRef {
                     name: "Строка".to_string(),
                     id: None,
+                    generic_binding: None,
                 }],
                 description: None,
             },
@@ -1298,6 +1448,7 @@ mod tests {
                 types: vec![TypeRef {
                     name: "Булево".to_string(),
                     id: Some(bool_type),
+                    generic_binding: None,
                 }],
                 description: None,
             },
@@ -1310,6 +1461,7 @@ mod tests {
             vec![TypeRef {
                 name: "HTTPСоединение".to_string(),
                 id: Some(owner.clone()),
+                generic_binding: None,
             }],
         );
         let resolver = CompositeResolver::new(vec![Box::new(fake)]);
@@ -1360,6 +1512,7 @@ mod tests {
             details: FactDetails::Type(TypeInfo {
                 description: None,
                 metadata_template: None,
+                generic_template_kind: None,
             }),
             relations: Vec::new(),
         };

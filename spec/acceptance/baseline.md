@@ -1793,3 +1793,23 @@ produced 1 source book, 1 locale, 397 TOC nodes, 365 pages, 410 files, 1127587 b
 9540 KiB peak RSS. The generated page `page-ru-c5a12eeae852efad.md` contains
 `> Программа запуска - 1CEStart`, `> Интерактивная программа запуска - 1Cv8s` and
 `> Клиентское приложение`, and no longer contains `> |` table markup for that launch-flow block.
+
+T132 moved generic platform type-template ownership into the HBK-backed provider boundary. The
+resolver model now exposes semantic generic-template kind as metadata object kind, generated type
+role and generic parameter role, and type references can carry owner-parameter generic bindings.
+The search index schema version is `9`; SQLite remains a private rebuildable provider artifact, not
+a public integration contract.
+
+Focused tests cover semantic template classification, read-phase extraction, search-index
+roundtrip, semantic-kind lookup, ambiguous type-reference protection and resolver-visible generic
+binding. A representative `syntax index` run on 2026-05-10 against
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `target/t132-generic-template.sqlite` with
+25415 documents. SQL evidence confirmed catalog and document templates such as
+`СправочникСсылка.<Имя справочника>`, `СправочникМенеджер.<Имя справочника>`,
+`ДокументОбъект.<Имя документа>` and `ДокументСсылка.<Имя документа>` have semantic
+`type_templates` rows. Generic binding evidence existed for `constructor_result`, `parameter_type`,
+`property_type` and `return_type` rows. The representative source-backed member
+`ДокументОбъект.<Имя документа>.Ссылка` stores `target_type_id =
+platform_type:ДокументСсылка.<Имя документа>`, semantic target `document/reference` and
+`owner_parameter(metadata_object_name)` binding even though the source type text is
+`ДокументСсылка`.

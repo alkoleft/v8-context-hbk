@@ -525,7 +525,10 @@ fn progress_file_name(path: &std::path::Path) -> String {
 }
 
 fn should_print_artifact_progress(current: usize, total: usize) -> bool {
-    total > 0 && (current == 1 || current == total || current % artifact_progress_step(total) == 0)
+    total > 0
+        && (current == 1
+            || current == total
+            || current.is_multiple_of(artifact_progress_step(total)))
 }
 
 fn artifact_progress_step(total: usize) -> usize {
@@ -534,7 +537,9 @@ fn artifact_progress_step(total: usize) -> usize {
 
 fn should_print_source_book_progress(current: usize, total: usize) -> bool {
     total > 0
-        && (current == 1 || current == total || current % source_book_progress_step(total) == 0)
+        && (current == 1
+            || current == total
+            || current.is_multiple_of(source_book_progress_step(total)))
 }
 
 fn source_book_progress_step(total: usize) -> usize {
@@ -1820,6 +1825,8 @@ mod tests {
             }],
             type_refs: Vec::new(),
             return_types: vec!["Булево".to_string()],
+            type_ref_facts: Vec::new(),
+            return_type_facts: Vec::new(),
             description: Some("Detailed description".to_string()),
             preview: "Detailed description".to_string(),
             parameter_terms: Vec::new(),
@@ -1831,6 +1838,7 @@ mod tests {
             available_since: None,
             metadata_kind: None,
             template_parameters: Vec::new(),
+            generic_template_kind: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Compact);
@@ -1857,6 +1865,7 @@ mod tests {
                     name: "Параметр".to_string(),
                     required: true,
                     type_refs: vec!["Строка".to_string()],
+                    type_ref_facts: Vec::new(),
                     description: Some("Input value".to_string()),
                 }],
                 title: Some("Основной вариант".to_string()),
@@ -1864,6 +1873,8 @@ mod tests {
             }],
             type_refs: vec!["Строка".to_string()],
             return_types: vec!["Булево".to_string()],
+            type_ref_facts: Vec::new(),
+            return_type_facts: Vec::new(),
             description: Some("Detailed description".to_string()),
             preview: "Detailed description".to_string(),
             parameter_terms: Vec::new(),
@@ -1875,6 +1886,7 @@ mod tests {
             available_since: None,
             metadata_kind: None,
             template_parameters: Vec::new(),
+            generic_template_kind: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Full);
@@ -2412,6 +2424,7 @@ mod tests {
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),
+            generic_template_kind: None,
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: Some("type description".to_string()),

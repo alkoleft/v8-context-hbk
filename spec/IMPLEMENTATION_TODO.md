@@ -883,3 +883,61 @@ Completed 2026-05-10:
 - Verified with `cargo fmt --all --check`, `cargo test -p syntax-helper-search`,
   `cargo test -p context-resolver-core`, `cargo test -p context-resolver-search` and
   `cargo test -p v8-context-hbk-cli`.
+
+### [x] T132. Expose semantic generic platform template kinds and generic bindings
+
+Spec refs:
+
+- FR-SH-002
+- FR-CTX-RESOLVE-001
+- UC-CTX-002
+- NFR-RESOLVE-001
+- `spec/implementation/solution-context-resolve.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Classify generic metadata/application-object platform templates in the HBK-owned model with a
+  semantic kind made from metadata object kind, generated type role and generic parameter role.
+- Persist semantic template facts in the search index as private rebuildable provider state and
+  expose lookup by semantic template kind through Rust search/resolver APIs.
+- Preserve generic owner-parameter bindings on platform member/callable type references when a
+  generic template owner references another generic template with the same metadata-object-name
+  parameter, for example `DocumentObject<T>.Ссылка -> DocumentReference<T>`.
+- Keep member/callable ownership on the existing owner type identity; do not duplicate
+  `owner_template_kind` on every member or callable fact.
+- Do not change `v8-context`, add analyzer compatibility shims, parse analyzer data, expose SQLite
+  schema as a public contract, or use platform-version applicability as analyzer semantics.
+- Do not change CLI provider JSON or canonical `syntax export` schema unless a focused regression
+  proves the Rust resolver boundary cannot carry the required facts.
+
+Verification:
+
+- Focused `syntax-helper-model` tests cover semantic template kind classification from platform
+  template names.
+- Focused `syntax-helper-search` tests cover index roundtrip, semantic-kind lookup and generic
+  owner-parameter binding persistence for property/return/parameter type references.
+- Focused `context-resolver-search` tests cover resolver lookup by semantic template kind and
+  returned `TypeRef` generic binding DTOs.
+- Representative local HBK corpus evidence confirms catalog/document templates can be discovered
+  by semantic kind when `shcntx_*` fixtures are available.
+- `cargo fmt --all --check` passes.
+- `cargo test -p syntax-helper-model -p syntax-helper-search -p context-resolver-core -p
+  context-resolver-search` passes.
+- `cargo test --workspace` and relevant clippy checks pass or any environment blocker is recorded.
+
+Completed 2026-05-10:
+
+- Added public semantic generic platform template kinds on the HBK-owned model/resolver boundary:
+  metadata object kind, generated type role and generic parameter role.
+- Persisted the semantic template facts in search index schema version 9 and exposed semantic-kind
+  lookup through search and resolver Rust APIs without making SQLite layout a public contract.
+- Preserved owner-parameter generic bindings on provider-backed member, callable parameter/return
+  and constructor-result type references, including real HBK evidence for
+  `ДокументОбъект.<Имя документа>.Ссылка` resolving `ДокументСсылка` to the document reference
+  template with `metadata_object_name` owner binding.
+- Kept member/callable ownership on existing owner type identities and left CLI provider JSON /
+  canonical `syntax export` output unchanged apart from Rust fixture updates.
+- Verified with focused model/search/resolver tests, `cargo fmt --all --check`, `cargo clippy
+  --workspace --all-targets -- -D warnings`, `cargo test --workspace` and local 8.5.1.1150
+  `shcntx_ru.hbk` corpus indexing evidence recorded in `spec/acceptance/baseline.md`.

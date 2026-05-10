@@ -256,7 +256,7 @@ pub enum SiteGenerationError {
     Markdown {
         path: PathBuf,
         html_path: String,
-        source: BookExportError,
+        source: Box<BookExportError>,
     },
     Io {
         path: PathBuf,
@@ -319,7 +319,7 @@ impl std::error::Error for SiteGenerationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Book { source, .. } => Some(source),
-            Self::Markdown { source, .. } => Some(source),
+            Self::Markdown { source, .. } => Some(source.as_ref()),
             Self::Io { source, .. } => Some(source),
             Self::Json { source, .. } => Some(source),
             Self::EmptySourceList
@@ -378,7 +378,7 @@ pub fn discover_source_books(source: &SiteSource) -> Result<Vec<PathBuf>, SiteGe
                 return Err(SiteGenerationError::EmptySourceList);
             }
             let mut files = files.clone();
-            files.sort_by(|left, right| path_sort_key(left).cmp(&path_sort_key(right)));
+            files.sort_by_key(|left| path_sort_key(left));
             Ok(files)
         }
         SiteSource::Directory {
@@ -417,7 +417,7 @@ pub fn discover_source_books(source: &SiteSource) -> Result<Vec<PathBuf>, SiteGe
                     paths.push(path);
                 }
             }
-            paths.sort_by(|left, right| path_sort_key(left).cmp(&path_sort_key(right)));
+            paths.sort_by_key(|left| path_sort_key(left));
             Ok(paths)
         }
     }
@@ -718,6 +718,7 @@ fn build_site_data(books: &[SourceBook]) -> SiteData {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_toc_pages(
     output: &mut Vec<TocNodeBuilder>,
     page_plans: &mut Vec<SitePageArtifactPlan>,
@@ -1087,7 +1088,7 @@ fn write_markdown_page<'a>(
             .map_err(|source| SiteGenerationError::Markdown {
                 path: book.book.path().to_path_buf(),
                 html_path: page.html_path.clone(),
-                source,
+                source: Box::new(source),
             })?;
         page_loaders.insert(book.id.clone(), loader);
     }
@@ -1112,7 +1113,7 @@ fn write_markdown_page<'a>(
         .map_err(|source| SiteGenerationError::Markdown {
             path: book.book.path().to_path_buf(),
             html_path: page.html_path.clone(),
-            source,
+            source: Box::new(source),
         })?
         .markdown()
         .to_string();

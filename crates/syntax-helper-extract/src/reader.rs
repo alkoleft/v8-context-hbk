@@ -776,6 +776,7 @@ fn apply_platform_type_semantics(platform_type: &mut PlatformType) {
     if platform_type.type_kind == PlatformTypeKind::MetadataTemplate {
         platform_type.metadata_kind = metadata_kind(&platform_type.name.primary);
         platform_type.template_parameters = template_parameters(&platform_type.name.primary);
+        platform_type.generic_template_kind = generic_platform_template_kind(&platform_type.name);
     }
 }
 
