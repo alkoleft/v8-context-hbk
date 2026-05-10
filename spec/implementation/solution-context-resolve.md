@@ -128,12 +128,12 @@ parameters. The SQLite storage used to preserve those facts remains internal to
 `syntax-helper-search`; resolver consumers receive only the public DTOs from
 `context-resolver-core`.
 
-Generic platform template ownership remains in this repository. Consumers must not recognize
+Platform type template ownership remains in this repository. Consumers must not recognize
 localized names such as `СправочникСсылка` or aliases such as `CatalogRef` to discover generated
-metadata-object template types. The resolver DTOs must expose open HBK-owned generic template
+metadata-object template types. The resolver DTOs must expose open HBK-owned type template
 families and generated variants instead of a closed metadata-object-kind / generated-role enum.
 
-Generic template family derivation is data-driven:
+Type template family derivation is data-driven:
 
 - start from `alias_base` when a type template has an alias, otherwise use the root-locale
   `primary_base`;
@@ -141,25 +141,25 @@ Generic template family derivation is data-driven:
 - assign templates to the longest matching manager root, so longer roots such as
   `DocumentJournal` are tested before shorter roots such as `Document`;
 - do not create fallback-prefix families for unassigned templates;
-- for unassigned templates, score direct generic type-reference links between that template and
+- for unassigned templates, score direct type-template type-reference links between that template and
   already derived families; assign only when exactly one family has direct references;
 - leave templates with no direct-reference family or several candidate families unclassified with a
   diagnostic rather than guessing.
 
-Generic parameter names remain source parameter slots and binding evidence only. They must not be
+Template parameter names remain source parameter slots and binding evidence only. They must not be
 used as family or variant semantics.
 
 Members and callables keep their owner through the existing resolved `TypeId` / `owner_type_id`
 relationship. They do not repeat owner template kind on every member fact. Instead, member,
-callable return and parameter `TypeRef` values may carry a generic template instance binding when a
-source-backed type reference points from one generic template to another. For example,
+callable return and parameter `TypeRef` values may carry a type template instance binding when a
+source-backed type reference points from one type template to another. For example,
 `DocumentObject<T>.Ссылка` is represented as a reference to the document-reference template with
-the result generic argument bound to the corresponding owner template parameter slot.
+the result template argument bound to the corresponding owner template parameter slot.
 
-The storage/index implementation may persist generic template family, generated-variant,
-classification evidence, diagnostics and generic bindings in its SQLite artifact, but SQLite columns
+The storage/index implementation may persist type template family, generated-variant,
+classification evidence, diagnostics and template bindings in its SQLite artifact, but SQLite columns
 remain private rebuildable provider state. The public contract is the resolver/search Rust API:
-lookup by open family/variant key and typed generic binding DTOs on returned type references.
+lookup by open family/variant key and typed template binding DTOs on returned type references.
 
 ## Source And Language Domains
 
@@ -489,7 +489,7 @@ Mapping:
 
 - `type_identity_by_id`, `type_identities_by_name` and `type_identities_by_alias` back
   `resolve_type` for `LanguageDomain::PlatformApi`;
-- semantic generic-template lookup backs `resolve_type` for provider-owned generated platform
+- semantic type-template lookup backs `resolve_type` for provider-owned generated platform
   template types without exposing localized platform type names to consumers;
 - `members_by_type_id` backs `members`;
 - `member_by_owner_type_id` backs owner/member resolution;

@@ -116,7 +116,7 @@ pub struct FactRelation {
 pub struct TypeRef {
     pub name: String,
     pub id: Option<TypeId>,
-    pub generic_binding: Option<GenericTypeBinding>,
+    pub template_binding: Option<TypeTemplateBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,7 +138,7 @@ pub struct Signature {
 pub struct TypeInfo {
     pub description: Option<String>,
     pub metadata_template: Option<MetadataTemplateInfo>,
-    pub generic_template_key: Option<GenericPlatformTemplateKey>,
+    pub type_template_key: Option<PlatformTypeTemplateKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,26 +148,26 @@ pub struct MetadataTemplateInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GenericPlatformTemplateKey {
+pub struct PlatformTypeTemplateKey {
     pub family: String,
     pub variant: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GenericTypeBinding {
-    pub template_key: GenericPlatformTemplateKey,
-    pub arguments: Vec<GenericArgumentBinding>,
+pub struct TypeTemplateBinding {
+    pub template_key: PlatformTypeTemplateKey,
+    pub arguments: Vec<TemplateParameterBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GenericArgumentBinding {
+pub enum TemplateParameterBinding {
     OwnerParameter {
         owner_parameter_index: usize,
         target_parameter_index: usize,
     },
 }
 
-impl GenericPlatformTemplateKey {
+impl PlatformTypeTemplateKey {
     pub fn new(family: impl Into<String>, variant: impl Into<String>) -> Self {
         Self {
             family: family.into(),
@@ -384,10 +384,10 @@ pub enum MemberQueryKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeLookup<'a> {
     Id(&'a TypeId),
-    GenericTemplate {
+    PlatformTypeTemplate {
         source: Option<&'a SourceId>,
         domain: Option<LanguageDomain>,
-        key: &'a GenericPlatformTemplateKey,
+        key: &'a PlatformTypeTemplateKey,
     },
     ExactName {
         source: Option<&'a SourceId>,
@@ -639,7 +639,7 @@ impl ContextResolver for CompositeResolver {
                 source: Some(query_source),
                 ..
             }
-            | TypeLookup::GenericTemplate {
+            | TypeLookup::PlatformTypeTemplate {
                 source: Some(query_source),
                 ..
             } = query
@@ -867,7 +867,7 @@ mod tests {
             let info = TypeInfo {
                 description: None,
                 metadata_template: None,
-                generic_template_key: None,
+                type_template_key: None,
             };
             let fact = ContextFact {
                 id: id.0.clone(),
@@ -1066,7 +1066,7 @@ mod tests {
                     .filter(|resolved| resolved.fact.name.alias.as_deref() == Some(alias))
                     .cloned()
                     .collect(),
-                TypeLookup::GenericTemplate {
+                TypeLookup::PlatformTypeTemplate {
                     source,
                     domain,
                     key,
@@ -1075,7 +1075,7 @@ mod tests {
                     .iter()
                     .filter(|resolved| source.is_none_or(|source| source == &resolved.id.0.source))
                     .filter(|resolved| domain.is_none_or(|domain| domain == resolved.id.0.domain))
-                    .filter(|resolved| resolved.info.generic_template_key.as_ref() == Some(key))
+                    .filter(|resolved| resolved.info.type_template_key.as_ref() == Some(key))
                     .cloned()
                     .collect(),
             };
@@ -1294,7 +1294,7 @@ mod tests {
         let target = TypeRef {
             name: "Строка".to_string(),
             id: None,
-            generic_binding: None,
+            template_binding: None,
         };
         let fake = FakeSource::new("fake", LanguageDomain::PlatformApi)
             .with_member(
@@ -1328,9 +1328,9 @@ mod tests {
     }
 
     #[test]
-    fn generic_template_lookup_uses_open_family_variant_key() {
+    fn type_template_lookup_uses_open_family_variant_key() {
         let source = SourceId::new("platform");
-        let kind = GenericPlatformTemplateKey::new("Document", "Ref");
+        let kind = PlatformTypeTemplateKey::new("Document", "Ref");
         let id = TypeId(FactId::new(
             source,
             LanguageDomain::PlatformApi,
@@ -1343,7 +1343,7 @@ mod tests {
                 metadata_kind: "ДокументСсылка".to_string(),
                 parameters: vec!["Имя документа".to_string()],
             }),
-            generic_template_key: Some(kind.clone()),
+            type_template_key: Some(kind.clone()),
         };
         let fact = ContextFact {
             id: id.0.clone(),
@@ -1361,18 +1361,18 @@ mod tests {
 
         let response = resolver
             .resolve_type(
-                TypeLookup::GenericTemplate {
+                TypeLookup::PlatformTypeTemplate {
                     source: None,
                     domain: Some(LanguageDomain::PlatformApi),
                     key: &kind,
                 },
                 &ResolveContext::all(),
             )
-            .expect("generic template lookup must not fail");
+            .expect("type template lookup must not fail");
 
         assert_eq!(response.status, ResolveStatus::Ok);
         assert_eq!(
-            response.facts[0].info.generic_template_key.as_ref(),
+            response.facts[0].info.type_template_key.as_ref(),
             Some(&kind)
         );
     }
@@ -1398,7 +1398,7 @@ mod tests {
                 types: vec![TypeRef {
                     name: "Строка".to_string(),
                     id: None,
-                    generic_binding: None,
+                    template_binding: None,
                 }],
                 description: None,
             },
@@ -1408,7 +1408,7 @@ mod tests {
                 types: vec![TypeRef {
                     name: "Булево".to_string(),
                     id: Some(bool_type),
-                    generic_binding: None,
+                    template_binding: None,
                 }],
                 description: None,
             },
@@ -1421,7 +1421,7 @@ mod tests {
             vec![TypeRef {
                 name: "HTTPСоединение".to_string(),
                 id: Some(owner.clone()),
-                generic_binding: None,
+                template_binding: None,
             }],
         );
         let resolver = CompositeResolver::new(vec![Box::new(fake)]);
@@ -1472,7 +1472,7 @@ mod tests {
             details: FactDetails::Type(TypeInfo {
                 description: None,
                 metadata_template: None,
-                generic_template_key: None,
+                type_template_key: None,
             }),
             relations: Vec::new(),
         };

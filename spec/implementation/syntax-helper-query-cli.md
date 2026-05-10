@@ -186,24 +186,30 @@ consumers: metadata kind and template parameters for `PlatformTypeKind::Metadata
 The data is exposed through `context-resolver-core::TypeInfo`, not as a public SQLite schema
 contract or CLI JSON expansion.
 
-T132 implementation note: schema version 9 stored semantic generic platform template facts and
-generic owner-parameter bindings for type references.
+T132 implementation note: schema version 9 stored semantic platform type template facts and
+template owner-parameter bindings for type references.
 
-T133 implementation note: schema version 11 supersedes the closed semantic-kind shape. The index
-stores open generic template families, generated variants, classification evidence diagnostics and
-generic owner-parameter binding arguments derived from HBK facts, while keeping SQLite tables and
+T133 implementation note: schema version 11 superseded the closed semantic-kind shape. The index
+stores open type template families, generated variants, classification evidence diagnostics and
+template owner-parameter binding arguments derived from HBK facts, while keeping SQLite tables and
 columns private rebuildable provider state. Consumers must use the Rust search/resolver APIs instead
 of depending on SQLite table or column names. This does not change the CLI JSON provider envelope or
 the canonical `syntax export` consumer schema.
 
-T133 generic template classification rule:
+T134 implementation note: schema version 12 keeps the same classification and binding semantics but
+renames private SQLite layout identifiers to type-template terminology (`template_family`,
+`template_variant`, `template_classification_diagnostic`, `type_template_family`,
+`type_template_variant` and `template_binding_*`). The CLI provider JSON envelope remains
+`schema_version: 1`, and the canonical `syntax export` consumer JSON remains `schema_version: 11`.
+
+T133 type template classification rule:
 
 - use each template's `alias_base` or fallback root-locale `primary_base`; non-root localized
   primary names without aliases are left unclassified with diagnostics instead of becoming families;
 - derive family roots from `*Manager` templates;
 - assign templates by longest manager-root prefix;
 - do not create fallback-prefix families for unassigned templates;
-- classify remaining templates only through direct generic type-reference scores against already
+- classify remaining templates only through direct type-template type-reference scores against already
   derived families;
 - assign only when exactly one family has direct references, otherwise keep the template
   unclassified with a diagnostic.

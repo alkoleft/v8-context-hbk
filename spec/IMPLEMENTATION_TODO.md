@@ -884,7 +884,7 @@ Completed 2026-05-10:
   `cargo test -p context-resolver-core`, `cargo test -p context-resolver-search` and
   `cargo test -p v8-context-hbk-cli`.
 
-### [x] T132. Expose semantic generic platform template kinds and generic bindings
+### [x] T132. Expose semantic generic platform template kinds and template bindings
 
 Spec refs:
 
@@ -898,11 +898,11 @@ Spec refs:
 Scope:
 
 - Classify generic metadata/application-object platform templates in the HBK-owned model with a
-  semantic kind made from metadata object kind, generated type role and generic parameter role.
+  semantic kind made from metadata object kind, generated type role and template parameter role.
 - Persist semantic template facts in the search index as private rebuildable provider state and
   expose lookup by semantic template kind through Rust search/resolver APIs.
-- Preserve generic owner-parameter bindings on platform member/callable type references when a
-  generic template owner references another generic template with the same metadata-object-name
+- Preserve template owner-parameter bindings on platform member/callable type references when a
+  type template owner references another type template with the same metadata-object-name
   parameter, for example `DocumentObject<T>.Ссылка -> DocumentReference<T>`.
 - Keep member/callable ownership on the existing owner type identity; do not duplicate
   `owner_template_key` on every member or callable fact.
@@ -918,7 +918,7 @@ Verification:
 - Focused `syntax-helper-search` tests cover index roundtrip, semantic-kind lookup and generic
   owner-parameter binding persistence for property/return/parameter type references.
 - Focused `context-resolver-search` tests cover resolver lookup by semantic template kind and
-  returned `TypeRef` generic binding DTOs.
+  returned `TypeRef` template binding DTOs.
 - Representative local HBK corpus evidence confirms catalog/document templates can be discovered
   by semantic kind when `shcntx_*` fixtures are available.
 - `cargo fmt --all --check` passes.
@@ -929,10 +929,10 @@ Verification:
 Completed 2026-05-10:
 
 - Added public semantic generic platform template kinds on the HBK-owned model/resolver boundary:
-  metadata object kind, generated type role and generic parameter role.
+  metadata object kind, generated type role and template parameter role.
 - Persisted the semantic template facts in search index schema version 9 and exposed semantic-kind
   lookup through search and resolver Rust APIs without making SQLite layout a public contract.
-- Preserved owner-parameter generic bindings on provider-backed member, callable parameter/return
+- Preserved owner-parameter template bindings on provider-backed member, callable parameter/return
   and constructor-result type references, including real HBK evidence for
   `ДокументОбъект.<Имя документа>.Ссылка` resolving `ДокументСсылка` to the document reference
   template with `metadata_object_name` owner binding.
@@ -942,7 +942,7 @@ Completed 2026-05-10:
   --workspace --all-targets -- -D warnings`, `cargo test --workspace` and local 8.5.1.1150
   `shcntx_ru.hbk` corpus indexing evidence recorded in `spec/acceptance/baseline.md`.
 
-### [x] T133. Replace generic template semantic enums with data-driven families
+### [x] T133. Replace type template semantic enums with data-driven families
 
 Spec refs:
 
@@ -955,8 +955,8 @@ Spec refs:
 
 Scope:
 
-- Supersede the T132 closed generic template kind shape made from metadata object kind, generated
-  type role and generic parameter role.
+- Supersede the T132 closed type template kind shape made from metadata object kind, generated
+  type role and template parameter role.
 - Model generic platform templates as HBK-owned open families and generated variants. Public
   lookup must use source-owned family/variant keys, not localized names, aliases, metadata-kind
   enums, generated-role enums or generic-parameter labels.
@@ -965,14 +965,14 @@ Scope:
   - derive family roots from templates whose base ends with `Manager`;
   - assign templates by longest manager-root prefix, so longer roots are tried before shorter roots;
   - do not create fallback-prefix families for templates left unassigned by manager-root matching;
-  - for unassigned templates, score direct generic type-reference links between the template and
+  - for unassigned templates, score direct type-template type-reference links between the template and
     already assigned families;
   - assign the template only when exactly one family has direct refs;
   - leave templates with no direct-reference family or multiple candidate families unclassified and
     emit a recoverable diagnostic with classification evidence.
-- Preserve generic parameter labels as source parameter slots and binding evidence only. Do not use
+- Preserve template parameter labels as source parameter slots and binding evidence only. Do not use
   them to define family or variant semantics.
-- Preserve member/callable/property generic bindings by parameter slot/index where HBK exposes a
+- Preserve member/callable/property template bindings by parameter slot/index where HBK exposes a
   template-to-template reference, for example object/reference links such as
   `DocumentObject<T>.Ссылка -> DocumentReference<T>`.
 - Update model, search index, resolver/search APIs and tests to remove the closed T132 enum
@@ -990,11 +990,11 @@ Verification:
   and `ExternalDataSourceTable` before `ExternalDataSource`.
 - Focused search/index tests cover family/variant persistence, lookup by open key and diagnostic
   roundtrip for unclassified or ambiguous templates.
-- Focused resolver tests cover lookup by family/variant key and returned `TypeRef` generic binding
+- Focused resolver tests cover lookup by family/variant key and returned `TypeRef` template binding
   DTOs using parameter-slot binding instead of metadata-object-name role enums.
 - Representative local HBK corpus evidence confirms that current `shcntx_ru.hbk` classification has
   zero undefined templates and assigns `BaseCalculationTypes*`, `LeadingCalculationTypes*` and
-  `DisplacingCalculationTypes*` to `ChartOfCalculationTypes` through direct generic type-reference
+  `DisplacingCalculationTypes*` to `ChartOfCalculationTypes` through direct type-template type-reference
   evidence.
 - `cargo fmt --all --check` passes.
 - `cargo test -p syntax-helper-model -p syntax-helper-search -p context-resolver-core -p
@@ -1003,23 +1003,96 @@ Verification:
 
 Completed 2026-05-11:
 
-- Replaced the closed T132 generic-template enum contract with open HBK-owned family/variant keys
+- Replaced the closed T132 type-template enum contract with open HBK-owned family/variant keys
   on the model, search and resolver Rust boundaries.
-- Moved generic template classification to the search-index build stage where the full HBK-derived
-  template set and direct generic type-reference evidence are available.
+- Moved type template classification to the search-index build stage where the full HBK-derived
+  template set and direct type-template type-reference evidence are available.
 - Implemented the accepted classification rule: alias-base or fallback primary-base, manager-root
   family discovery, longest-prefix assignment, no fallback-prefix families and direct-ref scoring
   for remaining templates.
-- Preserved generic parameter names as source template parameters and exposed generic bindings as
+- Preserved template parameter names as source template parameters and exposed template bindings as
   owner/target parameter-slot indexes on returned type references, including multi-parameter
   bindings when owner and target template parameter labels match by slot name.
 - Updated SQLite provider storage to schema version 11 with private family/variant columns,
   persisted classification evidence diagnostics and parameter-slot binding argument storage.
-- Representative local 8.5.1.1150 `shcntx_ru.hbk` corpus indexing produced 121 generic template
+- Representative local 8.5.1.1150 `shcntx_ru.hbk` corpus indexing produced 121 type template
   rows, 0 unclassified rows and assigned `BaseCalculationTypes*`, `LeadingCalculationTypes*` and
   `DisplacingCalculationTypes*` to `ChartOfCalculationTypes`.
 - Representative local 8.5.1.1150 `shcntx_root.hbk` corpus indexing also produced 121 generic
   template rows and 0 unclassified rows, proving the root-primary fallback path on real source data.
 - Verified with focused model/search/resolver/extract/export/CLI tests, `cargo fmt --all --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` and local
+  corpus SQL evidence recorded in `spec/acceptance/baseline.md`.
+
+### [x] T134. Normalize platform type template terminology
+
+Spec refs:
+
+- FR-SH-002
+- FR-CTX-RESOLVE-001
+- UC-CTX-002
+- NFR-RESOLVE-001
+- `spec/implementation/solution-context-resolve.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Make `platform type template` / `type template` the canonical term for HBK-owned generated
+  application/platform type templates such as `DocumentRef.<Document name>` and
+  `ExternalDataSourceTableRef.<...>`.
+- Remove `generic template` from the public domain contract for this area. Keep `generic` only in
+  unrelated prose where it means broad/general behavior rather than the platform type-template
+  model.
+- Rename public Rust model/resolver/search API types and fields from generic-template wording to
+  template wording. Expected direction:
+  - `GenericPlatformTemplateKey` -> `PlatformTypeTemplateKey`;
+  - `generic_template_key` -> `type_template_key` or `platform_type_template_key`;
+  - `TypeLookup::GenericTemplate` -> `TypeLookup::PlatformTypeTemplate`;
+  - `type_template_by_generic_key` -> `type_template_by_key`;
+  - `GenericTypeBinding` -> `TypeTemplateBinding`;
+  - `GenericArgumentBinding` -> `TemplateParameterBinding` or equivalent slot-binding name.
+- Rename private search-index column names and internal helpers consistently when doing so does not
+  add compatibility shims. SQLite remains private rebuildable provider state; bump the schema
+  version if any SQLite layout name changes.
+- Update specs, task ledger text and focused tests so the active contract consistently uses
+  template terminology: template key, template family, template variant, template parameter and
+  template binding.
+- Do not change classification semantics, family/variant derivation, binding behavior, CLI provider
+  JSON, canonical `syntax export` JSON, `v8-context`, or analyzer-side code in this task.
+
+Verification:
+
+- Focused model/search/resolver tests compile and pass after public API rename.
+- Search/index tests still cover template-key lookup, root-only primary fallback, longest-prefix
+  assignment, direct-ref assignment, persisted diagnostics and multi-parameter template bindings.
+- `rg` audit shows no domain-contract references to `generic template`, `GenericPlatformTemplateKey`,
+  `GenericTypeBinding` or `GenericArgumentBinding` remain outside historical completed-task text or
+  clearly unrelated generic prose.
+- If the SQLite schema changes, representative local `shcntx_ru.hbk` and `shcntx_root.hbk` indexing
+  evidence is refreshed in `spec/acceptance/baseline.md`.
+- `cargo fmt --all --check` passes.
+- `cargo test -p syntax-helper-model -p syntax-helper-search -p context-resolver-core -p
+  context-resolver-search` passes.
+- `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` pass or any
+  environment blocker is recorded.
+
+Completed 2026-05-11:
+
+- Renamed the public Rust model/search/resolver API to platform type-template terminology:
+  `PlatformTypeTemplateKey`, `type_template_key`, `TypeLookup::PlatformTypeTemplate`,
+  `type_template_by_key`, `TypeTemplateBinding`, `TemplateParameterBinding` and
+  `template_binding`.
+- Renamed private search-index helpers and SQLite layout identifiers to type-template terminology
+  and raised the rebuildable search-index schema to version `12`.
+- Preserved classification semantics, family/variant derivation, parameter-slot binding behavior,
+  CLI provider JSON `schema_version: 1` and canonical `syntax export` JSON `schema_version: 11`;
+  focused tests assert that provider/export JSON did not gain Rust-only template field names.
+- Representative local 8.5.1.1150 `shcntx_ru.hbk` corpus indexing produced schema version `12`,
+  25415 documents, 121 classified type-template rows, 0 unclassified rows and 353 template binding
+  rows.
+- Representative local 8.5.1.1150 `shcntx_root.hbk` corpus indexing produced schema version `12`,
+  25415 documents, 121 classified type-template rows, 0 unclassified rows and 335 template binding
+  rows.
+- Verified with focused model/search/resolver/extract/export/CLI tests, `cargo fmt --all --check`,
+  `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings` and local
   corpus SQL evidence recorded in `spec/acceptance/baseline.md`.

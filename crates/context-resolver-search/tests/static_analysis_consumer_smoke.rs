@@ -131,7 +131,7 @@ mod provider_setup {
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_key: None,
+            type_template_key: None,
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: Some(format!("{primary} description.")),

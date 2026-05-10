@@ -1838,8 +1838,8 @@ mod tests {
             available_since: None,
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_key: None,
-            generic_template_classification_diagnostic: None,
+            type_template_key: None,
+            type_template_classification_diagnostic: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Compact);
@@ -1887,8 +1887,8 @@ mod tests {
             available_since: None,
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_key: None,
-            generic_template_classification_diagnostic: None,
+            type_template_key: None,
+            type_template_classification_diagnostic: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Full);
@@ -1900,6 +1900,10 @@ mod tests {
         assert_eq!(fact["types"], json!(["Строка"]));
         assert_eq!(fact["return"], json!(["Булево"]));
         assert_eq!(fact["description"], "Detailed description");
+        assert!(fact.get("type_template_key").is_none());
+        assert!(fact.get("generic_template_key").is_none());
+        assert!(fact.get("template_binding").is_none());
+        assert!(fact.get("generic_binding").is_none());
         let signature = &fact["signatures"][0];
         assert!(signature.get("text").is_none());
         assert_eq!(signature["title"], "Основной вариант");
@@ -2426,7 +2430,7 @@ mod tests {
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_key: None,
+            type_template_key: None,
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: Some("type description".to_string()),

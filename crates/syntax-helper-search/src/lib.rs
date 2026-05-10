@@ -12,19 +12,19 @@ use strsim::levenshtein;
 use syntax_helper_language as language;
 pub use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 11;
+pub const INDEX_SCHEMA_VERSION: u32 = 12;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 type TypeTemplateRow = (
     String,
     Vec<String>,
-    Option<model::GenericPlatformTemplateKey>,
+    Option<model::PlatformTypeTemplateKey>,
     Option<String>,
 );
 
 #[derive(Debug, Clone)]
-struct GenericTemplateFact {
-    key: model::GenericPlatformTemplateKey,
+struct TypeTemplateFact {
+    key: model::PlatformTypeTemplateKey,
     parameters: Vec<String>,
 }
 
@@ -303,8 +303,8 @@ pub struct SearchDocument {
     pub available_since: Option<String>,
     pub metadata_kind: Option<String>,
     pub template_parameters: Vec<String>,
-    pub generic_template_key: Option<model::GenericPlatformTemplateKey>,
-    pub generic_template_classification_diagnostic: Option<String>,
+    pub type_template_key: Option<model::PlatformTypeTemplateKey>,
+    pub type_template_classification_diagnostic: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -339,8 +339,8 @@ pub struct SearchParameter {
 pub struct SearchTypeRef {
     pub name: String,
     pub target_type_id: Option<String>,
-    pub generic_template_key: Option<model::GenericPlatformTemplateKey>,
-    pub generic_binding: Option<model::GenericTypeBinding>,
+    pub type_template_key: Option<model::PlatformTypeTemplateKey>,
+    pub template_binding: Option<model::TypeTemplateBinding>,
 }
 
 impl SearchDocument {
@@ -407,7 +407,10 @@ impl SearchIndexBuilder {
                 .then_with(|| left.id.cmp(&right.id))
         });
         let mut warnings = deduplicate_documents(&mut documents);
-        warnings.extend(classify_generic_templates(&mut documents, source_locale));
+        warnings.extend(classify_platform_type_templates(
+            &mut documents,
+            source_locale,
+        ));
         validate_document_id_collisions(&documents)?;
         Ok(DocumentsBuild {
             documents,
@@ -524,7 +527,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
         {
             document.metadata_kind = Some(metadata_kind);
             document.template_parameters = record.template_parameters;
-            document.generic_template_key = record.generic_template_key;
+            document.type_template_key = record.type_template_key;
         }
         self.drafts.push(DocumentDraft::new(
             document,
@@ -1007,7 +1010,7 @@ fn deduplicate_documents(documents: &mut Vec<SearchDocument>) -> Vec<IndexBuildW
     warnings
 }
 
-fn classify_generic_templates(
+fn classify_platform_type_templates(
     documents: &mut [SearchDocument],
     source_locale: &str,
 ) -> Vec<IndexBuildWarning> {
@@ -1024,9 +1027,9 @@ fn classify_generic_templates(
             document.kind == SearchDocumentKind::PlatformType && document.metadata_kind.is_some()
         })
         .filter_map(|document| {
-            Some(GenericTemplateInfo {
+            Some(PlatformTypeTemplateInfo {
                 id: document.id.clone(),
-                base: model::generic_platform_template_base_for_source(
+                base: model::platform_type_template_base_for_source(
                     &document.name,
                     allow_primary_fallback,
                 ),
@@ -1047,7 +1050,7 @@ fn classify_generic_templates(
     family_roots.sort_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
     family_roots.dedup();
 
-    let mut classified = BTreeMap::<String, model::GenericPlatformTemplateKey>::new();
+    let mut classified = BTreeMap::<String, model::PlatformTypeTemplateKey>::new();
     let mut diagnostics = BTreeMap::<String, String>::new();
     let mut unassigned = BTreeSet::<String>::new();
     for template in &template_infos {
@@ -1059,9 +1062,9 @@ fn classify_generic_templates(
             .iter()
             .find(|root| base.starts_with(root.as_str()))
         {
-            let key = model::GenericPlatformTemplateKey::new(
+            let key = model::PlatformTypeTemplateKey::new(
                 root.clone(),
-                generic_template_variant(root, base),
+                type_template_variant(root, base),
             );
             diagnostics.insert(
                 template.id.clone(),
@@ -1088,7 +1091,7 @@ fn classify_generic_templates(
         let owner_unassigned_id = owner_type_id
             .as_deref()
             .filter(|type_id| unassigned.contains(*type_id));
-        for target_name in document_generic_ref_names(document) {
+        for target_name in document_type_template_ref_names(document) {
             let Some(target_type_id) = template_id_by_metadata_kind
                 .get(&normalize_lookup_key(target_name))
                 .and_then(|type_id| type_id.as_deref())
@@ -1122,12 +1125,12 @@ fn classify_generic_templates(
     {
         let Some(base) = template.base.as_deref() else {
             let message = format!(
-                "generic template '{}' has no alias base and primary fallback is only allowed for root source locale",
+                "type template '{}' has no alias base and primary fallback is only allowed for root source locale",
                 template.id
             );
             diagnostics.insert(template.id.clone(), message.clone());
             warnings.push(IndexBuildWarning {
-                code: "GENERIC_TEMPLATE_UNCLASSIFIED",
+                code: "TYPE_TEMPLATE_UNCLASSIFIED",
                 message,
             });
             continue;
@@ -1135,9 +1138,9 @@ fn classify_generic_templates(
         match direct_scores.get(&template.id) {
             Some(scores) if scores.len() == 1 => {
                 let (family, score) = scores.iter().next().expect("one score must exist");
-                let key = model::GenericPlatformTemplateKey::new(
+                let key = model::PlatformTypeTemplateKey::new(
                     family.clone(),
-                    generic_template_variant(family, base),
+                    type_template_variant(family, base),
                 );
                 diagnostics.insert(
                     template.id.clone(),
@@ -1150,7 +1153,7 @@ fn classify_generic_templates(
             }
             Some(scores) if !scores.is_empty() => {
                 let message = format!(
-                    "generic template '{}' has multiple direct generic family candidates: {}",
+                    "type template '{}' has multiple direct type-template family candidates: {}",
                     template.id,
                     scores
                         .keys()
@@ -1160,18 +1163,18 @@ fn classify_generic_templates(
                 );
                 diagnostics.insert(template.id.clone(), message.clone());
                 warnings.push(IndexBuildWarning {
-                    code: "GENERIC_TEMPLATE_AMBIGUOUS_FAMILY",
+                    code: "TYPE_TEMPLATE_AMBIGUOUS_FAMILY",
                     message,
                 });
             }
             _ => {
                 let message = format!(
-                    "generic template '{}' has no manager-root or direct generic type-reference family evidence",
+                    "type template '{}' has no manager-root or direct type-template type-reference family evidence",
                     template.id
                 );
                 diagnostics.insert(template.id.clone(), message.clone());
                 warnings.push(IndexBuildWarning {
-                    code: "GENERIC_TEMPLATE_UNCLASSIFIED",
+                    code: "TYPE_TEMPLATE_UNCLASSIFIED",
                     message,
                 });
             }
@@ -1180,17 +1183,17 @@ fn classify_generic_templates(
 
     for document in documents {
         if let Some(key) = classified.get(&document.id) {
-            document.generic_template_key = Some(key.clone());
+            document.type_template_key = Some(key.clone());
         }
         if let Some(diagnostic) = diagnostics.get(&document.id) {
-            document.generic_template_classification_diagnostic = Some(diagnostic.clone());
+            document.type_template_classification_diagnostic = Some(diagnostic.clone());
         }
     }
     warnings
 }
 
 #[derive(Debug)]
-struct GenericTemplateInfo {
+struct PlatformTypeTemplateInfo {
     id: String,
     base: Option<String>,
     metadata_kind: String,
@@ -1202,7 +1205,7 @@ fn manager_family_root(base: &str) -> Option<&str> {
         .filter(|root| !root.is_empty())
 }
 
-fn generic_template_variant(family: &str, base: &str) -> String {
+fn type_template_variant(family: &str, base: &str) -> String {
     base.strip_prefix(family)
         .filter(|suffix| !suffix.is_empty())
         .unwrap_or(base)
@@ -1225,7 +1228,7 @@ fn unique_lookup(
     lookup
 }
 
-fn document_generic_ref_names(document: &SearchDocument) -> impl Iterator<Item = &str> {
+fn document_type_template_ref_names(document: &SearchDocument) -> impl Iterator<Item = &str> {
     document
         .type_refs
         .iter()
@@ -1344,9 +1347,9 @@ impl SearchIndex {
         self.type_identities_by_lookup_key(&normalize_lookup_key(alias), TypeIdentityLookup::Alias)
     }
 
-    pub fn type_template_by_generic_key(
+    pub fn type_template_by_key(
         &self,
-        kind: &model::GenericPlatformTemplateKey,
+        kind: &model::PlatformTypeTemplateKey,
     ) -> Result<Vec<SearchHit>, SearchError> {
         let mut statement = self
             .connection
@@ -1356,8 +1359,8 @@ impl SearchIndex {
                         d.available_since
                  FROM type_templates t
                  JOIN documents d ON d.id = t.document_id
-                 WHERE t.generic_family = ?1
-                   AND t.generic_variant = ?2
+                 WHERE t.template_family = ?1
+                   AND t.template_variant = ?2
                  ORDER BY d.name_primary, d.id",
             )
             .map_err(|source| self.sqlite(source))?;
@@ -2059,15 +2062,15 @@ impl SearchIndex {
         if let Some((
             metadata_kind,
             template_parameters,
-            generic_template_key,
-            generic_template_classification_diagnostic,
+            type_template_key,
+            type_template_classification_diagnostic,
         )) = self.type_template_for(&document.id)?
         {
             document.metadata_kind = Some(metadata_kind);
             document.template_parameters = template_parameters;
-            document.generic_template_key = generic_template_key;
-            document.generic_template_classification_diagnostic =
-                generic_template_classification_diagnostic;
+            document.type_template_key = type_template_key;
+            document.type_template_classification_diagnostic =
+                type_template_classification_diagnostic;
         }
         Ok(document)
     }
@@ -2075,15 +2078,15 @@ impl SearchIndex {
     fn type_template_for(&self, document_id: &str) -> Result<Option<TypeTemplateRow>, SearchError> {
         self.connection
             .query_row(
-                "SELECT metadata_kind, template_parameters, generic_family, generic_variant,
-                        generic_classification_diagnostic
+                "SELECT metadata_kind, template_parameters, template_family, template_variant,
+                        template_classification_diagnostic
                  FROM type_templates WHERE document_id = ?1",
                 [document_id],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         split_lines(row.get::<_, String>(1)?),
-                        generic_template_key_from_codes(
+                        type_template_key_from_codes(
                             row.get::<_, Option<String>>(2)?,
                             row.get::<_, Option<String>>(3)?,
                         ),
@@ -2103,11 +2106,11 @@ impl SearchIndex {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT target_type_name, target_type_id, generic_template_family,
-                        generic_template_variant, generic_binding_kind,
-                        generic_binding_owner_parameter_index,
-                        generic_binding_target_parameter_index,
-                        generic_binding_arguments
+                "SELECT target_type_name, target_type_id, type_template_family,
+                        type_template_variant, template_binding_kind,
+                        template_binding_owner_parameter_index,
+                        template_binding_target_parameter_index,
+                        template_binding_arguments
                  FROM type_refs
                  WHERE source_document_id = ?1 AND ref_kind = ?2
                  ORDER BY source_signature_ordinal, source_parameter_ordinal, ordinal, target_type_name",
@@ -2218,11 +2221,11 @@ impl SearchIndex {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT target_type_name, target_type_id, generic_template_family,
-                        generic_template_variant, generic_binding_kind,
-                        generic_binding_owner_parameter_index,
-                        generic_binding_target_parameter_index,
-                        generic_binding_arguments
+                "SELECT target_type_name, target_type_id, type_template_family,
+                        type_template_variant, template_binding_kind,
+                        template_binding_owner_parameter_index,
+                        template_binding_target_parameter_index,
+                        template_binding_arguments
                  FROM type_refs
                  WHERE source_signature_id = ?1
                    AND source_parameter_ordinal = ?2
@@ -2509,9 +2512,9 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  document_id TEXT PRIMARY KEY REFERENCES documents(id),
                  metadata_kind TEXT NOT NULL,
                  template_parameters TEXT NOT NULL,
-                 generic_family TEXT,
-                 generic_variant TEXT,
-                 generic_classification_diagnostic TEXT
+                 template_family TEXT,
+                 template_variant TEXT,
+                 template_classification_diagnostic TEXT
              );
              CREATE TABLE members (
                  member_id TEXT PRIMARY KEY,
@@ -2551,12 +2554,12 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  source_parameter_ordinal INTEGER,
                  target_type_name TEXT NOT NULL,
                  target_type_id TEXT REFERENCES type_identities(type_id),
-                 generic_template_family TEXT,
-                 generic_template_variant TEXT,
-                 generic_binding_kind TEXT,
-                 generic_binding_owner_parameter_index INTEGER,
-                 generic_binding_target_parameter_index INTEGER,
-                 generic_binding_arguments TEXT
+                 type_template_family TEXT,
+                 type_template_variant TEXT,
+                 template_binding_kind TEXT,
+                 template_binding_owner_parameter_index INTEGER,
+                 template_binding_target_parameter_index INTEGER,
+                 template_binding_arguments TEXT
              );
              CREATE TABLE document_names (
                  key TEXT NOT NULL,
@@ -2611,8 +2614,8 @@ fn create_lookup_indexes(connection: &Connection, path: &Path) -> Result<(), Sea
              CREATE INDEX documents_owner_member_idx ON documents(owner_primary, name_primary);
              CREATE INDEX type_identities_name_idx ON type_identities(name_primary, name_alias, type_id);
              CREATE INDEX type_identities_document_idx ON type_identities(document_id);
-             CREATE INDEX type_templates_generic_idx ON type_templates(
-                generic_family, generic_variant, document_id
+             CREATE INDEX type_templates_template_key_idx ON type_templates(
+                template_family, template_variant, document_id
              );
              CREATE INDEX members_owner_idx ON members(owner_type_id, member_kind, name_primary, document_id);
              CREATE INDEX members_document_owner_idx ON members(document_id, owner_type_id);
@@ -2764,7 +2767,7 @@ fn insert_normalized_facts(
     let mut type_id_by_key = BTreeMap::new();
     let mut type_id_by_normalized_id = BTreeMap::new();
     let mut type_id_by_metadata_kind = BTreeMap::new();
-    let mut generic_template_by_type_id = BTreeMap::new();
+    let mut type_template_by_type_id = BTreeMap::new();
     for document in documents
         .iter()
         .filter(|document| document.kind == SearchDocumentKind::PlatformType)
@@ -2789,10 +2792,10 @@ fn insert_normalized_facts(
                 &document.id,
             );
         }
-        if let Some(kind) = &document.generic_template_key {
-            generic_template_by_type_id.insert(
+        if let Some(kind) = &document.type_template_key {
+            type_template_by_type_id.insert(
                 document.id.clone(),
-                GenericTemplateFact {
+                TypeTemplateFact {
                     key: kind.clone(),
                     parameters: document.template_parameters.clone(),
                 },
@@ -2812,8 +2815,8 @@ fn insert_normalized_facts(
     let mut type_template_statement = connection
         .prepare(
             "INSERT INTO type_templates(
-                document_id, metadata_kind, template_parameters, generic_family,
-                generic_variant, generic_classification_diagnostic
+                document_id, metadata_kind, template_parameters, template_family,
+                template_variant, template_classification_diagnostic
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )
         .map_err(|source| SearchError::Sqlite {
@@ -2861,9 +2864,9 @@ fn insert_normalized_facts(
             "INSERT INTO type_refs(
                 source_document_id, ref_kind, ordinal, source_signature_id,
                 source_signature_ordinal, source_parameter_ordinal, target_type_name,
-                target_type_id, generic_template_family, generic_template_variant,
-                generic_binding_kind, generic_binding_owner_parameter_index,
-                generic_binding_target_parameter_index, generic_binding_arguments
+                target_type_id, type_template_family, type_template_variant,
+                template_binding_kind, template_binding_owner_parameter_index,
+                template_binding_target_parameter_index, template_binding_arguments
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         )
         .map_err(|source| SearchError::Sqlite {
@@ -2887,17 +2890,15 @@ fn insert_normalized_facts(
                 source,
             })?;
         if let Some(metadata_kind) = &document.metadata_kind {
-            let generic_template_key = document.generic_template_key.as_ref();
+            let type_template_key = document.type_template_key.as_ref();
             type_template_statement
                 .execute(params![
                     document.id,
                     metadata_kind,
                     document.template_parameters.join("\n"),
-                    generic_template_key.map(|kind| kind.family.as_str()),
-                    generic_template_key.map(|kind| kind.variant.as_str()),
-                    document
-                        .generic_template_classification_diagnostic
-                        .as_deref(),
+                    type_template_key.map(|kind| kind.family.as_str()),
+                    type_template_key.map(|kind| kind.variant.as_str()),
+                    document.type_template_classification_diagnostic.as_deref(),
                 ])
                 .map_err(|source| SearchError::Sqlite {
                     path: path.to_path_buf(),
@@ -2980,7 +2981,7 @@ fn insert_normalized_facts(
                             path,
                             &type_id_by_key,
                             &type_id_by_metadata_kind,
-                            &generic_template_by_type_id,
+                            &type_template_by_type_id,
                             TypeRefRow {
                                 source_document_id: &document.id,
                                 ref_kind: "parameter_type",
@@ -3003,7 +3004,7 @@ fn insert_normalized_facts(
                 path,
                 &type_id_by_key,
                 &type_id_by_metadata_kind,
-                &generic_template_by_type_id,
+                &type_template_by_type_id,
                 TypeRefRow {
                     source_document_id: &document.id,
                     ref_kind: document.kind.type_ref_kind(),
@@ -3022,7 +3023,7 @@ fn insert_normalized_facts(
                 path,
                 &type_id_by_key,
                 &type_id_by_metadata_kind,
-                &generic_template_by_type_id,
+                &type_template_by_type_id,
                 TypeRefRow {
                     source_document_id: &document.id,
                     ref_kind: "return_type",
@@ -3043,7 +3044,7 @@ fn insert_normalized_facts(
                 path,
                 &type_id_by_key,
                 &type_id_by_metadata_kind,
-                &generic_template_by_type_id,
+                &type_template_by_type_id,
                 TypeRefRow {
                     source_document_id: &document.id,
                     ref_kind: "constructor_result",
@@ -3087,7 +3088,7 @@ fn insert_type_ref(
     path: &Path,
     type_id_by_key: &BTreeMap<String, Option<String>>,
     type_id_by_metadata_kind: &BTreeMap<String, Option<String>>,
-    generic_template_by_type_id: &BTreeMap<String, GenericTemplateFact>,
+    type_template_by_type_id: &BTreeMap<String, TypeTemplateFact>,
     row: TypeRefRow<'_>,
 ) -> Result<(), SearchError> {
     let mut target_type_id = type_id_by_key
@@ -3098,13 +3099,10 @@ fn insert_type_ref(
             .get(&normalize_lookup_key(row.target_type_name))
             .and_then(|type_id| type_id.as_deref());
     }
-    let generic_template_key =
-        target_type_id.and_then(|type_id| generic_template_by_type_id.get(type_id));
-    let generic_binding = generic_template_binding(
-        row.owner_type_id,
-        target_type_id,
-        generic_template_by_type_id,
-    );
+    let type_template_key =
+        target_type_id.and_then(|type_id| type_template_by_type_id.get(type_id));
+    let template_binding =
+        type_template_binding(row.owner_type_id, target_type_id, type_template_by_type_id);
     statement
         .execute(params![
             row.source_document_id,
@@ -3115,18 +3113,18 @@ fn insert_type_ref(
             row.source_parameter_ordinal.map(|value| value as i64),
             row.target_type_name,
             target_type_id,
-            generic_template_key.map(|fact| fact.key.family.as_str()),
-            generic_template_key.map(|fact| fact.key.variant.as_str()),
-            generic_binding.as_ref().map(|_| "owner_parameter"),
-            generic_binding
+            type_template_key.map(|fact| fact.key.family.as_str()),
+            type_template_key.map(|fact| fact.key.variant.as_str()),
+            template_binding.as_ref().map(|_| "owner_parameter"),
+            template_binding
                 .as_ref()
                 .and_then(|binding| binding.arguments.first())
                 .map(|argument| argument.owner_parameter_index as i64),
-            generic_binding
+            template_binding
                 .as_ref()
                 .and_then(|binding| binding.arguments.first())
                 .map(|argument| argument.target_parameter_index as i64),
-            generic_binding.as_ref().map(binding_arguments_to_storage),
+            template_binding.as_ref().map(binding_arguments_to_storage),
         ])
         .map(|_| ())
         .map_err(|source| SearchError::Sqlite {
@@ -3146,13 +3144,13 @@ struct OwnerParameterBindingArgument {
     target_parameter_index: usize,
 }
 
-fn generic_template_binding(
+fn type_template_binding(
     owner_type_id: Option<&str>,
     target_type_id: Option<&str>,
-    generic_template_by_type_id: &BTreeMap<String, GenericTemplateFact>,
+    type_template_by_type_id: &BTreeMap<String, TypeTemplateFact>,
 ) -> Option<OwnerParameterBinding> {
-    let owner = generic_template_by_type_id.get(owner_type_id?)?;
-    let target = generic_template_by_type_id.get(target_type_id?)?;
+    let owner = type_template_by_type_id.get(owner_type_id?)?;
+    let target = type_template_by_type_id.get(target_type_id?)?;
     if owner.key.family != target.key.family {
         return None;
     }
@@ -3553,8 +3551,8 @@ fn document(
         available_since: None,
         metadata_kind: None,
         template_parameters: Vec::new(),
-        generic_template_key: None,
-        generic_template_classification_diagnostic: None,
+        type_template_key: None,
+        type_template_classification_diagnostic: None,
     }
 }
 
@@ -3676,8 +3674,8 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         available_since: None,
         metadata_kind: None,
         template_parameters: Vec::new(),
-        generic_template_key: None,
-        generic_template_classification_diagnostic: None,
+        type_template_key: None,
+        type_template_classification_diagnostic: None,
     }
 }
 
@@ -3844,13 +3842,13 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
         available_since: row.get(9)?,
         metadata_kind: None,
         template_parameters: Vec::new(),
-        generic_template_key: None,
-        generic_template_classification_diagnostic: None,
+        type_template_key: None,
+        type_template_classification_diagnostic: None,
     })
 }
 
 fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchTypeRef> {
-    let generic_template_key = generic_template_key_from_codes(
+    let type_template_key = type_template_key_from_codes(
         row.get::<_, Option<String>>(2)?,
         row.get::<_, Option<String>>(3)?,
     );
@@ -3858,15 +3856,15 @@ fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchT
     let owner_parameter_index: Option<i64> = row.get(5)?;
     let target_parameter_index: Option<i64> = row.get(6)?;
     let binding_arguments: Option<String> = row.get(7)?;
-    let generic_binding = match (
-        generic_template_key.clone(),
+    let template_binding = match (
+        type_template_key.clone(),
         binding_kind.as_deref(),
         owner_parameter_index,
         target_parameter_index,
         binding_arguments.as_deref(),
     ) {
         (Some(template_key), Some("owner_parameter"), _, _, Some(arguments)) => {
-            Some(model::GenericTypeBinding {
+            Some(model::TypeTemplateBinding {
                 template_key,
                 arguments: parse_binding_arguments(arguments),
             })
@@ -3877,9 +3875,9 @@ fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchT
             Some(owner_index),
             Some(target_index),
             None,
-        ) => Some(model::GenericTypeBinding {
+        ) => Some(model::TypeTemplateBinding {
             template_key,
-            arguments: vec![model::GenericArgumentBinding::OwnerParameter {
+            arguments: vec![model::TemplateParameterBinding::OwnerParameter {
                 owner_parameter_index: owner_index as usize,
                 target_parameter_index: target_index as usize,
             }],
@@ -3889,17 +3887,17 @@ fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchT
     Ok(SearchTypeRef {
         name: row.get(0)?,
         target_type_id: row.get(1)?,
-        generic_template_key,
-        generic_binding,
+        type_template_key,
+        template_binding,
     })
 }
 
-fn parse_binding_arguments(value: &str) -> Vec<model::GenericArgumentBinding> {
+fn parse_binding_arguments(value: &str) -> Vec<model::TemplateParameterBinding> {
     value
         .lines()
         .filter_map(|line| {
             let (owner, target) = line.split_once(':')?;
-            Some(model::GenericArgumentBinding::OwnerParameter {
+            Some(model::TemplateParameterBinding::OwnerParameter {
                 owner_parameter_index: owner.parse().ok()?,
                 target_parameter_index: target.parse().ok()?,
             })
@@ -3921,11 +3919,11 @@ fn availability_context_code(context: model::AvailabilityContext) -> &'static st
     }
 }
 
-fn generic_template_key_from_codes(
+fn type_template_key_from_codes(
     family: Option<String>,
     variant: Option<String>,
-) -> Option<model::GenericPlatformTemplateKey> {
-    Some(model::GenericPlatformTemplateKey::new(family?, variant?))
+) -> Option<model::PlatformTypeTemplateKey> {
+    Some(model::PlatformTypeTemplateKey::new(family?, variant?))
 }
 
 fn optional_localized_name(
@@ -4506,22 +4504,20 @@ mod tests {
             vec!["Имя справочника".to_string()]
         );
         assert_eq!(
-            hit.document.generic_template_key,
-            Some(model::GenericPlatformTemplateKey::new("Catalog", "Manager"))
+            hit.document.type_template_key,
+            Some(model::PlatformTypeTemplateKey::new("Catalog", "Manager"))
         );
 
         let by_kind = index
-            .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
-                "Catalog", "Manager",
-            ))
+            .type_template_by_key(&model::PlatformTypeTemplateKey::new("Catalog", "Manager"))
             .expect("semantic template lookup must not fail");
         assert_eq!(by_kind.len(), 1);
         assert_eq!(by_kind[0].document.id, hit.document.id);
     }
 
     #[test]
-    fn generic_template_classification_uses_longest_manager_root() {
-        let path = temp_path("generic-template-longest-root.sqlite");
+    fn type_template_classification_uses_longest_manager_root() {
+        let path = temp_path("type-template-longest-root.sqlite");
         let mut builder = SearchIndexBuilder::new();
         for (primary, alias) in [
             (
@@ -4549,17 +4545,17 @@ mod tests {
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
         let hit = index
-            .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
+            .type_template_by_key(&model::PlatformTypeTemplateKey::new(
                 "DocumentJournal",
                 "Ref",
             ))
-            .expect("generic lookup must not fail")
+            .expect("type-template lookup must not fail")
             .pop()
             .expect("document journal ref must resolve");
 
         assert_eq!(
-            hit.document.generic_template_key,
-            Some(model::GenericPlatformTemplateKey::new(
+            hit.document.type_template_key,
+            Some(model::PlatformTypeTemplateKey::new(
                 "DocumentJournal",
                 "Ref",
             ))
@@ -4567,8 +4563,8 @@ mod tests {
     }
 
     #[test]
-    fn generic_template_classification_uses_external_data_source_table_before_source() {
-        let path = temp_path("generic-template-external-data-source-longest-root.sqlite");
+    fn type_template_classification_uses_external_data_source_table_before_source() {
+        let path = temp_path("type-template-external-data-source-longest-root.sqlite");
         let mut builder = SearchIndexBuilder::new();
         for (primary, alias) in [
             (
@@ -4599,17 +4595,17 @@ mod tests {
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
         let hit = index
-            .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
+            .type_template_by_key(&model::PlatformTypeTemplateKey::new(
                 "ExternalDataSourceTable",
                 "Ref",
             ))
-            .expect("generic lookup must not fail")
+            .expect("type-template lookup must not fail")
             .pop()
             .expect("external data source table ref must resolve");
 
         assert_eq!(
-            hit.document.generic_template_key,
-            Some(model::GenericPlatformTemplateKey::new(
+            hit.document.type_template_key,
+            Some(model::PlatformTypeTemplateKey::new(
                 "ExternalDataSourceTable",
                 "Ref",
             ))
@@ -4617,11 +4613,11 @@ mod tests {
     }
 
     #[test]
-    fn generic_template_classification_allows_primary_fallback_only_for_root_source() {
+    fn type_template_classification_allows_primary_fallback_only_for_root_source() {
         let mut root_metadata = metadata();
         root_metadata.locale = "en".to_string();
         root_metadata.source_locale = "root".to_string();
-        let root_path = temp_path("generic-template-root-primary-fallback.sqlite");
+        let root_path = temp_path("type-template-root-primary-fallback.sqlite");
         let mut root_builder = SearchIndexBuilder::new();
         for primary in [
             "DocumentManager.<Document name>",
@@ -4640,15 +4636,13 @@ mod tests {
         let root_index = SearchIndex::open_read_only(&root_path).expect("index must open");
         assert_eq!(
             root_index
-                .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
-                    "Document", "Ref"
-                ))
-                .expect("generic lookup must not fail")
+                .type_template_by_key(&model::PlatformTypeTemplateKey::new("Document", "Ref"))
+                .expect("type-template lookup must not fail")
                 .len(),
             1
         );
 
-        let ru_path = temp_path("generic-template-ru-primary-no-fallback.sqlite");
+        let ru_path = temp_path("type-template-ru-primary-no-fallback.sqlite");
         let mut ru_builder = SearchIndexBuilder::new();
         let mut record = platform_type("ДокументСсылка.<Имя документа>", None, "Template.");
         record.type_kind = model::PlatformTypeKind::MetadataTemplate;
@@ -4661,24 +4655,24 @@ mod tests {
             .expect("ru index must build");
 
         assert_eq!(report.warnings.len(), 1);
-        assert_eq!(report.warnings[0].code, "GENERIC_TEMPLATE_UNCLASSIFIED");
+        assert_eq!(report.warnings[0].code, "TYPE_TEMPLATE_UNCLASSIFIED");
         let ru_index = SearchIndex::open_read_only(&ru_path).expect("index must open");
         let hit = ru_index
             .type_identity_by_id("platform_type:ДокументСсылка.<Имя документа>")
             .expect("lookup must not fail")
             .expect("template must exist");
-        assert!(hit.document.generic_template_key.is_none());
+        assert!(hit.document.type_template_key.is_none());
         assert!(
             hit.document
-                .generic_template_classification_diagnostic
+                .type_template_classification_diagnostic
                 .as_deref()
                 .is_some_and(|value| value.contains("primary fallback"))
         );
     }
 
     #[test]
-    fn generic_template_classification_uses_direct_refs_for_unassigned_templates() {
-        let path = temp_path("generic-template-direct-ref-family.sqlite");
+    fn type_template_classification_uses_direct_refs_for_unassigned_templates() {
+        let path = temp_path("type-template-direct-ref-family.sqlite");
         let mut builder = SearchIndexBuilder::new();
         for (primary, alias) in [
             (
@@ -4802,7 +4796,7 @@ mod tests {
             report
                 .warnings
                 .iter()
-                .all(|warning| !warning.code.starts_with("GENERIC_TEMPLATE_"))
+                .all(|warning| !warning.code.starts_with("TYPE_TEMPLATE_"))
         );
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
         for (variant, expected_id) in [
@@ -4832,17 +4826,17 @@ mod tests {
             ),
         ] {
             let hits = index
-                .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
+                .type_template_by_key(&model::PlatformTypeTemplateKey::new(
                     "ChartOfCalculationTypes",
                     variant,
                 ))
-                .expect("generic lookup must not fail");
+                .expect("type-template lookup must not fail");
             assert_eq!(hits.len(), 1);
             assert_eq!(hits[0].document.id, expected_id);
             assert!(
                 hits[0]
                     .document
-                    .generic_template_classification_diagnostic
+                    .type_template_classification_diagnostic
                     .as_deref()
                     .is_some_and(|value| value.starts_with("direct_type_ref "))
             );
@@ -4850,8 +4844,8 @@ mod tests {
     }
 
     #[test]
-    fn generic_template_classification_reports_unclassified_templates() {
-        let path = temp_path("generic-template-unclassified.sqlite");
+    fn type_template_classification_reports_unclassified_templates() {
+        let path = temp_path("type-template-unclassified.sqlite");
         let mut builder = SearchIndexBuilder::new();
         let mut record = platform_type(
             "ОдиночныйШаблон.<Имя>",
@@ -4868,7 +4862,7 @@ mod tests {
         let report = build_index_from_builder_with_report(&path, &metadata(), builder)
             .expect("index must build");
         assert_eq!(report.warnings.len(), 1);
-        assert_eq!(report.warnings[0].code, "GENERIC_TEMPLATE_UNCLASSIFIED");
+        assert_eq!(report.warnings[0].code, "TYPE_TEMPLATE_UNCLASSIFIED");
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
         let hit = index
             .type_identity_by_id("platform_type:ОдиночныйШаблон.<Имя>")
@@ -4876,15 +4870,15 @@ mod tests {
             .expect("template must exist");
         assert_eq!(
             hit.document
-                .generic_template_classification_diagnostic
+                .type_template_classification_diagnostic
                 .as_deref(),
             Some(report.warnings[0].message.as_str())
         );
     }
 
     #[test]
-    fn generic_template_classification_persists_ambiguous_diagnostics() {
-        let path = temp_path("generic-template-ambiguous.sqlite");
+    fn type_template_classification_persists_ambiguous_diagnostics() {
+        let path = temp_path("type-template-ambiguous.sqlite");
         let mut builder = SearchIndexBuilder::new();
         for (primary, alias) in [
             ("ПервыйМенеджер.<Имя>", "FirstManager.<Name>"),
@@ -4929,7 +4923,7 @@ mod tests {
         let report = build_index_from_builder_with_report(&path, &metadata(), builder)
             .expect("index must build");
         assert_eq!(report.warnings.len(), 1);
-        assert_eq!(report.warnings[0].code, "GENERIC_TEMPLATE_AMBIGUOUS_FAMILY");
+        assert_eq!(report.warnings[0].code, "TYPE_TEMPLATE_AMBIGUOUS_FAMILY");
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
         let hit = index
             .type_identity_by_id("platform_type:ОбщийШаблон.<Имя>")
@@ -4937,15 +4931,15 @@ mod tests {
             .expect("template must exist");
         assert_eq!(
             hit.document
-                .generic_template_classification_diagnostic
+                .type_template_classification_diagnostic
                 .as_deref(),
             Some(report.warnings[0].message.as_str())
         );
     }
 
     #[test]
-    fn generic_template_type_refs_preserve_owner_parameter_binding() {
-        let path = temp_path("generic-template-binding.sqlite");
+    fn type_template_type_refs_preserve_owner_parameter_binding() {
+        let path = temp_path("type-template-binding.sqlite");
         let mut builder = SearchIndexBuilder::new();
         for mut record in [
             platform_type(
@@ -4988,7 +4982,7 @@ mod tests {
                 facts: model::SectionFacts::default(),
                 source: source("document-object-ref"),
             })
-            .expect("generic property must sink");
+            .expect("type-template property must sink");
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
 
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
@@ -5000,16 +4994,16 @@ mod tests {
 
         assert_eq!(property.document.type_ref_facts.len(), 1);
         let binding = property.document.type_ref_facts[0]
-            .generic_binding
+            .template_binding
             .as_ref()
-            .expect("type ref must preserve generic binding");
+            .expect("type ref must preserve template binding");
         assert_eq!(
             binding.template_key,
-            model::GenericPlatformTemplateKey::new("Document", "Ref")
+            model::PlatformTypeTemplateKey::new("Document", "Ref")
         );
         assert_eq!(
             binding.arguments,
-            vec![model::GenericArgumentBinding::OwnerParameter {
+            vec![model::TemplateParameterBinding::OwnerParameter {
                 owner_parameter_index: 0,
                 target_parameter_index: 0,
             }]
@@ -5017,8 +5011,8 @@ mod tests {
     }
 
     #[test]
-    fn generic_template_type_refs_preserve_multiple_owner_parameter_bindings() {
-        let path = temp_path("generic-template-multi-binding.sqlite");
+    fn type_template_type_refs_preserve_multiple_owner_parameter_bindings() {
+        let path = temp_path("type-template-multi-binding.sqlite");
         let mut builder = SearchIndexBuilder::new();
         for mut record in [
             platform_type(
@@ -5067,7 +5061,7 @@ mod tests {
                 facts: model::SectionFacts::default(),
                 source: source("external-data-source-table-object-ref"),
             })
-            .expect("generic property must sink");
+            .expect("type-template property must sink");
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
 
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
@@ -5081,21 +5075,21 @@ mod tests {
             .expect("property must resolve");
 
         let binding = property.document.type_ref_facts[0]
-            .generic_binding
+            .template_binding
             .as_ref()
-            .expect("type ref must preserve generic binding");
+            .expect("type ref must preserve template binding");
         assert_eq!(
             binding.template_key,
-            model::GenericPlatformTemplateKey::new("ExternalDataSourceTable", "Ref")
+            model::PlatformTypeTemplateKey::new("ExternalDataSourceTable", "Ref")
         );
         assert_eq!(
             binding.arguments,
             vec![
-                model::GenericArgumentBinding::OwnerParameter {
+                model::TemplateParameterBinding::OwnerParameter {
                     owner_parameter_index: 0,
                     target_parameter_index: 0,
                 },
-                model::GenericArgumentBinding::OwnerParameter {
+                model::TemplateParameterBinding::OwnerParameter {
                     owner_parameter_index: 1,
                     target_parameter_index: 1,
                 },
@@ -5104,8 +5098,8 @@ mod tests {
     }
 
     #[test]
-    fn generic_template_binding_does_not_choose_ambiguous_type_ref_target() {
-        let path = temp_path("generic-template-binding-ambiguous.sqlite");
+    fn type_template_binding_does_not_choose_ambiguous_type_ref_target() {
+        let path = temp_path("type-template-binding-ambiguous.sqlite");
         let mut builder = SearchIndexBuilder::new();
         let mut owner = platform_type(
             "ДокументОбъект.<Имя документа>",
@@ -5149,7 +5143,7 @@ mod tests {
                 facts: model::SectionFacts::default(),
                 source: source("ambiguous-document-object-ref"),
             })
-            .expect("generic property must sink");
+            .expect("type-template property must sink");
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
 
         let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
@@ -5161,7 +5155,7 @@ mod tests {
 
         assert_eq!(property.document.type_ref_facts.len(), 1);
         assert_eq!(property.document.type_ref_facts[0].target_type_id, None);
-        assert_eq!(property.document.type_ref_facts[0].generic_binding, None);
+        assert_eq!(property.document.type_ref_facts[0].template_binding, None);
     }
 
     #[test]
@@ -7093,7 +7087,7 @@ mod tests {
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_key: None,
+            type_template_key: None,
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: Some(description.to_string()),

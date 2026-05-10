@@ -433,7 +433,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 extends: Vec::new(),
                 metadata_kind: None,
                 template_parameters: Vec::new(),
-                generic_template_key: None,
+                type_template_key: None,
                 method_links: vec![link("Добавить")],
                 constructor_links: vec![link("Массив")],
                 description: Some("Array type.".to_string()),
@@ -452,7 +452,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 extends: Vec::new(),
                 metadata_kind: None,
                 template_parameters: Vec::new(),
-                generic_template_key: None,
+                type_template_key: None,
                 method_links: Vec::new(),
                 constructor_links: Vec::new(),
                 description: None,
@@ -471,7 +471,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 extends: Vec::new(),
                 metadata_kind: None,
                 template_parameters: Vec::new(),
-                generic_template_key: None,
+                type_template_key: None,
                 method_links: Vec::new(),
                 constructor_links: Vec::new(),
                 description: None,
@@ -490,9 +490,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                 extends: Vec::new(),
                 metadata_kind: Some("ДокументОбъект".to_string()),
                 template_parameters: vec!["Имя документа".to_string()],
-                generic_template_key: Some(model::GenericPlatformTemplateKey::new(
-                    "Document", "Object",
-                )),
+                type_template_key: Some(model::PlatformTypeTemplateKey::new("Document", "Object")),
                 method_links: Vec::new(),
                 constructor_links: Vec::new(),
                 description: None,
@@ -849,6 +847,10 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
     assert_eq!(platform_type["type_kind"], "regular");
     assert_eq!(platform_type["object_kind"], "regular_platform_type");
     assert!(platform_type.get("owner_path").is_none());
+    for record in platform_types["records"].as_array().unwrap() {
+        assert!(record.get("type_template_key").is_none());
+        assert!(record.get("generic_template_key").is_none());
+    }
     assert!(
         platform_types["records"]
             .as_array()

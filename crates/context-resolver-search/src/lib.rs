@@ -3,11 +3,11 @@ use std::path::Path;
 use context_resolver_core::{
     AvailabilityContext, AvailabilityFact, AvailabilityInfo, CallableId, CallableInfo,
     CallableKind, CallableLookup, ContextFact, ContextSource, FactDetails, FactId, FactKind,
-    FactRelation, GenericArgumentBinding, GenericPlatformTemplateKey, GenericTypeBinding,
-    LanguageDomain, MemberId, MemberInfo, MemberKind, MemberQuery, MemberQueryKind,
-    MetadataTemplateInfo, Name, Parameter, RelationKind, ResolveContext, ResolveError,
-    ResolveResponse, ResolvedCallable, ResolvedMember, ResolvedType, Signature, SourceCapabilities,
-    SourceDescriptor, SourceId, TypeId, TypeInfo, TypeLookup, TypeRef,
+    FactRelation, LanguageDomain, MemberId, MemberInfo, MemberKind, MemberQuery, MemberQueryKind,
+    MetadataTemplateInfo, Name, Parameter, PlatformTypeTemplateKey, RelationKind, ResolveContext,
+    ResolveError, ResolveResponse, ResolvedCallable, ResolvedMember, ResolvedType, Signature,
+    SourceCapabilities, SourceDescriptor, SourceId, TemplateParameterBinding, TypeId, TypeInfo,
+    TypeLookup, TypeRef, TypeTemplateBinding,
 };
 use syntax_helper_search::{
     RelatedHit, SearchDocument, SearchDocumentKind, SearchError, SearchHit, SearchIndex,
@@ -93,7 +93,7 @@ impl PlatformSearchSource {
                 .target_type_id
                 .as_ref()
                 .map(|type_id| self.type_id(type_id.clone())),
-            generic_binding: type_ref.generic_binding.as_ref().map(map_generic_binding),
+            template_binding: type_ref.template_binding.as_ref().map(map_template_binding),
         }
     }
 
@@ -114,7 +114,7 @@ impl PlatformSearchSource {
                 Ok(TypeRef {
                     name: hit.document.name.primary,
                     id: Some(self.type_id(hit.document.id)),
-                    generic_binding: None,
+                    template_binding: None,
                 })
             })
             .collect()
@@ -440,7 +440,7 @@ impl LanguageSearchSource {
             FactDetails::Type(TypeInfo {
                 description: hit.document.description.clone(),
                 metadata_template: None,
-                generic_template_key: None,
+                type_template_key: None,
             })
         } else if kind == FactKind::Callable {
             FactDetails::Callable(self.callable_info(&hit.document))
@@ -466,7 +466,7 @@ impl LanguageSearchSource {
         let info = TypeInfo {
             description: hit.document.description.clone(),
             metadata_template: None,
-            generic_template_key: None,
+            type_template_key: None,
         };
         let id = self.type_id(self.local_id(&hit.document));
         let fact = ContextFact {
@@ -506,7 +506,7 @@ impl LanguageSearchSource {
             FactDetails::Type(TypeInfo {
                 description: hit.document.description.clone(),
                 metadata_template: None,
-                generic_template_key: None,
+                type_template_key: None,
             })
         } else if id.kind == FactKind::Callable {
             FactDetails::Callable(self.callable_info(&hit.document))
@@ -564,7 +564,7 @@ impl LanguageSearchSource {
             .map(|name| TypeRef {
                 name: name.clone(),
                 id: None,
-                generic_binding: None,
+                template_binding: None,
             })
             .collect()
     }
@@ -718,7 +718,7 @@ impl ContextSource for LanguageSearchSource {
                         .collect()
                 }
             }
-            TypeLookup::GenericTemplate { .. } => Vec::new(),
+            TypeLookup::PlatformTypeTemplate { .. } => Vec::new(),
         };
         Ok(response_from_resolved_types(
             facts,
@@ -950,7 +950,7 @@ impl ContextSource for PlatformSearchSource {
                         .collect()
                 }
             }
-            TypeLookup::GenericTemplate {
+            TypeLookup::PlatformTypeTemplate {
                 source,
                 domain,
                 key,
@@ -958,12 +958,12 @@ impl ContextSource for PlatformSearchSource {
                 if !self.source_matches(source) || !self.domain_matches(domain) {
                     Vec::new()
                 } else {
-                    let kind = syntax_helper_search::model::GenericPlatformTemplateKey::new(
+                    let kind = syntax_helper_search::model::PlatformTypeTemplateKey::new(
                         key.family.clone(),
                         key.variant.clone(),
                     );
                     self.index
-                        .type_template_by_generic_key(&kind)
+                        .type_template_by_key(&kind)
                         .map_err(|source| self.source_failure(source))?
                         .into_iter()
                         .map(|hit| self.map_type(hit))
@@ -1152,26 +1152,26 @@ fn type_info(document: &SearchDocument) -> TypeInfo {
                 parameters: document.template_parameters.clone(),
             }
         }),
-        generic_template_key: document
-            .generic_template_key
+        type_template_key: document
+            .type_template_key
             .as_ref()
-            .map(map_generic_template_key),
+            .map(map_type_template_key),
     }
 }
 
-fn map_generic_binding(
-    binding: &syntax_helper_search::model::GenericTypeBinding,
-) -> GenericTypeBinding {
-    GenericTypeBinding {
-        template_key: map_generic_template_key(&binding.template_key),
+fn map_template_binding(
+    binding: &syntax_helper_search::model::TypeTemplateBinding,
+) -> TypeTemplateBinding {
+    TypeTemplateBinding {
+        template_key: map_type_template_key(&binding.template_key),
         arguments: binding
             .arguments
             .iter()
             .map(|argument| match argument {
-                syntax_helper_search::model::GenericArgumentBinding::OwnerParameter {
+                syntax_helper_search::model::TemplateParameterBinding::OwnerParameter {
                     owner_parameter_index,
                     target_parameter_index,
-                } => GenericArgumentBinding::OwnerParameter {
+                } => TemplateParameterBinding::OwnerParameter {
                     owner_parameter_index: *owner_parameter_index,
                     target_parameter_index: *target_parameter_index,
                 },
@@ -1180,10 +1180,10 @@ fn map_generic_binding(
     }
 }
 
-fn map_generic_template_key(
-    kind: &syntax_helper_search::model::GenericPlatformTemplateKey,
-) -> GenericPlatformTemplateKey {
-    GenericPlatformTemplateKey::new(kind.family.clone(), kind.variant.clone())
+fn map_type_template_key(
+    kind: &syntax_helper_search::model::PlatformTypeTemplateKey,
+) -> PlatformTypeTemplateKey {
+    PlatformTypeTemplateKey::new(kind.family.clone(), kind.variant.clone())
 }
 
 fn is_platform_document_kind(kind: SearchDocumentKind) -> bool {
@@ -1385,9 +1385,9 @@ mod tests {
     use std::time::Instant;
 
     use context_resolver_core::{
-        CallableLookup, CompositeResolver, ContextResolver, ContextSource, GenericArgumentBinding,
-        GenericPlatformTemplateKey, MemberQuery, RelationKind, ResolveContext, ResolveStatus,
-        TypeLookup,
+        CallableLookup, CompositeResolver, ContextResolver, ContextSource, MemberQuery,
+        PlatformTypeTemplateKey, RelationKind, ResolveContext, ResolveStatus,
+        TemplateParameterBinding, TypeLookup,
     };
     use syntax_helper_language::{LanguagePageInput, LanguageSourceFamily, extract_language_facts};
     use syntax_helper_model as model;
@@ -1457,35 +1457,35 @@ mod tests {
             vec!["Имя справочника".to_string()]
         );
         assert_eq!(
-            template.info.generic_template_key,
-            Some(GenericPlatformTemplateKey::new("Catalog", "Manager"))
+            template.info.type_template_key,
+            Some(PlatformTypeTemplateKey::new("Catalog", "Manager"))
         );
 
         let by_kind = adapter
             .resolve_type(
-                TypeLookup::GenericTemplate {
+                TypeLookup::PlatformTypeTemplate {
                     source: Some(&source),
                     domain: Some(LanguageDomain::PlatformApi),
-                    key: &GenericPlatformTemplateKey::new("Catalog", "Manager"),
+                    key: &PlatformTypeTemplateKey::new("Catalog", "Manager"),
                 },
                 &ResolveContext::all(),
             )
-            .expect("semantic generic template lookup must not fail");
+            .expect("semantic type template lookup must not fail");
         assert_eq!(by_kind.status, ResolveStatus::Ok);
         assert_eq!(by_kind.facts[0].id, template.id);
     }
 
     #[test]
-    fn platform_adapter_exposes_generic_owner_parameter_binding() {
+    fn platform_adapter_exposes_template_owner_parameter_binding() {
         let source = fixture_source();
         let index = fixture_index("platform-adapter-generic-binding.sqlite");
         let adapter = PlatformSearchSource::with_source_id(index, source.clone());
         let owner = adapter
             .resolve_type(
-                TypeLookup::GenericTemplate {
+                TypeLookup::PlatformTypeTemplate {
                     source: Some(&source),
                     domain: Some(LanguageDomain::PlatformApi),
-                    key: &GenericPlatformTemplateKey::new("Document", "Object"),
+                    key: &PlatformTypeTemplateKey::new("Document", "Object"),
                 },
                 &ResolveContext::all(),
             )
@@ -1504,29 +1504,29 @@ mod tests {
                 },
                 &ResolveContext::all(),
             )
-            .expect("generic member lookup must not fail");
+            .expect("type-template member lookup must not fail");
 
         assert_eq!(response.status, ResolveStatus::Ok);
         let property_type = response.facts[0]
             .info
             .types
             .first()
-            .expect("generic property type must be exposed");
+            .expect("type-template property type must be exposed");
         assert_eq!(
             property_type.id.as_ref().map(|id| id.0.local_id.as_str()),
             Some("platform_type:ДокументСсылка.<Имя документа>")
         );
         let binding = property_type
-            .generic_binding
+            .template_binding
             .as_ref()
-            .expect("generic owner-parameter binding must be visible");
+            .expect("template owner-parameter binding must be visible");
         assert_eq!(
             binding.template_key,
-            GenericPlatformTemplateKey::new("Document", "Ref")
+            PlatformTypeTemplateKey::new("Document", "Ref")
         );
         assert_eq!(
             binding.arguments,
-            vec![GenericArgumentBinding::OwnerParameter {
+            vec![TemplateParameterBinding::OwnerParameter {
                 owner_parameter_index: 0,
                 target_parameter_index: 0,
             }]
@@ -1534,7 +1534,7 @@ mod tests {
     }
 
     #[test]
-    fn platform_adapter_exposes_generic_constructor_result_binding() {
+    fn platform_adapter_exposes_template_constructor_result_binding() {
         let source = fixture_source();
         let index = fixture_index("platform-adapter-generic-constructor-binding.sqlite");
         let adapter = PlatformSearchSource::with_source_id(index, source.clone());
@@ -1553,29 +1553,29 @@ mod tests {
                 },
                 &ResolveContext::all(),
             )
-            .expect("generic constructor lookup must not fail");
+            .expect("type-template constructor lookup must not fail");
 
         assert_eq!(constructor.status, ResolveStatus::Ok);
         let result_type = constructor.facts[0]
             .info
             .return_types
             .first()
-            .expect("generic constructor result type must be exposed");
+            .expect("type-template constructor result type must be exposed");
         assert_eq!(
             result_type.id.as_ref().map(|id| id.0.local_id.as_str()),
             Some("platform_type:ДокументОбъект.<Имя документа>")
         );
         let binding = result_type
-            .generic_binding
+            .template_binding
             .as_ref()
-            .expect("generic constructor result binding must be visible");
+            .expect("type-template constructor result binding must be visible");
         assert_eq!(
             binding.template_key,
-            GenericPlatformTemplateKey::new("Document", "Object")
+            PlatformTypeTemplateKey::new("Document", "Object")
         );
         assert_eq!(
             binding.arguments,
-            vec![GenericArgumentBinding::OwnerParameter {
+            vec![TemplateParameterBinding::OwnerParameter {
                 owner_parameter_index: 0,
                 target_parameter_index: 0,
             }]
@@ -2183,7 +2183,7 @@ mod tests {
                 facts: model::SectionFacts::default(),
                 source: source_ref("document-object-ref"),
             })
-            .expect("generic property must sink");
+            .expect("type-template property must sink");
         builder
             .constructor(model::Constructor {
                 owner: name("ОтборКомпоновкиДанных", None),
@@ -2221,7 +2221,7 @@ mod tests {
                 facts: model::SectionFacts::default(),
                 source: source_ref("document-object-constructor"),
             })
-            .expect("generic constructor must sink");
+            .expect("type-template constructor must sink");
         builder
             .query_table(model::QueryTable {
                 identity: Some("query_table:ОсновнаяТаблица".to_string()),
@@ -2285,7 +2285,7 @@ mod tests {
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_key: None,
+            type_template_key: None,
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: Some(format!("{primary} description.")),

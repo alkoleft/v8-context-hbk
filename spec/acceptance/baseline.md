@@ -1794,46 +1794,46 @@ produced 1 source book, 1 locale, 397 TOC nodes, 365 pages, 410 files, 1127587 b
 `> Программа запуска - 1CEStart`, `> Интерактивная программа запуска - 1Cv8s` and
 `> Клиентское приложение`, and no longer contains `> |` table markup for that launch-flow block.
 
-T132 moved generic platform type-template ownership into the HBK-backed provider boundary. The
-resolver model now exposes semantic generic-template kind as metadata object kind, generated type
-role and generic parameter role, and type references can carry owner-parameter generic bindings.
+T132 moved platform type-template ownership into the HBK-backed provider boundary. The
+resolver model now exposes semantic type-template kind as metadata object kind, generated type
+role and template parameter role, and type references can carry owner-parameter template bindings.
 The search index schema version is `9`; SQLite remains a private rebuildable provider artifact, not
 a public integration contract.
 
 Focused tests cover semantic template classification, read-phase extraction, search-index
-roundtrip, semantic-kind lookup, ambiguous type-reference protection and resolver-visible generic
+roundtrip, semantic-kind lookup, ambiguous type-reference protection and resolver-visible template
 binding. A representative `syntax index` run on 2026-05-10 against
-`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `target/t132-generic-template.sqlite` with
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced `target/t132-type-template.sqlite` with
 25415 documents. SQL evidence confirmed catalog and document templates such as
 `СправочникСсылка.<Имя справочника>`, `СправочникМенеджер.<Имя справочника>`,
 `ДокументОбъект.<Имя документа>` and `ДокументСсылка.<Имя документа>` have semantic
-`type_templates` rows. Generic binding evidence existed for `constructor_result`, `parameter_type`,
+`type_templates` rows. Template binding evidence existed for `constructor_result`, `parameter_type`,
 `property_type` and `return_type` rows. The representative source-backed member
 `ДокументОбъект.<Имя документа>.Ссылка` stores `target_type_id =
 platform_type:ДокументСсылка.<Имя документа>`, semantic target `document/reference` and
 `owner_parameter(metadata_object_name)` binding even though the source type text is
 `ДокументСсылка`.
 
-T133 replaced the closed T132 generic-template enum contract with data-driven open
+T133 replaced the closed T132 type-template enum contract with data-driven open
 family/variant keys. The search index schema version is `11`; SQLite remains a private rebuildable
-provider artifact. Generic template classification now uses alias-base or root-locale primary-base,
-manager-root family discovery, longest-prefix assignment and direct generic type-reference scoring
+provider artifact. Type template classification now uses alias-base or root-locale primary-base,
+manager-root family discovery, longest-prefix assignment and direct type-template type-reference scoring
 for templates left unassigned by manager roots. Non-root localized primary names without aliases are
-left unclassified with persisted diagnostics instead of becoming families. Generic parameter labels
+left unclassified with persisted diagnostics instead of becoming families. Template parameter labels
 are preserved as source parameter slots and matching owner/target parameter labels produce
 parameter-slot binding arguments, not family semantics.
 
 Focused tests cover alias/fallback base extraction, manager-root longest-prefix classification,
 direct-reference family assignment for previously unassigned templates, unclassified diagnostics,
-family/variant lookup and resolver-visible parameter-slot generic bindings. A representative
+family/variant lookup and resolver-visible parameter-slot template bindings. A representative
 release `syntax index` run on 2026-05-11 against
 `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` produced
-`target/t133-review-generic-template.sqlite` with 25415 documents in 11409 ms. SQL evidence confirmed
-`121` generic `type_templates` rows and `0` unclassified rows. The previously disputed templates
+`target/t133-review-type-template.sqlite` with 25415 documents in 11409 ms. SQL evidence confirmed
+`121` type-template `type_templates` rows and `0` unclassified rows. The previously disputed templates
 `БазовыеВидыРасчета`, `БазовыеВидыРасчетаСтрока`, `ВедущиеВидыРасчета`,
 `ВедущиеВидыРасчетаСтрока`, `ВытесняющиеВидыРасчета` and
 `ВытесняющиеВидыРасчетаСтрока` are assigned to family `ChartOfCalculationTypes` through direct
-generic type-reference evidence and their persisted classification diagnostics record
+type-template type-reference evidence and their persisted classification diagnostics record
 `direct_type_ref` evidence. The representative source-backed member
 `ДокументОбъект.<Имя документа>.Ссылка` stores `target_type_id =
 platform_type:ДокументСсылка.<Имя документа>`, target family/variant `Document/Ref` and
@@ -1841,6 +1841,33 @@ platform_type:ДокументСсылка.<Имя документа>`, target 
 
 A representative release `syntax index` run on 2026-05-11 against
 `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` produced
-`target/t133-review-root-generic-template.sqlite` with 25415 documents in 8754 ms. SQL evidence
-confirmed schema version `11`, `121` generic `type_templates` rows and `0` unclassified rows,
+`target/t133-review-root-type-template.sqlite` with 25415 documents in 8754 ms. SQL evidence
+confirmed schema version `11`, `121` type-template `type_templates` rows and `0` unclassified rows,
 covering the real root-primary fallback path.
+
+T134 normalized the active Rust/search/resolver terminology from legacy template wording to
+platform type template / type template wording without changing classification semantics, CLI
+provider JSON or canonical `syntax export` JSON. The private rebuildable search-index schema is now
+`12` because type-template SQLite columns were renamed from `generic_*` names to
+`template_family`, `template_variant`, `template_classification_diagnostic`,
+`type_template_family`, `type_template_variant` and `template_binding_*`.
+
+Representative release `syntax index` runs on 2026-05-11 against the local 8.5.1.1150 Syntax
+Assistant books produced:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` ->
+  `target/t134-type-template-ru.sqlite`: 25415 documents in 12159 ms, schema version `12`, `121`
+  type-template rows, `121` classified templates, `0` unclassified templates and `353` template
+  binding rows.
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` ->
+  `target/t134-type-template-root.sqlite`: 25415 documents in 9505 ms, schema version `12`, `121`
+  type-template rows, `121` classified templates, `0` unclassified templates and `335` template
+  binding rows.
+
+SQL inspection confirmed the renamed private layout:
+
+- `type_templates`: `template_family`, `template_variant`,
+  `template_classification_diagnostic`;
+- `type_refs`: `type_template_family`, `type_template_variant`, `template_binding_kind`,
+  `template_binding_owner_parameter_index`, `template_binding_target_parameter_index`,
+  `template_binding_arguments`.
