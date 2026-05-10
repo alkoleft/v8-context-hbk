@@ -138,7 +138,7 @@ pub struct Signature {
 pub struct TypeInfo {
     pub description: Option<String>,
     pub metadata_template: Option<MetadataTemplateInfo>,
-    pub generic_template_kind: Option<GenericPlatformTemplateKind>,
+    pub generic_template_key: Option<GenericPlatformTemplateKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,66 +148,30 @@ pub struct MetadataTemplateInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GenericPlatformTemplateKind {
-    pub metadata_object_kind: MetadataObjectKind,
-    pub generated_type_role: GeneratedTypeRole,
-    pub generic_parameter_role: GenericParameterRole,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum MetadataObjectKind {
-    Catalog,
-    Document,
-    InformationRegister,
-    AccumulationRegister,
-    AccountingRegister,
-    CalculationRegister,
-    ChartOfAccounts,
-    ChartOfCalculationTypes,
-    ChartOfCharacteristicTypes,
-    BusinessProcess,
-    Task,
-    Enum,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum GeneratedTypeRole {
-    Manager,
-    Object,
-    Reference,
-    Selection,
-    List,
-    RecordSet,
-    Record,
-    RecordKey,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum GenericParameterRole {
-    MetadataObjectName,
+pub struct GenericPlatformTemplateKey {
+    pub family: String,
+    pub variant: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericTypeBinding {
-    pub template_kind: GenericPlatformTemplateKind,
+    pub template_key: GenericPlatformTemplateKey,
     pub arguments: Vec<GenericArgumentBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GenericArgumentBinding {
-    OwnerParameter { role: GenericParameterRole },
+    OwnerParameter {
+        owner_parameter_index: usize,
+        target_parameter_index: usize,
+    },
 }
 
-impl GenericPlatformTemplateKind {
-    pub fn new(
-        metadata_object_kind: MetadataObjectKind,
-        generated_type_role: GeneratedTypeRole,
-        generic_parameter_role: GenericParameterRole,
-    ) -> Self {
+impl GenericPlatformTemplateKey {
+    pub fn new(family: impl Into<String>, variant: impl Into<String>) -> Self {
         Self {
-            metadata_object_kind,
-            generated_type_role,
-            generic_parameter_role,
+            family: family.into(),
+            variant: variant.into(),
         }
     }
 }
@@ -423,7 +387,7 @@ pub enum TypeLookup<'a> {
     GenericTemplate {
         source: Option<&'a SourceId>,
         domain: Option<LanguageDomain>,
-        kind: &'a GenericPlatformTemplateKind,
+        key: &'a GenericPlatformTemplateKey,
     },
     ExactName {
         source: Option<&'a SourceId>,
@@ -903,7 +867,7 @@ mod tests {
             let info = TypeInfo {
                 description: None,
                 metadata_template: None,
-                generic_template_kind: None,
+                generic_template_key: None,
             };
             let fact = ContextFact {
                 id: id.0.clone(),
@@ -1105,13 +1069,13 @@ mod tests {
                 TypeLookup::GenericTemplate {
                     source,
                     domain,
-                    kind,
+                    key,
                 } => self
                     .types
                     .iter()
                     .filter(|resolved| source.is_none_or(|source| source == &resolved.id.0.source))
                     .filter(|resolved| domain.is_none_or(|domain| domain == resolved.id.0.domain))
-                    .filter(|resolved| resolved.info.generic_template_kind.as_ref() == Some(kind))
+                    .filter(|resolved| resolved.info.generic_template_key.as_ref() == Some(key))
                     .cloned()
                     .collect(),
             };
@@ -1364,13 +1328,9 @@ mod tests {
     }
 
     #[test]
-    fn generic_template_lookup_uses_semantic_kind() {
+    fn generic_template_lookup_uses_open_family_variant_key() {
         let source = SourceId::new("platform");
-        let kind = GenericPlatformTemplateKind::new(
-            MetadataObjectKind::Document,
-            GeneratedTypeRole::Reference,
-            GenericParameterRole::MetadataObjectName,
-        );
+        let kind = GenericPlatformTemplateKey::new("Document", "Ref");
         let id = TypeId(FactId::new(
             source,
             LanguageDomain::PlatformApi,
@@ -1383,7 +1343,7 @@ mod tests {
                 metadata_kind: "ДокументСсылка".to_string(),
                 parameters: vec!["Имя документа".to_string()],
             }),
-            generic_template_kind: Some(kind.clone()),
+            generic_template_key: Some(kind.clone()),
         };
         let fact = ContextFact {
             id: id.0.clone(),
@@ -1404,7 +1364,7 @@ mod tests {
                 TypeLookup::GenericTemplate {
                     source: None,
                     domain: Some(LanguageDomain::PlatformApi),
-                    kind: &kind,
+                    key: &kind,
                 },
                 &ResolveContext::all(),
             )
@@ -1412,7 +1372,7 @@ mod tests {
 
         assert_eq!(response.status, ResolveStatus::Ok);
         assert_eq!(
-            response.facts[0].info.generic_template_kind.as_ref(),
+            response.facts[0].info.generic_template_key.as_ref(),
             Some(&kind)
         );
     }
@@ -1512,7 +1472,7 @@ mod tests {
             details: FactDetails::Type(TypeInfo {
                 description: None,
                 metadata_template: None,
-                generic_template_kind: None,
+                generic_template_key: None,
             }),
             relations: Vec::new(),
         };

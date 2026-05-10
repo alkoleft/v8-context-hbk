@@ -186,11 +186,25 @@ consumers: metadata kind and template parameters for `PlatformTypeKind::Metadata
 The data is exposed through `context-resolver-core::TypeInfo`, not as a public SQLite schema
 contract or CLI JSON expansion.
 
-T132 implementation note: schema version 9 stores semantic generic platform template facts and
-generic owner-parameter bindings for type references. The index may use private columns to preserve
-template kind and binding evidence, but consumers must use the Rust search/resolver APIs instead of
-depending on SQLite table or column names. This does not change the CLI JSON provider envelope or
-the canonical `syntax export` consumer schema.
+T132 implementation note: schema version 9 stored semantic generic platform template facts and
+generic owner-parameter bindings for type references.
+
+T133 implementation note: schema version 10 supersedes the closed semantic-kind shape. The index
+stores open generic template families and generated variants derived from HBK facts, while keeping
+SQLite tables and columns private rebuildable provider state. Consumers must use the Rust
+search/resolver APIs instead of depending on SQLite table or column names. This does not change the
+CLI JSON provider envelope or the canonical `syntax export` consumer schema.
+
+T133 generic template classification rule:
+
+- use each template's `alias_base` or fallback root-locale `primary_base`;
+- derive family roots from `*Manager` templates;
+- assign templates by longest manager-root prefix;
+- do not create fallback-prefix families for unassigned templates;
+- classify remaining templates only through direct generic type-reference scores against already
+  derived families;
+- assign only when exactly one family has direct references, otherwise keep the template
+  unclassified with a diagnostic.
 
 ### Index Path Resolution
 

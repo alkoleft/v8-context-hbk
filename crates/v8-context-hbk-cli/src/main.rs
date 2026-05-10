@@ -1838,7 +1838,7 @@ mod tests {
             available_since: None,
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_kind: None,
+            generic_template_key: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Compact);
@@ -1886,7 +1886,7 @@ mod tests {
             available_since: None,
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_kind: None,
+            generic_template_key: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Full);
@@ -2424,7 +2424,7 @@ mod tests {
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_kind: None,
+            generic_template_key: None,
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: Some("type description".to_string()),

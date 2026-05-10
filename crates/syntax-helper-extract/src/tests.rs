@@ -1127,13 +1127,6 @@ fn classifies_platform_owner_object_kind_from_toc_context() {
             .find(|platform_type| platform_type.name.primary == name)
             .and_then(|platform_type| platform_type.object_kind)
     };
-    let generic_template_kind = |name: &str| {
-        sink.platform_types
-            .iter()
-            .find(|platform_type| platform_type.name.primary == name)
-            .and_then(|platform_type| platform_type.generic_template_kind.clone())
-    };
-
     assert_eq!(
         object_kind("Массив"),
         Some(PlatformObjectKind::RegularPlatformType)
@@ -1146,14 +1139,6 @@ fn classifies_platform_owner_object_kind_from_toc_context() {
     assert_eq!(
         object_kind("ДокументОбъект.<Имя документа>"),
         Some(PlatformObjectKind::MetadataObject)
-    );
-    assert_eq!(
-        generic_template_kind("ДокументОбъект.<Имя документа>"),
-        Some(GenericPlatformTemplateKind::new(
-            MetadataObjectKind::Document,
-            GeneratedTypeRole::Object,
-            GenericParameterRole::MetadataObjectName,
-        ))
     );
 }
 

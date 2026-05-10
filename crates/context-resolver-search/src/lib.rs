@@ -3,12 +3,11 @@ use std::path::Path;
 use context_resolver_core::{
     AvailabilityContext, AvailabilityFact, AvailabilityInfo, CallableId, CallableInfo,
     CallableKind, CallableLookup, ContextFact, ContextSource, FactDetails, FactId, FactKind,
-    FactRelation, GeneratedTypeRole, GenericArgumentBinding, GenericParameterRole,
-    GenericPlatformTemplateKind, GenericTypeBinding, LanguageDomain, MemberId, MemberInfo,
-    MemberKind, MemberQuery, MemberQueryKind, MetadataObjectKind, MetadataTemplateInfo, Name,
-    Parameter, RelationKind, ResolveContext, ResolveError, ResolveResponse, ResolvedCallable,
-    ResolvedMember, ResolvedType, Signature, SourceCapabilities, SourceDescriptor, SourceId,
-    TypeId, TypeInfo, TypeLookup, TypeRef,
+    FactRelation, GenericArgumentBinding, GenericPlatformTemplateKey, GenericTypeBinding,
+    LanguageDomain, MemberId, MemberInfo, MemberKind, MemberQuery, MemberQueryKind,
+    MetadataTemplateInfo, Name, Parameter, RelationKind, ResolveContext, ResolveError,
+    ResolveResponse, ResolvedCallable, ResolvedMember, ResolvedType, Signature, SourceCapabilities,
+    SourceDescriptor, SourceId, TypeId, TypeInfo, TypeLookup, TypeRef,
 };
 use syntax_helper_search::{
     RelatedHit, SearchDocument, SearchDocumentKind, SearchError, SearchHit, SearchIndex,
@@ -441,7 +440,7 @@ impl LanguageSearchSource {
             FactDetails::Type(TypeInfo {
                 description: hit.document.description.clone(),
                 metadata_template: None,
-                generic_template_kind: None,
+                generic_template_key: None,
             })
         } else if kind == FactKind::Callable {
             FactDetails::Callable(self.callable_info(&hit.document))
@@ -467,7 +466,7 @@ impl LanguageSearchSource {
         let info = TypeInfo {
             description: hit.document.description.clone(),
             metadata_template: None,
-            generic_template_kind: None,
+            generic_template_key: None,
         };
         let id = self.type_id(self.local_id(&hit.document));
         let fact = ContextFact {
@@ -507,7 +506,7 @@ impl LanguageSearchSource {
             FactDetails::Type(TypeInfo {
                 description: hit.document.description.clone(),
                 metadata_template: None,
-                generic_template_kind: None,
+                generic_template_key: None,
             })
         } else if id.kind == FactKind::Callable {
             FactDetails::Callable(self.callable_info(&hit.document))
@@ -954,14 +953,17 @@ impl ContextSource for PlatformSearchSource {
             TypeLookup::GenericTemplate {
                 source,
                 domain,
-                kind,
+                key,
             } => {
                 if !self.source_matches(source) || !self.domain_matches(domain) {
                     Vec::new()
                 } else {
-                    let kind = unmap_generic_template_kind(kind);
+                    let kind = syntax_helper_search::model::GenericPlatformTemplateKey::new(
+                        key.family.clone(),
+                        key.variant.clone(),
+                    );
                     self.index
-                        .type_template_by_generic_kind(&kind)
+                        .type_template_by_generic_key(&kind)
                         .map_err(|source| self.source_failure(source))?
                         .into_iter()
                         .map(|hit| self.map_type(hit))
@@ -1150,10 +1152,10 @@ fn type_info(document: &SearchDocument) -> TypeInfo {
                 parameters: document.template_parameters.clone(),
             }
         }),
-        generic_template_kind: document
-            .generic_template_kind
+        generic_template_key: document
+            .generic_template_key
             .as_ref()
-            .map(map_generic_template_kind),
+            .map(map_generic_template_key),
     }
 }
 
@@ -1161,159 +1163,27 @@ fn map_generic_binding(
     binding: &syntax_helper_search::model::GenericTypeBinding,
 ) -> GenericTypeBinding {
     GenericTypeBinding {
-        template_kind: map_generic_template_kind(&binding.template_kind),
+        template_key: map_generic_template_key(&binding.template_key),
         arguments: binding
             .arguments
             .iter()
             .map(|argument| match argument {
-                syntax_helper_search::model::GenericArgumentBinding::OwnerParameter { role } => {
-                    GenericArgumentBinding::OwnerParameter {
-                        role: map_generic_parameter_role(*role),
-                    }
-                }
+                syntax_helper_search::model::GenericArgumentBinding::OwnerParameter {
+                    owner_parameter_index,
+                    target_parameter_index,
+                } => GenericArgumentBinding::OwnerParameter {
+                    owner_parameter_index: *owner_parameter_index,
+                    target_parameter_index: *target_parameter_index,
+                },
             })
             .collect(),
     }
 }
 
-fn map_generic_template_kind(
-    kind: &syntax_helper_search::model::GenericPlatformTemplateKind,
-) -> GenericPlatformTemplateKind {
-    GenericPlatformTemplateKind::new(
-        map_metadata_object_kind(kind.metadata_object_kind),
-        map_generated_type_role(kind.generated_type_role),
-        map_generic_parameter_role(kind.generic_parameter_role),
-    )
-}
-
-fn unmap_generic_template_kind(
-    kind: &GenericPlatformTemplateKind,
-) -> syntax_helper_search::model::GenericPlatformTemplateKind {
-    syntax_helper_search::model::GenericPlatformTemplateKind::new(
-        unmap_metadata_object_kind(kind.metadata_object_kind),
-        unmap_generated_type_role(kind.generated_type_role),
-        unmap_generic_parameter_role(kind.generic_parameter_role),
-    )
-}
-
-fn map_metadata_object_kind(
-    kind: syntax_helper_search::model::MetadataObjectKind,
-) -> MetadataObjectKind {
-    match kind {
-        syntax_helper_search::model::MetadataObjectKind::Catalog => MetadataObjectKind::Catalog,
-        syntax_helper_search::model::MetadataObjectKind::Document => MetadataObjectKind::Document,
-        syntax_helper_search::model::MetadataObjectKind::InformationRegister => {
-            MetadataObjectKind::InformationRegister
-        }
-        syntax_helper_search::model::MetadataObjectKind::AccumulationRegister => {
-            MetadataObjectKind::AccumulationRegister
-        }
-        syntax_helper_search::model::MetadataObjectKind::AccountingRegister => {
-            MetadataObjectKind::AccountingRegister
-        }
-        syntax_helper_search::model::MetadataObjectKind::CalculationRegister => {
-            MetadataObjectKind::CalculationRegister
-        }
-        syntax_helper_search::model::MetadataObjectKind::ChartOfAccounts => {
-            MetadataObjectKind::ChartOfAccounts
-        }
-        syntax_helper_search::model::MetadataObjectKind::ChartOfCalculationTypes => {
-            MetadataObjectKind::ChartOfCalculationTypes
-        }
-        syntax_helper_search::model::MetadataObjectKind::ChartOfCharacteristicTypes => {
-            MetadataObjectKind::ChartOfCharacteristicTypes
-        }
-        syntax_helper_search::model::MetadataObjectKind::BusinessProcess => {
-            MetadataObjectKind::BusinessProcess
-        }
-        syntax_helper_search::model::MetadataObjectKind::Task => MetadataObjectKind::Task,
-        syntax_helper_search::model::MetadataObjectKind::Enum => MetadataObjectKind::Enum,
-    }
-}
-
-fn unmap_metadata_object_kind(
-    kind: MetadataObjectKind,
-) -> syntax_helper_search::model::MetadataObjectKind {
-    match kind {
-        MetadataObjectKind::Catalog => syntax_helper_search::model::MetadataObjectKind::Catalog,
-        MetadataObjectKind::Document => syntax_helper_search::model::MetadataObjectKind::Document,
-        MetadataObjectKind::InformationRegister => {
-            syntax_helper_search::model::MetadataObjectKind::InformationRegister
-        }
-        MetadataObjectKind::AccumulationRegister => {
-            syntax_helper_search::model::MetadataObjectKind::AccumulationRegister
-        }
-        MetadataObjectKind::AccountingRegister => {
-            syntax_helper_search::model::MetadataObjectKind::AccountingRegister
-        }
-        MetadataObjectKind::CalculationRegister => {
-            syntax_helper_search::model::MetadataObjectKind::CalculationRegister
-        }
-        MetadataObjectKind::ChartOfAccounts => {
-            syntax_helper_search::model::MetadataObjectKind::ChartOfAccounts
-        }
-        MetadataObjectKind::ChartOfCalculationTypes => {
-            syntax_helper_search::model::MetadataObjectKind::ChartOfCalculationTypes
-        }
-        MetadataObjectKind::ChartOfCharacteristicTypes => {
-            syntax_helper_search::model::MetadataObjectKind::ChartOfCharacteristicTypes
-        }
-        MetadataObjectKind::BusinessProcess => {
-            syntax_helper_search::model::MetadataObjectKind::BusinessProcess
-        }
-        MetadataObjectKind::Task => syntax_helper_search::model::MetadataObjectKind::Task,
-        MetadataObjectKind::Enum => syntax_helper_search::model::MetadataObjectKind::Enum,
-    }
-}
-
-fn map_generated_type_role(
-    role: syntax_helper_search::model::GeneratedTypeRole,
-) -> GeneratedTypeRole {
-    match role {
-        syntax_helper_search::model::GeneratedTypeRole::Manager => GeneratedTypeRole::Manager,
-        syntax_helper_search::model::GeneratedTypeRole::Object => GeneratedTypeRole::Object,
-        syntax_helper_search::model::GeneratedTypeRole::Reference => GeneratedTypeRole::Reference,
-        syntax_helper_search::model::GeneratedTypeRole::Selection => GeneratedTypeRole::Selection,
-        syntax_helper_search::model::GeneratedTypeRole::List => GeneratedTypeRole::List,
-        syntax_helper_search::model::GeneratedTypeRole::RecordSet => GeneratedTypeRole::RecordSet,
-        syntax_helper_search::model::GeneratedTypeRole::Record => GeneratedTypeRole::Record,
-        syntax_helper_search::model::GeneratedTypeRole::RecordKey => GeneratedTypeRole::RecordKey,
-    }
-}
-
-fn unmap_generated_type_role(
-    role: GeneratedTypeRole,
-) -> syntax_helper_search::model::GeneratedTypeRole {
-    match role {
-        GeneratedTypeRole::Manager => syntax_helper_search::model::GeneratedTypeRole::Manager,
-        GeneratedTypeRole::Object => syntax_helper_search::model::GeneratedTypeRole::Object,
-        GeneratedTypeRole::Reference => syntax_helper_search::model::GeneratedTypeRole::Reference,
-        GeneratedTypeRole::Selection => syntax_helper_search::model::GeneratedTypeRole::Selection,
-        GeneratedTypeRole::List => syntax_helper_search::model::GeneratedTypeRole::List,
-        GeneratedTypeRole::RecordSet => syntax_helper_search::model::GeneratedTypeRole::RecordSet,
-        GeneratedTypeRole::Record => syntax_helper_search::model::GeneratedTypeRole::Record,
-        GeneratedTypeRole::RecordKey => syntax_helper_search::model::GeneratedTypeRole::RecordKey,
-    }
-}
-
-fn map_generic_parameter_role(
-    role: syntax_helper_search::model::GenericParameterRole,
-) -> GenericParameterRole {
-    match role {
-        syntax_helper_search::model::GenericParameterRole::MetadataObjectName => {
-            GenericParameterRole::MetadataObjectName
-        }
-    }
-}
-
-fn unmap_generic_parameter_role(
-    role: GenericParameterRole,
-) -> syntax_helper_search::model::GenericParameterRole {
-    match role {
-        GenericParameterRole::MetadataObjectName => {
-            syntax_helper_search::model::GenericParameterRole::MetadataObjectName
-        }
-    }
+fn map_generic_template_key(
+    kind: &syntax_helper_search::model::GenericPlatformTemplateKey,
+) -> GenericPlatformTemplateKey {
+    GenericPlatformTemplateKey::new(kind.family.clone(), kind.variant.clone())
 }
 
 fn is_platform_document_kind(kind: SearchDocumentKind) -> bool {
@@ -1515,9 +1385,9 @@ mod tests {
     use std::time::Instant;
 
     use context_resolver_core::{
-        CallableLookup, CompositeResolver, ContextResolver, ContextSource, GeneratedTypeRole,
-        GenericArgumentBinding, GenericParameterRole, GenericPlatformTemplateKind, MemberQuery,
-        MetadataObjectKind, RelationKind, ResolveContext, ResolveStatus, TypeLookup,
+        CallableLookup, CompositeResolver, ContextResolver, ContextSource, GenericArgumentBinding,
+        GenericPlatformTemplateKey, MemberQuery, RelationKind, ResolveContext, ResolveStatus,
+        TypeLookup,
     };
     use syntax_helper_language::{LanguagePageInput, LanguageSourceFamily, extract_language_facts};
     use syntax_helper_model as model;
@@ -1587,12 +1457,8 @@ mod tests {
             vec!["Имя справочника".to_string()]
         );
         assert_eq!(
-            template.info.generic_template_kind,
-            Some(GenericPlatformTemplateKind::new(
-                MetadataObjectKind::Catalog,
-                GeneratedTypeRole::Manager,
-                GenericParameterRole::MetadataObjectName,
-            ))
+            template.info.generic_template_key,
+            Some(GenericPlatformTemplateKey::new("Catalog", "Manager"))
         );
 
         let by_kind = adapter
@@ -1600,11 +1466,7 @@ mod tests {
                 TypeLookup::GenericTemplate {
                     source: Some(&source),
                     domain: Some(LanguageDomain::PlatformApi),
-                    kind: &GenericPlatformTemplateKind::new(
-                        MetadataObjectKind::Catalog,
-                        GeneratedTypeRole::Manager,
-                        GenericParameterRole::MetadataObjectName,
-                    ),
+                    key: &GenericPlatformTemplateKey::new("Catalog", "Manager"),
                 },
                 &ResolveContext::all(),
             )
@@ -1623,11 +1485,7 @@ mod tests {
                 TypeLookup::GenericTemplate {
                     source: Some(&source),
                     domain: Some(LanguageDomain::PlatformApi),
-                    kind: &GenericPlatformTemplateKind::new(
-                        MetadataObjectKind::Document,
-                        GeneratedTypeRole::Object,
-                        GenericParameterRole::MetadataObjectName,
-                    ),
+                    key: &GenericPlatformTemplateKey::new("Document", "Object"),
                 },
                 &ResolveContext::all(),
             )
@@ -1663,17 +1521,14 @@ mod tests {
             .as_ref()
             .expect("generic owner-parameter binding must be visible");
         assert_eq!(
-            binding.template_kind,
-            GenericPlatformTemplateKind::new(
-                MetadataObjectKind::Document,
-                GeneratedTypeRole::Reference,
-                GenericParameterRole::MetadataObjectName,
-            )
+            binding.template_key,
+            GenericPlatformTemplateKey::new("Document", "Ref")
         );
         assert_eq!(
             binding.arguments,
             vec![GenericArgumentBinding::OwnerParameter {
-                role: GenericParameterRole::MetadataObjectName,
+                owner_parameter_index: 0,
+                target_parameter_index: 0,
             }]
         );
     }
@@ -1715,17 +1570,14 @@ mod tests {
             .as_ref()
             .expect("generic constructor result binding must be visible");
         assert_eq!(
-            binding.template_kind,
-            GenericPlatformTemplateKind::new(
-                MetadataObjectKind::Document,
-                GeneratedTypeRole::Object,
-                GenericParameterRole::MetadataObjectName,
-            )
+            binding.template_key,
+            GenericPlatformTemplateKey::new("Document", "Object")
         );
         assert_eq!(
             binding.arguments,
             vec![GenericArgumentBinding::OwnerParameter {
-                role: GenericParameterRole::MetadataObjectName,
+                owner_parameter_index: 0,
+                target_parameter_index: 0,
             }]
         );
     }
@@ -2234,6 +2086,12 @@ mod tests {
                 "Имя справочника",
             ),
             platform_template_type(
+                "ДокументМенеджер.<Имя документа>",
+                "DocumentManager.<Document name>",
+                "ДокументМенеджер",
+                "Имя документа",
+            ),
+            platform_template_type(
                 "ДокументОбъект.<Имя документа>",
                 "DocumentObject.<Document name>",
                 "ДокументОбъект",
@@ -2427,7 +2285,7 @@ mod tests {
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_kind: None,
+            generic_template_key: None,
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: Some(format!("{primary} description.")),

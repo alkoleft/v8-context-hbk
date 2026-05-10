@@ -12,13 +12,13 @@ use strsim::levenshtein;
 use syntax_helper_language as language;
 pub use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 9;
+pub const INDEX_SCHEMA_VERSION: u32 = 10;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 type TypeTemplateRow = (
     String,
     Vec<String>,
-    Option<model::GenericPlatformTemplateKind>,
+    Option<model::GenericPlatformTemplateKey>,
 );
 
 #[derive(Debug, Clone)]
@@ -296,7 +296,7 @@ pub struct SearchDocument {
     pub available_since: Option<String>,
     pub metadata_kind: Option<String>,
     pub template_parameters: Vec<String>,
-    pub generic_template_kind: Option<model::GenericPlatformTemplateKind>,
+    pub generic_template_key: Option<model::GenericPlatformTemplateKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -331,7 +331,7 @@ pub struct SearchParameter {
 pub struct SearchTypeRef {
     pub name: String,
     pub target_type_id: Option<String>,
-    pub generic_template_kind: Option<model::GenericPlatformTemplateKind>,
+    pub generic_template_key: Option<model::GenericPlatformTemplateKey>,
     pub generic_binding: Option<model::GenericTypeBinding>,
 }
 
@@ -398,7 +398,8 @@ impl SearchIndexBuilder {
                 .cmp(&kind_priority(right.kind))
                 .then_with(|| left.id.cmp(&right.id))
         });
-        let warnings = deduplicate_documents(&mut documents);
+        let mut warnings = deduplicate_documents(&mut documents);
+        warnings.extend(classify_generic_templates(&mut documents));
         validate_document_id_collisions(&documents)?;
         Ok(DocumentsBuild {
             documents,
@@ -515,9 +516,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
         {
             document.metadata_kind = Some(metadata_kind);
             document.template_parameters = record.template_parameters;
-            document.generic_template_kind = record
-                .generic_template_kind
-                .or_else(|| model::generic_platform_template_kind(&record.name));
+            document.generic_template_key = record.generic_template_key;
         }
         self.drafts.push(DocumentDraft::new(
             document,
@@ -1000,6 +999,195 @@ fn deduplicate_documents(documents: &mut Vec<SearchDocument>) -> Vec<IndexBuildW
     warnings
 }
 
+fn classify_generic_templates(documents: &mut [SearchDocument]) -> Vec<IndexBuildWarning> {
+    let by_name = relation_lookup(documents);
+    let type_id_by_normalized_id = documents
+        .iter()
+        .filter(|document| document.kind == SearchDocumentKind::PlatformType)
+        .map(|document| (normalize_lookup_key(&document.id), document.id.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let template_infos = documents
+        .iter()
+        .filter(|document| {
+            document.kind == SearchDocumentKind::PlatformType && document.metadata_kind.is_some()
+        })
+        .filter_map(|document| {
+            Some(GenericTemplateInfo {
+                id: document.id.clone(),
+                base: model::generic_platform_template_base(&document.name)?,
+                metadata_kind: document.metadata_kind.clone()?,
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut family_roots = template_infos
+        .iter()
+        .filter_map(|template| manager_family_root(&template.base).map(str::to_string))
+        .collect::<Vec<_>>();
+    family_roots.sort_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
+    family_roots.dedup();
+
+    let mut classified = BTreeMap::<String, model::GenericPlatformTemplateKey>::new();
+    let mut unassigned = BTreeSet::<String>::new();
+    for template in &template_infos {
+        if let Some(root) = family_roots
+            .iter()
+            .find(|root| template.base.starts_with(root.as_str()))
+        {
+            classified.insert(
+                template.id.clone(),
+                model::GenericPlatformTemplateKey::new(
+                    root.clone(),
+                    generic_template_variant(root, &template.base),
+                ),
+            );
+        } else {
+            unassigned.insert(template.id.clone());
+        }
+    }
+
+    let template_id_by_metadata_kind = unique_lookup(template_infos.iter().map(|template| {
+        (
+            normalize_lookup_key(&template.metadata_kind),
+            template.id.clone(),
+        )
+    }));
+    let mut direct_scores = BTreeMap::<String, BTreeMap<String, usize>>::new();
+    for document in documents.iter() {
+        let owner_type_id = owner_type_id(document, &by_name, &type_id_by_normalized_id);
+        let owner_key = owner_type_id
+            .as_deref()
+            .and_then(|type_id| classified.get(type_id));
+        let owner_unassigned_id = owner_type_id
+            .as_deref()
+            .filter(|type_id| unassigned.contains(*type_id));
+        for target_name in document_generic_ref_names(document) {
+            let Some(target_type_id) = template_id_by_metadata_kind
+                .get(&normalize_lookup_key(target_name))
+                .and_then(|type_id| type_id.as_deref())
+            else {
+                continue;
+            };
+            if unassigned.contains(target_type_id) {
+                if let Some(owner_key) = owner_key {
+                    *direct_scores
+                        .entry(target_type_id.to_string())
+                        .or_default()
+                        .entry(owner_key.family.clone())
+                        .or_default() += 1;
+                }
+            } else if let Some(owner_unassigned_id) = owner_unassigned_id
+                && let Some(target_key) = classified.get(target_type_id)
+            {
+                *direct_scores
+                    .entry(owner_unassigned_id.to_string())
+                    .or_default()
+                    .entry(target_key.family.clone())
+                    .or_default() += 1;
+            }
+        }
+    }
+
+    let mut warnings = Vec::new();
+    for template in template_infos
+        .iter()
+        .filter(|template| unassigned.contains(template.id.as_str()))
+    {
+        match direct_scores.get(&template.id) {
+            Some(scores) if scores.len() == 1 => {
+                let (family, _) = scores.iter().next().expect("one score must exist");
+                classified.insert(
+                    template.id.clone(),
+                    model::GenericPlatformTemplateKey::new(
+                        family.clone(),
+                        generic_template_variant(family, &template.base),
+                    ),
+                );
+            }
+            Some(scores) if !scores.is_empty() => {
+                warnings.push(IndexBuildWarning {
+                    code: "GENERIC_TEMPLATE_AMBIGUOUS_FAMILY",
+                    message: format!(
+                        "generic template '{}' has multiple direct generic family candidates: {}",
+                        template.id,
+                        scores
+                            .keys()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                });
+            }
+            _ => {
+                warnings.push(IndexBuildWarning {
+                    code: "GENERIC_TEMPLATE_UNCLASSIFIED",
+                    message: format!(
+                        "generic template '{}' has no manager-root or direct generic type-reference family evidence",
+                        template.id
+                    ),
+                });
+            }
+        }
+    }
+
+    for document in documents {
+        if let Some(key) = classified.get(&document.id) {
+            document.generic_template_key = Some(key.clone());
+        }
+    }
+    warnings
+}
+
+#[derive(Debug)]
+struct GenericTemplateInfo {
+    id: String,
+    base: String,
+    metadata_kind: String,
+}
+
+fn manager_family_root(base: &str) -> Option<&str> {
+    base.strip_suffix("Manager")
+        .or_else(|| base.strip_suffix("Менеджер"))
+        .filter(|root| !root.is_empty())
+}
+
+fn generic_template_variant(family: &str, base: &str) -> String {
+    base.strip_prefix(family)
+        .filter(|suffix| !suffix.is_empty())
+        .unwrap_or(base)
+        .to_string()
+}
+
+fn unique_lookup(
+    items: impl Iterator<Item = (String, String)>,
+) -> BTreeMap<String, Option<String>> {
+    let mut lookup = BTreeMap::<String, Option<String>>::new();
+    for (key, value) in items {
+        match lookup.get_mut(&key) {
+            Some(existing) if existing.as_deref() == Some(value.as_str()) => {}
+            Some(existing) => *existing = None,
+            None => {
+                lookup.insert(key, Some(value));
+            }
+        }
+    }
+    lookup
+}
+
+fn document_generic_ref_names(document: &SearchDocument) -> impl Iterator<Item = &str> {
+    document
+        .type_refs
+        .iter()
+        .chain(document.return_types.iter())
+        .map(String::as_str)
+        .chain(
+            document
+                .signatures
+                .iter()
+                .flat_map(|signature| signature.parameters.iter())
+                .flat_map(|parameter| parameter.type_refs.iter().map(String::as_str)),
+        )
+}
+
 fn validate_document_id_collisions(documents: &[SearchDocument]) -> Result<(), SearchError> {
     let mut counts = BTreeMap::<&str, usize>::new();
     for document in documents {
@@ -1104,9 +1292,9 @@ impl SearchIndex {
         self.type_identities_by_lookup_key(&normalize_lookup_key(alias), TypeIdentityLookup::Alias)
     }
 
-    pub fn type_template_by_generic_kind(
+    pub fn type_template_by_generic_key(
         &self,
-        kind: &model::GenericPlatformTemplateKind,
+        kind: &model::GenericPlatformTemplateKey,
     ) -> Result<Vec<SearchHit>, SearchError> {
         let mut statement = self
             .connection
@@ -1116,26 +1304,18 @@ impl SearchIndex {
                         d.available_since
                  FROM type_templates t
                  JOIN documents d ON d.id = t.document_id
-                 WHERE t.generic_metadata_object_kind = ?1
-                   AND t.generic_generated_type_role = ?2
-                   AND t.generic_parameter_role = ?3
+                 WHERE t.generic_family = ?1
+                   AND t.generic_variant = ?2
                  ORDER BY d.name_primary, d.id",
             )
             .map_err(|source| self.sqlite(source))?;
         let rows = statement
-            .query_map(
-                params![
-                    metadata_object_kind_code(kind.metadata_object_kind),
-                    generated_type_role_code(kind.generated_type_role),
-                    generic_parameter_role_code(kind.generic_parameter_role),
-                ],
-                |row| {
-                    Ok(SearchHit {
-                        document: document_from_row(row)?,
-                        score: 0,
-                    })
-                },
-            )
+            .query_map(params![kind.family, kind.variant], |row| {
+                Ok(SearchHit {
+                    document: document_from_row(row)?,
+                    score: 0,
+                })
+            })
             .map_err(|source| self.sqlite(source))?;
         let hits = rows
             .collect::<Result<Vec<_>, _>>()
@@ -1824,12 +2004,12 @@ impl SearchIndex {
             .collect();
         document.signatures = self.signatures_for(&document)?;
         document.parameter_terms = self.parameter_terms_for(&document)?;
-        if let Some((metadata_kind, template_parameters, generic_template_kind)) =
+        if let Some((metadata_kind, template_parameters, generic_template_key)) =
             self.type_template_for(&document.id)?
         {
             document.metadata_kind = Some(metadata_kind);
             document.template_parameters = template_parameters;
-            document.generic_template_kind = generic_template_kind;
+            document.generic_template_key = generic_template_key;
         }
         Ok(document)
     }
@@ -1837,18 +2017,16 @@ impl SearchIndex {
     fn type_template_for(&self, document_id: &str) -> Result<Option<TypeTemplateRow>, SearchError> {
         self.connection
             .query_row(
-                "SELECT metadata_kind, template_parameters, generic_metadata_object_kind,
-                        generic_generated_type_role, generic_parameter_role
+                "SELECT metadata_kind, template_parameters, generic_family, generic_variant
                  FROM type_templates WHERE document_id = ?1",
                 [document_id],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         split_lines(row.get::<_, String>(1)?),
-                        generic_template_kind_from_codes(
+                        generic_template_key_from_codes(
                             row.get::<_, Option<String>>(2)?,
                             row.get::<_, Option<String>>(3)?,
-                            row.get::<_, Option<String>>(4)?,
                         ),
                     ))
                 },
@@ -1865,9 +2043,9 @@ impl SearchIndex {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT target_type_name, target_type_id, generic_template_metadata_object_kind,
-                        generic_template_generated_type_role, generic_template_parameter_role,
-                        generic_binding_kind, generic_binding_parameter_role
+                "SELECT target_type_name, target_type_id, generic_template_family,
+                        generic_template_variant, generic_binding_kind,
+                        generic_binding_owner_parameter_index, generic_binding_target_parameter_index
                  FROM type_refs
                  WHERE source_document_id = ?1 AND ref_kind = ?2
                  ORDER BY source_signature_ordinal, source_parameter_ordinal, ordinal, target_type_name",
@@ -1978,9 +2156,9 @@ impl SearchIndex {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT target_type_name, target_type_id, generic_template_metadata_object_kind,
-                        generic_template_generated_type_role, generic_template_parameter_role,
-                        generic_binding_kind, generic_binding_parameter_role
+                "SELECT target_type_name, target_type_id, generic_template_family,
+                        generic_template_variant, generic_binding_kind,
+                        generic_binding_owner_parameter_index, generic_binding_target_parameter_index
                  FROM type_refs
                  WHERE source_signature_id = ?1
                    AND source_parameter_ordinal = ?2
@@ -2267,9 +2445,9 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  document_id TEXT PRIMARY KEY REFERENCES documents(id),
                  metadata_kind TEXT NOT NULL,
                  template_parameters TEXT NOT NULL,
-                 generic_metadata_object_kind TEXT,
-                 generic_generated_type_role TEXT,
-                 generic_parameter_role TEXT
+                 generic_family TEXT,
+                 generic_variant TEXT,
+                 generic_classification_diagnostic TEXT
              );
              CREATE TABLE members (
                  member_id TEXT PRIMARY KEY,
@@ -2309,11 +2487,11 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  source_parameter_ordinal INTEGER,
                  target_type_name TEXT NOT NULL,
                  target_type_id TEXT REFERENCES type_identities(type_id),
-                 generic_template_metadata_object_kind TEXT,
-                 generic_template_generated_type_role TEXT,
-                 generic_template_parameter_role TEXT,
+                 generic_template_family TEXT,
+                 generic_template_variant TEXT,
                  generic_binding_kind TEXT,
-                 generic_binding_parameter_role TEXT
+                 generic_binding_owner_parameter_index INTEGER,
+                 generic_binding_target_parameter_index INTEGER
              );
              CREATE TABLE document_names (
                  key TEXT NOT NULL,
@@ -2369,8 +2547,7 @@ fn create_lookup_indexes(connection: &Connection, path: &Path) -> Result<(), Sea
              CREATE INDEX type_identities_name_idx ON type_identities(name_primary, name_alias, type_id);
              CREATE INDEX type_identities_document_idx ON type_identities(document_id);
              CREATE INDEX type_templates_generic_idx ON type_templates(
-                generic_metadata_object_kind, generic_generated_type_role, generic_parameter_role,
-                document_id
+                generic_family, generic_variant, document_id
              );
              CREATE INDEX members_owner_idx ON members(owner_type_id, member_kind, name_primary, document_id);
              CREATE INDEX members_document_owner_idx ON members(document_id, owner_type_id);
@@ -2521,8 +2698,8 @@ fn insert_normalized_facts(
     let by_name = relation_lookup(documents);
     let mut type_id_by_key = BTreeMap::new();
     let mut type_id_by_normalized_id = BTreeMap::new();
+    let mut type_id_by_metadata_kind = BTreeMap::new();
     let mut generic_template_by_type_id = BTreeMap::new();
-    let mut type_id_by_generic_template = BTreeMap::new();
     for document in documents
         .iter()
         .filter(|document| document.kind == SearchDocumentKind::PlatformType)
@@ -2540,13 +2717,15 @@ fn insert_normalized_facts(
             );
         }
         type_id_by_normalized_id.insert(normalize_lookup_key(&document.id), document.id.clone());
-        if let Some(kind) = &document.generic_template_kind {
-            generic_template_by_type_id.insert(document.id.clone(), kind.clone());
-            insert_generic_template_lookup_key(
-                &mut type_id_by_generic_template,
-                kind.clone(),
+        if let Some(metadata_kind) = &document.metadata_kind {
+            insert_type_lookup_key(
+                &mut type_id_by_metadata_kind,
+                normalize_lookup_key(metadata_kind),
                 &document.id,
             );
+        }
+        if let Some(kind) = &document.generic_template_key {
+            generic_template_by_type_id.insert(document.id.clone(), kind.clone());
         }
     }
 
@@ -2562,8 +2741,8 @@ fn insert_normalized_facts(
     let mut type_template_statement = connection
         .prepare(
             "INSERT INTO type_templates(
-                document_id, metadata_kind, template_parameters, generic_metadata_object_kind,
-                generic_generated_type_role, generic_parameter_role
+                document_id, metadata_kind, template_parameters, generic_family,
+                generic_variant, generic_classification_diagnostic
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )
         .map_err(|source| SearchError::Sqlite {
@@ -2611,9 +2790,9 @@ fn insert_normalized_facts(
             "INSERT INTO type_refs(
                 source_document_id, ref_kind, ordinal, source_signature_id,
                 source_signature_ordinal, source_parameter_ordinal, target_type_name,
-                target_type_id, generic_template_metadata_object_kind,
-                generic_template_generated_type_role, generic_template_parameter_role,
-                generic_binding_kind, generic_binding_parameter_role
+                target_type_id, generic_template_family, generic_template_variant,
+                generic_binding_kind, generic_binding_owner_parameter_index,
+                generic_binding_target_parameter_index
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         )
         .map_err(|source| SearchError::Sqlite {
@@ -2637,18 +2816,15 @@ fn insert_normalized_facts(
                 source,
             })?;
         if let Some(metadata_kind) = &document.metadata_kind {
-            let generic_template_kind = document.generic_template_kind.as_ref();
+            let generic_template_key = document.generic_template_key.as_ref();
             type_template_statement
                 .execute(params![
                     document.id,
                     metadata_kind,
                     document.template_parameters.join("\n"),
-                    generic_template_kind
-                        .map(|kind| metadata_object_kind_code(kind.metadata_object_kind)),
-                    generic_template_kind
-                        .map(|kind| generated_type_role_code(kind.generated_type_role)),
-                    generic_template_kind
-                        .map(|kind| generic_parameter_role_code(kind.generic_parameter_role)),
+                    generic_template_key.map(|kind| kind.family.as_str()),
+                    generic_template_key.map(|kind| kind.variant.as_str()),
+                    Option::<&str>::None,
                 ])
                 .map_err(|source| SearchError::Sqlite {
                     path: path.to_path_buf(),
@@ -2730,8 +2906,8 @@ fn insert_normalized_facts(
                             &mut type_ref_statement,
                             path,
                             &type_id_by_key,
+                            &type_id_by_metadata_kind,
                             &generic_template_by_type_id,
-                            &type_id_by_generic_template,
                             TypeRefRow {
                                 source_document_id: &document.id,
                                 ref_kind: "parameter_type",
@@ -2753,8 +2929,8 @@ fn insert_normalized_facts(
                 &mut type_ref_statement,
                 path,
                 &type_id_by_key,
+                &type_id_by_metadata_kind,
                 &generic_template_by_type_id,
-                &type_id_by_generic_template,
                 TypeRefRow {
                     source_document_id: &document.id,
                     ref_kind: document.kind.type_ref_kind(),
@@ -2772,8 +2948,8 @@ fn insert_normalized_facts(
                 &mut type_ref_statement,
                 path,
                 &type_id_by_key,
+                &type_id_by_metadata_kind,
                 &generic_template_by_type_id,
-                &type_id_by_generic_template,
                 TypeRefRow {
                     source_document_id: &document.id,
                     ref_kind: "return_type",
@@ -2793,8 +2969,8 @@ fn insert_normalized_facts(
                 &mut type_ref_statement,
                 path,
                 &type_id_by_key,
+                &type_id_by_metadata_kind,
                 &generic_template_by_type_id,
-                &type_id_by_generic_template,
                 TypeRefRow {
                     source_document_id: &document.id,
                     ref_kind: "constructor_result",
@@ -2837,22 +3013,19 @@ fn insert_type_ref(
     statement: &mut Statement<'_>,
     path: &Path,
     type_id_by_key: &BTreeMap<String, Option<String>>,
-    generic_template_by_type_id: &BTreeMap<String, model::GenericPlatformTemplateKind>,
-    type_id_by_generic_template: &BTreeMap<model::GenericPlatformTemplateKind, Option<String>>,
+    type_id_by_metadata_kind: &BTreeMap<String, Option<String>>,
+    generic_template_by_type_id: &BTreeMap<String, model::GenericPlatformTemplateKey>,
     row: TypeRefRow<'_>,
 ) -> Result<(), SearchError> {
     let mut target_type_id = type_id_by_key
         .get(&normalize_lookup_key(row.target_type_name))
         .and_then(|type_id| type_id.as_deref());
     if target_type_id.is_none() {
-        target_type_id = inferred_generic_template_target_type_id(
-            row.owner_type_id,
-            row.target_type_name,
-            generic_template_by_type_id,
-            type_id_by_generic_template,
-        );
+        target_type_id = type_id_by_metadata_kind
+            .get(&normalize_lookup_key(row.target_type_name))
+            .and_then(|type_id| type_id.as_deref());
     }
-    let generic_template_kind =
+    let generic_template_key =
         target_type_id.and_then(|type_id| generic_template_by_type_id.get(type_id));
     let generic_binding = generic_template_binding(
         row.owner_type_id,
@@ -2869,12 +3042,11 @@ fn insert_type_ref(
             row.source_parameter_ordinal.map(|value| value as i64),
             row.target_type_name,
             target_type_id,
-            generic_template_kind.map(|kind| metadata_object_kind_code(kind.metadata_object_kind)),
-            generic_template_kind.map(|kind| generated_type_role_code(kind.generated_type_role)),
-            generic_template_kind
-                .map(|kind| generic_parameter_role_code(kind.generic_parameter_role)),
+            generic_template_key.map(|kind| kind.family.as_str()),
+            generic_template_key.map(|kind| kind.variant.as_str()),
             generic_binding.as_ref().map(|_| "owner_parameter"),
-            generic_binding.map(generic_parameter_role_code),
+            generic_binding.map(|binding| binding.owner_parameter_index as i64),
+            generic_binding.map(|binding| binding.target_parameter_index as i64),
         ])
         .map(|_| ())
         .map_err(|source| SearchError::Sqlite {
@@ -2883,34 +3055,23 @@ fn insert_type_ref(
         })
 }
 
-fn inferred_generic_template_target_type_id<'a>(
-    owner_type_id: Option<&str>,
-    target_type_name: &str,
-    generic_template_by_type_id: &BTreeMap<String, model::GenericPlatformTemplateKind>,
-    type_id_by_generic_template: &'a BTreeMap<model::GenericPlatformTemplateKind, Option<String>>,
-) -> Option<&'a str> {
-    let owner_kind = generic_template_by_type_id.get(owner_type_id?)?;
-    let target_kind = model::generic_platform_template_kind_from_metadata_kind(target_type_name)?;
-    if owner_kind.metadata_object_kind != target_kind.metadata_object_kind
-        || owner_kind.generic_parameter_role != target_kind.generic_parameter_role
-    {
-        return None;
-    }
-    type_id_by_generic_template
-        .get(&target_kind)
-        .and_then(|type_id| type_id.as_deref())
+#[derive(Debug, Clone, Copy)]
+struct OwnerParameterBinding {
+    owner_parameter_index: usize,
+    target_parameter_index: usize,
 }
 
 fn generic_template_binding(
     owner_type_id: Option<&str>,
     target_type_id: Option<&str>,
-    generic_template_by_type_id: &BTreeMap<String, model::GenericPlatformTemplateKind>,
-) -> Option<model::GenericParameterRole> {
+    generic_template_by_type_id: &BTreeMap<String, model::GenericPlatformTemplateKey>,
+) -> Option<OwnerParameterBinding> {
     let owner_kind = generic_template_by_type_id.get(owner_type_id?)?;
     let target_kind = generic_template_by_type_id.get(target_type_id?)?;
-    (owner_kind.metadata_object_kind == target_kind.metadata_object_kind
-        && owner_kind.generic_parameter_role == target_kind.generic_parameter_role)
-        .then_some(owner_kind.generic_parameter_role)
+    (owner_kind.family == target_kind.family).then_some(OwnerParameterBinding {
+        owner_parameter_index: 0,
+        target_parameter_index: 0,
+    })
 }
 
 fn insert_type_lookup_key(
@@ -2925,22 +3086,6 @@ fn insert_type_lookup_key(
         }
         None => {
             type_id_by_key.insert(key, Some(type_id.to_string()));
-        }
-    }
-}
-
-fn insert_generic_template_lookup_key(
-    type_id_by_generic_template: &mut BTreeMap<model::GenericPlatformTemplateKind, Option<String>>,
-    key: model::GenericPlatformTemplateKind,
-    type_id: &str,
-) {
-    match type_id_by_generic_template.get_mut(&key) {
-        Some(existing) if existing.as_deref() == Some(type_id) => {}
-        Some(existing) => {
-            *existing = None;
-        }
-        None => {
-            type_id_by_generic_template.insert(key, Some(type_id.to_string()));
         }
     }
 }
@@ -3295,7 +3440,7 @@ fn document(
         available_since: None,
         metadata_kind: None,
         template_parameters: Vec::new(),
-        generic_template_kind: None,
+        generic_template_key: None,
     }
 }
 
@@ -3417,7 +3562,7 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         available_since: None,
         metadata_kind: None,
         template_parameters: Vec::new(),
-        generic_template_kind: None,
+        generic_template_key: None,
     }
 }
 
@@ -3584,27 +3729,31 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
         available_since: row.get(9)?,
         metadata_kind: None,
         template_parameters: Vec::new(),
-        generic_template_kind: None,
+        generic_template_key: None,
     })
 }
 
 fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchTypeRef> {
-    let generic_template_kind = generic_template_kind_from_codes(
+    let generic_template_key = generic_template_key_from_codes(
         row.get::<_, Option<String>>(2)?,
         row.get::<_, Option<String>>(3)?,
-        row.get::<_, Option<String>>(4)?,
     );
-    let binding_kind: Option<String> = row.get(5)?;
-    let binding_parameter_role: Option<String> = row.get(6)?;
+    let binding_kind: Option<String> = row.get(4)?;
+    let owner_parameter_index: Option<i64> = row.get(5)?;
+    let target_parameter_index: Option<i64> = row.get(6)?;
     let generic_binding = match (
-        generic_template_kind.clone(),
+        generic_template_key.clone(),
         binding_kind.as_deref(),
-        binding_parameter_role.as_deref(),
+        owner_parameter_index,
+        target_parameter_index,
     ) {
-        (Some(template_kind), Some("owner_parameter"), Some(parameter_role)) => {
-            generic_parameter_role_from_code(parameter_role).map(|role| model::GenericTypeBinding {
-                template_kind,
-                arguments: vec![model::GenericArgumentBinding::OwnerParameter { role }],
+        (Some(template_key), Some("owner_parameter"), Some(owner_index), Some(target_index)) => {
+            Some(model::GenericTypeBinding {
+                template_key,
+                arguments: vec![model::GenericArgumentBinding::OwnerParameter {
+                    owner_parameter_index: owner_index as usize,
+                    target_parameter_index: target_index as usize,
+                }],
             })
         }
         _ => None,
@@ -3612,7 +3761,7 @@ fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchT
     Ok(SearchTypeRef {
         name: row.get(0)?,
         target_type_id: row.get(1)?,
-        generic_template_kind,
+        generic_template_key,
         generic_binding,
     })
 }
@@ -3631,93 +3780,11 @@ fn availability_context_code(context: model::AvailabilityContext) -> &'static st
     }
 }
 
-fn metadata_object_kind_code(kind: model::MetadataObjectKind) -> &'static str {
-    match kind {
-        model::MetadataObjectKind::Catalog => "catalog",
-        model::MetadataObjectKind::Document => "document",
-        model::MetadataObjectKind::InformationRegister => "information_register",
-        model::MetadataObjectKind::AccumulationRegister => "accumulation_register",
-        model::MetadataObjectKind::AccountingRegister => "accounting_register",
-        model::MetadataObjectKind::CalculationRegister => "calculation_register",
-        model::MetadataObjectKind::ChartOfAccounts => "chart_of_accounts",
-        model::MetadataObjectKind::ChartOfCalculationTypes => "chart_of_calculation_types",
-        model::MetadataObjectKind::ChartOfCharacteristicTypes => "chart_of_characteristic_types",
-        model::MetadataObjectKind::BusinessProcess => "business_process",
-        model::MetadataObjectKind::Task => "task",
-        model::MetadataObjectKind::Enum => "enum",
-    }
-}
-
-fn metadata_object_kind_from_code(value: &str) -> Option<model::MetadataObjectKind> {
-    match value {
-        "catalog" => Some(model::MetadataObjectKind::Catalog),
-        "document" => Some(model::MetadataObjectKind::Document),
-        "information_register" => Some(model::MetadataObjectKind::InformationRegister),
-        "accumulation_register" => Some(model::MetadataObjectKind::AccumulationRegister),
-        "accounting_register" => Some(model::MetadataObjectKind::AccountingRegister),
-        "calculation_register" => Some(model::MetadataObjectKind::CalculationRegister),
-        "chart_of_accounts" => Some(model::MetadataObjectKind::ChartOfAccounts),
-        "chart_of_calculation_types" => Some(model::MetadataObjectKind::ChartOfCalculationTypes),
-        "chart_of_characteristic_types" => {
-            Some(model::MetadataObjectKind::ChartOfCharacteristicTypes)
-        }
-        "business_process" => Some(model::MetadataObjectKind::BusinessProcess),
-        "task" => Some(model::MetadataObjectKind::Task),
-        "enum" => Some(model::MetadataObjectKind::Enum),
-        _ => None,
-    }
-}
-
-fn generated_type_role_code(role: model::GeneratedTypeRole) -> &'static str {
-    match role {
-        model::GeneratedTypeRole::Manager => "manager",
-        model::GeneratedTypeRole::Object => "object",
-        model::GeneratedTypeRole::Reference => "reference",
-        model::GeneratedTypeRole::Selection => "selection",
-        model::GeneratedTypeRole::List => "list",
-        model::GeneratedTypeRole::RecordSet => "record_set",
-        model::GeneratedTypeRole::Record => "record",
-        model::GeneratedTypeRole::RecordKey => "record_key",
-    }
-}
-
-fn generated_type_role_from_code(value: &str) -> Option<model::GeneratedTypeRole> {
-    match value {
-        "manager" => Some(model::GeneratedTypeRole::Manager),
-        "object" => Some(model::GeneratedTypeRole::Object),
-        "reference" => Some(model::GeneratedTypeRole::Reference),
-        "selection" => Some(model::GeneratedTypeRole::Selection),
-        "list" => Some(model::GeneratedTypeRole::List),
-        "record_set" => Some(model::GeneratedTypeRole::RecordSet),
-        "record" => Some(model::GeneratedTypeRole::Record),
-        "record_key" => Some(model::GeneratedTypeRole::RecordKey),
-        _ => None,
-    }
-}
-
-fn generic_parameter_role_code(role: model::GenericParameterRole) -> &'static str {
-    match role {
-        model::GenericParameterRole::MetadataObjectName => "metadata_object_name",
-    }
-}
-
-fn generic_parameter_role_from_code(value: &str) -> Option<model::GenericParameterRole> {
-    match value {
-        "metadata_object_name" => Some(model::GenericParameterRole::MetadataObjectName),
-        _ => None,
-    }
-}
-
-fn generic_template_kind_from_codes(
-    metadata_object_kind: Option<String>,
-    generated_type_role: Option<String>,
-    generic_parameter_role: Option<String>,
-) -> Option<model::GenericPlatformTemplateKind> {
-    Some(model::GenericPlatformTemplateKind::new(
-        metadata_object_kind_from_code(metadata_object_kind.as_deref()?)?,
-        generated_type_role_from_code(generated_type_role.as_deref()?)?,
-        generic_parameter_role_from_code(generic_parameter_role.as_deref()?)?,
-    ))
+fn generic_template_key_from_codes(
+    family: Option<String>,
+    variant: Option<String>,
+) -> Option<model::GenericPlatformTemplateKey> {
+    Some(model::GenericPlatformTemplateKey::new(family?, variant?))
 }
 
 fn optional_localized_name(
@@ -4298,19 +4365,13 @@ mod tests {
             vec!["Имя справочника".to_string()]
         );
         assert_eq!(
-            hit.document.generic_template_kind,
-            Some(model::GenericPlatformTemplateKind::new(
-                model::MetadataObjectKind::Catalog,
-                model::GeneratedTypeRole::Manager,
-                model::GenericParameterRole::MetadataObjectName,
-            ))
+            hit.document.generic_template_key,
+            Some(model::GenericPlatformTemplateKey::new("Catalog", "Manager"))
         );
 
         let by_kind = index
-            .type_template_by_generic_kind(&model::GenericPlatformTemplateKind::new(
-                model::MetadataObjectKind::Catalog,
-                model::GeneratedTypeRole::Manager,
-                model::GenericParameterRole::MetadataObjectName,
+            .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
+                "Catalog", "Manager",
             ))
             .expect("semantic template lookup must not fail");
         assert_eq!(by_kind.len(), 1);
@@ -4318,10 +4379,189 @@ mod tests {
     }
 
     #[test]
+    fn generic_template_classification_uses_longest_manager_root() {
+        let path = temp_path("generic-template-longest-root.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        for (primary, alias) in [
+            (
+                "ДокументМенеджер.<Имя документа>",
+                "DocumentManager.<Document name>",
+            ),
+            (
+                "ЖурналДокументовМенеджер.<Имя журнала документов>",
+                "DocumentJournalManager.<Document journal name>",
+            ),
+            (
+                "ЖурналДокументовСсылка.<Имя журнала документов>",
+                "DocumentJournalRef.<Document journal name>",
+            ),
+        ] {
+            let mut record = platform_type(primary, Some(alias), "Template.");
+            record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+            record.metadata_kind = record.name.primary.split('.').next().map(str::to_string);
+            record.template_parameters = vec!["Имя".to_string()];
+            builder
+                .platform_type(record)
+                .expect("platform template must sink");
+        }
+
+        build_index_from_builder(&path, &metadata(), builder).expect("index must build");
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let hit = index
+            .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
+                "DocumentJournal",
+                "Ref",
+            ))
+            .expect("generic lookup must not fail")
+            .pop()
+            .expect("document journal ref must resolve");
+
+        assert_eq!(
+            hit.document.generic_template_key,
+            Some(model::GenericPlatformTemplateKey::new(
+                "DocumentJournal",
+                "Ref",
+            ))
+        );
+    }
+
+    #[test]
+    fn generic_template_classification_uses_direct_refs_for_unassigned_templates() {
+        let path = temp_path("generic-template-direct-ref-family.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        for (primary, alias) in [
+            (
+                "ПланВидовРасчетаМенеджер.<Имя плана видов расчета>",
+                "ChartOfCalculationTypesManager.<Chart name>",
+            ),
+            (
+                "ПланВидовРасчетаОбъект.<Имя плана видов расчета>",
+                "ChartOfCalculationTypesObject.<Chart name>",
+            ),
+            (
+                "ПланВидовРасчетаСсылка.<Имя плана видов расчета>",
+                "ChartOfCalculationTypesRef.<Chart name>",
+            ),
+            (
+                "БазовыеВидыРасчета.<Имя плана видов расчета>",
+                "BaseCalculationTypes.<Chart name>",
+            ),
+            (
+                "СтрокаБазовыхВидовРасчета.<Имя плана видов расчета>",
+                "BaseCalculationTypesRow.<Chart name>",
+            ),
+        ] {
+            let mut record = platform_type(primary, Some(alias), "Template.");
+            record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+            record.metadata_kind = record.name.primary.split('.').next().map(str::to_string);
+            record.template_parameters = vec!["Имя плана видов расчета".to_string()];
+            builder
+                .platform_type(record)
+                .expect("platform template must sink");
+        }
+        builder
+            .type_property(model::PlatformProperty {
+                owner: name(
+                    "ПланВидовРасчетаОбъект.<Имя плана видов расчета>",
+                    Some("ChartOfCalculationTypesObject.<Chart name>"),
+                ),
+                owner_identity: Some(
+                    "platform_type:ПланВидовРасчетаОбъект.<Имя плана видов расчета>".to_string(),
+                ),
+                name: name("БазовыеВидыРасчета", Some("BaseCalculationTypes")),
+                semantic: model::SemanticContext::default(),
+                usage: None,
+                type_refs: vec![model::TypeRef {
+                    name: "БазовыеВидыРасчета".to_string(),
+                }],
+                description: None,
+                facts: model::SectionFacts::default(),
+                source: source("chart-object-base-calculation-types"),
+            })
+            .expect("property must sink");
+        builder
+            .type_property(model::PlatformProperty {
+                owner: name(
+                    "СтрокаБазовыхВидовРасчета.<Имя плана видов расчета>",
+                    Some("BaseCalculationTypesRow.<Chart name>"),
+                ),
+                owner_identity: Some(
+                    "platform_type:СтрокаБазовыхВидовРасчета.<Имя плана видов расчета>".to_string(),
+                ),
+                name: name("ВидРасчета", Some("CalculationType")),
+                semantic: model::SemanticContext::default(),
+                usage: None,
+                type_refs: vec![model::TypeRef {
+                    name: "ПланВидовРасчетаСсылка".to_string(),
+                }],
+                description: None,
+                facts: model::SectionFacts::default(),
+                source: source("base-calculation-row-calculation-type"),
+            })
+            .expect("property must sink");
+
+        let report = build_index_from_builder_with_report(&path, &metadata(), builder)
+            .expect("index must build");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .all(|warning| !warning.code.starts_with("GENERIC_TEMPLATE_"))
+        );
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        for (variant, expected_id) in [
+            (
+                "BaseCalculationTypes",
+                "platform_type:БазовыеВидыРасчета.<Имя плана видов расчета>",
+            ),
+            (
+                "BaseCalculationTypesRow",
+                "platform_type:СтрокаБазовыхВидовРасчета.<Имя плана видов расчета>",
+            ),
+        ] {
+            let hits = index
+                .type_template_by_generic_key(&model::GenericPlatformTemplateKey::new(
+                    "ChartOfCalculationTypes",
+                    variant,
+                ))
+                .expect("generic lookup must not fail");
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].document.id, expected_id);
+        }
+    }
+
+    #[test]
+    fn generic_template_classification_reports_unclassified_templates() {
+        let path = temp_path("generic-template-unclassified.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        let mut record = platform_type(
+            "ОдиночныйШаблон.<Имя>",
+            Some("SingleTemplate.<Name>"),
+            "Template.",
+        );
+        record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+        record.metadata_kind = Some("ОдиночныйШаблон".to_string());
+        record.template_parameters = vec!["Имя".to_string()];
+        builder
+            .platform_type(record)
+            .expect("platform template must sink");
+
+        let report = build_index_from_builder_with_report(&path, &metadata(), builder)
+            .expect("index must build");
+        assert_eq!(report.warnings.len(), 1);
+        assert_eq!(report.warnings[0].code, "GENERIC_TEMPLATE_UNCLASSIFIED");
+    }
+
+    #[test]
     fn generic_template_type_refs_preserve_owner_parameter_binding() {
         let path = temp_path("generic-template-binding.sqlite");
         let mut builder = SearchIndexBuilder::new();
         for mut record in [
+            platform_type(
+                "ДокументМенеджер.<Имя документа>",
+                Some("DocumentManager.<Document name>"),
+                "Document manager template.",
+            ),
             platform_type(
                 "ДокументОбъект.<Имя документа>",
                 Some("DocumentObject.<Document name>"),
@@ -4373,17 +4613,14 @@ mod tests {
             .as_ref()
             .expect("type ref must preserve generic binding");
         assert_eq!(
-            binding.template_kind,
-            model::GenericPlatformTemplateKind::new(
-                model::MetadataObjectKind::Document,
-                model::GeneratedTypeRole::Reference,
-                model::GenericParameterRole::MetadataObjectName,
-            )
+            binding.template_key,
+            model::GenericPlatformTemplateKey::new("Document", "Ref")
         );
         assert_eq!(
             binding.arguments,
             vec![model::GenericArgumentBinding::OwnerParameter {
-                role: model::GenericParameterRole::MetadataObjectName,
+                owner_parameter_index: 0,
+                target_parameter_index: 0,
             }]
         );
     }
@@ -6378,7 +6615,7 @@ mod tests {
             extends: Vec::new(),
             metadata_kind: None,
             template_parameters: Vec::new(),
-            generic_template_kind: None,
+            generic_template_key: None,
             method_links: Vec::new(),
             constructor_links: Vec::new(),
             description: Some(description.to_string()),

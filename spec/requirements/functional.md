@@ -326,16 +326,26 @@ Classification rules:
   `СправочникСсылка.<Имя справочника>` and external-data-source table types must be classified
   separately from regular platform types. Their semantic context may include metadata kind and
   template parameters derived from TOC/name evidence.
-- Generic metadata/application-object template types must expose a source-owned semantic template
-  kind that does not require consumers to match localized or alias platform type names. The semantic
-  kind must identify the metadata object family, the generated platform type role and the generic
-  parameter role, for example catalog/reference/metadata-object-name or
-  document/object/metadata-object-name.
+- Generic metadata/application-object template types must expose a source-owned open
+  family/variant key that does not require consumers to match localized or alias platform type
+  names. Families and generated variants must be derived from HBK source facts, not from a
+  hardcoded metadata-object-kind or generated-role enum.
+- Generic template family derivation starts from each template's alias base, falling back to the
+  root-locale primary base when no alias exists. Families are rooted by `*Manager` template bases.
+  Other templates are assigned to the longest matching manager root. Templates that remain
+  unassigned after manager-root matching must not create fallback-prefix families. Instead, the
+  reader/index must score direct generic type-reference links between the unassigned template and
+  already derived families. If exactly one family has direct generic references, the template is
+  assigned to that family with diagnostic evidence; if none or several families match, the template
+  remains unclassified with a recoverable diagnostic.
+- Generic parameter labels such as `<Имя документа>` or `<Имя плана видов расчета>` are source
+  documentation parameter names and binding slots. They must not define template family or generated
+  variant semantics by themselves.
 - Members and callables owned by generic platform templates must preserve source-backed generic type
   bindings when HBK exposes template-to-template references. For example, a `DocumentObject<T>`
   member returning `DocumentReference<T>` must be represented as a reference to the document
-  reference template with the result generic argument bound to the owner metadata-object-name
-  parameter, not as an analyzer-side localized-name heuristic.
+  reference template with the result generic argument bound to the owner template parameter slot,
+  not as an analyzer-side localized-name heuristic.
 - Primitive types are shallow. Direct children of the `Примитивные типы` branch are primitive
   platform types; nested pages under a primitive type, such as `Булево > Истина` and
   `Булево > Ложь`, must not be traversed as platform types by ordinary object-catalog recursion.
@@ -377,9 +387,9 @@ Acceptance:
 - Primitive type extraction does not turn nested primitive literal pages such as
   `Булево > Истина` and `Булево > Ложь` into platform type records.
 - Extension and metadata-template platform types are distinguishable from regular platform types.
-- Generic metadata/application-object template types are discoverable by semantic template kind, and
-  member/callable type references preserve owner-parameter generic bindings where source evidence
-  links one generic template to another.
+- Generic metadata/application-object template types are discoverable by source-owned
+  family/variant key, and member/callable type references preserve owner-parameter generic bindings
+  where source evidence links one generic template to another.
 - Reading diagnostics remain provenance-rich when the reader cannot classify or disambiguate a
   source page safely.
 
@@ -805,9 +815,9 @@ The resolver API must be source-neutral and fact-oriented:
 - retrieve callable overloads with ordered parameters and return or constructor result types;
 - expose explicit relation edges such as ownership, type reference, return type, construction,
   generated-from, augments or maps-to when a provider has source-backed evidence;
-- expose generic platform template types through semantic template kinds owned by the HBK provider,
-  so consumers can request templates such as catalog reference or document object without matching
-  platform localized names or English aliases;
+- expose generic platform template types through open family/variant keys owned by the HBK
+  provider, so consumers can request generated metadata-object template variants without matching
+  platform localized names or English aliases or depending on a closed metadata-kind enum;
 - preserve generic owner-parameter bindings on member, callable return and parameter type
   references where provider evidence shows a generic template result such as
   `DocumentObject<T> -> DocumentReference<T>`;
@@ -870,8 +880,8 @@ Acceptance:
   with the same owner display name.
 - Callable lookup preserves callable identity, ordered parameters and return or constructor type
   references.
-- Semantic generic-template lookup returns provider-backed platform type facts without consumers
-  naming localized or alias platform types.
+- Generic-template lookup returns provider-backed platform type facts by open family/variant key
+  without consumers naming localized or alias platform types.
 - Generic member/callable type references preserve owner-parameter bindings for template-to-template
   references where the HBK source exposes them.
 - Platform adapter relation traversal preserves source-backed `has_type`, `returns`, `constructs`

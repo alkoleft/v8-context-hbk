@@ -905,7 +905,7 @@ Scope:
   generic template owner references another generic template with the same metadata-object-name
   parameter, for example `DocumentObject<T>.Ссылка -> DocumentReference<T>`.
 - Keep member/callable ownership on the existing owner type identity; do not duplicate
-  `owner_template_kind` on every member or callable fact.
+  `owner_template_key` on every member or callable fact.
 - Do not change `v8-context`, add analyzer compatibility shims, parse analyzer data, expose SQLite
   schema as a public contract, or use platform-version applicability as analyzer semantics.
 - Do not change CLI provider JSON or canonical `syntax export` schema unless a focused regression
@@ -941,3 +941,82 @@ Completed 2026-05-10:
 - Verified with focused model/search/resolver tests, `cargo fmt --all --check`, `cargo clippy
   --workspace --all-targets -- -D warnings`, `cargo test --workspace` and local 8.5.1.1150
   `shcntx_ru.hbk` corpus indexing evidence recorded in `spec/acceptance/baseline.md`.
+
+### [x] T133. Replace generic template semantic enums with data-driven families
+
+Spec refs:
+
+- FR-SH-002
+- FR-CTX-RESOLVE-001
+- UC-CTX-002
+- NFR-RESOLVE-001
+- `spec/implementation/solution-context-resolve.md`
+- `spec/implementation/syntax-helper-query-cli.md`
+
+Scope:
+
+- Supersede the T132 closed generic template kind shape made from metadata object kind, generated
+  type role and generic parameter role.
+- Model generic platform templates as HBK-owned open families and generated variants. Public
+  lookup must use source-owned family/variant keys, not localized names, aliases, metadata-kind
+  enums, generated-role enums or generic-parameter labels.
+- Classify templates from HBK source facts with the accepted rule:
+  - use each template's `alias_base`, or root-locale `primary_base` when no alias exists;
+  - derive family roots from templates whose base ends with `Manager`;
+  - assign templates by longest manager-root prefix, so longer roots are tried before shorter roots;
+  - do not create fallback-prefix families for templates left unassigned by manager-root matching;
+  - for unassigned templates, score direct generic type-reference links between the template and
+    already assigned families;
+  - assign the template only when exactly one family has direct refs;
+  - leave templates with no direct-reference family or multiple candidate families unclassified and
+    emit a recoverable diagnostic with classification evidence.
+- Preserve generic parameter labels as source parameter slots and binding evidence only. Do not use
+  them to define family or variant semantics.
+- Preserve member/callable/property generic bindings by parameter slot/index where HBK exposes a
+  template-to-template reference, for example object/reference links such as
+  `DocumentObject<T>.Ссылка -> DocumentReference<T>`.
+- Update model, search index, resolver/search APIs and tests to remove the closed T132 enum
+  contract. SQLite schema details remain private rebuildable provider state.
+- Do not change `v8-context`, add analyzer compatibility shims, parse analyzer data, expose SQLite
+  schema as a public contract, or use platform-version applicability as analyzer semantics.
+- Do not change CLI provider JSON or canonical `syntax export` schema unless a focused regression
+  proves the Rust resolver boundary cannot carry the required facts.
+
+Verification:
+
+- Focused `syntax-helper-model` tests cover alias/fallback base selection, manager-root discovery,
+  longest-prefix assignment and unclassified diagnostics.
+- Focused classification tests prove overlapping roots such as `DocumentJournal` before `Document`
+  and `ExternalDataSourceTable` before `ExternalDataSource`.
+- Focused search/index tests cover family/variant persistence, lookup by open key and diagnostic
+  roundtrip for unclassified or ambiguous templates.
+- Focused resolver tests cover lookup by family/variant key and returned `TypeRef` generic binding
+  DTOs using parameter-slot binding instead of metadata-object-name role enums.
+- Representative local HBK corpus evidence confirms that current `shcntx_ru.hbk` classification has
+  zero undefined templates and assigns `BaseCalculationTypes*`, `LeadingCalculationTypes*` and
+  `DisplacingCalculationTypes*` to `ChartOfCalculationTypes` through direct generic type-reference
+  evidence.
+- `cargo fmt --all --check` passes.
+- `cargo test -p syntax-helper-model -p syntax-helper-search -p context-resolver-core -p
+  context-resolver-search` passes.
+- `cargo test --workspace` and relevant clippy checks pass or any environment blocker is recorded.
+
+Completed 2026-05-11:
+
+- Replaced the closed T132 generic-template enum contract with open HBK-owned family/variant keys
+  on the model, search and resolver Rust boundaries.
+- Moved generic template classification to the search-index build stage where the full HBK-derived
+  template set and direct generic type-reference evidence are available.
+- Implemented the accepted classification rule: alias-base or fallback primary-base, manager-root
+  family discovery, longest-prefix assignment, no fallback-prefix families and direct-ref scoring
+  for remaining templates.
+- Preserved generic parameter names as source template parameters and exposed generic bindings as
+  owner/target parameter-slot indexes on returned type references.
+- Updated SQLite provider storage to schema version 10 with private family/variant columns and
+  parameter-slot binding columns.
+- Representative local 8.5.1.1150 `shcntx_ru.hbk` corpus indexing produced 121 generic template
+  rows, 0 unclassified rows and assigned `BaseCalculationTypes*`, `LeadingCalculationTypes*` and
+  `DisplacingCalculationTypes*` to `ChartOfCalculationTypes`.
+- Verified with focused model/search/resolver/extract/export/CLI tests, `cargo fmt --all --check`,
+  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` and local
+  corpus SQL evidence recorded in `spec/acceptance/baseline.md`.
