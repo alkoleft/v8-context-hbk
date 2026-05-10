@@ -202,6 +202,12 @@ renames private SQLite layout identifiers to type-template terminology (`templat
 `type_template_variant` and `template_binding_*`). The CLI provider JSON envelope remains
 `schema_version: 1`, and the canonical `syntax export` consumer JSON remains `schema_version: 11`.
 
+T135 implementation note: `syntax type-ref-gaps` is a report command over an existing prebuilt
+SQLite index. It counts `type_refs` rows by source role and resolution status, reports template
+bindings as an additional subset counter, and lists top unresolved/ambiguous target names with
+source fact examples and ambiguous candidate type ids. It is not a provider JSON command and does
+not change the provider envelope, canonical export schema or query-time HBK access boundary.
+
 T133 type template classification rule:
 
 - use each template's `alias_base` or fallback root-locale `primary_base`; non-root localized

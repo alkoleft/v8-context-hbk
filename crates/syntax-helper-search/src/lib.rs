@@ -56,6 +56,45 @@ pub struct RelatedHit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeReferenceGapReport {
+    pub total: usize,
+    pub resolved: usize,
+    pub unresolved: usize,
+    pub ambiguous: usize,
+    pub template_bindings: usize,
+    pub roles: Vec<TypeReferenceRoleReport>,
+    pub top_unresolved: Vec<TypeReferenceGap>,
+    pub top_ambiguous: Vec<TypeReferenceGap>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeReferenceRoleReport {
+    pub role: String,
+    pub total: usize,
+    pub resolved: usize,
+    pub unresolved: usize,
+    pub ambiguous: usize,
+    pub template_bindings: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeReferenceGap {
+    pub role: String,
+    pub target_type_name: String,
+    pub count: usize,
+    pub examples: Vec<TypeReferenceGapExample>,
+    pub candidate_type_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeReferenceGapExample {
+    pub source_document_id: String,
+    pub source_kind: SearchDocumentKind,
+    pub source_name: model::LocalizedName,
+    pub source_owner: Option<model::LocalizedName>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelationStep {
     pub from: String,
     pub to: String,
@@ -1675,6 +1714,167 @@ impl SearchIndex {
             .map_err(|source| self.sqlite(source))
     }
 
+    pub fn type_reference_gap_report(
+        &self,
+        top_limit: usize,
+    ) -> Result<TypeReferenceGapReport, SearchError> {
+        let candidates_by_key = self.type_reference_candidate_ids_by_key()?;
+        let mut role_counts = BTreeMap::<String, TypeReferenceCounts>::new();
+        let mut total_counts = TypeReferenceCounts::default();
+        let mut unresolved = BTreeMap::<(String, String), GapAccumulator>::new();
+        let mut ambiguous = BTreeMap::<(String, String), GapAccumulator>::new();
+
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT r.source_document_id, r.ref_kind, r.target_type_name,
+                        r.target_type_id, r.template_binding_kind,
+                        d.kind, d.name_primary, d.name_alias, d.owner_primary, d.owner_alias
+                 FROM type_refs r
+                 JOIN documents d ON d.id = r.source_document_id
+                 ORDER BY r.ref_kind, r.target_type_name, r.source_document_id, r.ordinal",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([], |row| {
+                let kind_value: String = row.get(5)?;
+                let kind = SearchDocumentKind::from_storage(&kind_value)
+                    .ok_or_else(|| rusqlite::Error::InvalidQuery)?;
+                let source_owner_primary: Option<String> = row.get(8)?;
+                let source_owner_alias: Option<String> = row.get(9)?;
+                Ok(TypeReferenceMeasurementRow {
+                    source_document_id: row.get(0)?,
+                    role: row.get(1)?,
+                    target_type_name: row.get(2)?,
+                    target_type_id: row.get(3)?,
+                    has_template_binding: row.get::<_, Option<String>>(4)?.is_some(),
+                    source_kind: kind,
+                    source_name: model::LocalizedName {
+                        primary: row.get(6)?,
+                        alias: row.get(7)?,
+                    },
+                    source_owner: source_owner_primary.map(|primary| model::LocalizedName {
+                        primary,
+                        alias: source_owner_alias,
+                    }),
+                })
+            })
+            .map_err(|source| self.sqlite(source))?;
+
+        for row in rows {
+            let row = row.map_err(|source| self.sqlite(source))?;
+            let candidate_type_ids = candidates_by_key
+                .get(&normalize_lookup_key(&row.target_type_name))
+                .cloned()
+                .unwrap_or_default();
+            let status = if row.target_type_id.is_some() {
+                TypeReferenceStatus::Resolved
+            } else if candidate_type_ids.len() > 1 {
+                TypeReferenceStatus::Ambiguous
+            } else {
+                TypeReferenceStatus::Unresolved
+            };
+            total_counts.add(status, row.has_template_binding);
+            role_counts
+                .entry(row.role.clone())
+                .or_default()
+                .add(status, row.has_template_binding);
+
+            match status {
+                TypeReferenceStatus::Unresolved => {
+                    accumulate_gap(&mut unresolved, row, candidate_type_ids)
+                }
+                TypeReferenceStatus::Ambiguous => {
+                    accumulate_gap(&mut ambiguous, row, candidate_type_ids)
+                }
+                TypeReferenceStatus::Resolved => {}
+            }
+        }
+
+        Ok(TypeReferenceGapReport {
+            total: total_counts.total,
+            resolved: total_counts.resolved,
+            unresolved: total_counts.unresolved,
+            ambiguous: total_counts.ambiguous,
+            template_bindings: total_counts.template_bindings,
+            roles: role_counts
+                .into_iter()
+                .map(|(role, counts)| TypeReferenceRoleReport {
+                    role,
+                    total: counts.total,
+                    resolved: counts.resolved,
+                    unresolved: counts.unresolved,
+                    ambiguous: counts.ambiguous,
+                    template_bindings: counts.template_bindings,
+                })
+                .collect(),
+            top_unresolved: top_gaps(unresolved, top_limit),
+            top_ambiguous: top_gaps(ambiguous, top_limit),
+        })
+    }
+
+    fn type_reference_candidate_ids_by_key(
+        &self,
+    ) -> Result<BTreeMap<String, Vec<String>>, SearchError> {
+        let mut candidates = BTreeMap::<String, BTreeSet<String>>::new();
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT name_primary, name_alias, type_id
+                 FROM type_identities
+                 ORDER BY name_primary, name_alias, type_id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|source| self.sqlite(source))?;
+        for row in rows {
+            let (primary, alias, type_id) = row.map_err(|source| self.sqlite(source))?;
+            candidates
+                .entry(normalize_lookup_key(&primary))
+                .or_default()
+                .insert(type_id.clone());
+            if let Some(alias) = alias {
+                candidates
+                    .entry(normalize_lookup_key(&alias))
+                    .or_default()
+                    .insert(type_id);
+            }
+        }
+
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT metadata_kind, document_id
+                 FROM type_templates
+                 ORDER BY metadata_kind, document_id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|source| self.sqlite(source))?;
+        for row in rows {
+            let (metadata_kind, type_id) = row.map_err(|source| self.sqlite(source))?;
+            candidates
+                .entry(normalize_lookup_key(&metadata_kind))
+                .or_default()
+                .insert(type_id);
+        }
+
+        Ok(candidates
+            .into_iter()
+            .map(|(key, ids)| (key, ids.into_iter().collect()))
+            .collect())
+    }
+
     fn get_by_key(&self, key: &str) -> Result<Vec<SearchHit>, SearchError> {
         let mut statement = self
             .connection
@@ -3221,6 +3421,101 @@ fn edge_ref_kind(edge_kind: &str) -> &'static str {
         "constructs" => "constructor_result",
         _ => "property_type",
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TypeReferenceStatus {
+    Resolved,
+    Unresolved,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone)]
+struct TypeReferenceMeasurementRow {
+    source_document_id: String,
+    role: String,
+    target_type_name: String,
+    target_type_id: Option<String>,
+    has_template_binding: bool,
+    source_kind: SearchDocumentKind,
+    source_name: model::LocalizedName,
+    source_owner: Option<model::LocalizedName>,
+}
+
+#[derive(Debug, Default)]
+struct TypeReferenceCounts {
+    total: usize,
+    resolved: usize,
+    unresolved: usize,
+    ambiguous: usize,
+    template_bindings: usize,
+}
+
+impl TypeReferenceCounts {
+    fn add(&mut self, status: TypeReferenceStatus, has_template_binding: bool) {
+        self.total += 1;
+        match status {
+            TypeReferenceStatus::Resolved => self.resolved += 1,
+            TypeReferenceStatus::Unresolved => self.unresolved += 1,
+            TypeReferenceStatus::Ambiguous => self.ambiguous += 1,
+        }
+        if has_template_binding {
+            self.template_bindings += 1;
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct GapAccumulator {
+    count: usize,
+    examples: BTreeMap<String, TypeReferenceGapExample>,
+    candidate_type_ids: Vec<String>,
+}
+
+fn accumulate_gap(
+    gaps: &mut BTreeMap<(String, String), GapAccumulator>,
+    row: TypeReferenceMeasurementRow,
+    candidate_type_ids: Vec<String>,
+) {
+    let key = (row.role.clone(), row.target_type_name.clone());
+    let gap = gaps.entry(key).or_default();
+    gap.count += 1;
+    if gap.candidate_type_ids.is_empty() {
+        gap.candidate_type_ids = candidate_type_ids;
+    }
+    gap.examples
+        .entry(row.source_document_id.clone())
+        .or_insert(TypeReferenceGapExample {
+            source_document_id: row.source_document_id,
+            source_kind: row.source_kind,
+            source_name: row.source_name,
+            source_owner: row.source_owner,
+        });
+}
+
+fn top_gaps(
+    gaps: BTreeMap<(String, String), GapAccumulator>,
+    limit: usize,
+) -> Vec<TypeReferenceGap> {
+    let mut gaps = gaps
+        .into_iter()
+        .map(|((role, target_type_name), gap)| TypeReferenceGap {
+            role,
+            target_type_name,
+            count: gap.count,
+            examples: gap.examples.into_values().take(3).collect(),
+            candidate_type_ids: gap.candidate_type_ids,
+        })
+        .collect::<Vec<_>>();
+    gaps.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.role.cmp(&right.role))
+            .then_with(|| left.target_type_name.cmp(&right.target_type_name))
+    });
+    gaps.truncate(limit);
+    gaps
 }
 
 fn signature_id(document_id: &str, ordinal: usize) -> String {
@@ -6466,6 +6761,67 @@ mod tests {
         assert!(
             related_type_refs.is_empty(),
             "edge-filtered traversal must not choose a hidden duplicate type identity"
+        );
+    }
+
+    #[test]
+    fn type_reference_gap_report_classifies_rows_without_hidden_winners() {
+        let path = temp_path("type-reference-gap-report.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![
+                platform_type("Владелец", None, "owner"),
+                platform_type("РазрешенныйТип", None, "resolved"),
+                platform_type_with_owner_path("ДубльТип", "Первый владелец"),
+                platform_type_with_owner_path("ДубльТип", "Второй владелец"),
+            ],
+            type_properties: vec![
+                type_property("Владелец", "Разрешенное", "РазрешенныйТип"),
+                type_property("Владелец", "Неизвестное", "НесуществующийТип"),
+                type_property("Владелец", "Дублирующее", "ДубльТип"),
+            ],
+            ..model::PlatformContext::default()
+        };
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let writable = Connection::open(&path).expect("test index must open writable");
+        writable
+            .execute(
+                "UPDATE type_refs
+                 SET template_binding_kind = 'owner_parameter'
+                 WHERE source_document_id = 'type_property:platform_type:Владелец:Разрешенное'",
+                [],
+            )
+            .expect("test fixture binding flag must update");
+        drop(writable);
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let report = index
+            .type_reference_gap_report(10)
+            .expect("gap report must be readable");
+
+        assert_eq!(report.total, 3);
+        assert_eq!(report.resolved, 1);
+        assert_eq!(report.unresolved, 1);
+        assert_eq!(report.ambiguous, 1);
+        assert_eq!(report.template_bindings, 1);
+        assert_eq!(report.roles.len(), 1);
+        assert_eq!(report.roles[0].role, "property_type");
+        assert_eq!(report.roles[0].template_bindings, 1);
+        assert_eq!(
+            report.top_unresolved[0].target_type_name,
+            "НесуществующийТип"
+        );
+        assert_eq!(
+            report.top_unresolved[0].examples[0].source_document_id,
+            "type_property:platform_type:Владелец:Неизвестное"
+        );
+        assert_eq!(report.top_ambiguous[0].target_type_name, "ДубльТип");
+        assert_eq!(
+            report.top_ambiguous[0].candidate_type_ids,
+            vec![
+                "platform_type:ДубльТип:Второй владелец".to_string(),
+                "platform_type:ДубльТип:Первый владелец".to_string(),
+            ]
         );
     }
 

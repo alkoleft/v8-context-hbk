@@ -1871,3 +1871,36 @@ SQL inspection confirmed the renamed private layout:
 - `type_refs`: `type_template_family`, `type_template_variant`, `template_binding_kind`,
   `template_binding_owner_parameter_index`, `template_binding_target_parameter_index`,
   `template_binding_arguments`.
+
+T135 added the reproducible `syntax type-ref-gaps` measurement command for prebuilt search indexes.
+No new ADR was required: FR-SH-002/FR-SH-003 own extracted type-reference and type-template facts,
+FR-SH-PROVIDER-001 and FR-CTX-RESOLVE-001 already require explicit missing/ambiguous outcomes
+without hidden winner selection, and ADR-0004/ADR-0006 keep query/report commands on prebuilt local
+indexes. The command reads an existing SQLite index only; it does not parse `shcntx_*.hbk` per
+query and does not change provider JSON or canonical export JSON contracts.
+
+Representative release runs on 2026-05-11 rebuilt fresh indexes and verified deterministic report
+output by running JSON measurement twice for each index and comparing the files with `cmp`:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` ->
+  `target/t135-type-ref-ru.sqlite`: 25415 documents in 10359 ms. The report counted `47156`
+  type-reference rows: `29776` resolved, `17367` unresolved, `13` ambiguous and `353` rows with
+  template bindings. By source role: `constructor_result` `442/442/0/0`,
+  `parameter_type` `22922/16233/6686/3`, `property_type` `12468/4958/7505/5`,
+  `query_field_type` `518/109/409/0`, `query_parameter_type` `68/50/18/0` and
+  `return_type` `10738/7984/2749/5` as `total/resolved/unresolved/ambiguous`.
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_root.hbk` ->
+  `target/t135-type-ref-root.sqlite`: 25415 documents in 7890 ms. The report counted `50034`
+  type-reference rows: `32823` resolved, `17211` unresolved, `0` ambiguous and `335` rows with
+  template bindings. By source role: `constructor_result` `442/442/0/0`,
+  `parameter_type` `22878/16209/6669/0`, `property_type` `14295/6882/7413/0`,
+  `query_field_type` `518/109/409/0`, `query_parameter_type` `68/50/18/0` and
+  `return_type` `11833/9131/2702/0` as `total/resolved/unresolved/ambiguous`.
+
+The largest unresolved names in both RU/root reports are primitive/domain type names such as
+`Строка` / `String`, `Булево` / `Boolean` and `Число` / `Number`, especially in callable parameter
+and property type roles. This points to the already planned type-domain separation work rather than
+a safe platform-type hidden-winner rule. The RU report's ambiguous rows are narrow duplicate
+platform type-name cases: `ЭлементыФормы` in `property_type` rows and `Настройка сервиса` /
+`НастройкаСервиса` in `parameter_type` and `return_type` rows; the report lists candidate type ids
+and source document examples so a later parser/model/index task can choose an explicit rule.

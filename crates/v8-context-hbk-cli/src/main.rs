@@ -19,7 +19,8 @@ use syntax_helper_extract::{SyntaxHelperReader, SyntaxHelperStreamError};
 use syntax_helper_search::build_index_from_builder;
 use syntax_helper_search::{
     IndexMetadata, RelatedHit, SearchDocument, SearchHit, SearchIndex, SearchIndexBuilder,
-    SearchMode, build_index_from_builder_with_report,
+    SearchMode, TypeReferenceGap, TypeReferenceGapExample, TypeReferenceGapReport,
+    TypeReferenceRoleReport, build_index_from_builder_with_report,
 };
 
 const DEFAULT_SEARCH_LIMIT: usize = 20;
@@ -169,6 +170,14 @@ enum SyntaxCommand {
         limit: Option<usize>,
         #[arg(long)]
         compact: bool,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+    TypeRefGaps {
+        #[arg(long, value_name = "INDEX_SQLITE")]
+        index: Option<PathBuf>,
+        #[arg(long, value_parser = parse_positive_usize, default_value_t = 10)]
+        limit: usize,
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
@@ -628,6 +637,11 @@ fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
             },
             format,
         ),
+        SyntaxCommand::TypeRefGaps {
+            index,
+            limit,
+            format,
+        } => syntax_type_ref_gaps(index, limit, format),
     }
 }
 
@@ -956,6 +970,19 @@ fn syntax_related(
     match format {
         OutputFormat::Text => print_related_hits_text(&hits),
         OutputFormat::Json => print_provider_related_hits(query, &hits, args.compact),
+    }
+}
+
+fn syntax_type_ref_gaps(
+    index: Option<PathBuf>,
+    limit: usize,
+    format: OutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let index = SearchIndex::open_read_only(resolve_index_path(index))?;
+    let report = index.type_reference_gap_report(limit)?;
+    match format {
+        OutputFormat::Text => print_type_reference_gap_report_text(&report),
+        OutputFormat::Json => print_type_reference_gap_report_json(&report),
     }
 }
 
@@ -1606,6 +1633,110 @@ fn print_constructor_text_hit(hit: &SearchHit, details: bool) {
     }
 }
 
+fn print_type_reference_gap_report_text(
+    report: &TypeReferenceGapReport,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!(
+        "type_references: total={} resolved={} unresolved={} ambiguous={} template_bindings={}",
+        report.total,
+        report.resolved,
+        report.unresolved,
+        report.ambiguous,
+        report.template_bindings
+    );
+    println!("roles:");
+    for role in &report.roles {
+        println!(
+            "- {}: total={} resolved={} unresolved={} ambiguous={} template_bindings={}",
+            role.role,
+            role.total,
+            role.resolved,
+            role.unresolved,
+            role.ambiguous,
+            role.template_bindings
+        );
+    }
+    print_gap_section_text("top_unresolved", &report.top_unresolved);
+    print_gap_section_text("top_ambiguous", &report.top_ambiguous);
+    Ok(())
+}
+
+fn print_gap_section_text(title: &str, gaps: &[TypeReferenceGap]) {
+    println!("{title}:");
+    for gap in gaps {
+        println!(
+            "- {} [{}] count={}",
+            gap.target_type_name, gap.role, gap.count
+        );
+        if !gap.candidate_type_ids.is_empty() {
+            println!("  candidates: {}", gap.candidate_type_ids.join(", "));
+        }
+        for example in &gap.examples {
+            let owner = example
+                .source_owner
+                .as_ref()
+                .map(|owner| format!(" owner={}", owner.display_name()))
+                .unwrap_or_default();
+            println!(
+                "  example: {} [{}] name={}{}",
+                example.source_document_id,
+                example.source_kind.as_str(),
+                example.source_name.display_name(),
+                owner
+            );
+        }
+    }
+}
+
+fn print_type_reference_gap_report_json(
+    report: &TypeReferenceGapReport,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let response = json!({
+        "schema_version": 1,
+        "command": "type-ref-gaps",
+        "total": report.total,
+        "resolved": report.resolved,
+        "unresolved": report.unresolved,
+        "ambiguous": report.ambiguous,
+        "template_bindings": report.template_bindings,
+        "roles": report.roles.iter().map(type_reference_role_value).collect::<Vec<_>>(),
+        "top_unresolved": report.top_unresolved.iter().map(type_reference_gap_value).collect::<Vec<_>>(),
+        "top_ambiguous": report.top_ambiguous.iter().map(type_reference_gap_value).collect::<Vec<_>>(),
+    });
+    println!("{}", serde_json::to_string_pretty(&response)?);
+    Ok(())
+}
+
+fn type_reference_role_value(role: &TypeReferenceRoleReport) -> Value {
+    json!({
+        "role": role.role,
+        "total": role.total,
+        "resolved": role.resolved,
+        "unresolved": role.unresolved,
+        "ambiguous": role.ambiguous,
+        "template_bindings": role.template_bindings,
+    })
+}
+
+fn type_reference_gap_value(gap: &TypeReferenceGap) -> Value {
+    json!({
+        "role": gap.role,
+        "target_type_name": gap.target_type_name,
+        "count": gap.count,
+        "candidate_type_ids": gap.candidate_type_ids,
+        "examples": gap.examples.iter().map(type_reference_gap_example_value).collect::<Vec<_>>(),
+    })
+}
+
+fn type_reference_gap_example_value(example: &TypeReferenceGapExample) -> Value {
+    json!({
+        "source_document_id": example.source_document_id,
+        "source_kind": example.source_kind.as_str(),
+        "source_name": example.source_name,
+        "source_owner": example.source_owner,
+    })
+}
+
 fn resolve_index_path(path: Option<PathBuf>) -> PathBuf {
     path.or_else(|| std::env::var_os("V8_CONTEXT_HBK_SYNTAX_INDEX").map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from(".v8-context-hbk/syntax/index.sqlite"))
@@ -1730,6 +1861,38 @@ mod tests {
         assert!(is_supported_edge_filter("member_of"));
         assert_eq!(query["kind"], "related");
         assert_eq!(query["edge"], "member_of");
+    }
+
+    #[test]
+    fn type_ref_gaps_command_parses_existing_index_path() {
+        let cli = Cli::try_parse_from([
+            "v8-context-hbk",
+            "syntax",
+            "type-ref-gaps",
+            "--index",
+            "target/type-ref-gaps.sqlite",
+            "--limit",
+            "5",
+            "--format",
+            "json",
+        ])
+        .expect("type-ref-gaps command must parse");
+
+        match cli.command {
+            Command::Syntax {
+                command:
+                    SyntaxCommand::TypeRefGaps {
+                        index,
+                        limit,
+                        format,
+                    },
+            } => {
+                assert_eq!(index, Some(PathBuf::from("target/type-ref-gaps.sqlite")));
+                assert_eq!(limit, 5);
+                assert!(matches!(format, OutputFormat::Json));
+            }
+            other => panic!("expected syntax type-ref-gaps command, got {other:?}"),
+        }
     }
 
     #[test]

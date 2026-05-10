@@ -1981,6 +1981,60 @@ Expected result:
 - The command remains bounded to exact `--id` roots for edge-filtered traversal and does not become
   a general graph-query language.
 
+## UAT-SH-023: Type-Reference Gap Measurement Is Deterministic
+
+Related use case: UC-SH-005D.
+
+Related requirements: FR-SH-002, FR-SH-003, FR-SH-PROVIDER-001, NFR-QUERY-001.
+
+Status: implementation UAT for T135.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- `target/uat/t135-type-ref.sqlite` can be created or removed.
+
+Steps:
+
+```bash
+rm -f target/uat/t135-type-ref.sqlite target/uat/t135-type-ref-1.json target/uat/t135-type-ref-2.json
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t135-type-ref.sqlite
+
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax type-ref-gaps --index target/uat/t135-type-ref.sqlite --format json \
+  > target/uat/t135-type-ref-1.json
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax type-ref-gaps --index target/uat/t135-type-ref.sqlite --format json \
+  > target/uat/t135-type-ref-2.json
+
+cmp target/uat/t135-type-ref-1.json target/uat/t135-type-ref-2.json
+jq -e '
+  .schema_version == 1
+  and .command == "type-ref-gaps"
+  and .total == (.resolved + .unresolved + .ambiguous)
+  and (.roles | length > 0)
+  and all(.roles[]; .total == (.resolved + .unresolved + .ambiguous))
+  and (.template_bindings >= 0)
+  and (.top_unresolved | type == "array")
+  and (.top_ambiguous | type == "array")
+' target/uat/t135-type-ref-1.json
+```
+
+Expected result:
+
+- Both measurement commands exit with code `0`.
+- Repeated JSON output for the same index is byte-identical.
+- The report contains overall totals, role totals, template-binding subset count and top
+  unresolved/ambiguous names with source fact context.
+- The command reads the prebuilt index path and does not accept an HBK source path.
+
+Cleanup:
+
+- `target/uat/t135-type-ref.sqlite` and `target/uat/t135-type-ref-*.json` are service data and may
+  be deleted after the run.
+
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 
 Related use case: UC-SH-001.

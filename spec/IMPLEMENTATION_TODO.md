@@ -52,25 +52,25 @@ Current first unchecked task: T135.
 References: FR-SH-002, FR-SH-003, FR-SH-PROVIDER-001, NFR-QUERY-001,
 `implementation/syntax-helper-query-cli.md`, `implementation/solution-context-resolve.md`.
 
-- [ ] Before implementation, confirm that the type-improvement track is sufficiently covered by
+- [x] Before implementation, confirm that the type-improvement track is sufficiently covered by
       existing FR-SH/ADR-0008/ADR-0011 contracts or add the smallest required requirements/spec
       wording. T135 itself should not need a new ADR.
-- [ ] Add a reproducible measurement pass over the current real `shcntx_root.hbk` and
+- [x] Add a reproducible measurement pass over the current real `shcntx_root.hbk` and
       `shcntx_ru.hbk` indexes that counts type-reference facts by source role: property/query
       field/query parameter type, callable parameter type, callable return type, constructor result
       type, extension/base reference and template binding.
-- [ ] Report resolved, unresolved and ambiguous references separately, without selecting hidden
+- [x] Report resolved, unresolved and ambiguous references separately, without selecting hidden
       winners for duplicate type names.
-- [ ] Record the top unresolved and ambiguous names with enough context to choose the next parser,
+- [x] Record the top unresolved and ambiguous names with enough context to choose the next parser,
       model or index task.
-- [ ] Promote durable conclusions into `spec/acceptance/baseline.md` and keep raw command output as
+- [x] Promote durable conclusions into `spec/acceptance/baseline.md` and keep raw command output as
       service data only.
 
 Verification:
 
-- [ ] The measurement command is deterministic on the target platform corpus.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test --workspace`
+- [x] The measurement command is deterministic on the target platform corpus.
+- [x] `cargo fmt --all --check`
+- [x] `cargo test --workspace`
 
 ### T136: Add Type Quality Gates to the Acceptance Baseline
 
