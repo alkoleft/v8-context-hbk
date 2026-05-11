@@ -88,6 +88,53 @@ Solution-context Rust resolution is described in
   language, query-language, configuration or source-code providers to depend on HBK or SQLite
   implementation details.
 
+## Internal Module Decomposition Targets
+
+Large `src/lib.rs` files should remain facade modules after decomposition. Splits are structural
+only unless a separate requirement changes behavior or public contracts.
+
+- `syntax-helper-search` should split by internal index responsibilities:
+  - public DTOs and facade exports;
+  - index builder and extracted-record ingestion;
+  - SQLite schema, metadata validation, read/write lifecycle and writer lock;
+  - read-only query methods, exact lookups, keyword/fuzzy search and ranking;
+  - relation graph construction/traversal;
+  - type-reference storage, target resolution and gap reports;
+  - platform type-template classification.
+- `context-resolver-search` should split adapter families and shared mapping:
+  - platform source adapter over `SearchIndex`;
+  - BSL/query-language source adapters over `SearchIndex`;
+  - BSL and SDBL global-context adapter support;
+  - shared `SearchDocument` to resolver DTO mapping and relation/type-reference conversion.
+- `syntax-helper-language` should keep one crate but split source-family parsers:
+  - shared language-fact model and parser helpers;
+  - `shlang_*` BSL facts;
+  - `shquery_*` SDBL/query facts;
+  - `dcsui_*` SKD/query-extension facts.
+- `hbk-book-export` should split ordinary book-export phases:
+  - request validation and export planning;
+  - raw storage export;
+  - Markdown rendering;
+  - link-target rewriting;
+  - HTML/code-example normalization;
+  - filesystem writes and export error taxonomy.
+- `hbk-doc-site` should split generated documentation-site phases:
+  - source corpus discovery and source-book loading;
+  - site data model and global TOC merge;
+  - page/link-target planning;
+  - artifact writing;
+  - stable id, slug and hash helpers.
+- `context-resolver-core` may be split after T146 if size keeps obscuring the public API:
+  - ids/facts;
+  - query/response DTOs;
+  - resolver/source traits;
+  - composite resolver orchestration.
+- `syntax-helper-model` may be split by file for readability only:
+  - root/catalog discovery DTOs;
+  - identity helpers;
+  - platform context records;
+  - sink traits and diagnostics.
+
 ## Public Contract Policy
 
 - Public contracts are provisional unless an ADR or requirement explicitly stabilizes them.

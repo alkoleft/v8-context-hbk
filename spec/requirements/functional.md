@@ -830,6 +830,10 @@ The resolver API must be source-neutral and fact-oriented:
 - resolve context facts by source-qualified id, exact name, owner/member pair and callable query;
 - resolve types in a requested source and language domain;
 - list members for one resolved owner identity;
+- retrieve domain-specific global context scopes when a static analyzer needs the complete set of
+  globally visible facts; the first required scopes are BSL and SDBL/query language contexts;
+- list global methods and global properties through the explicit global-context scope without
+  inventing a fake owner type;
 - retrieve callable overloads with ordered parameters and return or constructor result types;
 - expose explicit relation edges such as ownership, type reference, return type, construction,
   generated-from, augments or maps-to when a provider has source-backed evidence;

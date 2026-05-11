@@ -17,18 +17,19 @@ Completed task history:
 - [archive/completed-tasks-t66-t67-t86-t90.md](archive/completed-tasks-t66-t67-t86-t90.md)
 - [archive/completed-tasks-t91-t110.md](archive/completed-tasks-t91-t110.md)
 - [archive/completed-tasks-t111-t134.md](archive/completed-tasks-t111-t134.md)
+- [archive/completed-tasks-t135-t142.md](archive/completed-tasks-t135-t142.md)
 
-Current status: T35-T134 are archived historical tasks. Their durable export, schema,
+Current status: T35-T142 are archived historical tasks. Their durable export, schema,
 data-quality, performance, parser, provider, storage, query-search, resolver-design,
-language-domain, cleanup, book-content export, documentation-site and platform type-template
-conclusions live in
+language-domain, cleanup, book-content export, documentation-site, platform type-template and
+type-reference conclusions live in
 `acceptance/baseline.md`, `source-evidence.md`, `requirements/functional.md`,
 `requirements/non-functional.md`, `implementation/components.md`,
 `implementation/documentation-site.md`, `implementation/syntax-helper-query-cli.md`,
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T142.
+Current first unchecked task: T143.
 
 ## Loop Rule
 
@@ -47,201 +48,247 @@ Current first unchecked task: T142.
 
 ## Active Tasks
 
-### T135: Measure Syntax Assistant Type-Reference Gaps
+### T143: Classify T135 Unresolved Type References by Source Domain
 
-References: FR-SH-002, FR-SH-003, FR-SH-PROVIDER-001, NFR-QUERY-001,
-`implementation/syntax-helper-query-cli.md`, `implementation/solution-context-resolve.md`.
-
-- [x] Before implementation, confirm that the type-improvement track is sufficiently covered by
-      existing FR-SH/ADR-0008/ADR-0011 contracts or add the smallest required requirements/spec
-      wording. T135 itself should not need a new ADR.
-- [x] Add a reproducible measurement pass over the current real `shcntx_root.hbk` and
-      `shcntx_ru.hbk` indexes that counts type-reference facts by source role: property/query
-      field/query parameter type, callable parameter type, callable return type, constructor result
-      type, extension/base reference and template binding.
-- [x] Report resolved, unresolved and ambiguous references separately, without selecting hidden
-      winners for duplicate type names.
-- [x] Record the top unresolved and ambiguous names with enough context to choose the next parser,
-      model or index task.
-- [x] Promote durable conclusions into `spec/acceptance/baseline.md` and keep raw command output as
-      service data only.
-
-Verification:
-
-- [x] The measurement command is deterministic on the target platform corpus.
-- [x] `cargo fmt --all --check`
-- [x] `cargo test --workspace`
-
-### T136: Add Type Quality Gates to the Acceptance Baseline
-
-References: T135, FR-SH-002, FR-SH-003, FR-SH-PROVIDER-001, NFR-DIAG-001,
-`acceptance/baseline.md`, `acceptance/uat-test-cases.md`.
-
-- [x] Reflect the accepted measurement outputs in `spec/acceptance/baseline.md`; add or update
-      `spec/acceptance/uat-test-cases.md` only when a gate is externally observable through
-      CLI/provider behavior. T136 should not need a new ADR.
-- [x] Define acceptance baseline gates for type work: unresolved type-reference count, ambiguous
-      type-reference count, classified metadata-template count, unclassified template diagnostics,
-      template binding count and expression-chain provider scenario status.
-- [x] Document which gates are strict regressions and which are tracked informational metrics until
-      a later task tightens them.
-- [x] Add or update UAT coverage only for externally observable CLI/provider behavior; keep
-      implementation-only counters out of public JSON unless a requirement explicitly adds them.
-
-Verification:
-
-- [x] `spec/acceptance/baseline.md` contains the current gate values and update rule.
-- [x] `rg -n "type-reference|template|quality gate|quality gates" spec/acceptance`
-
-### T137: Specify Explicit Type Domain Separation
-
-References: ADR-0008, FR-SH-SEARCH-002, `implementation/solution-context-resolve.md`,
-`implementation/components.md`.
-
-- [x] Reflect the domain-separation clarification in `requirements/functional.md` and
-      `implementation/solution-context-resolve.md`. Update ADR-0008 only if the task changes the
-      accepted resolver boundary instead of tightening its existing rules.
-- [x] Tighten the spec for platform API, BSL language, query language, configuration metadata and
-      source-code type domains so same display names never imply identity.
-- [x] Define which existing HBK-backed facts remain platform provider facts and which must wait for
-      a language-domain or downstream metadata/source-code provider.
-- [x] Add resolver/provider expectations for ambiguity when callers omit source, domain, fact kind
-      or owner identity.
-- [x] Do not fold `shquery_*`, `shlang_*`, configuration or source-code facts into platform API
-      identities without an explicit source-backed relation.
-
-Verification:
-
-- [x] `implementation/solution-context-resolve.md` and related requirements consistently describe
-      the domain split.
-- [x] `cargo fmt --all --check` if code examples or Rust snippets are touched.
-
-### T138: Decide the Separate Type Crate Boundary
-
-References: ADR-0008, ADR-0011, `implementation/components.md`,
-`implementation/solution-context-resolve.md`.
-
-Decision: defer a separate type crate for now. The smallest current ownership boundaries are
-recorded in `implementation/components.md`; no code movement or new ADR is required.
-
-- [x] If a separate type crate is selected, add an ADR or accepted decision because this changes the
-      workspace architecture boundary. If it is rejected or deferred, record the decision in
-      `implementation/components.md` without adding a new ADR.
-- [x] Decide whether type identities, type-reference resolution DTOs and template binding DTOs
-      should move into a separate workspace crate or remain split between
-      `syntax-helper-model`, `syntax-helper-search` and `context-resolver-core`.
-- [x] If a separate crate is selected, specify its ownership, dependency rules and migration slices
-      before moving code.
-- [x] Keep HBK parsing, SQLite storage, CLI/provider JSON assembly and downstream analyzer logic out
-      of the type crate boundary.
-- [x] If a separate crate is rejected for now, record the reason and the smallest existing boundary
-      that will own each type concept.
-
-Verification:
-
-- [x] `implementation/components.md` records the selected crate/boundary decision.
-- [x] No code movement is performed before the boundary is specified.
-
-### T139: Split Raw Type References from Resolved Type Targets
-
-References: T135, T137, T138, FR-SH-002, FR-SH-PROVIDER-001,
+References: T135, T136, T137, T139, FR-SH-002, FR-SH-PROVIDER-001,
+FR-CTX-RESOLVE-001, `source-evidence.md`, `implementation/solution-context-resolve.md`,
 `implementation/syntax-helper-query-cli.md`.
 
-- [x] Reflect the selected raw/reference-vs-resolved-target contract in
-      `requirements/functional.md` and `implementation/syntax-helper-query-cli.md` before changing
-      code. Add an ADR only if the task changes the public provider/export boundary.
-- [x] Model the source-backed type-reference spelling separately from resolved target identity.
-- [x] Represent resolved targets as `ok`, `unresolved` or `ambiguous` data at the provider/resolver
-      boundary, not as hidden first-match selection.
-- [x] Preserve export-compatible `types` fields for current consumer JSON unless a schema task
-      explicitly changes FR-EXPORT-001.
-- [x] Update index/provider internals so `target_type_id`, ambiguous candidates and unresolved names
-      have one owner and are not recomputed in multiple layers.
+- [ ] Before implementation, compare the current T135 top unresolved names against existing
+      `shlang_*`, `shquery_*` and `dcsui_*` language-domain facts from `source-evidence.md`;
+      explicitly cover primitive/domain names such as `Строка` / `String`, `Булево` / `Boolean` and
+      `Число` / `Number`.
+- [ ] Add or reuse a reproducible analysis path that partitions unresolved type-reference rows into
+      at least: likely BSL-language facts, likely query-language/SKD facts, configuration/source-code
+      facts that belong to downstream providers, and still-unclassified platform-source gaps.
+- [ ] Do not reduce unresolved counts by guessing a platform type. Cross-domain matches must stay
+      source/domain-qualified and require explicit source-backed relations before they are treated as
+      resolved.
+- [ ] Decide whether the result remains an acceptance analysis note or requires provider/resolver
+      output changes. Update requirements, implementation specs or UAT before code if public behavior
+      changes.
+- [ ] Keep T136 strict gate values unchanged unless the task changes the actual measured counters; if
+      counters change, record old values, new values and source-backed rationale in
+      `acceptance/baseline.md`.
 
 Verification:
 
-- [x] Existing exact lookup, constructors, related and export UAT still pass.
-- [x] New focused tests cover resolved, unresolved and ambiguous type-reference cases.
-- [x] `cargo fmt --all --check`
-- [x] `cargo test --workspace`
+- [ ] The classification report is reproducible from a prebuilt local index or checked-in fixtures and
+      does not parse HBK books per query.
+- [ ] Durable conclusions are promoted to `acceptance/baseline.md` and/or `source-evidence.md`; raw
+      reports remain service data under `target/`.
+- [ ] `cargo fmt --all --check` if code or Rust examples are touched.
+- [ ] `cargo test --workspace` if code is touched.
 
-### T140: Move Return Types Toward Overload-Level Facts
+### T144: Investigate RU Ambiguous Type-Reference Cases
 
-References: FR-SH-002, FR-EXPORT-001, FR-SH-PROVIDER-001,
-`implementation/syntax-helper-query-cli.md`.
+References: T135, T136, FR-SH-003, FR-SH-SEARCH-002, FR-SH-PROVIDER-001,
+`source-evidence.md`, `acceptance/baseline.md`.
 
-- [x] Update the relevant requirements and implementation specs before implementation. If the task
-      changes consumer JSON or provider JSON shape, update FR-EXPORT-001 / provider spec and record
-      the schema/version impact explicitly before changing code.
-- [x] Specify how callable return types attach to a concrete signature/overload when source
-      evidence supports it.
-- [x] Preserve page-level return facts only as explicit shared/inherited evidence when HBK does not
-      prove an overload-specific return.
-- [x] Report source pages that expose multiple return types for one modeled overload as
-      parser/data-contract diagnostics instead of truncating.
-- [x] Keep provider JSON compatible with current envelope semantics unless a schema-version task is
-      explicitly added.
+- [ ] Inspect source evidence for the current RU ambiguous type-reference names:
+      `ЭлементыФормы`, `Настройка сервиса` and `НастройкаСервиса`.
+- [ ] For each ambiguous group, decide whether the candidates are distinct platform identities, aliases
+      of one source fact, duplicated source documentation, or facts missing an owner/domain key.
+- [ ] Implement a source-backed disambiguation or merge rule only when the evidence proves it; otherwise
+      keep the ambiguity explicit and record the blocker/follow-up.
+- [ ] Preserve the no-hidden-winner contract: plain-name ambiguity must not silently choose the first
+      platform type or relation edge.
+- [ ] Update T136 gate values only if the measured ambiguous count changes; reducing ambiguity is
+      acceptable when the rule is source-backed.
 
 Verification:
 
-- [x] Fixture tests cover at least one shared page-level return and one overload-specific return
-      case if real source evidence exists.
-- [x] `cargo fmt --all --check`
-- [x] `cargo test --workspace`
+- [ ] Focused tests cover each changed ambiguous group or prove that it intentionally remains
+      ambiguous.
+- [ ] Fresh `syntax type-ref-gaps --format json` runs are deterministic for the affected RU index.
+- [ ] `cargo fmt --all --check`
+- [ ] `cargo test --workspace`
 
-### T141: Strengthen Platform Type Template Resolution
+### T145: Broaden Type-Graph Consumer UAT Scenarios
 
-References: FR-SH-003, FR-SH-SEARCH-002, T135, T136,
+References: T142, UAT-SH-024, FR-SH-PROVIDER-001, FR-SH-SEARCH-001,
+FR-SH-SEARCH-002, NFR-QUERY-001, `implementation/syntax-helper-query-cli.md`.
+
+- [ ] Select two or three additional real expression-chain workflows beyond the accepted SKD
+      `НастройкиКомпоновкиДанных.Отбор` scenario.
+- [ ] For each workflow, define the exact graph root, expected reachable facts and why one bounded
+      `syntax related --graph` call is enough for analyzer-style inference.
+- [ ] Add UAT coverage only for externally observable provider behavior; keep graph internals and
+      SQLite schema private.
+- [ ] Preserve current unsupported combinations for graph mode unless a spec change explicitly expands
+      the contract.
+- [ ] Record measured graph-query latency against the accepted corpus and keep it within
+      NFR-QUERY-001 or document the measured blocker.
+
+Verification:
+
+- [ ] New UAT cases pass against a fresh local index built from the accepted corpus.
+- [ ] Provider JSON keeps graph metadata under `results[].meta` or envelope diagnostics, not inside
+      shared fact fields.
+- [ ] `cargo fmt --all --check` if code or Rust examples are touched.
+- [ ] `cargo test --workspace` if code is touched.
+
+### T146: Add Global Context Resolver Scope and Fix Callable/Member Gaps
+
+References: ADR-0008, FR-CTX-RESOLVE-001, FR-SH-PROVIDER-001,
 `implementation/solution-context-resolve.md`, `implementation/syntax-helper-query-cli.md`.
 
-- [x] Before implementation, update `implementation/syntax-helper-query-cli.md`,
-      `implementation/solution-context-resolve.md` and the T136 baseline-gate wording when the
-      strengthened template behavior changes expected metrics or resolver/provider output.
-- [x] Use the T135/T136 metrics to identify unclassified or weakly classified platform
-      metadata-template types before changing template logic.
-- [x] Improve source-backed template family/variant classification without fallback-prefix
-      families or localized-name heuristics.
-- [x] Preserve owner-parameter bindings on member, callable return and parameter type references
-      where HBK exposes template-to-template references.
-- [x] Keep classification diagnostics visible in the acceptance baseline so future changes do not
-      silently reduce template quality.
+- [ ] Before implementation, finalize the `global_context` resolver contract in
+      `implementation/solution-context-resolve.md`: analyzer setup must be able to retrieve the
+      BSL and SDBL/query-language global scopes with globally visible methods/properties/facts.
+- [ ] Implement a first-class global-context lookup in `context-resolver-core` and the HBK-backed
+      search adapter. Do not model global platform facts through a fake owner `TypeId`, and do not
+      fold SDBL/query-language facts into the BSL/platform scope by matching display names.
+- [ ] Make platform global methods reachable through the resolver callable API when callers use an
+      ownerless callable-name lookup in the BSL context; this must delegate to the same
+      global-context-backed facts, not to a separate ad hoc search path.
+- [ ] Expose platform global properties through the global-context result shape or an explicit
+      global-property point lookup chosen in the implementation spec before code.
+- [ ] Ensure type-event facts returned as members can be resolved back by the exact member id returned
+      from the resolver. The fact kind used for listing and id lookup must be consistent.
+- [ ] Decide and implement the exact-member miss status: an exact named member lookup with no matching
+      member should not silently look like a successful non-empty lookup. Preserve broad member-list
+      behavior for owners that intentionally have zero members.
+- [ ] Keep source/domain-qualified identity intact; do not widen platform resolver lookup into
+      language, query or downstream configuration/source-code domains.
 
 Verification:
 
-- [x] Template classification metrics improve or remain explicitly justified in
-      `acceptance/baseline.md`.
-- [x] Tests cover manager-root classification, direct-reference classification, ambiguous family
-      diagnostics and owner-parameter binding.
-- [x] `cargo fmt --all --check`
-- [x] `cargo test --workspace`
+- [ ] Focused resolver tests cover retrieving BSL and SDBL global contexts separately, finding a
+      known BSL-visible global method/property through the BSL result, keeping a known SDBL function
+      in the query-language context, resolving a known platform global method by ownerless
+      callable-name lookup, a type-event member-list-to-id round trip and an exact member miss.
+- [ ] Existing static-analysis consumer smoke still passes.
+- [ ] `cargo fmt --all --check`
+- [ ] `cargo test --workspace`
 
-### T142: Add a Type Graph Query Primitive
+### T147: Fix Generated Documentation Viewer Link Navigation
 
-References: ADR-0007, ADR-0008, FR-SH-PROVIDER-001, FR-SH-SEARCH-001, FR-SH-SEARCH-002,
-`implementation/syntax-helper-query-cli.md`, `acceptance/uat-test-cases.md`.
+References: ADR-0010, `implementation/documentation-site.md`, UAT-HBK-014, UAT-HBK-015.
 
-- [x] Specify the primitive in `implementation/syntax-helper-query-cli.md` and add UAT coverage
-      before implementation. Add an ADR only if the selected solution introduces a new top-level
-      command, provider boundary or transport instead of staying under the existing
-      `syntax get` / `syntax related` family.
-- [x] Specify a bounded provider primitive for a compact type graph rooted at an exact type id,
-      owner/member id or callable id.
-- [x] Keep the public CLI under the existing `syntax get` / `syntax related` command family unless
-      the spec explicitly approves a new top-level command.
-- [x] Return constructors, members, callable overloads, parameter type refs, return type refs,
-      template bindings and unresolved/ambiguous type-reference diagnostics in a deterministic
-      graph-oriented shape.
-- [x] Add UAT for a real expression-chain workflow that benefits from one graph query instead of
-      many ad hoc related calls.
+- [ ] Reproduce same-page generated Markdown fragment links in `hbk-doc-site` / `web/docs-viewer`
+      using a deterministic fixture. A same-page `#fragment` link must not be rewritten into an
+      unroutable `index.md#fragment` link in generated site output.
+- [ ] Fix generated page routing so intra-page fragments and cross-page generated links both navigate
+      correctly in the viewer.
+- [ ] Preserve link safety rules: external HTTP(S), generated page links and safe relative anchors may
+      be rendered, but arbitrary unsupported hrefs must not bypass the existing sanitizer.
+- [ ] Preserve human page titles when navigating through generated Markdown links instead of replacing
+      the document title with an opaque generated page id.
 
 Verification:
 
-- [x] Provider JSON uses one versioned envelope and keeps graph metadata outside fact fields.
-- [x] The graph query meets the current NFR-QUERY-001 target on the accepted corpus or records a
-      measured blocker.
-- [x] `cargo fmt --all --check`
-- [x] `cargo test --workspace`
+- [ ] `web/docs-viewer` tests cover same-page fragments, cross-page generated links and title
+      preservation.
+- [ ] `hbk-doc-site` or `hbk-book-export` tests cover the generated Markdown shape that feeds the
+      viewer.
+- [ ] `npm test -- --test-reporter=tap` in `web/docs-viewer`
+- [ ] `cargo test -p hbk-doc-site -p hbk-book-export -p v8-context-hbk-cli`
 
-Result: implemented as `syntax related --id <exact-provider-id> --graph`; UAT-SH-024 passed on
-`target/uat/t142-type-graph.sqlite` built from `shcntx_ru.hbk` with `25415` documents, and the
-accepted graph query completed in `0.15` seconds.
+### T148: Stabilize Provider JSON Assembly Boundaries
+
+References: FR-SH-PROVIDER-001, FR-EXPORT-001, T142,
+`implementation/syntax-helper-query-cli.md`, `implementation/components.md`.
+
+- [ ] Specify the smallest provider JSON assembly boundary for `syntax get`, `syntax related`,
+      `syntax related --graph` and `syntax type-ref-gaps`. Keep CLI argument parsing separate from
+      provider envelope/result shaping.
+- [ ] Render graph `template_binding` metadata explicitly instead of serializing internal model DTOs
+      wholesale through `json!(...)`.
+- [ ] Preserve the current provider envelope and `schema_version` unless the spec explicitly approves
+      a public provider JSON change.
+- [ ] Do not move SQLite schema details, search internals or downstream analyzer concepts into the CLI
+      JSON layer.
+
+Verification:
+
+- [ ] Focused CLI/provider tests prove graph metadata shape for `ok`, `unresolved`, `ambiguous` and
+      template-bound type references.
+- [ ] Existing `syntax get`, `syntax related`, `syntax related --graph` and `syntax type-ref-gaps`
+      JSON tests continue to pass.
+- [ ] `cargo fmt --all --check`
+- [ ] `cargo test -p v8-context-hbk-cli`
+
+### T149: Reduce Query-Table Page Re-Parsing During Syntax Extraction
+
+References: NFR-PERF-001, NFR-QUERY-001, ADR-0005,
+`implementation/performance-baseline-t13.md`, `implementation/components.md`.
+
+- [ ] Measure query-table page load/parse calls in the current Syntax Assistant reader flow before
+      changing behavior.
+- [ ] Remove avoidable repeated loading/parsing between parent-identity discovery and record emission
+      for query-table pages. Reuse source-backed parsed evidence where it belongs instead of adding a
+      generic cache knob.
+- [ ] Preserve existing no-fallback identity rules for query-table and query-table member facts.
+- [ ] Record any measured runtime or memory effect in the acceptance/performance baseline only when
+      the measurement is reproducible.
+
+Verification:
+
+- [ ] Focused tests or instrumentation prove the repeated query-table page load/parse path is reduced.
+- [ ] Existing query-table identity and missing-syntax regression tests still pass.
+- [ ] Representative `shcntx_ru.hbk` extraction/indexing measurement is recorded when the change is
+      expected to affect runtime.
+- [ ] `cargo fmt --all --check`
+- [ ] `cargo test -p syntax-helper-extract -p syntax-helper-search`
+
+### T150: Align UAT Shape and CLI Smoke Automation
+
+References: `acceptance/test-case-requirements.md`, `acceptance/uat-test-cases.md`,
+UAT-HBK-001, UAT-HBK-002, UAT-HBK-003, FR-CLI-001, NFR-DIAG-001.
+
+- [ ] Reconcile the UAT case template with the current catalog: either add explicit pass/fail criteria
+      to active UAT cases or intentionally narrow the template requirement before editing cases.
+- [ ] Add an executable black-box smoke harness for `inspect`, `toc` and `page` that validates exit
+      code and representative output shape against the accepted small real fixtures when available.
+- [ ] Keep fixture absence as a recorded skip, not a passing assertion that hides missing platform
+      coverage.
+- [ ] Document whether real-HBK smoke is local-only or expected in CI; do not imply CI coverage unless
+      fixture provisioning is specified.
+
+Verification:
+
+- [ ] Updated UAT cases comply with `acceptance/test-case-requirements.md`.
+- [ ] The black-box smoke harness can be run locally and reports skipped real-HBK cases explicitly when
+      fixtures are absent.
+- [ ] `cargo fmt --all --check` if Rust code is touched.
+- [ ] `cargo test --workspace` if the smoke harness is Rust-based.
+
+### T151: Split Large Implementation Modules by Context Boundary
+
+References: `implementation/components.md`, ADR-0004, ADR-0007, ADR-0008.
+
+Decision: decompose large `src/lib.rs` files inside their current crates first. Do not introduce new
+crates, change public API, change provider/export JSON, or move behavior across context boundaries in
+this task.
+
+- [ ] Before refactoring, verify `implementation/components.md` still records the intended internal
+      module boundaries for every touched crate.
+- [ ] Split `syntax-helper-search` internals by responsibility: public DTO/facade exports, index
+      builder, SQLite schema/storage/lifecycle, read-only query methods, relation traversal,
+      type-reference resolution/gap reports and type-template classification. Keep
+      `syntax-helper-search` as the owner of the private SQLite artifact and search/index behavior.
+- [ ] Split `context-resolver-search` into platform adapter, BSL/query-language adapter,
+      global-context adapter support and shared mapping helpers. This split should prepare T146
+      without implementing new resolver behavior unless that task is active.
+- [ ] Split `syntax-helper-language` into shared model/parser helpers plus `shlang`, `shquery` and
+      `dcsui` parser modules. Preserve the BSL vs SDBL/query context boundary.
+- [ ] Split `hbk-book-export` into request/planning, raw export, Markdown rendering, link rewriting,
+      HTML/code normalization, filesystem write and error modules.
+- [ ] Split `hbk-doc-site` into source discovery/loading, site-data/TOC merge, page/link planning,
+      artifact writing and stable-id helpers.
+- [ ] Optionally split `context-resolver-core` into ids/facts, query/response DTOs, traits and
+      composite resolver modules only if it reduces coupling while keeping the source-neutral public
+      API intact.
+- [ ] Optionally split `syntax-helper-model` into discovery DTOs, identity helpers, platform records
+      and sink/diagnostic modules only as a readability cleanup.
+- [ ] Split `v8-context-hbk-cli` by command family and provider rendering responsibility. Do not move
+      provider search/index ownership into the CLI.
+- [ ] Avoid broad formatting-only churn outside the touched modules.
+
+Verification:
+
+- [ ] Existing tests pass without changing public CLI behavior, provider JSON, export JSON, resolver
+      public API or SQLite schema.
+- [ ] `cargo fmt --all --check`
+- [ ] `cargo test --workspace`

@@ -31,6 +31,8 @@ Primary jobs:
 - resolve an identifier, stable id, owner/member pair or callable into a tool-readable fact;
 - resolve a type in the correct source and language domain;
 - list members for a resolved owner type;
+- retrieve BSL and SDBL/query-language global context scopes for analyzer code that needs all
+  globally visible methods, properties and language facts available at a call site;
 - retrieve callable overloads with ordered parameters and return/result type references;
 - merge candidates from platform, BSL, query-language, metadata and source-code providers without
   hiding ambiguity;
@@ -328,6 +330,20 @@ pub struct ResolvedCallable {
     pub fact: ContextFact,
     pub info: CallableInfo,
 }
+
+pub struct ResolvedGlobalContext {
+    pub id: FactId,
+    pub language: GlobalContextLanguage,
+    pub sources: Vec<SourceId>,
+    pub methods: Vec<ResolvedCallable>,
+    pub properties: Vec<ContextFact>,
+    pub facts: Vec<ContextFact>,
+}
+
+pub enum GlobalContextLanguage {
+    Bsl,
+    Sdbl,
+}
 ```
 
 ## Resolver Traits
@@ -354,6 +370,12 @@ pub trait ContextResolver {
         query: MemberQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedMember>, ResolveError>;
+
+    fn global_context(
+        &self,
+        query: GlobalContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError>;
 
     fn callable(
         &self,
@@ -413,7 +435,29 @@ pub enum ResolveQuery<'a> {
         name: &'a str,
     },
 }
+
+pub enum GlobalContextQuery<'a> {
+    Language {
+        language: GlobalContextLanguage,
+        sources: &'a [SourceId],
+    },
+}
 ```
+
+Global context is a first-class resolver concept, not a synthetic platform type. There is no single
+universal global context for all languages: the analyzer-facing scopes are language-specific. The
+first required scopes are:
+
+- BSL global context: BSL-language facts plus platform global methods/properties from `shcntx_*` that
+  are visible to BSL code, composed through explicit source/domain rules;
+- SDBL/query-language global context: query-language facts from `shquery_*` and `dcsui_*` that are
+  visible to query/expression analysis.
+
+Platform global methods and properties must be reachable through the BSL `global_context` for
+analyzer setup and through ownerless callable/property lookups for point queries, but resolver
+internals must not force those facts under a fake `TypeId`. SDBL functions must remain in the
+query-language global context and must not be folded into the BSL/platform scope by matching display
+names.
 
 Responses keep recoverable lookup outcomes as data:
 
@@ -543,6 +587,8 @@ Mapping:
 - `members_by_type_id` backs `members`;
 - `member_by_owner_type_id` backs owner/member resolution;
 - `callable_by_id`, `callable_by_owner_type_id` and `constructors_by_type_id` back callable lookup;
+- source-backed global method and global property facts participate in the BSL `global_context` and
+  back ownerless point lookups for individual global facts;
 - `related_by_id_and_edge` backs explicit relation traversal for `has_type`, `returns`,
   `constructs` and `member_of`.
 
@@ -609,6 +655,9 @@ The first implementation task should prove the API with behavior tests:
   owner display name;
 - callable lookup preserves callable identity, ordered parameters and return or constructor type
   references;
+- BSL global-context lookup returns known platform global methods/properties without requiring a fake
+  owner type, SDBL global-context lookup returns query-language facts separately, and ownerless
+  callable lookup can resolve a known BSL-visible global platform method by name;
 - platform adapter relation traversal preserves source-backed `has_type`, `returns`, `constructs`
   and `member_of` edges;
 - a fake query table field can reference a BSL/query/platform type through an explicit relation;
