@@ -176,7 +176,8 @@ pub enum LanguageDomain {
 ```
 
 The first API should keep this enum small and explicit. Future extension/project layering can add
-variants only when a provider needs them.
+variants only when a provider needs them. The enum values are semantic domains, not source-file
+families; each provider still has its own `SourceId` inside the selected domain.
 
 Examples:
 
@@ -188,6 +189,45 @@ Examples:
 
 Same display names across these domains are not equivalent. Equivalence, conversion, construction,
 return and ownership are explicit relations.
+
+Domain ownership rules:
+
+- `shcntx_*` platform context facts are `PlatformApi` facts. Platform types, members, callables,
+  constructors, enums and platform-owned type-template facts may be exposed by the platform adapter.
+- `shlang_*` facts are `BslLanguage` facts. BSL value types, language constructs, keywords,
+  operators and language functions must come from a BSL-language provider, not from a same-name
+  platform type.
+- `shquery_*` facts are `QueryLanguage` facts. Query clauses, query value types, functions,
+  operators, keywords and literals must remain query-domain facts even when their display names
+  match BSL or platform names.
+- `dcsui_*` facts also participate in `QueryLanguage`, but through a distinct source identity so
+  data-composition expression and query-extension facts do not overwrite base query-language facts.
+- Configuration metadata types are `Configuration` facts owned by a downstream metadata provider.
+  They may reference or augment platform facts only through explicit relations such as `generated_from`
+  or `augments`.
+- Source-code declarations are `SourceCode` facts owned by a downstream source provider. They may
+  shadow, override or call platform/configuration/language facts only through explicit source-backed
+  relations; they do not replace another provider's identity.
+
+Existing HBK-backed facts that remain platform-provider facts:
+
+- platform types/objects, global methods/properties, module/type events, type members,
+  constructors, enums and enum values extracted from `shcntx_*`;
+- source-owned platform type-template families, variants, classification diagnostics and
+  owner-parameter template bindings extracted from `shcntx_*`;
+- explicit platform API type-reference, return, construct and member ownership edges that the
+  platform index can prove from extracted `shcntx_*` facts.
+
+Facts that must wait for another provider or explicit mapping task:
+
+- BSL language types and language constructs from `shlang_*`;
+- query-language clauses, query value types, functions, operators, keywords and literals from
+  `shquery_*`;
+- data-composition expression/query-extension language facts from `dcsui_*`;
+- configuration metadata-generated object/manager/reference/value types;
+- source-code declarations from common modules, object modules, forms and other project files;
+- `shcntx_*` `query_table`, `query_table_field` and `query_table_parameter` provider documents
+  until a language-domain task defines their resolver mapping or relation shape.
 
 Current source evidence for non-platform HBK syntax domains lives in
 [`source-evidence.md`](../source-evidence.md). The `shlang_*`, `shquery_*` and `dcsui_*` books must
@@ -412,8 +452,9 @@ Exact name:
 - query only the requested `domain` and `kind` when they are supplied;
 - query all active compatible domains when they are omitted;
 - return `Ambiguous` when more than one candidate remains;
-- never choose a platform, configuration, BSL or query-language fact only because it appears earlier
-  in source order.
+- never choose a platform, configuration, source-code, BSL-language or query-language fact only
+  because it appears earlier in source order, shares the same display name or has a more familiar
+  source family.
 
 Owner/member:
 
@@ -430,6 +471,9 @@ Cross-source relations:
 - query-language facts may reference BSL or platform types, but they remain query-language facts;
 - configuration/source providers may augment platform facts only through a declared relation such as
   `augments`, not by replacing source-qualified identities.
+- `shlang_*`, `shquery_*`, `dcsui_*`, configuration and source-code facts must not be folded into
+  platform API identities without an explicit source-backed relation and a task that owns the
+  mapping.
 
 ## Language Domain Analysis Gate
 

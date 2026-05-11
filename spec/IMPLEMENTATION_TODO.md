@@ -28,7 +28,7 @@ conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T135.
+Current first unchecked task: T138.
 
 ## Loop Rule
 
@@ -98,23 +98,23 @@ Verification:
 References: ADR-0008, FR-SH-SEARCH-002, `implementation/solution-context-resolve.md`,
 `implementation/components.md`.
 
-- [ ] Reflect the domain-separation clarification in `requirements/functional.md` and
+- [x] Reflect the domain-separation clarification in `requirements/functional.md` and
       `implementation/solution-context-resolve.md`. Update ADR-0008 only if the task changes the
       accepted resolver boundary instead of tightening its existing rules.
-- [ ] Tighten the spec for platform API, BSL language, query language, configuration metadata and
+- [x] Tighten the spec for platform API, BSL language, query language, configuration metadata and
       source-code type domains so same display names never imply identity.
-- [ ] Define which existing HBK-backed facts remain platform provider facts and which must wait for
+- [x] Define which existing HBK-backed facts remain platform provider facts and which must wait for
       a language-domain or downstream metadata/source-code provider.
-- [ ] Add resolver/provider expectations for ambiguity when callers omit source, domain, fact kind
+- [x] Add resolver/provider expectations for ambiguity when callers omit source, domain, fact kind
       or owner identity.
-- [ ] Do not fold `shquery_*`, `shlang_*`, configuration or source-code facts into platform API
+- [x] Do not fold `shquery_*`, `shlang_*`, configuration or source-code facts into platform API
       identities without an explicit source-backed relation.
 
 Verification:
 
-- [ ] `implementation/solution-context-resolve.md` and related requirements consistently describe
+- [x] `implementation/solution-context-resolve.md` and related requirements consistently describe
       the domain split.
-- [ ] `cargo fmt --all --check` if code examples or Rust snippets are touched.
+- [x] `cargo fmt --all --check` if code examples or Rust snippets are touched.
 
 ### T138: Decide the Separate Type Crate Boundary
 

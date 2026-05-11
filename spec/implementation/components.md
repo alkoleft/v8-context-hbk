@@ -735,6 +735,13 @@ The first resolver API must keep BSL language types and query-language types sep
 API types. Cross-domain links require explicit relations; same-name facts across domains or sources
 must not be silently merged.
 
+Domain separation is the resolver boundary, not a naming convention. `shcntx_*` platform API facts,
+`shlang_*` BSL-language facts, `shquery_*` query-language facts, `dcsui_*` data-composition
+language facts, downstream configuration metadata facts and downstream source-code declarations are
+different source/domain identities even when they share a display name. The composite resolver may
+use deterministic source order for candidate ordering only; omitted source, domain, kind or owner
+constraints that leave multiple candidates must produce ambiguity rather than a hidden winner.
+
 The platform adapter over `syntax-helper-search` initially exposes platform API type, member and
 callable facts only. Existing query-table documents in the search index remain outside that adapter.
 T66 selected current `shcntx_*` query-table documents to remain CLI/provider facts for now, not the

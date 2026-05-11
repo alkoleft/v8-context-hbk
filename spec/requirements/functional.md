@@ -865,6 +865,28 @@ The existing `query_table`, `query_table_field` and `query_table_parameter` fact
 map into the source-neutral resolver. They must not be silently exposed as platform adapter facts or
 as the first query-language resolver provider.
 
+Domain separation is explicit for all type-bearing facts:
+
+- platform API facts come from `shcntx_*` Syntax Assistant platform context sources and keep
+  `LanguageDomain::PlatformApi`;
+- BSL language facts come from `shlang_*` or another explicit BSL-language provider and keep
+  `LanguageDomain::BslLanguage`;
+- query-language facts come from `shquery_*` and data-composition language sources such as
+  `dcsui_*`, with distinct source identities inside `LanguageDomain::QueryLanguage`;
+- configuration metadata types come from a downstream metadata provider and keep
+  `LanguageDomain::Configuration`;
+- source-code declarations come from a downstream source-code provider and keep
+  `LanguageDomain::SourceCode`.
+
+The same display name, localized name, alias, query identifier or generated metadata name never
+implies identity across those domains. Cross-domain equivalence, construction, return, type
+reference, augmentation or mapping must be represented by explicit source-backed relations. When a
+resolver query omits source, domain, fact kind or resolved owner identity and more than one
+candidate remains, the resolver must report `ambiguous` data with deterministic candidate summaries
+instead of selecting a platform, BSL, query, configuration or source-code candidate by priority.
+Owner/member lookup for analyzer-preferred calls must use a resolved owner identity; owner-name
+convenience lookup reports owner ambiguity before searching members.
+
 Acceptance:
 
 - The implementation spec defines the resolver traits, request/response model, domain model,
