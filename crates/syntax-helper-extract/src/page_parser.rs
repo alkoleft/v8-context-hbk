@@ -50,13 +50,12 @@ pub(crate) fn parse_global_method(
     content: &PageContent,
     source: SyntaxHelperSource,
 ) -> GlobalMethod {
+    let signatures = parse_signatures(content);
+    let return_types = callable_page_return_types(content, &signatures);
     GlobalMethod {
         name: heading_name(content),
-        signatures: parse_signatures(content),
-        return_types: type_refs_from_section(
-            content,
-            &["Возвращаемое значение:", "Return value:", "Returned value:"],
-        ),
+        signatures,
+        return_types,
         description: section_text(content, &["Описание:", "Description:"]),
         facts: section_facts(content),
         source,
@@ -161,16 +160,15 @@ pub(crate) fn parse_platform_method(
     content: &PageContent,
     source: SyntaxHelperSource,
 ) -> PlatformMethod {
+    let signatures = parse_signatures(content);
+    let return_types = callable_page_return_types(content, &signatures);
     PlatformMethod {
         owner: title_name(content),
         owner_identity: None,
         name: heading_name(content),
         semantic: SemanticContext::new(BranchKind::PlatformObjects, RecordFamily::TypeMethod),
-        signatures: parse_signatures(content),
-        return_types: type_refs_from_section(
-            content,
-            &["Возвращаемое значение:", "Return value:", "Returned value:"],
-        ),
+        signatures,
+        return_types,
         description: section_text(content, &["Описание:", "Description:"]),
         facts: section_facts(content),
         source,
@@ -581,11 +579,13 @@ pub(crate) fn parse_signatures(content: &PageContent) -> Vec<Signature> {
         return Vec::new();
     };
     let parameters = parse_parameters(content);
-    signatures_from_section(section_html, &parameters, None)
+    signatures_from_section(section_html, &parameters, &[], None)
 }
 
 fn parse_variant_signatures(raw_html: &str) -> Vec<Signature> {
-    variant_blocks(raw_html)
+    let blocks = variant_blocks(raw_html);
+    let attach_return_types = variant_return_types_are_overload_specific(raw_html, &blocks);
+    blocks
         .into_iter()
         .flat_map(|block| {
             let block_html = &raw_html[block.body_start..block.body_end];
@@ -597,9 +597,28 @@ fn parse_variant_signatures(raw_html: &str) -> Vec<Signature> {
                 description: variant_description(block_html),
             };
             let parameters = parse_parameters_from_html(block_html);
-            signatures_from_section(syntax_html, &parameters, Some(&variant))
+            let return_types = if attach_return_types {
+                return_types_from_html(block_html)
+            } else {
+                Vec::new()
+            };
+            signatures_from_section(syntax_html, &parameters, &return_types, Some(&variant))
         })
         .collect()
+}
+
+fn variant_return_types_are_overload_specific(raw_html: &str, blocks: &[VariantBlock]) -> bool {
+    if blocks.is_empty() {
+        return false;
+    }
+    let blocks_with_return = blocks
+        .iter()
+        .filter(|block| {
+            let block_html = &raw_html[block.body_start..block.body_end];
+            !return_types_from_html(block_html).is_empty()
+        })
+        .count();
+    blocks_with_return == blocks.len()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -667,6 +686,7 @@ fn variant_description(raw_html: &str) -> Option<String> {
 fn signatures_from_section(
     section_html: &str,
     parameters: &[Parameter],
+    return_types: &[TypeRef],
     variant: Option<&SyntaxVariant>,
 ) -> Vec<Signature> {
     text_lines_from_html_fragment(section_html)
@@ -676,9 +696,31 @@ fn signatures_from_section(
         .map(|line| Signature {
             text: line.to_string(),
             parameters: parameters_for_signature(line, parameters),
+            return_types: return_types.to_vec(),
             variant: variant.cloned(),
         })
         .collect()
+}
+
+fn return_types_from_html(raw_html: &str) -> Vec<TypeRef> {
+    type_refs_from_html(
+        raw_html,
+        &["Возвращаемое значение:", "Return value:", "Returned value:"],
+    )
+}
+
+fn callable_page_return_types(content: &PageContent, signatures: &[Signature]) -> Vec<TypeRef> {
+    if signatures
+        .iter()
+        .any(|signature| !signature.return_types.is_empty())
+    {
+        Vec::new()
+    } else {
+        type_refs_from_section(
+            content,
+            &["Возвращаемое значение:", "Return value:", "Returned value:"],
+        )
+    }
 }
 
 fn chapter_section_text(raw_html: &str, labels: &[&str]) -> Option<String> {
@@ -860,6 +902,15 @@ fn signature_contains_parameter(signature: &str, parameter_name: &str) -> bool {
 
 fn type_refs_from_section(content: &PageContent, labels: &[&str]) -> Vec<TypeRef> {
     section_text(content, labels)
+        .map(|section| parse_type_refs(&section))
+        .unwrap_or_default()
+}
+
+fn type_refs_from_html(raw_html: &str, labels: &[&str]) -> Vec<TypeRef> {
+    labels
+        .iter()
+        .find_map(|label| section_html(raw_html, &[*label]))
+        .map(text_lines_from_html_fragment)
         .map(|section| parse_type_refs(&section))
         .unwrap_or_default()
 }

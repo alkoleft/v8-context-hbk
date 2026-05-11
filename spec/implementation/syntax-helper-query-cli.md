@@ -494,6 +494,15 @@ ambiguous candidates or unresolved status from type names in each layer. Export-
 fact fields continue to expose source names through `types` and `return`; resolution aids belong in
 provider metadata or resolver DTOs and must not turn SQLite columns into a public contract.
 
+Callable return references preserve their source scope. Page-level/shared return sections are
+stored as callable/document-level `return_type` rows without `source_signature_id` and remain
+exposed as fact-level `return`. Source-proven overload-specific returns are stored as `return_type`
+rows with `source_signature_id` and `source_signature_ordinal` and may be exposed as
+`signatures[].return`. Provider response `schema_version: 1` is unchanged because the envelope and
+command semantics stay the same; the optional signature-level field uses the existing
+export-compatible `return` name for a more precise callable fact. Query commands still read only the
+prebuilt index and must not inspect HBK/HTML pages to decide return scope.
+
 `documents.description` and `document_search.description` intentionally serve different roles:
 provider fact text vs normalized FTS content. `documents.signature_text` remains only for compact
 human text output and FTS input. Search-only text fields are confined to `document_search`.
@@ -571,6 +580,8 @@ Result fields:
   surfaces expose the same data: `id`, `kind`, `name`, `owner`, `signatures`, `types`, `return`,
   `description`, availability, examples and see-also when present. Callable signatures use
   `signatures[].parameters[]` with `name`, `required`, `types` and optional `description`.
+  Overload-specific return facts, when source evidence proves them, use `signatures[].return` while
+  shared/page-level callable returns stay on fact-level `return`.
 - `meta`: query-only metadata. `search` may put `score`, `rank` and matched mode here. `related`
   may put `depth` and `path` here. `get` and `constructors` may omit scores when the lookup is
   exact and deterministic. Query metadata may include richer owner identity, such as owner alias or
@@ -686,8 +697,10 @@ Primitive behavior:
 - callable overload retrieval uses `syntax constructors <TYPE>` for constructors and
   `syntax get --callable-id <ID>` or owner identity plus callable name for methods and callable
   events. It returns ordered
-  `signatures[]`, `signatures[].parameters[]` and `return` / constructor result `types` using the
-  export-compatible field names already used by the provider envelope.
+  `signatures[]`, `signatures[].parameters[]`, optional `signatures[].return` and fact-level
+  `return` / constructor result `types` using the export-compatible field names already used by the
+  provider envelope. Fact-level `return` means shared callable return evidence; signature-level
+  `return` means source-proven overload-specific return evidence.
 - type-reference traversal uses `syntax related --id <FACT_ID> --edge has_type|returns|constructs`
   or the typed fields already present on exact `get` facts. Property and field facts return their
   `types`; callable facts return parameter `types` and `return` facts; constructor callables return

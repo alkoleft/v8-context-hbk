@@ -1308,6 +1308,9 @@ Expected result:
   `status`, `query`, `results` and `diagnostics`.
 - Shared platform facts are under `results[].fact` and use export-compatible field names such as
   `signatures`, `signatures[].parameters[]`, `types` and `return`.
+- Callable return facts preserve source scope: page-level/shared return evidence stays in
+  fact-level `return`; source-proven overload return evidence, when present, uses the same
+  export-compatible `return` field under the matching `signatures[]` item.
 - Query-only data is under `results[].meta`: search score/rank for `syntax search`, relationship
   depth/path for `syntax related`.
 - Owned facts use the export-compatible `owner` string shape. Richer owner identity needed only by
@@ -2355,7 +2358,8 @@ Expected result:
   `syntax` and `identifier`, keep nested field/parameter facts, and use `table_role="unknown"`.
 - `usage` is a stable enum string.
 - Property descriptions do not keep leading type-reference prose that already appears in `types`.
-- Type-reference facts are exposed as `types`; method return facts are exposed as `return`; legacy
+- Type-reference facts are exposed as `types`; shared method return facts are exposed as fact-level
+  `return`; source-proven overload return facts may be exposed as `signatures[].return`; legacy
   `type_refs` and `return_types` are absent from consumer JSON.
 - Syntax examples are extracted from the example/code section, not from following availability
   sections, and code examples do not contain HTML-coloring spaces around BSL punctuation.

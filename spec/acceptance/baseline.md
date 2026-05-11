@@ -1974,6 +1974,16 @@ rebuilt `target/uat/t139-sh-search-root.sqlite` from `shcntx_root.hbk` with 2541
 29594 ms and confirmed unchanged root totals: `50034` total, `32823` resolved, `17211` unresolved,
 `0` ambiguous and `335` template-binding rows.
 
+T140 keeps the public provider/export envelope stable while adding source-scoped callable return
+facts. Page-level/shared Syntax Assistant return sections remain fact-level `return` arrays.
+Source-proven overload returns are modeled on the concrete signature, stored as `return_type` rows
+with `source_signature_id` / `source_signature_ordinal`, and may surface as `signatures[].return`.
+Real-source fixture coverage currently confirms that `ДокументDOM.СоздатьРазыменовательПИ` /
+`DOMDocument.CreateNSResolver` keeps its shared return at callable level; overload-specific return
+coverage uses a focused synthetic parser fixture plus search/provider/resolver regressions because
+no accepted real-source overload-return fixture is recorded yet. `schema_version` for provider JSON
+remains `1`; the private rebuildable search-index schema remains `13`.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

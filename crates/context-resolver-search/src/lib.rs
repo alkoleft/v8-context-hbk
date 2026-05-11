@@ -250,15 +250,6 @@ impl PlatformSearchSource {
             | SearchDocumentKind::EnumValue => return Ok(None),
         };
         let owner = self.owner_id_for_document(&hit.document)?;
-        let mut return_types = self.type_ref_facts(&hit.document.return_type_facts);
-        if return_types.is_empty() {
-            let edge = if matches!(kind, CallableKind::Constructor) {
-                "constructs"
-            } else {
-                "returns"
-            };
-            return_types = self.edge_refs(&hit.document.id, edge)?;
-        }
         let signatures = hit
             .document
             .signatures
@@ -277,11 +268,25 @@ impl PlatformSearchSource {
                             })
                         })
                         .collect::<Result<Vec<_>, ResolveError>>()?,
+                    return_types: self.type_ref_facts(&signature.return_type_facts),
                     title: signature.title.clone(),
                     description: signature.description.clone(),
                 })
             })
             .collect::<Result<Vec<_>, ResolveError>>()?;
+        let mut return_types = self.type_ref_facts(&hit.document.return_type_facts);
+        if return_types.is_empty()
+            && !signatures
+                .iter()
+                .any(|signature| !signature.return_types.is_empty())
+        {
+            let edge = if matches!(kind, CallableKind::Constructor) {
+                "constructs"
+            } else {
+                "returns"
+            };
+            return_types = self.edge_refs(&hit.document.id, edge)?;
+        }
         let info = CallableInfo {
             kind,
             signatures,
@@ -559,6 +564,7 @@ impl LanguageSearchSource {
                             description: parameter.description.clone(),
                         })
                         .collect(),
+                    return_types: self.type_refs(&signature.return_types),
                     title: signature.title.clone(),
                     description: signature.description.clone(),
                 })
@@ -1760,6 +1766,47 @@ mod tests {
     }
 
     #[test]
+    fn platform_adapter_keeps_signature_return_out_of_callable_return() {
+        let source = fixture_source();
+        let filter = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:ОтборКомпоновкиДанных",
+        ));
+        let index = fixture_index_with_signature_only_return(
+            "platform-adapter-signature-only-return.sqlite",
+        );
+        let adapter = PlatformSearchSource::with_source_id(index, source.clone());
+
+        let callable = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: Some(&filter),
+                    name: "Найти",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("callable lookup must not fail");
+
+        assert_eq!(callable.status, ResolveStatus::Ok);
+        assert!(
+            callable.facts[0].info.return_types.is_empty(),
+            "signature return types must not be folded back into callable return types"
+        );
+        let signature_return = callable.facts[0].info.signatures[0]
+            .return_types
+            .first()
+            .expect("signature-level return type must be exposed");
+        assert_eq!(
+            signature_return
+                .resolved_id()
+                .map(|id| id.0.local_id.as_str()),
+            Some("platform_type:ЭлементОтбораКомпоновкиДанных")
+        );
+    }
+
+    #[test]
     fn platform_adapter_preserves_type_ref_resolution_status() {
         let source = fixture_source();
         let path = temp_path("platform-adapter-type-ref-resolution.sqlite");
@@ -2172,6 +2219,31 @@ mod tests {
         SearchIndex::open_read_only(path).expect("index must open")
     }
 
+    fn fixture_index_with_signature_only_return(file_name: &str) -> SearchIndex {
+        let path = fixture_index_path(file_name);
+        let connection = rusqlite::Connection::open(&path).expect("index must open for mutation");
+        let method_id = "type_method:platform_type:ОтборКомпоновкиДанных:Найти";
+        let signature_id: String = connection
+            .query_row(
+                "SELECT signature_id FROM signatures WHERE callable_id = ?1 ORDER BY ordinal LIMIT 1",
+                [method_id],
+                |row| row.get(0),
+            )
+            .expect("fixture method signature must exist");
+        connection
+            .execute(
+                "UPDATE type_refs
+                 SET source_signature_id = ?1,
+                     source_signature_ordinal = 0
+                 WHERE source_document_id = ?2
+                   AND ref_kind = 'return_type'",
+                rusqlite::params![signature_id, method_id],
+            )
+            .expect("fixture return type must become signature-scoped");
+        drop(connection);
+        SearchIndex::open_read_only(path).expect("index must open")
+    }
+
     fn fixture_index_path(file_name: &str) -> PathBuf {
         let path = temp_path(file_name);
         let mut builder = SearchIndexBuilder::new();
@@ -2255,6 +2327,7 @@ mod tests {
                         }],
                         description: None,
                     }],
+                    return_types: Vec::new(),
                     variant: None,
                 }],
                 return_types: vec![model::TypeRef {
@@ -2292,6 +2365,7 @@ mod tests {
                 signatures: vec![model::Signature {
                     text: "Новый ОтборКомпоновкиДанных()".to_string(),
                     parameters: Vec::new(),
+                    return_types: Vec::new(),
                     variant: None,
                 }],
                 description: Some("Создает фильтр.".to_string()),
@@ -2314,6 +2388,7 @@ mod tests {
                 signatures: vec![model::Signature {
                     text: "Новый ДокументОбъект.<Имя документа>()".to_string(),
                     parameters: Vec::new(),
+                    return_types: Vec::new(),
                     variant: None,
                 }],
                 description: Some("Creates document object.".to_string()),

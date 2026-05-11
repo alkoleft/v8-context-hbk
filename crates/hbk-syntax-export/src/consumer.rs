@@ -483,6 +483,9 @@ impl<'a> ConsumerAvailability<'a> {
 struct ConsumerSignature<'a> {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     parameters: Vec<ConsumerParameter<'a>>,
+    #[serde(rename = "return")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    return_types: Vec<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -497,6 +500,7 @@ impl<'a> From<&'a model::Signature> for ConsumerSignature<'a> {
                 .iter()
                 .map(ConsumerParameter::from)
                 .collect(),
+            return_types: type_ref_names(&signature.return_types),
             title: signature
                 .variant
                 .as_ref()

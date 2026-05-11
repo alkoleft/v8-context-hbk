@@ -170,24 +170,24 @@ Verification:
 References: FR-SH-002, FR-EXPORT-001, FR-SH-PROVIDER-001,
 `implementation/syntax-helper-query-cli.md`.
 
-- [ ] Update the relevant requirements and implementation specs before implementation. If the task
+- [x] Update the relevant requirements and implementation specs before implementation. If the task
       changes consumer JSON or provider JSON shape, update FR-EXPORT-001 / provider spec and record
       the schema/version impact explicitly before changing code.
-- [ ] Specify how callable return types attach to a concrete signature/overload when source
+- [x] Specify how callable return types attach to a concrete signature/overload when source
       evidence supports it.
-- [ ] Preserve page-level return facts only as explicit shared/inherited evidence when HBK does not
+- [x] Preserve page-level return facts only as explicit shared/inherited evidence when HBK does not
       prove an overload-specific return.
-- [ ] Report source pages that expose multiple return types for one modeled overload as
+- [x] Report source pages that expose multiple return types for one modeled overload as
       parser/data-contract diagnostics instead of truncating.
-- [ ] Keep provider JSON compatible with current envelope semantics unless a schema-version task is
+- [x] Keep provider JSON compatible with current envelope semantics unless a schema-version task is
       explicitly added.
 
 Verification:
 
-- [ ] Fixture tests cover at least one shared page-level return and one overload-specific return
+- [x] Fixture tests cover at least one shared page-level return and one overload-specific return
       case if real source evidence exists.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test --workspace`
+- [x] `cargo fmt --all --check`
+- [x] `cargo test --workspace`
 
 ### T141: Strengthen Platform Type Template Resolution
 

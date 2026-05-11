@@ -146,6 +146,7 @@ pub struct Parameter {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signature {
     pub parameters: Vec<Parameter>,
+    pub return_types: Vec<TypeRef>,
     pub title: Option<String>,
     pub description: Option<String>,
 }
@@ -953,6 +954,7 @@ mod tests {
                 kind: CallableKind::Method,
                 signatures: vec![Signature {
                     parameters,
+                    return_types: Vec::new(),
                     title: None,
                     description: None,
                 }],

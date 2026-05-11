@@ -66,6 +66,7 @@ mod provider_setup {
                         }],
                         description: Some("Искомое значение.".to_string()),
                     }],
+                    return_types: Vec::new(),
                     variant: None,
                 }],
                 return_types: vec![model::TypeRef {

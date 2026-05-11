@@ -192,9 +192,12 @@ where
             let source = source_from_content(&catalog_page.source, &content);
             match catalog_page.class {
                 PageClass::Catalog | PageClass::Unknown | PageClass::QueryTable => unreachable!(),
-                PageClass::GlobalMethod => sink
-                    .global_method(parse_global_method(&content, source))
-                    .map_err(SyntaxHelperStreamError::Sink)?,
+                PageClass::GlobalMethod => {
+                    let method = parse_global_method(&content, source);
+                    emit_overload_return_diagnostics(sink, &method.signatures, &method.source)?;
+                    sink.global_method(method)
+                        .map_err(SyntaxHelperStreamError::Sink)?
+                }
                 PageClass::GlobalProperty => sink
                     .global_property(parse_global_property(&content, source))
                     .map_err(SyntaxHelperStreamError::Sink)?,
@@ -225,6 +228,7 @@ where
                     method.semantic = catalog_page.semantic.clone();
                     method.owner_identity =
                         parent_identities.platform_type_owner(&catalog_page, &method.owner);
+                    emit_overload_return_diagnostics(sink, &method.signatures, &method.source)?;
                     sink.type_method(method)
                         .map_err(SyntaxHelperStreamError::Sink)?
                 }
@@ -582,6 +586,34 @@ fn missing_query_table_owner_diagnostic(
         parser_stage,
         message: "Query table member page has no TOC-derived query table owner context; owner is not synthesized from the member HTML path".to_string(),
     }
+}
+
+fn emit_overload_return_diagnostics<S>(
+    sink: &mut S,
+    signatures: &[Signature],
+    source: &SyntaxHelperSource,
+) -> Result<(), SyntaxHelperStreamError<S::Error>>
+where
+    S: SyntaxHelperSink,
+{
+    for signature in signatures
+        .iter()
+        .filter(|signature| signature.return_types.len() > 1)
+    {
+        sink.diagnostic(SyntaxHelperDiagnostic {
+            severity: DiagnosticSeverity::Warning,
+            code: "MULTIPLE_OVERLOAD_RETURN_TYPES",
+            source: source.clone(),
+            parser_stage: "syntax_helper_extract",
+            message: format!(
+                "signature '{}' has {} overload-specific return type references; all values are preserved for parser/data-contract review",
+                signature.text,
+                signature.return_types.len()
+            ),
+        })
+        .map_err(SyntaxHelperStreamError::Sink)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn query_table_member_owner(semantic: &SemanticContext) -> Option<LocalizedName> {

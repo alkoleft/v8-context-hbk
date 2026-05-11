@@ -2041,6 +2041,137 @@ fn binds_parameters_to_the_signature_that_mentions_them() {
 }
 
 #[test]
+fn shared_page_return_stays_on_callable_when_variant_scope_is_not_proven() {
+    let toc = fixture_toc();
+    let method = parse_platform_method(
+        &fixture_content_from_raw(
+            &toc,
+            "shcntx_ru.hbk",
+            "ru",
+            "objects/catalog63/catalog1055/DOMDocument/methods/CreateNSResolver2613.html",
+            include_str!(
+                "../../../tests/fixtures/syntax-helper/object_method_domdocument_create_ns_resolver_ru.html"
+            ),
+        ),
+        source_for(
+            "shcntx_ru.hbk",
+            "ru",
+            "objects/catalog63/catalog1055/DOMDocument/methods/CreateNSResolver2613.html",
+        ),
+    );
+
+    assert!(
+        method
+            .return_types
+            .iter()
+            .any(|type_ref| type_ref.name == "РазыменовательПространствИменDOM")
+    );
+    assert!(
+        method
+            .signatures
+            .iter()
+            .all(|signature| signature.return_types.is_empty())
+    );
+}
+
+#[test]
+fn overload_specific_return_types_attach_to_matching_variant_signatures() {
+    let toc = fixture_toc();
+    let html = r#"
+            <html><body>
+            <h1 class="V8SH_pagetitle">Тест.Метод</h1>
+            <p class="V8SH_title">Тест</p>
+            <p class="V8SH_heading">Метод</p>
+            <p class="V8SH_chapter">Вариант синтаксиса: Строка</p>
+            <p class="V8SH_chapter">Синтаксис:</p>
+            Метод()
+            <p class="V8SH_chapter">Возвращаемое значение:</p>
+            Тип: Строка.
+            <p class="V8SH_chapter">Вариант синтаксиса: Число</p>
+            <p class="V8SH_chapter">Синтаксис:</p>
+            Метод(&lt;Значение&gt;)
+            <p class="V8SH_chapter">Параметры:</p>
+            <div class="V8SH_rubric"><p>&lt;Значение&gt; (обязательный)</p></div>
+            Тип: Число. Входное значение.
+            <p class="V8SH_chapter">Возвращаемое значение:</p>
+            Тип: Число.
+            </body></html>
+        "#;
+    let content = parse_syntax_page_content(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc,
+        "objects/catalog234/Test/methods/Method.html",
+        html,
+    );
+    let method = parse_platform_method(
+        &content,
+        source("objects/catalog234/Test/methods/Method.html"),
+    );
+
+    assert!(method.return_types.is_empty());
+    assert_eq!(method.signatures.len(), 2);
+    assert_eq!(method.signatures[0].return_types[0].name, "Строка");
+    assert_eq!(method.signatures[1].return_types[0].name, "Число");
+    assert_eq!(method.signatures[1].parameters[0].name, "Значение");
+}
+
+#[test]
+fn extraction_reports_multiple_return_types_for_one_modeled_overload() {
+    let toc = fixture_toc();
+    let discovery = RootDiscovery {
+        roots: vec![RootSection {
+            kind: RootSectionKind::GlobalContext,
+            source: source("objects/Global context/methods/catalog.html"),
+            pages: vec![CatalogPage {
+                class: PageClass::GlobalMethod,
+                semantic: SemanticContext::new(
+                    BranchKind::GlobalContext,
+                    RecordFamily::GlobalMethod,
+                ),
+                source: source("objects/Global context/methods/TestReturn.html"),
+            }],
+        }],
+        diagnostics: Vec::new(),
+    };
+    let mut sink = RecordingSink::default();
+
+    parse_extraction_pages_into(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc,
+        discovery,
+        |html_path| {
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_ru.hbk",
+                "ru",
+                html_path,
+                r#"<html><body>
+                <h1 class="V8SH_pagetitle">Глобальный контекст.ТестВозврата</h1>
+                <p class="V8SH_title">Глобальный контекст</p>
+                <p class="V8SH_heading">ТестВозврата</p>
+                <p class="V8SH_chapter">Вариант синтаксиса: Тест</p>
+                <p class="V8SH_chapter">Синтаксис:</p>
+                ТестВозврата()
+                <p class="V8SH_chapter">Возвращаемое значение:</p>
+                Тип: Строка, Число.
+                </body></html>"#,
+            ))
+        },
+        &mut sink,
+    )
+    .expect("fixture extraction must stream");
+
+    assert!(
+        sink.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "MULTIPLE_OVERLOAD_RETURN_TYPES")
+    );
+    assert_eq!(sink.seen[0], "diagnostic:MULTIPLE_OVERLOAD_RETURN_TYPES");
+}
+
+#[test]
 fn parses_inline_example_section_before_availability() {
     let toc = fixture_toc();
     let html = r##"

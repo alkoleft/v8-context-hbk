@@ -917,6 +917,7 @@ pub struct VersionFact {
 pub struct Signature {
     pub text: String,
     pub parameters: Vec<Parameter>,
+    pub return_types: Vec<TypeRef>,
     pub variant: Option<SyntaxVariant>,
 }
 

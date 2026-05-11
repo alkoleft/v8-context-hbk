@@ -361,6 +361,8 @@ pub struct IndexBuildWarning {
 pub struct SearchSignature {
     pub text: String,
     pub parameters: Vec<SearchParameter>,
+    pub return_types: Vec<String>,
+    pub return_type_facts: Vec<SearchTypeRef>,
     pub title: Option<String>,
     pub description: Option<String>,
 }
@@ -1302,6 +1304,12 @@ fn document_type_template_ref_names(document: &SearchDocument) -> impl Iterator<
                 .iter()
                 .flat_map(|signature| signature.parameters.iter())
                 .flat_map(|parameter| parameter.type_refs.iter().map(String::as_str)),
+        )
+        .chain(
+            document
+                .signatures
+                .iter()
+                .flat_map(|signature| signature.return_types.iter().map(String::as_str)),
         )
 }
 
@@ -2265,6 +2273,7 @@ impl SearchIndex {
                         template_binding_arguments
                  FROM type_refs
                  WHERE source_document_id = ?1 AND ref_kind = ?2
+                   AND source_signature_id IS NULL
                  ORDER BY source_signature_ordinal, source_parameter_ordinal, ordinal, target_type_name",
             )
             .map_err(|source| self.sqlite(source))?;
@@ -2304,12 +2313,19 @@ impl SearchIndex {
             .map_err(|source| self.sqlite(source))?;
         let mut signatures = Vec::new();
         for (signature_id, ordinal, title, description) in rows {
+            let return_type_facts = self.signature_return_type_facts(&signature_id)?;
+            let return_types = return_type_facts
+                .iter()
+                .map(|type_ref| type_ref.name.clone())
+                .collect();
             signatures.push(SearchSignature {
                 text: signature_texts
                     .get(ordinal as usize)
                     .cloned()
                     .unwrap_or_default(),
                 parameters: self.parameters_for(&signature_id)?,
+                return_types,
+                return_type_facts,
                 title,
                 description,
             });
@@ -2318,6 +2334,8 @@ impl SearchIndex {
             signatures.extend(signature_texts.into_iter().map(|text| SearchSignature {
                 text,
                 parameters: Vec::new(),
+                return_types: Vec::new(),
+                return_type_facts: Vec::new(),
                 title: None,
                 description: None,
             }));
@@ -2391,6 +2409,33 @@ impl SearchIndex {
                 params![signature_id, parameter_ordinal],
                 search_type_ref_from_row,
             )
+            .map_err(|source| self.sqlite(source))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))
+    }
+
+    fn signature_return_type_facts(
+        &self,
+        signature_id: &str,
+    ) -> Result<Vec<SearchTypeRef>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT target_type_name, target_type_id, target_resolution_status,
+                        target_candidate_type_ids, type_template_family, type_template_variant,
+                        template_binding_kind,
+                        template_binding_owner_parameter_index,
+                        template_binding_target_parameter_index,
+                        template_binding_arguments
+                 FROM type_refs
+                 WHERE source_signature_id = ?1
+                   AND source_parameter_ordinal IS NULL
+                   AND ref_kind = 'return_type'
+                 ORDER BY ordinal, target_type_name",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([signature_id], search_type_ref_from_row)
             .map_err(|source| self.sqlite(source))?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|source| self.sqlite(source))
@@ -2864,7 +2909,18 @@ fn insert_documents(
         let signatures = document.signature_text_lines().join("\n");
         let parameters = document.parameter_terms.join("\n");
         let type_names = document.type_refs.join("\n");
-        let return_names = document.return_types.join("\n");
+        let return_names = document
+            .return_types
+            .iter()
+            .chain(
+                document
+                    .signatures
+                    .iter()
+                    .flat_map(|signature| signature.return_types.iter()),
+            )
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
         let owner_primary = document.owner.as_ref().map(|owner| owner.primary.as_str());
         let owner_alias = document
             .owner
@@ -3150,6 +3206,25 @@ fn insert_normalized_facts(
                             },
                         )?;
                     }
+                }
+                for (type_ordinal, type_name) in signature.return_types.iter().enumerate() {
+                    insert_type_ref(
+                        &mut type_ref_statement,
+                        path,
+                        &type_ids_by_key,
+                        &type_ids_by_metadata_kind,
+                        &type_template_by_type_id,
+                        TypeRefRow {
+                            source_document_id: &document.id,
+                            ref_kind: "return_type",
+                            ordinal: type_ordinal,
+                            owner_type_id: owner_type_id.as_deref(),
+                            source_signature_id: Some(&signature_id),
+                            source_signature_ordinal: Some(signature_ordinal),
+                            source_parameter_ordinal: None,
+                            target_type_name: type_name,
+                        },
+                    )?;
                 }
             }
         }
@@ -3761,6 +3836,29 @@ fn visit_type_reference_relations<E>(
             weight: TYPE_REFERENCE_RELATION_WEIGHT,
         })?;
     }
+    for signature in &document.signatures {
+        for type_name in &signature.return_types {
+            let Some(target_ids) = type_ref_targets_by_key.get(&normalize_lookup_key(type_name))
+            else {
+                continue;
+            };
+            if target_ids.len() != 1 {
+                continue;
+            }
+            let target_id = target_ids.iter().next().cloned().unwrap_or_default();
+            if !document_ids.contains(&target_id) {
+                continue;
+            }
+            visit(Relation {
+                source_id: document.id.clone(),
+                target_id,
+                edge_kind: "returns",
+                label: type_name.clone(),
+                evidence: "type_ref",
+                weight: TYPE_REFERENCE_RELATION_WEIGHT,
+            })?;
+        }
+    }
     Ok(())
 }
 
@@ -3875,6 +3973,12 @@ impl From<&model::Signature> for SearchSignature {
                 .iter()
                 .map(SearchParameter::from)
                 .collect(),
+            return_types: signature
+                .return_types
+                .iter()
+                .map(|type_ref| type_ref.name.clone())
+                .collect(),
+            return_type_facts: Vec::new(),
             title: signature
                 .variant
                 .as_ref()
@@ -3921,6 +4025,8 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
                     description: parameter.description.clone(),
                 })
                 .collect(),
+            return_types: Vec::new(),
+            return_type_facts: Vec::new(),
             title: None,
             description: None,
         })
@@ -3932,6 +4038,8 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         signatures.push(SearchSignature {
             text: syntax.clone(),
             parameters: Vec::new(),
+            return_types: Vec::new(),
+            return_type_facts: Vec::new(),
             title: None,
             description: None,
         });
@@ -4156,6 +4264,8 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
             .map(|text| SearchSignature {
                 text,
                 parameters: Vec::new(),
+                return_types: Vec::new(),
+                return_type_facts: Vec::new(),
                 title: None,
                 description: None,
             })
@@ -5817,6 +5927,56 @@ mod tests {
     }
 
     #[test]
+    fn index_preserves_overload_specific_return_types_on_signature_rows() {
+        let path = temp_path("signature-return.sqlite");
+        let mut context = fixture_context();
+        context.type_methods.push(model::PlatformMethod {
+            owner: name("ОтборКомпоновкиДанных", None),
+            owner_identity: Some("platform_type:ОтборКомпоновкиДанных".to_string()),
+            name: name("ПолучитьЗначение", None),
+            semantic: model::SemanticContext::default(),
+            signatures: vec![model::Signature {
+                text: "ПолучитьЗначение()".to_string(),
+                parameters: Vec::new(),
+                return_types: vec![model::TypeRef {
+                    name: "Строка".to_string(),
+                }],
+                variant: None,
+            }],
+            return_types: Vec::new(),
+            description: Some("Получает значение.".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source("ОтборКомпоновкиДанных.ПолучитьЗначение"),
+        });
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open");
+        let callable = index
+            .callable_by_owner_type_id("platform_type:ОтборКомпоновкиДанных", "ПолучитьЗначение")
+            .expect("callable lookup must work");
+
+        assert_eq!(callable.len(), 1);
+        assert!(callable[0].document.return_types.is_empty());
+        assert_eq!(callable[0].document.signatures[0].return_types, ["Строка"]);
+
+        let connection = Connection::open(&path).expect("index sqlite must open");
+        assert!(connection
+            .query_row(
+                "SELECT 1
+                 FROM type_refs
+                 WHERE source_document_id = 'type_method:platform_type:ОтборКомпоновкиДанных:ПолучитьЗначение'
+                   AND ref_kind = 'return_type'
+                   AND source_signature_id IS NOT NULL
+                   AND source_signature_ordinal = 0
+                   AND target_type_name = 'Строка'
+                 LIMIT 1",
+                [],
+                |_| Ok(()),
+            )
+            .is_ok());
+    }
+
+    #[test]
     fn owner_type_member_and_callable_lookup_match_primary_and_alias_names() {
         let path = temp_path("owner-type-primary-alias-lookup.sqlite");
         let mut context = fixture_context();
@@ -5841,6 +6001,7 @@ mod tests {
             signatures: vec![model::Signature {
                 text: "Найти()".to_string(),
                 parameters: Vec::new(),
+                return_types: Vec::new(),
                 variant: None,
             }],
             return_types: vec![model::TypeRef {
@@ -7716,6 +7877,7 @@ mod tests {
             signatures: vec![model::Signature {
                 text: format!("{primary}()"),
                 parameters: Vec::new(),
+                return_types: Vec::new(),
                 variant: None,
             }],
             return_types: vec![model::TypeRef {
@@ -7740,6 +7902,7 @@ mod tests {
             signatures: vec![model::Signature {
                 text: signature.to_string(),
                 parameters: Vec::new(),
+                return_types: Vec::new(),
                 variant: None,
             }],
             description: Some(format!("{primary} description")),
@@ -7785,6 +7948,7 @@ mod tests {
                         ),
                     },
                 ],
+                return_types: Vec::new(),
                 variant: None,
             }],
             description: None,
@@ -7809,6 +7973,7 @@ mod tests {
             signatures: vec![model::Signature {
                 text: format!("{primary}()"),
                 parameters: Vec::new(),
+                return_types: Vec::new(),
                 variant: None,
             }],
             description: Some("event description".to_string()),

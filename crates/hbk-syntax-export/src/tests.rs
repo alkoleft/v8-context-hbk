@@ -325,6 +325,9 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                     }],
                     description: Some("Исходное значение.".to_string()),
                 }],
+                return_types: vec![model::TypeRef {
+                    name: "Дата".to_string(),
+                }],
                 variant: Some(model::SyntaxVariant {
                     title: "По значению".to_string(),
                     description: Some("Creates an XML string from a value.".to_string()),
@@ -390,6 +393,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                         }],
                         description: None,
                     }],
+                    return_types: Vec::new(),
                     variant: None,
                 }],
                 description: Some("Возникает перед завершением работы.".to_string()),
@@ -517,6 +521,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                     }],
                     description: None,
                 }],
+                return_types: Vec::new(),
                 variant: None,
             }],
             return_types: vec![model::TypeRef {
@@ -644,6 +649,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
                     }],
                     description: None,
                 }],
+                return_types: Vec::new(),
                 variant: None,
             }],
             description: Some("Создает массив.".to_string()),
@@ -760,11 +766,16 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         method["signatures"][0]["parameters"][0]["types"],
         serde_json::json!(["Произвольный"])
     );
+    assert_eq!(
+        method["signatures"][0]["return"],
+        serde_json::json!(["Дата"])
+    );
     assert!(
         method["signatures"][0]["parameters"][0]
             .get("type_refs")
             .is_none()
     );
+    assert!(method["signatures"][0].get("return_types").is_none());
     assert!(method.get("source").is_none());
 
     let global_properties = read_json(dir.join("global-properties.json"));

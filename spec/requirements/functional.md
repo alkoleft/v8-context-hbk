@@ -254,9 +254,15 @@ The extractor must not synthesize consumer records from TOC-only pages when sour
 loaded or parsed safely. Such in-scope-but-unsupported pages remain visible as recoverable
 diagnostics with source provenance until a typed extraction contract is added.
 
-Multiple signatures are overloads. If real pages expose multiple return types for one overload while
-the model assumes one return type per overload, report it as a parser/data-contract gap instead of
-silently truncating.
+Multiple signatures are overloads. Callable return types have two scopes. If the Syntax Assistant
+page exposes only one page-level return section, that return remains an explicit shared/inherited
+callable fact and is serialized through the existing callable-level `return` array. If the source
+page proves a return section for each concrete syntax variant/overload, those return references
+belong to the matching signature/overload. Parser and index internals must preserve both scopes
+instead of recomputing return ownership from prose. If real pages expose multiple overload-specific
+return groups for one modeled overload while the model cannot represent that evidence
+unambiguously, report a parser/data-contract diagnostic instead of silently truncating or picking a
+hidden group.
 
 Syntax Assistant HTML section parsing must be locale-aware for both Russian and root/English source
 books. Section boundaries must prevent description, parameter and signature fields from swallowing
@@ -547,6 +553,10 @@ that happen to exist in a reused output directory.
   object when present; the nested `variant` object is not emitted. Variant metadata must not expose
   HBK, TOC or HTML provenance. Parser section boundaries must preserve all parameters in a callable
   signature even when a parameter description contains label-like inline text such as `Примечание:`.
+  When source evidence attaches return types to a concrete overload, the signature object may use the
+  same `return` field name for those overload-level type-name strings. Callable-level `return`
+  remains the shared/page-level return fact. This is an optional source-backed refinement of the
+  current schema version, not a new provenance or parser-trace field.
 - `availability`: object with `contexts`, a deterministic array of normalized snake_case execution
   context values such as `thin_client`, `web_client`, `mobile_client`, `server`, `thick_client`,
   `external_connection`, `mobile_application_client`, `mobile_application_server` and
@@ -756,7 +766,8 @@ Provider-oriented outputs must:
 - expose callable signatures as structured facts for methods, constructors and events where source
   data contains structured signatures, using the `syntax export` signature shape where applicable;
 - expose parameter name, requiredness, type references and description as separate fields;
-- expose return/type references as typed arrays, not only prose;
+- expose return/type references as typed arrays, not only prose, and distinguish shared callable
+  returns from overload-specific signature returns when the source proves that scope;
 - preserve the source-backed spelling of every exposed type reference separately from any resolved
   target identity. Export-compatible `types` and `return` fields remain source-name arrays, while
   provider/resolver resolution data represents each target as `ok`, `unresolved` or `ambiguous`

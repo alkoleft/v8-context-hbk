@@ -1590,6 +1590,9 @@ fn signature_fact(signature: &syntax_helper_search::SearchSignature) -> Value {
     if let Some(description) = &signature.description {
         value["description"] = json!(description);
     }
+    if !signature.return_types.is_empty() {
+        value["return"] = json!(signature.return_types);
+    }
     value
 }
 
@@ -1983,6 +1986,8 @@ mod tests {
             signatures: vec![syntax_helper_search::SearchSignature {
                 text: "Выполнить(Параметр)".to_string(),
                 parameters: Vec::new(),
+                return_types: Vec::new(),
+                return_type_facts: Vec::new(),
                 title: None,
                 description: None,
             }],
@@ -2032,6 +2037,8 @@ mod tests {
                     type_ref_facts: Vec::new(),
                     description: Some("Input value".to_string()),
                 }],
+                return_types: vec!["Дата".to_string()],
+                return_type_facts: Vec::new(),
                 title: Some("Основной вариант".to_string()),
                 description: Some("Variant description".to_string()),
             }],
@@ -2075,6 +2082,7 @@ mod tests {
         assert_eq!(signature["parameters"][0]["required"], true);
         assert_eq!(signature["parameters"][0]["types"], json!(["Строка"]));
         assert_eq!(signature["parameters"][0]["description"], "Input value");
+        assert_eq!(signature["return"], json!(["Дата"]));
     }
 
     #[test]
@@ -2615,6 +2623,7 @@ mod tests {
             signatures: vec![model::Signature {
                 text: format!("{primary}()"),
                 parameters: Vec::new(),
+                return_types: Vec::new(),
                 variant: None,
             }],
             return_types: Vec::new(),
@@ -2633,6 +2642,7 @@ mod tests {
             signatures: vec![model::Signature {
                 text: format!("Новый {owner}()"),
                 parameters: Vec::new(),
+                return_types: Vec::new(),
                 variant: None,
             }],
             description: None,
