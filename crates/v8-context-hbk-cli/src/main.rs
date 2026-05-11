@@ -1642,9 +1642,35 @@ fn graph_type_ref_value(
         value["parameter_name"] = json!(parameter_name);
     }
     if let Some(binding) = &type_ref.template_binding {
-        value["template_binding"] = json!(binding);
+        value["template_binding"] = template_binding_value(binding);
     }
     value
+}
+
+fn template_binding_value(binding: &syntax_helper_search::model::TypeTemplateBinding) -> Value {
+    json!({
+        "template_key": {
+            "family": binding.template_key.family.as_str(),
+            "variant": binding.template_key.variant.as_str(),
+        },
+        "arguments": binding.arguments.iter().map(template_binding_argument_value).collect::<Vec<_>>(),
+    })
+}
+
+fn template_binding_argument_value(
+    argument: &syntax_helper_search::model::TemplateParameterBinding,
+) -> Value {
+    match argument {
+        syntax_helper_search::model::TemplateParameterBinding::OwnerParameter {
+            owner_parameter_index,
+            target_parameter_index,
+        } => json!({
+            "owner_parameter": {
+                "owner_parameter_index": owner_parameter_index,
+                "target_parameter_index": target_parameter_index,
+            }
+        }),
+    }
 }
 
 fn graph_type_ref_status(target: &SearchTypeRefTarget) -> &'static str {
@@ -2508,8 +2534,14 @@ mod tests {
             return_type_facts: vec![SearchTypeRef {
                 name: "Строка".to_string(),
                 target: SearchTypeRefTarget::Ok("platform_type:Строка".to_string()),
-                type_template_key: None,
-                template_binding: None,
+                type_template_key: Some(model::PlatformTypeTemplateKey::new("String", "Value")),
+                template_binding: Some(model::TypeTemplateBinding {
+                    template_key: model::PlatformTypeTemplateKey::new("String", "Value"),
+                    arguments: vec![model::TemplateParameterBinding::OwnerParameter {
+                        owner_parameter_index: 0,
+                        target_parameter_index: 0,
+                    }],
+                }),
             }],
             description: Some("Detailed description".to_string()),
             preview: "Detailed description".to_string(),
@@ -2545,6 +2577,21 @@ mod tests {
         assert_eq!(
             results[0]["meta"]["type_references"][0]["target_type_id"],
             "platform_type:Строка"
+        );
+        assert_eq!(
+            results[0]["meta"]["type_references"][0]["template_binding"],
+            json!({
+                "template_key": {
+                    "family": "String",
+                    "variant": "Value",
+                },
+                "arguments": [{
+                    "owner_parameter": {
+                        "owner_parameter_index": 0,
+                        "target_parameter_index": 0,
+                    }
+                }],
+            })
         );
         assert!(
             results[0]["meta"]["type_references"]

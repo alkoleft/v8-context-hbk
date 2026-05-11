@@ -1807,12 +1807,29 @@ mod tests {
     }
 
     #[test]
-    fn platform_adapter_preserves_type_ref_resolution_status() {
+    fn platform_adapter_preserves_type_ref_resolution_status_and_template_binding() {
         let source = fixture_source();
         let path = temp_path("platform-adapter-type-ref-resolution.sqlite");
         let mut builder = SearchIndexBuilder::new();
         for record in [
-            platform_type("Владелец", None),
+            platform_template_type(
+                "ДокументМенеджер.<Имя документа>",
+                "DocumentManager.<Document name>",
+                "ДокументМенеджер",
+                "Имя документа",
+            ),
+            platform_template_type(
+                "ДокументОбъект.<Имя документа>",
+                "DocumentObject.<Document name>",
+                "ДокументОбъект",
+                "Имя документа",
+            ),
+            platform_template_type(
+                "ДокументСсылка.<Имя документа>",
+                "DocumentRef.<Document name>",
+                "ДокументСсылка",
+                "Имя документа",
+            ),
             platform_type("РазрешенныйТип", None),
             platform_type_with_owner_path("ДубльТип", "Первый"),
             platform_type_with_owner_path("ДубльТип", "Второй"),
@@ -1823,12 +1840,18 @@ mod tests {
         }
         builder
             .type_property(model::PlatformProperty {
-                owner: name("Владелец", None),
-                owner_identity: Some("platform_type:Владелец".to_string()),
+                owner: name(
+                    "ДокументОбъект.<Имя документа>",
+                    Some("DocumentObject.<Document name>"),
+                ),
+                owner_identity: Some("platform_type:ДокументОбъект.<Имя документа>".to_string()),
                 name: name("Поле", None),
                 semantic: model::SemanticContext::default(),
                 usage: None,
                 type_refs: vec![
+                    model::TypeRef {
+                        name: "ДокументСсылка".to_string(),
+                    },
                     model::TypeRef {
                         name: "РазрешенныйТип".to_string(),
                     },
@@ -1850,7 +1873,7 @@ mod tests {
             source.clone(),
             LanguageDomain::PlatformApi,
             FactKind::Type,
-            "platform_type:Владелец",
+            "platform_type:ДокументОбъект.<Имя документа>",
         ));
 
         let members = adapter
@@ -1865,9 +1888,37 @@ mod tests {
             .expect("member lookup must not fail");
 
         let types = &members.facts[0].info.types;
-        assert_eq!(types.len(), 3);
+        assert_eq!(types.len(), 4);
         assert_eq!(
             types[0].target,
+            TypeRefTarget::Ok(TypeId(FactId::new(
+                source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:ДокументСсылка.<Имя документа>",
+            )))
+        );
+        assert_eq!(
+            types[0].resolved_id().map(|id| id.0.local_id.as_str()),
+            Some("platform_type:ДокументСсылка.<Имя документа>")
+        );
+        let binding = types[0]
+            .template_binding
+            .as_ref()
+            .expect("resolved template target must carry owner-parameter binding");
+        assert_eq!(
+            binding.template_key,
+            PlatformTypeTemplateKey::new("Document", "Ref")
+        );
+        assert_eq!(
+            binding.arguments,
+            vec![TemplateParameterBinding::OwnerParameter {
+                owner_parameter_index: 0,
+                target_parameter_index: 0,
+            }]
+        );
+        assert_eq!(
+            types[1].target,
             TypeRefTarget::Ok(TypeId(FactId::new(
                 source.clone(),
                 LanguageDomain::PlatformApi,
@@ -1875,9 +1926,11 @@ mod tests {
                 "platform_type:РазрешенныйТип",
             )))
         );
-        assert_eq!(types[1].target, TypeRefTarget::Unresolved);
+        assert_eq!(types[1].template_binding, None);
+        assert_eq!(types[2].target, TypeRefTarget::Unresolved);
+        assert_eq!(types[2].template_binding, None);
         assert_eq!(
-            types[2].target,
+            types[3].target,
             TypeRefTarget::Ambiguous(vec![
                 TypeId(FactId::new(
                     source.clone(),
@@ -1893,6 +1946,7 @@ mod tests {
                 )),
             ])
         );
+        assert_eq!(types[3].template_binding, None);
     }
 
     #[test]
