@@ -161,6 +161,11 @@ classification evidence, diagnostics and template bindings in its SQLite artifac
 remain private rebuildable provider state. The public contract is the resolver/search Rust API:
 lookup by open family/variant key and typed template binding DTOs on returned type references.
 
+T141 verification note: `context-resolver-search` preserves template owner-parameter bindings for
+callable parameter and overload return type references when the HBK-backed search index contains
+source-backed type-template links. This is an adapter/DTO guarantee, not a downstream analyzer
+implementation or a public SQLite table contract.
+
 ## Source And Language Domains
 
 Resolution is domain-aware. A name alone is not identity.

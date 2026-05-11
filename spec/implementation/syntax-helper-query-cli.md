@@ -215,6 +215,12 @@ bindings as an additional subset counter, and lists top unresolved/ambiguous tar
 source fact examples and ambiguous candidate type ids. It is not a provider JSON command and does
 not change the provider envelope, canonical export schema or query-time HBK access boundary.
 
+T141 verification note: platform type-template strengthening did not require a new schema version
+or provider JSON change. The current index builder keeps the T133 classification rules, stores
+callable parameter and overload return type-reference bindings as private normalized `type_refs`
+data, and resolver/search adapters expose those bindings through Rust DTOs without making SQLite
+columns a public contract.
+
 T133 type template classification rule:
 
 - use each template's `alias_base` or fallback root-locale `primary_base`; non-root localized

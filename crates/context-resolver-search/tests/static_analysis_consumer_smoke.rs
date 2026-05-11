@@ -24,6 +24,18 @@ mod provider_setup {
             platform_type("НастройкиКомпоновкиДанных"),
             platform_type("ОтборКомпоновкиДанных"),
             platform_type("ЭлементОтбораКомпоновкиДанных"),
+            platform_type_template(
+                "ДокументМенеджер.<Имя документа>",
+                "DocumentManager.<Document name>",
+            ),
+            platform_type_template(
+                "ДокументОбъект.<Имя документа>",
+                "DocumentObject.<Document name>",
+            ),
+            platform_type_template(
+                "ДокументСсылка.<Имя документа>",
+                "DocumentRef.<Document name>",
+            ),
         ] {
             builder
                 .platform_type(record)
@@ -77,6 +89,39 @@ mod provider_setup {
                 source: source_ref("filter-find"),
             })
             .expect("platform method must sink");
+        builder
+            .type_method(model::PlatformMethod {
+                owner: name_with_alias(
+                    "ДокументОбъект.<Имя документа>",
+                    "DocumentObject.<Document name>",
+                ),
+                owner_identity: Some("platform_type:ДокументОбъект.<Имя документа>".to_string()),
+                name: name("Связать"),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::PlatformObjects,
+                    model::RecordFamily::TypeMethod,
+                ),
+                signatures: vec![model::Signature {
+                    text: "Связать(<Ссылка>)".to_string(),
+                    parameters: vec![model::Parameter {
+                        name: "Ссылка".to_string(),
+                        required: true,
+                        type_refs: vec![model::TypeRef {
+                            name: "ДокументСсылка".to_string(),
+                        }],
+                        description: Some("Ссылка на документ.".to_string()),
+                    }],
+                    return_types: vec![model::TypeRef {
+                        name: "ДокументСсылка".to_string(),
+                    }],
+                    variant: None,
+                }],
+                return_types: Vec::new(),
+                description: Some("Связывает объект с ссылкой.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("document-object-link"),
+            })
+            .expect("type-template method must sink");
 
         for fact in shlang_string_facts() {
             builder.add_language_fact(fact);
@@ -141,10 +186,26 @@ mod provider_setup {
         }
     }
 
+    fn platform_type_template(primary: &str, alias: &str) -> model::PlatformType {
+        let mut record = platform_type(primary);
+        record.name = name_with_alias(primary, alias);
+        record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+        record.metadata_kind = record.name.primary.split('.').next().map(str::to_string);
+        record.template_parameters = vec!["Имя документа".to_string()];
+        record
+    }
+
     fn name(primary: &str) -> model::LocalizedName {
         model::LocalizedName {
             primary: primary.to_string(),
             alias: None,
+        }
+    }
+
+    fn name_with_alias(primary: &str, alias: &str) -> model::LocalizedName {
+        model::LocalizedName {
+            primary: primary.to_string(),
+            alias: Some(alias.to_string()),
         }
     }
 
@@ -187,7 +248,8 @@ mod analyzer_lookup {
 
     use context_resolver_core::{
         AvailabilityContext, CallableLookup, CompositeResolver, ContextResolver, LanguageDomain,
-        MemberQuery, ResolveContext, ResolveStatus, SourceId, TypeLookup,
+        MemberQuery, PlatformTypeTemplateKey, ResolveContext, ResolveStatus, SourceId,
+        TemplateParameterBinding, TypeLookup,
     };
     use context_resolver_search::{LanguageSearchSource, PlatformSearchSource};
 
@@ -292,6 +354,60 @@ mod analyzer_lookup {
                 .0
                 .local_id,
             "platform_type:ЭлементОтбораКомпоновкиДанных"
+        );
+
+        let document_object = resolver
+            .resolve_type(
+                TypeLookup::PlatformTypeTemplate {
+                    source: Some(&platform_source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    key: &PlatformTypeTemplateKey::new("Document", "Object"),
+                },
+                &ResolveContext::all(),
+            )
+            .expect("template type lookup must not fail");
+        assert_eq!(document_object.status, ResolveStatus::Ok);
+        let document_object = document_object
+            .facts
+            .first()
+            .expect("document object template must resolve")
+            .id
+            .clone();
+
+        let template_callable = resolver
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: Some(&document_object),
+                    name: "Связать",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("template callable lookup must not fail");
+        assert_eq!(template_callable.status, ResolveStatus::Ok);
+        let template_callable = template_callable
+            .facts
+            .first()
+            .expect("template callable must resolve");
+        let parameter_binding = template_callable.info.signatures[0].parameters[0].types[0]
+            .template_binding
+            .as_ref()
+            .expect("parameter type binding must survive adapter mapping");
+        assert_eq!(
+            parameter_binding.template_key,
+            PlatformTypeTemplateKey::new("Document", "Ref")
+        );
+        assert_eq!(
+            parameter_binding.arguments,
+            vec![TemplateParameterBinding::OwnerParameter {
+                owner_parameter_index: 0,
+                target_parameter_index: 0,
+            }]
+        );
+        assert_eq!(
+            template_callable.info.signatures[0].return_types[0]
+                .template_binding
+                .as_ref(),
+            Some(parameter_binding)
         );
 
         let bsl_string = resolver

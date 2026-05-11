@@ -28,7 +28,7 @@ conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T139.
+Current first unchecked task: T142.
 
 ## Loop Rule
 
@@ -194,26 +194,26 @@ Verification:
 References: FR-SH-003, FR-SH-SEARCH-002, T135, T136,
 `implementation/solution-context-resolve.md`, `implementation/syntax-helper-query-cli.md`.
 
-- [ ] Before implementation, update `implementation/syntax-helper-query-cli.md`,
+- [x] Before implementation, update `implementation/syntax-helper-query-cli.md`,
       `implementation/solution-context-resolve.md` and the T136 baseline-gate wording when the
       strengthened template behavior changes expected metrics or resolver/provider output.
-- [ ] Use the T135/T136 metrics to identify unclassified or weakly classified platform
+- [x] Use the T135/T136 metrics to identify unclassified or weakly classified platform
       metadata-template types before changing template logic.
-- [ ] Improve source-backed template family/variant classification without fallback-prefix
+- [x] Improve source-backed template family/variant classification without fallback-prefix
       families or localized-name heuristics.
-- [ ] Preserve owner-parameter bindings on member, callable return and parameter type references
+- [x] Preserve owner-parameter bindings on member, callable return and parameter type references
       where HBK exposes template-to-template references.
-- [ ] Keep classification diagnostics visible in the acceptance baseline so future changes do not
+- [x] Keep classification diagnostics visible in the acceptance baseline so future changes do not
       silently reduce template quality.
 
 Verification:
 
-- [ ] Template classification metrics improve or remain explicitly justified in
+- [x] Template classification metrics improve or remain explicitly justified in
       `acceptance/baseline.md`.
-- [ ] Tests cover manager-root classification, direct-reference classification, ambiguous family
+- [x] Tests cover manager-root classification, direct-reference classification, ambiguous family
       diagnostics and owner-parameter binding.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test --workspace`
+- [x] `cargo fmt --all --check`
+- [x] `cargo test --workspace`
 
 ### T142: Add a Type Graph Query Primitive
 

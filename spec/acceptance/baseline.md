@@ -1974,6 +1974,21 @@ rebuilt `target/uat/t139-sh-search-root.sqlite` from `shcntx_root.hbk` with 2541
 29594 ms and confirmed unchanged root totals: `50034` total, `32823` resolved, `17211` unresolved,
 `0` ambiguous and `335` template-binding rows.
 
+T141 strengthened focused coverage for platform type-template resolution without changing the
+accepted metrics or public provider/export contracts. The existing classification implementation
+already used manager-root family derivation, direct type-template reference scoring and
+recoverable unclassified/ambiguous diagnostics; the task added explicit coverage for callable
+parameter and overload return type references carrying owner-parameter bindings through
+`syntax-helper-search` and `context-resolver-search`. A representative T141 UAT run on 2026-05-11
+rebuilt `target/uat/t141-sh-search-ru.sqlite` from `shcntx_ru.hbk` with 25415 documents in
+37162 ms and confirmed `121` classified type templates, `0` unclassified diagnostics and unchanged
+type-reference totals: `47156` total, `29776` resolved, `17367` unresolved, `13` ambiguous and
+`353` template-binding rows. The same verification rebuilt `target/uat/t141-sh-search-root.sqlite`
+from `shcntx_root.hbk` with 25415 documents in 29672 ms and confirmed `121` classified type
+templates, `0` unclassified diagnostics and unchanged root totals: `50034` total, `32823`
+resolved, `17211` unresolved, `0` ambiguous and `335` template-binding rows. The result justifies
+keeping the T136 quality-gate values unchanged.
+
 T140 keeps the public provider/export envelope stable while adding source-scoped callable return
 facts. Page-level/shared Syntax Assistant return sections remain fact-level `return` arrays.
 Source-proven overload returns are modeled on the concrete signature, stored as `return_type` rows

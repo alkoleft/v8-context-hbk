@@ -5559,6 +5559,96 @@ mod tests {
     }
 
     #[test]
+    fn type_template_callable_parameter_and_return_refs_preserve_owner_parameter_binding() {
+        let path = temp_path("type-template-callable-binding.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        for mut record in [
+            platform_type(
+                "ДокументМенеджер.<Имя документа>",
+                Some("DocumentManager.<Document name>"),
+                "Document manager template.",
+            ),
+            platform_type(
+                "ДокументОбъект.<Имя документа>",
+                Some("DocumentObject.<Document name>"),
+                "Document object template.",
+            ),
+            platform_type(
+                "ДокументСсылка.<Имя документа>",
+                Some("DocumentRef.<Document name>"),
+                "Document reference template.",
+            ),
+        ] {
+            record.type_kind = model::PlatformTypeKind::MetadataTemplate;
+            record.metadata_kind = record.name.primary.split('.').next().map(str::to_string);
+            record.template_parameters = vec!["Имя документа".to_string()];
+            builder
+                .platform_type(record)
+                .expect("platform template must sink");
+        }
+        builder
+            .type_method(model::PlatformMethod {
+                owner: name(
+                    "ДокументОбъект.<Имя документа>",
+                    Some("DocumentObject.<Document name>"),
+                ),
+                owner_identity: Some("platform_type:ДокументОбъект.<Имя документа>".to_string()),
+                name: name("Связать", Some("Link")),
+                semantic: model::SemanticContext::default(),
+                signatures: vec![model::Signature {
+                    text: "Связать(<Ссылка>)".to_string(),
+                    parameters: vec![model::Parameter {
+                        name: "Ссылка".to_string(),
+                        required: true,
+                        type_refs: vec![model::TypeRef {
+                            name: "ДокументСсылка".to_string(),
+                        }],
+                        description: Some("Document reference.".to_string()),
+                    }],
+                    return_types: vec![model::TypeRef {
+                        name: "ДокументСсылка".to_string(),
+                    }],
+                    variant: None,
+                }],
+                return_types: Vec::new(),
+                description: Some("Returns a linked document reference.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source("document-object-link"),
+            })
+            .expect("type-template method must sink");
+        build_index_from_builder(&path, &metadata(), builder).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let method = index
+            .callable_by_owner_type_id("platform_type:ДокументОбъект.<Имя документа>", "Связать")
+            .expect("method lookup must not fail")
+            .pop()
+            .expect("method must resolve");
+
+        let parameter_binding = method.document.signatures[0].parameters[0].type_ref_facts[0]
+            .template_binding
+            .as_ref()
+            .expect("parameter type ref must preserve template binding");
+        assert_eq!(
+            parameter_binding.template_key,
+            model::PlatformTypeTemplateKey::new("Document", "Ref")
+        );
+        assert_eq!(
+            parameter_binding.arguments,
+            vec![model::TemplateParameterBinding::OwnerParameter {
+                owner_parameter_index: 0,
+                target_parameter_index: 0,
+            }]
+        );
+
+        let return_binding = method.document.signatures[0].return_type_facts[0]
+            .template_binding
+            .as_ref()
+            .expect("signature return type ref must preserve template binding");
+        assert_eq!(return_binding, parameter_binding);
+    }
+
+    #[test]
     fn type_template_binding_does_not_choose_ambiguous_type_ref_target() {
         let path = temp_path("type-template-binding-ambiguous.sqlite");
         let mut builder = SearchIndexBuilder::new();
