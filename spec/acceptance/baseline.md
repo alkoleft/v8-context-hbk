@@ -1943,6 +1943,15 @@ Tracked informational metrics until later tightening tasks:
 - whether unresolved primitive/domain names are resolved by type-domain separation work rather than
   by platform-type guessing.
 
+T138 records a spec-only crate-boundary decision for type concepts. A separate type crate is
+deferred for now. The current smallest boundaries remain `syntax-helper-model` for source-backed raw
+type facts and template bindings before indexing/export, `syntax-helper-search` for resolved target
+ids, ambiguity/gap reporting and private index persistence, `context-resolver-core` for
+source-neutral resolver DTOs and domain-qualified ids, and `context-resolver-search` for adapter
+mapping between provider-local facts and resolver DTOs. This does not change code, workspace
+membership, provider JSON, canonical export JSON, SQLite schema, parser behavior, UAT cases or the
+T136 quality-gate values.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

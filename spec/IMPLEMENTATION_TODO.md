@@ -28,7 +28,7 @@ conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T138.
+Current first unchecked task: T139.
 
 ## Loop Rule
 
@@ -121,23 +121,26 @@ Verification:
 References: ADR-0008, ADR-0011, `implementation/components.md`,
 `implementation/solution-context-resolve.md`.
 
-- [ ] If a separate type crate is selected, add an ADR or accepted decision because this changes the
+Decision: defer a separate type crate for now. The smallest current ownership boundaries are
+recorded in `implementation/components.md`; no code movement or new ADR is required.
+
+- [x] If a separate type crate is selected, add an ADR or accepted decision because this changes the
       workspace architecture boundary. If it is rejected or deferred, record the decision in
       `implementation/components.md` without adding a new ADR.
-- [ ] Decide whether type identities, type-reference resolution DTOs and template binding DTOs
+- [x] Decide whether type identities, type-reference resolution DTOs and template binding DTOs
       should move into a separate workspace crate or remain split between
       `syntax-helper-model`, `syntax-helper-search` and `context-resolver-core`.
-- [ ] If a separate crate is selected, specify its ownership, dependency rules and migration slices
+- [x] If a separate crate is selected, specify its ownership, dependency rules and migration slices
       before moving code.
-- [ ] Keep HBK parsing, SQLite storage, CLI/provider JSON assembly and downstream analyzer logic out
+- [x] Keep HBK parsing, SQLite storage, CLI/provider JSON assembly and downstream analyzer logic out
       of the type crate boundary.
-- [ ] If a separate crate is rejected for now, record the reason and the smallest existing boundary
+- [x] If a separate crate is rejected for now, record the reason and the smallest existing boundary
       that will own each type concept.
 
 Verification:
 
-- [ ] `implementation/components.md` records the selected crate/boundary decision.
-- [ ] No code movement is performed before the boundary is specified.
+- [x] `implementation/components.md` records the selected crate/boundary decision.
+- [x] No code movement is performed before the boundary is specified.
 
 ### T139: Split Raw Type References from Resolved Type Targets
 

@@ -132,6 +132,40 @@ A broad facade crate is not selected yet. Add one only if a real downstream inte
 `context-resolver-core` plus concrete source-adapter crates creates avoidable coupling or repeated
 boilerplate.
 
+## Type Boundary Decision
+
+T138 defers a separate workspace crate for type identities, type-reference resolution DTOs and
+type-template binding DTOs. No new ADR is required because this does not change the accepted
+workspace architecture; it records the current smallest ownership boundary for the existing
+ADR-0008 and ADR-0011 contracts.
+
+The deferred crate would be premature now because the current type concepts live at different
+source-of-truth layers:
+
+- `syntax-helper-model` owns Syntax Assistant domain facts before indexing/export. It owns raw
+  source type-reference spelling, platform type-template keys, template binding DTOs that are
+  derived from HBK facts, and shared semantic identity helpers. These values may be serialized by
+  adapters, but the model crate must not depend on SQLite, resolver domains, CLI/provider JSON or
+  downstream analyzer concepts.
+- `syntax-helper-search` owns index-time resolution of those source-backed type references into
+  `target_type_id`, explicit unresolved/ambiguous measurement, type-template classification
+  persistence and private rebuildable SQLite layout. Resolved target ids, ambiguous candidate
+  reporting and quality-gap counters are index/provider state, not extraction-domain identity.
+- `context-resolver-core` owns source-neutral resolver ids and DTOs for in-process static-analysis
+  integration: `FactId`, `TypeId`, resolver `TypeRef`, `PlatformTypeTemplateKey`,
+  `TypeTemplateBinding`, response statuses and domain separation. These DTOs must remain independent
+  of HBK, Syntax Assistant parser records, SQLite tables and CLI provider JSON.
+- `context-resolver-search` owns the adapter mapping between `syntax-helper-search` provider facts
+  and `context-resolver-core` resolver DTOs. The mapping is intentional because the resolver adds
+  source/domain identity around provider-local facts and hides provider storage details.
+
+A future separate type crate may be reconsidered only after a concrete implementation task proves
+that these mappings are repeated across more than the current search/resolver adapter boundary or
+that multiple non-HBK providers need the same Rust type model. That future task must first specify
+which layer owns raw spelling, resolved target identity, ambiguity/candidate data, template
+bindings and domain-qualified resolver ids. The crate must still keep HBK parsing, SQLite storage,
+CLI/provider JSON assembly and downstream analyzer logic out of its boundary.
+
 ## Pre-Rework Legacy Cleanup Boundary
 
 Before the resolver and non-platform Syntax Assistant rework expands the implementation surface, the
