@@ -117,6 +117,7 @@ v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platfor
 v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --edge member_of --format json
 v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:Символы:ПС" --limit 5 --compact --format json
 v8-context-hbk syntax related --index <index.sqlite> --owner "НастройкиКомпоновкиДанных" --member "Отбор" --format json
+v8-context-hbk syntax related --index <index.sqlite> --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --graph --format json
 ```
 
 For repeated interactive use, query commands may omit `--index` and use the resolved default index
@@ -801,6 +802,80 @@ Type-reference edge filters keep `query.kind: "type_references"`; `member_of` re
 `query.kind: "related"` because it explains graph ownership rather than a property, return or
 constructor type reference. The first public edge-filter surface remains bounded to exact `--id`
 roots and is not a general graph-query language.
+
+### Type Graph Query Primitive
+
+Status: specified by T142 as a provider primitive under the existing `syntax related` command
+family.
+
+The type graph primitive is a compact graph-oriented provider view rooted at one exact provider id:
+
+```bash
+v8-context-hbk syntax related --index <index.sqlite> \
+  --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" \
+  --graph --format json
+```
+
+The primitive does not add a top-level command, transport, service, storage selector, BSL parser,
+analyzer implementation or public SQLite table contract. It reads only the resolved prebuilt local
+index and reuses the provider response envelope:
+
+- `schema_version` remains `1`;
+- `command` remains `related`;
+- `query.kind` is `type_graph`;
+- `query.root.id` records the exact root id;
+- `query.depth` uses the existing bounded traversal depth and is capped at `5`;
+- `query.limit`, when present, bounds the total `results[]` array including the root fact;
+- `results[0]` is the root fact when the root exists and `limit >= 1`;
+- subsequent results are deterministic related facts reachable through the existing bounded
+  relationship graph, deduplicated by provider id.
+
+Accepted roots are exact provider ids for platform types, owned member facts and callable facts.
+Plain names, owner/member roots and callable-name roots are intentionally not graph roots in this
+slice because they can be ambiguous. Callers must resolve those inputs first through the existing
+`syntax get` primitives and pass the resulting provider id. Missing roots return
+`status: "not_found"` with a `NOT_FOUND` diagnostic. Graph mode with multiple roots, `--edge` or
+`--compact` returns `status: "unsupported"` with an `UNSUPPORTED_QUERY` diagnostic. This restriction
+applies only to the new `--graph` mode; accepted non-graph behavior such as
+`syntax related --compact` and `syntax related --id ... --edge member_of` remains unchanged.
+
+Fact fields stay export-compatible and live under `results[].fact`: `id`, `kind`, `name`, `owner`,
+`signatures`, `signatures[].parameters[]`, `types`, `return` and optional `description`. Graph and
+resolution details live only under `results[].meta`, including:
+
+- `root`: `true` for the root result and omitted or `false` for related results;
+- `depth` and `path` relationship metadata using the same path step shape as `syntax related`;
+- `owner_type_id` where the fact has a resolved owner type;
+- `target_type_ids` for resolved type-reference targets;
+- `type_references`, a deterministic graph metadata array covering fact-level type refs,
+  callable-level returns, signature-level returns and signature parameter type refs.
+
+Each `meta.type_references[]` item records the source-backed type-reference spelling and resolution
+state without changing export-compatible fact fields:
+
+- `role`: `type`, `return`, `signature_return` or `parameter_type`;
+- `name`: source-backed type-reference spelling;
+- `status`: `ok`, `unresolved` or `ambiguous`;
+- `target_type_id`: present only for `ok`;
+- `candidate_type_ids`: present for `ambiguous`;
+- `signature_ordinal` and `parameter_ordinal` where the reference belongs to a concrete signature
+  or parameter;
+- `parameter_name` for parameter type refs;
+- `template_binding` when HBK-backed template binding evidence exists.
+
+For ordinary provider commands, diagnostics remain empty when `status` is `ok`. The graph primitive
+adds a T142-specific recoverable diagnostic exception: if the root exists but graph type-reference
+metadata contains unresolved or ambiguous targets, the response still has `status: "ok"` and may
+include deterministic `UNRESOLVED_TYPE_REFERENCE` and `AMBIGUOUS_TYPE_REFERENCE` diagnostics. These
+diagnostics are graph-quality metadata, not lookup failure. They include the source fact id, role,
+type-reference name and candidate ids for ambiguous references. They must not expose HBK paths, TOC
+paths, HTML paths, page titles, SQLite rowids, FTS terms or storage table names.
+
+The first accepted UAT root is the SKD filter property
+`type_property:platform_type:НастройкиКомпоновкиДанных:Отбор`. One graph response must expose the
+property itself, the referenced `ОтборКомпоновкиДанных` type, its `Элементы` property, the
+`КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` callable and the documented
+`ЭлементОтбораКомпоновкиДанных` fields needed by the expression-chain provider scenario.
 
 ### `relations`
 

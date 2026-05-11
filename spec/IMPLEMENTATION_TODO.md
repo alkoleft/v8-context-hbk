@@ -220,24 +220,28 @@ Verification:
 References: ADR-0007, ADR-0008, FR-SH-PROVIDER-001, FR-SH-SEARCH-001, FR-SH-SEARCH-002,
 `implementation/syntax-helper-query-cli.md`, `acceptance/uat-test-cases.md`.
 
-- [ ] Specify the primitive in `implementation/syntax-helper-query-cli.md` and add UAT coverage
+- [x] Specify the primitive in `implementation/syntax-helper-query-cli.md` and add UAT coverage
       before implementation. Add an ADR only if the selected solution introduces a new top-level
       command, provider boundary or transport instead of staying under the existing
       `syntax get` / `syntax related` family.
-- [ ] Specify a bounded provider primitive for a compact type graph rooted at an exact type id,
+- [x] Specify a bounded provider primitive for a compact type graph rooted at an exact type id,
       owner/member id or callable id.
-- [ ] Keep the public CLI under the existing `syntax get` / `syntax related` command family unless
+- [x] Keep the public CLI under the existing `syntax get` / `syntax related` command family unless
       the spec explicitly approves a new top-level command.
-- [ ] Return constructors, members, callable overloads, parameter type refs, return type refs,
+- [x] Return constructors, members, callable overloads, parameter type refs, return type refs,
       template bindings and unresolved/ambiguous type-reference diagnostics in a deterministic
       graph-oriented shape.
-- [ ] Add UAT for a real expression-chain workflow that benefits from one graph query instead of
+- [x] Add UAT for a real expression-chain workflow that benefits from one graph query instead of
       many ad hoc related calls.
 
 Verification:
 
-- [ ] Provider JSON uses one versioned envelope and keeps graph metadata outside fact fields.
-- [ ] The graph query meets the current NFR-QUERY-001 target on the accepted corpus or records a
+- [x] Provider JSON uses one versioned envelope and keeps graph metadata outside fact fields.
+- [x] The graph query meets the current NFR-QUERY-001 target on the accepted corpus or records a
       measured blocker.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test --workspace`
+- [x] `cargo fmt --all --check`
+- [x] `cargo test --workspace`
+
+Result: implemented as `syntax related --id <exact-provider-id> --graph`; UAT-SH-024 passed on
+`target/uat/t142-type-graph.sqlite` built from `shcntx_ru.hbk` with `25415` documents, and the
+accepted graph query completed in `0.15` seconds.

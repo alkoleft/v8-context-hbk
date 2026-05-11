@@ -1605,6 +1605,27 @@ member_of --format json` returned the owning fact `platform_type:Настрой�
 `member_of` relationship path; text output included the same owner fact; unsupported-edge provider
 diagnostics and CLI help both listed the supported edge set including `member_of`.
 
+T142 added the first bounded type-graph provider primitive under the existing `syntax related`
+command family. `syntax related --id <exact-provider-id> --graph --format json` uses provider
+`schema_version: 1`, records `query.kind == "type_graph"`, returns the exact root as the first
+result and bounds the whole graph with `--limit` including that root. Shared platform facts stay in
+export-compatible `results[].fact` objects, while graph traversal, type-reference resolution,
+template binding evidence and recoverable unresolved/ambiguous type-reference diagnostics stay in
+`results[].meta` or envelope diagnostics. Graph mode rejects plain names, owner/member roots,
+query/language/enum/global-property roots, explicit `--edge` filters and `--compact` as
+unsupported combinations; existing non-graph compact and edge behavior remains unchanged.
+
+The accepted T142 verification used a fresh Russian index at
+`target/uat/t142-type-graph.sqlite` with `25415` documents and `37292 ms` build time.
+UAT-SH-024 passed:
+`syntax related --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" --graph
+--limit 200 --format json` returned the SKD expression-chain facts needed to navigate from
+`НастройкиКомпоновкиДанных.Отбор` through `ОтборКомпоновкиДанных`, filter elements and the
+`КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` callable to item fields such as
+`ЛевоеЗначение`, `ВидСравнения`, `ПравоеЗначение` and `Использование`. The measured graph query
+time was `0.15` seconds, within NFR-QUERY-001, and both `--graph --compact` and
+`--graph --id "query_table:БизнесПроцесс"` returned explicit `unsupported` provider responses.
+
 T65 accepted ADR-0008 and the Rust solution-context resolver API design. This is a spec-only
 decision and does not change CLI behavior, provider JSON, SQLite schema or parser output. ADR-0008
 adds a future in-process Rust boundary for a concrete full-context application that needs fast

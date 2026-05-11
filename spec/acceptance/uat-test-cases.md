@@ -2043,6 +2043,149 @@ Cleanup:
 - `target/uat/t135-type-ref.sqlite` and `target/uat/t135-type-ref-*.json` are service data and may
   be deleted after the run.
 
+## UAT-SH-024: Type Graph Query for Expression-Chain Workflow
+
+Related use case: UC-SH-005B, UC-SH-005C and UC-SH-005D.
+
+Related requirements: FR-SH-SEARCH-001, FR-SH-SEARCH-002, FR-SH-PROVIDER-001, NFR-QUERY-001.
+
+Status: implementation UAT for T142.
+
+Preconditions:
+
+- `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
+- `target/uat/t142-type-graph.sqlite` can be created or removed.
+- `jq` is available for JSON assertions.
+
+Steps:
+
+```bash
+rm -f target/uat/t142-type-graph.sqlite target/uat/t142-type-graph.json \
+  target/uat/t142-type-graph.time target/uat/t142-type-graph-unsupported*.json
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t142-type-graph.sqlite
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t142-type-graph.sqlite \
+  /usr/bin/time -f '%e' -o target/uat/t142-type-graph.time \
+  target/debug/v8-context-hbk syntax related \
+    --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" \
+    --graph --limit 200 --format json \
+  > target/uat/t142-type-graph.json
+
+awk 'BEGIN { ok = 0 } { if ($1 < 2.0) ok = 1 } END { exit ok ? 0 : 1 }' \
+  target/uat/t142-type-graph.time
+
+jq -e '
+  .schema_version == 1
+  and .command == "related"
+  and .status == "ok"
+  and .query.kind == "type_graph"
+  and .query.root.id == "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"
+  and .query.limit == 200
+  and .results[0].fact.id == "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"
+  and .results[0].meta.root == true
+' target/uat/t142-type-graph.json
+jq -e '
+  any(.results[];
+    .fact.id == "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"
+    and .fact.owner == "НастройкиКомпоновкиДанных"
+    and (.fact.types | index("ОтборКомпоновкиДанных") != null)
+    and any(.meta.type_references[]?;
+      .role == "type"
+      and .name == "ОтборКомпоновкиДанных"
+      and .status == "ok"
+      and .target_type_id == "platform_type:ОтборКомпоновкиДанных"))
+  and any(.results[]; .fact.id == "platform_type:ОтборКомпоновкиДанных")
+  and any(.results[];
+    .fact.id == "type_property:platform_type:ОтборКомпоновкиДанных:Элементы"
+    and (.fact.types | index("КоллекцияЭлементовОтбораКомпоновкиДанных") != null))
+  and any(.results[];
+    .fact.id == "type_method:platform_type:КоллекцияЭлементовОтбораКомпоновкиДанных:Добавить"
+    and (.fact.return | index("ЭлементОтбораКомпоновкиДанных") != null))
+  and any(.results[];
+    .fact.kind == "type_property"
+    and .fact.owner == "ЭлементОтбораКомпоновкиДанных"
+    and .fact.name.primary == "ЛевоеЗначение")
+  and any(.results[];
+    .fact.kind == "type_property"
+    and .fact.owner == "ЭлементОтбораКомпоновкиДанных"
+    and .fact.name.primary == "ВидСравнения")
+  and any(.results[];
+    .fact.kind == "type_property"
+    and .fact.owner == "ЭлементОтбораКомпоновкиДанных"
+    and .fact.name.primary == "ПравоеЗначение")
+  and any(.results[];
+    .fact.kind == "type_property"
+    and .fact.owner == "ЭлементОтбораКомпоновкиДанных"
+    and .fact.name.primary == "Использование")
+' target/uat/t142-type-graph.json
+jq -e '
+  all(.results[];
+    (.meta | has("depth"))
+    and (.meta | has("path"))
+    and (.fact | has("type_references") | not)
+    and (.fact | has("type_refs") | not)
+    and (.fact | has("return_types") | not)
+    and (.fact | has("source") | not)
+    and (.fact | has("source_hbk") | not)
+    and (.fact | has("toc_path") | not)
+    and (.fact | has("html_path") | not)
+    and (.fact | has("page_title") | not)
+    and (.fact | has("rowid") | not)
+    and (.fact | has("parameter_text") | not)
+    and (.fact | has("parameter_terms") | not)
+    and (.fact | has("relation_keys") | not))
+  and all(.diagnostics[]?;
+    (.code == "UNRESOLVED_TYPE_REFERENCE" or .code == "AMBIGUOUS_TYPE_REFERENCE")
+    and (.source_id | type == "string")
+    and (.role | type == "string")
+    and (.name | type == "string"))
+' target/uat/t142-type-graph.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t142-type-graph.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related \
+    --id "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор" \
+    --graph --compact --format json \
+  > target/uat/t142-type-graph-unsupported.json
+jq -e '.status == "unsupported" and any(.diagnostics[]; .code == "UNSUPPORTED_QUERY")' \
+  target/uat/t142-type-graph-unsupported.json
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t142-type-graph.sqlite \
+  cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax related --id "query_table:БизнесПроцесс" --graph --limit 1 --format json \
+  > target/uat/t142-type-graph-unsupported-root.json
+jq -e '.status == "unsupported" and any(.diagnostics[]; .code == "UNSUPPORTED_QUERY")' \
+  target/uat/t142-type-graph-unsupported-root.json
+```
+
+Expected result:
+
+- The graph command exits with code `0`, reads the prebuilt index and does not accept an HBK source
+  path.
+- The JSON response uses the provider envelope with `command="related"` and
+  `query.kind="type_graph"`.
+- The first result is the exact root fact; `--limit` bounds the total `results[]` array including
+  that root.
+- The single response contains the accepted SKD expression-chain facts: the settings `Отбор`
+  property, `ОтборКомпоновкиДанных`, `Элементы`, collection `Добавить` and filter-item fields.
+- Shared platform fact fields stay export-compatible under `results[].fact`.
+- Graph and resolution details, including type-reference target status and relationship paths, stay
+  under `results[].meta`.
+- Recoverable unresolved or ambiguous type-reference diagnostics may be present while
+  `status="ok"` when the root exists; they are graph-quality diagnostics, not lookup failures.
+- Public JSON does not expose SQLite table names, rowids, FTS/search token fields, HBK paths, TOC
+  paths, HTML paths or page titles.
+- `syntax related --graph --compact` is unsupported; non-graph `syntax related --compact` remains
+  covered by UAT-SH-021.
+- Query-table, language, enum and global-property facts are not accepted as type-graph roots.
+- The graph query meets NFR-QUERY-001 on the accepted corpus, or the task records a measured
+  blocker and remains incomplete.
+
+Cleanup:
+
+- `target/uat/t142-type-graph.sqlite`, `target/uat/t142-type-graph*.json` and
+  `target/uat/t142-type-graph.time` are service data and may be deleted after the run.
+
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 
 Related use case: UC-SH-001.

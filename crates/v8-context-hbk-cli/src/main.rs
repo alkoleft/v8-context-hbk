@@ -18,9 +18,10 @@ use syntax_helper_extract::{SyntaxHelperReader, SyntaxHelperStreamError};
 #[cfg(test)]
 use syntax_helper_search::build_index_from_builder;
 use syntax_helper_search::{
-    IndexMetadata, RelatedHit, SearchDocument, SearchHit, SearchIndex, SearchIndexBuilder,
-    SearchMode, TypeReferenceGap, TypeReferenceGapExample, TypeReferenceGapReport,
-    TypeReferenceRoleReport, build_index_from_builder_with_report,
+    IndexMetadata, RelatedHit, SearchDocument, SearchDocumentKind, SearchHit, SearchIndex,
+    SearchIndexBuilder, SearchMode, SearchTypeRef, SearchTypeRefTarget, TypeReferenceGap,
+    TypeReferenceGapExample, TypeReferenceGapReport, TypeReferenceRoleReport,
+    build_index_from_builder_with_report,
 };
 
 const DEFAULT_SEARCH_LIMIT: usize = 20;
@@ -170,6 +171,8 @@ enum SyntaxCommand {
         limit: Option<usize>,
         #[arg(long)]
         compact: bool,
+        #[arg(long)]
+        graph: bool,
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
@@ -622,6 +625,7 @@ fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
             depth,
             limit,
             compact,
+            graph,
             format,
         } => syntax_related(
             index,
@@ -634,6 +638,7 @@ fn syntax(command: SyntaxCommand) -> Result<(), Box<dyn std::error::Error>> {
                 depth,
                 limit,
                 compact,
+                graph,
             },
             format,
         ),
@@ -851,6 +856,7 @@ struct RelatedArgs {
     depth: u32,
     limit: Option<usize>,
     compact: bool,
+    graph: bool,
 }
 
 fn syntax_related(
@@ -868,8 +874,87 @@ fn syntax_related(
         args.edge.as_deref(),
         args.limit,
         args.compact,
+        args.graph,
     );
     let effective_limit = args.limit.unwrap_or(DEFAULT_RELATED_LIMIT);
+    if args.graph {
+        if args.name.is_some()
+            || args.owner.is_some()
+            || args.member.is_some()
+            || args.edge.is_some()
+            || args.compact
+        {
+            if matches!(format, OutputFormat::Json) {
+                return print_provider_response(
+                    "related",
+                    "unsupported",
+                    query,
+                    Vec::new(),
+                    unsupported_query_diagnostic(
+                        "syntax related --graph requires exactly one --id root and does not support --edge or --compact",
+                    ),
+                );
+            }
+            return Err(
+                "syntax related --graph requires exactly one --id root and does not support --edge or --compact"
+                    .into(),
+            );
+        }
+        let Some(id) = args.id.as_deref() else {
+            if matches!(format, OutputFormat::Json) {
+                return print_provider_response(
+                    "related",
+                    "unsupported",
+                    query,
+                    Vec::new(),
+                    unsupported_query_diagnostic(
+                        "syntax related --graph requires exactly one --id root",
+                    ),
+                );
+            }
+            return Err("syntax related --graph requires exactly one --id root".into());
+        };
+        let Some(root) = index.get_by_id(id)? else {
+            return print_related_root_diagnostic("related", query, Vec::new(), format);
+        };
+        if !is_supported_type_graph_root_kind(root.document.kind) {
+            let message = "syntax related --graph supports only platform type, owned member and callable roots";
+            if matches!(format, OutputFormat::Json) {
+                return print_provider_response(
+                    "related",
+                    "unsupported",
+                    query,
+                    Vec::new(),
+                    unsupported_query_diagnostic(message),
+                );
+            }
+            return Err(message.into());
+        }
+        if effective_limit == 0 {
+            return match format {
+                OutputFormat::Text => Ok(()),
+                OutputFormat::Json => {
+                    print_provider_response("related", "ok", query, Vec::new(), Vec::new())
+                }
+            };
+        }
+        let related_limit = effective_limit - 1;
+        let hits = if related_limit == 0 {
+            Vec::new()
+        } else {
+            index.related_by_id(id, args.depth, related_limit)?
+        };
+        return match format {
+            OutputFormat::Text => {
+                println!(
+                    "{} [{}] depth=0",
+                    root.document.name.primary, root.document.kind
+                );
+                print_related_hits_text(&hits)
+            }
+            OutputFormat::Json => print_provider_type_graph(&index, query, root, &hits),
+        };
+    }
     if let (Some(id), Some(edge)) = (args.id.as_deref(), args.edge.as_deref()) {
         if args.name.is_some() || args.owner.is_some() || args.member.is_some() {
             if matches!(format, OutputFormat::Json) {
@@ -1206,6 +1291,19 @@ fn owner_member_roots(
     Ok(index.get_by_owner_member(owner, member)?)
 }
 
+fn is_supported_type_graph_root_kind(kind: SearchDocumentKind) -> bool {
+    matches!(
+        kind,
+        SearchDocumentKind::PlatformType
+            | SearchDocumentKind::TypeProperty
+            | SearchDocumentKind::TypeMethod
+            | SearchDocumentKind::Constructor
+            | SearchDocumentKind::GlobalMethod
+            | SearchDocumentKind::ModuleEvent
+            | SearchDocumentKind::TypeEvent
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn related_query_value(
     id: Option<&str>,
@@ -1216,6 +1314,7 @@ fn related_query_value(
     edge: Option<&str>,
     limit: Option<usize>,
     compact: bool,
+    graph: bool,
 ) -> Value {
     let root = match (id, name, owner, member) {
         (Some(id), None, None, None) => json!({ "id": id }),
@@ -1223,8 +1322,11 @@ fn related_query_value(
         (None, None, Some(owner), Some(member)) => json!({ "owner": owner, "member": member }),
         _ => json!({ "invalid": true }),
     };
-    let mut query =
-        json!({ "kind": related_query_kind(edge), "root": root, "depth": depth.min(5) });
+    let mut query = json!({
+        "kind": if graph { "type_graph" } else { related_query_kind(edge) },
+        "root": root,
+        "depth": depth.min(5)
+    });
     if let Some(edge) = edge {
         query["edge"] = json!(edge);
     }
@@ -1233,6 +1335,9 @@ fn related_query_value(
     }
     if compact {
         query["output"] = json!("compact");
+    }
+    if graph {
+        query["output"] = json!("graph");
     }
     query
 }
@@ -1404,6 +1509,184 @@ fn print_provider_related_hits(
         .map(|hit| related_result_value(hit, compact))
         .collect::<Vec<_>>();
     print_provider_response("related", "ok", query, results, Vec::new())
+}
+
+fn print_provider_type_graph(
+    index: &SearchIndex,
+    query: Value,
+    root: SearchHit,
+    hits: &[RelatedHit],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut seen = std::collections::BTreeSet::from([root.document.id.clone()]);
+    let mut graph_results = Vec::with_capacity(hits.len() + 1);
+    graph_results.push(type_graph_root_result(index, &root.document)?);
+    for hit in hits {
+        if !seen.insert(hit.document.id.clone()) {
+            continue;
+        }
+        graph_results.push(type_graph_related_result(index, hit)?);
+    }
+    let diagnostics = graph_type_reference_diagnostics(&graph_results);
+    print_provider_response("related", "ok", query, graph_results, diagnostics)
+}
+
+fn type_graph_root_result(
+    index: &SearchIndex,
+    document: &SearchDocument,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let mut meta = json!({
+        "root": true,
+        "depth": 0,
+        "path": [],
+    });
+    add_graph_document_meta(index, document, &mut meta)?;
+    Ok(json!({
+        "fact": document_fact(document, ProviderFactDetail::Full),
+        "meta": meta,
+    }))
+}
+
+fn type_graph_related_result(
+    index: &SearchIndex,
+    hit: &RelatedHit,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let mut meta = json!({
+        "depth": hit.depth,
+        "path": hit.via.iter().map(relation_step_value).collect::<Vec<_>>(),
+    });
+    add_graph_document_meta(index, &hit.document, &mut meta)?;
+    Ok(json!({
+        "fact": document_fact(&hit.document, ProviderFactDetail::Full),
+        "meta": meta,
+    }))
+}
+
+fn add_graph_document_meta(
+    index: &SearchIndex,
+    document: &SearchDocument,
+    meta: &mut Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    add_provider_resolution_meta(index, document, meta)?;
+    let type_references = graph_type_references(document);
+    if !type_references.is_empty() {
+        meta["type_references"] = json!(type_references);
+    }
+    Ok(())
+}
+
+fn graph_type_references(document: &SearchDocument) -> Vec<Value> {
+    let mut references = Vec::new();
+    references.extend(
+        document
+            .type_ref_facts
+            .iter()
+            .map(|type_ref| graph_type_ref_value("type", type_ref, None, None, None)),
+    );
+    references.extend(
+        document
+            .return_type_facts
+            .iter()
+            .map(|type_ref| graph_type_ref_value("return", type_ref, None, None, None)),
+    );
+    for (signature_ordinal, signature) in document.signatures.iter().enumerate() {
+        references.extend(signature.return_type_facts.iter().map(|type_ref| {
+            graph_type_ref_value(
+                "signature_return",
+                type_ref,
+                Some(signature_ordinal),
+                None,
+                None,
+            )
+        }));
+        for (parameter_ordinal, parameter) in signature.parameters.iter().enumerate() {
+            references.extend(parameter.type_ref_facts.iter().map(|type_ref| {
+                graph_type_ref_value(
+                    "parameter_type",
+                    type_ref,
+                    Some(signature_ordinal),
+                    Some(parameter_ordinal),
+                    Some(parameter.name.as_str()),
+                )
+            }));
+        }
+    }
+    references
+}
+
+fn graph_type_ref_value(
+    role: &str,
+    type_ref: &SearchTypeRef,
+    signature_ordinal: Option<usize>,
+    parameter_ordinal: Option<usize>,
+    parameter_name: Option<&str>,
+) -> Value {
+    let mut value = json!({
+        "role": role,
+        "name": type_ref.name,
+        "status": graph_type_ref_status(&type_ref.target),
+    });
+    if let Some(target_type_id) = type_ref.target.target_type_id() {
+        value["target_type_id"] = json!(target_type_id);
+    }
+    let candidate_type_ids = type_ref.target.candidate_type_ids();
+    if !candidate_type_ids.is_empty() {
+        value["candidate_type_ids"] = json!(candidate_type_ids);
+    }
+    if let Some(signature_ordinal) = signature_ordinal {
+        value["signature_ordinal"] = json!(signature_ordinal);
+    }
+    if let Some(parameter_ordinal) = parameter_ordinal {
+        value["parameter_ordinal"] = json!(parameter_ordinal);
+    }
+    if let Some(parameter_name) = parameter_name {
+        value["parameter_name"] = json!(parameter_name);
+    }
+    if let Some(binding) = &type_ref.template_binding {
+        value["template_binding"] = json!(binding);
+    }
+    value
+}
+
+fn graph_type_ref_status(target: &SearchTypeRefTarget) -> &'static str {
+    match target {
+        SearchTypeRefTarget::Ok(_) => "ok",
+        SearchTypeRefTarget::Unresolved => "unresolved",
+        SearchTypeRefTarget::Ambiguous(_) => "ambiguous",
+    }
+}
+
+fn graph_type_reference_diagnostics(results: &[Value]) -> Vec<Value> {
+    let mut diagnostics = Vec::new();
+    for result in results {
+        let Some(source_id) = result["fact"]["id"].as_str() else {
+            continue;
+        };
+        for type_ref in result["meta"]["type_references"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            match type_ref["status"].as_str() {
+                Some("unresolved") => diagnostics.push(json!({
+                    "code": "UNRESOLVED_TYPE_REFERENCE",
+                    "message": "The graph contains an unresolved type reference.",
+                    "source_id": source_id,
+                    "role": type_ref["role"],
+                    "name": type_ref["name"],
+                })),
+                Some("ambiguous") => diagnostics.push(json!({
+                    "code": "AMBIGUOUS_TYPE_REFERENCE",
+                    "message": "The graph contains an ambiguous type reference.",
+                    "source_id": source_id,
+                    "role": type_ref["role"],
+                    "name": type_ref["name"],
+                    "candidate_type_ids": type_ref["candidate_type_ids"].clone(),
+                })),
+                _ => {}
+            }
+        }
+    }
+    diagnostics
 }
 
 fn related_result_value(hit: &RelatedHit, compact: bool) -> Value {
@@ -1839,6 +2122,7 @@ mod tests {
             None,
             Some(2),
             true,
+            false,
         );
 
         assert_eq!(query["kind"], "related");
@@ -1859,11 +2143,110 @@ mod tests {
             Some("member_of"),
             Some(1),
             false,
+            false,
         );
 
         assert!(is_supported_edge_filter("member_of"));
         assert_eq!(query["kind"], "related");
         assert_eq!(query["edge"], "member_of");
+    }
+
+    #[test]
+    fn related_graph_query_records_graph_output_and_limit() {
+        let query = related_query_value(
+            Some("type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"),
+            None,
+            None,
+            None,
+            9,
+            None,
+            Some(80),
+            false,
+            true,
+        );
+
+        assert_eq!(query["kind"], "type_graph");
+        assert_eq!(
+            query["root"]["id"],
+            "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор"
+        );
+        assert_eq!(query["depth"], 5);
+        assert_eq!(query["limit"], 80);
+        assert_eq!(query["output"], "graph");
+    }
+
+    #[test]
+    fn related_graph_command_parses_existing_command_family() {
+        let cli = Cli::try_parse_from([
+            "v8-context-hbk",
+            "syntax",
+            "related",
+            "--id",
+            "type_property:platform_type:НастройкиКомпоновкиДанных:Отбор",
+            "--graph",
+            "--limit",
+            "1",
+            "--format",
+            "json",
+        ])
+        .expect("syntax related --graph command must parse");
+
+        match cli.command {
+            Command::Syntax {
+                command:
+                    SyntaxCommand::Related {
+                        id,
+                        graph,
+                        limit,
+                        compact,
+                        edge,
+                        format,
+                        ..
+                    },
+            } => {
+                assert_eq!(
+                    id.as_deref(),
+                    Some("type_property:platform_type:НастройкиКомпоновкиДанных:Отбор")
+                );
+                assert!(graph);
+                assert_eq!(limit, Some(1));
+                assert!(!compact);
+                assert!(edge.is_none());
+                assert!(matches!(format, OutputFormat::Json));
+            }
+            other => panic!("expected syntax related --graph command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn related_graph_root_kind_guard_keeps_non_platform_domains_out() {
+        for accepted in [
+            SearchDocumentKind::PlatformType,
+            SearchDocumentKind::TypeProperty,
+            SearchDocumentKind::TypeMethod,
+            SearchDocumentKind::Constructor,
+            SearchDocumentKind::GlobalMethod,
+            SearchDocumentKind::ModuleEvent,
+            SearchDocumentKind::TypeEvent,
+        ] {
+            assert!(
+                is_supported_type_graph_root_kind(accepted),
+                "{accepted:?} must remain an accepted graph root"
+            );
+        }
+
+        for rejected in [
+            SearchDocumentKind::GlobalProperty,
+            SearchDocumentKind::QueryTable,
+            SearchDocumentKind::QueryTableField,
+            SearchDocumentKind::LanguageType,
+            SearchDocumentKind::EnumValue,
+        ] {
+            assert!(
+                !is_supported_type_graph_root_kind(rejected),
+                "{rejected:?} must not be accepted as a type graph root"
+            );
+        }
     }
 
     #[test]
@@ -2083,6 +2466,117 @@ mod tests {
         assert_eq!(signature["parameters"][0]["types"], json!(["Строка"]));
         assert_eq!(signature["parameters"][0]["description"], "Input value");
         assert_eq!(signature["return"], json!(["Дата"]));
+    }
+
+    #[test]
+    fn graph_meta_reports_type_reference_resolution_without_fact_leakage() {
+        let document = SearchDocument {
+            id: "type_method:platform_type:Тест:Выполнить".to_string(),
+            kind: SearchDocumentKind::TypeMethod,
+            name: name("Выполнить"),
+            owner: Some(name("Тест")),
+            signatures: vec![syntax_helper_search::SearchSignature {
+                text: "Выполнить(Параметр)".to_string(),
+                parameters: vec![syntax_helper_search::SearchParameter {
+                    name: "Параметр".to_string(),
+                    required: true,
+                    type_refs: vec!["НеизвестныйТип".to_string()],
+                    type_ref_facts: vec![SearchTypeRef {
+                        name: "НеизвестныйТип".to_string(),
+                        target: SearchTypeRefTarget::Unresolved,
+                        type_template_key: None,
+                        template_binding: None,
+                    }],
+                    description: None,
+                }],
+                return_types: vec!["ДубльТип".to_string()],
+                return_type_facts: vec![SearchTypeRef {
+                    name: "ДубльТип".to_string(),
+                    target: SearchTypeRefTarget::Ambiguous(vec![
+                        "platform_type:ДубльТип:Первый".to_string(),
+                        "platform_type:ДубльТип:Второй".to_string(),
+                    ]),
+                    type_template_key: None,
+                    template_binding: None,
+                }],
+                title: None,
+                description: None,
+            }],
+            type_refs: Vec::new(),
+            return_types: Vec::new(),
+            type_ref_facts: Vec::new(),
+            return_type_facts: vec![SearchTypeRef {
+                name: "Строка".to_string(),
+                target: SearchTypeRefTarget::Ok("platform_type:Строка".to_string()),
+                type_template_key: None,
+                template_binding: None,
+            }],
+            description: Some("Detailed description".to_string()),
+            preview: "Detailed description".to_string(),
+            parameter_terms: Vec::new(),
+            relation_keys: Vec::new(),
+            owner_relation_key: None,
+            explicit_type_ref_ids: Vec::new(),
+            explicit_return_type_ref_ids: Vec::new(),
+            availability_contexts: Vec::new(),
+            available_since: None,
+            metadata_kind: None,
+            template_parameters: Vec::new(),
+            type_template_key: None,
+            type_template_classification_diagnostic: None,
+        };
+
+        let fact = document_fact(&document, ProviderFactDetail::Full);
+        let type_references = graph_type_references(&document);
+        let results = vec![json!({
+            "fact": fact,
+            "meta": {
+                "root": true,
+                "depth": 0,
+                "path": [],
+                "type_references": type_references,
+            }
+        })];
+        let diagnostics = graph_type_reference_diagnostics(&results);
+
+        assert!(results[0]["fact"].get("type_references").is_none());
+        assert!(results[0]["fact"].get("type_refs").is_none());
+        assert_eq!(results[0]["meta"]["type_references"][0]["role"], "return");
+        assert_eq!(
+            results[0]["meta"]["type_references"][0]["target_type_id"],
+            "platform_type:Строка"
+        );
+        assert!(
+            results[0]["meta"]["type_references"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value["role"] == "signature_return"
+                    && value["status"] == "ambiguous"
+                    && value["candidate_type_ids"].as_array().unwrap().len() == 2)
+        );
+        assert!(
+            results[0]["meta"]["type_references"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value["role"] == "parameter_type"
+                    && value["status"] == "unresolved"
+                    && value["parameter_name"] == "Параметр"
+                    && value["signature_ordinal"] == 0
+                    && value["parameter_ordinal"] == 0)
+        );
+        assert_eq!(diagnostics.len(), 2);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic["code"] == "AMBIGUOUS_TYPE_REFERENCE"
+                && diagnostic["source_id"] == document.id
+                && diagnostic["role"] == "signature_return"
+        }));
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic["code"] == "UNRESOLVED_TYPE_REFERENCE"
+                && diagnostic["source_id"] == document.id
+                && diagnostic["role"] == "parameter_type"
+        }));
     }
 
     #[test]

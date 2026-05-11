@@ -804,6 +804,9 @@ Acceptance:
 - `syntax related --id <document-id> --format json` and `syntax related --owner
   "НастройкиКомпоновкиДанных" --member "Отбор" --format json` can traverse relationships from an
   analyzer-safe exact root without relying on a plain-name lookup.
+- `syntax related --id <document-id> --graph --format json` exposes a bounded compact type graph
+  rooted at the exact provider id, keeps graph traversal and type-reference resolution metadata
+  outside shared fact fields, and remains under the existing `syntax related` provider boundary.
 - `syntax related --id <document-id> --edge member_of --format json` exposes deterministic
   inverse owner navigation for owned facts that have a source-backed owner relationship.
 - Search-only token fields used to populate FTS are not exposed as misleading public fields in the
