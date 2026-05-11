@@ -202,6 +202,13 @@ renames private SQLite layout identifiers to type-template terminology (`templat
 `type_template_variant` and `template_binding_*`). The CLI provider JSON envelope remains
 `schema_version: 1`, and the canonical `syntax export` consumer JSON remains `schema_version: 11`.
 
+T139 implementation note: schema version 13 stores type-reference target resolution on each
+normalized `type_refs` row as private rebuildable provider state: raw `target_type_name`,
+`target_resolution_status`, optional resolved `target_type_id` and optional deterministic ambiguous
+candidate ids. This keeps `types` / `return` public fact fields export-compatible source-name
+arrays while giving search/resolver adapters one owner for resolved, unresolved and ambiguous
+target outcomes.
+
 T135 implementation note: `syntax type-ref-gaps` is a report command over an existing prebuilt
 SQLite index. It counts `type_refs` rows by source role and resolution status, reports template
 bindings as an additional subset counter, and lists top unresolved/ambiguous target names with
@@ -473,11 +480,19 @@ edge table. Analyzer-critical facts should read the normalized rows first. Provi
 assembled from those relational rows and existing Rust domain structs; the database schema does not
 introduce a new JSON cache as the source of truth for typed facts.
 
-When a type-reference name matches exactly one canonical platform type identity, `type_refs` may
-store both `target_type_name` and `target_type_id`. When the name matches multiple semantic type
-identities, the row must keep `target_type_name` and leave `target_type_id` unset instead of
-choosing a hidden winner. Disambiguating those cases requires an explicit owner/semantic rule in a
-future task.
+`target_type_name` is the source-backed reference spelling and is preserved independently from
+target resolution. Index build is the single owner of target resolution for these rows:
+
+- `ok`: the name maps to exactly one canonical platform type identity and stores that
+  `target_type_id`;
+- `unresolved`: the name maps to no known platform type identity and stores no candidates;
+- `ambiguous`: the name maps to multiple platform type identities and stores deterministic
+  candidate type ids.
+
+Provider and resolver adapters must consume that stored resolution data instead of recomputing
+ambiguous candidates or unresolved status from type names in each layer. Export-compatible public
+fact fields continue to expose source names through `types` and `return`; resolution aids belong in
+provider metadata or resolver DTOs and must not turn SQLite columns into a public contract.
 
 `documents.description` and `document_search.description` intentionally serve different roles:
 provider fact text vs normalized FTS content. `documents.signature_text` remains only for compact
@@ -678,7 +693,9 @@ Primitive behavior:
   `types`; callable facts return parameter `types` and `return` facts; constructor callables return
   constructor result `types`. When a reference name maps to exactly one known type identity, the
   result may include the resolved type id in `meta.target_type_ids`; unresolved or duplicate targets
-  keep the source-backed type name and avoid hidden disambiguation.
+  keep the source-backed type name and avoid hidden disambiguation. Resolver-facing type references
+  expose the same distinction as data: source name plus target resolution `ok`, `unresolved` or
+  `ambiguous` with candidate ids for ambiguous rows.
 
 All primitive JSON responses use provider `schema_version: 1` until the envelope itself changes.
 The `command` field remains `get`, `constructors` or `related`. The `query.kind` field records the

@@ -147,23 +147,23 @@ Verification:
 References: T135, T137, T138, FR-SH-002, FR-SH-PROVIDER-001,
 `implementation/syntax-helper-query-cli.md`.
 
-- [ ] Reflect the selected raw/reference-vs-resolved-target contract in
+- [x] Reflect the selected raw/reference-vs-resolved-target contract in
       `requirements/functional.md` and `implementation/syntax-helper-query-cli.md` before changing
       code. Add an ADR only if the task changes the public provider/export boundary.
-- [ ] Model the source-backed type-reference spelling separately from resolved target identity.
-- [ ] Represent resolved targets as `ok`, `unresolved` or `ambiguous` data at the provider/resolver
+- [x] Model the source-backed type-reference spelling separately from resolved target identity.
+- [x] Represent resolved targets as `ok`, `unresolved` or `ambiguous` data at the provider/resolver
       boundary, not as hidden first-match selection.
-- [ ] Preserve export-compatible `types` fields for current consumer JSON unless a schema task
+- [x] Preserve export-compatible `types` fields for current consumer JSON unless a schema task
       explicitly changes FR-EXPORT-001.
-- [ ] Update index/provider internals so `target_type_id`, ambiguous candidates and unresolved names
+- [x] Update index/provider internals so `target_type_id`, ambiguous candidates and unresolved names
       have one owner and are not recomputed in multiple layers.
 
 Verification:
 
-- [ ] Existing exact lookup, constructors, related and export UAT still pass.
-- [ ] New focused tests cover resolved, unresolved and ambiguous type-reference cases.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test --workspace`
+- [x] Existing exact lookup, constructors, related and export UAT still pass.
+- [x] New focused tests cover resolved, unresolved and ambiguous type-reference cases.
+- [x] `cargo fmt --all --check`
+- [x] `cargo test --workspace`
 
 ### T140: Move Return Types Toward Overload-Level Facts
 

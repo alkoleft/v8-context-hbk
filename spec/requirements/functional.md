@@ -757,6 +757,10 @@ Provider-oriented outputs must:
   data contains structured signatures, using the `syntax export` signature shape where applicable;
 - expose parameter name, requiredness, type references and description as separate fields;
 - expose return/type references as typed arrays, not only prose;
+- preserve the source-backed spelling of every exposed type reference separately from any resolved
+  target identity. Export-compatible `types` and `return` fields remain source-name arrays, while
+  provider/resolver resolution data represents each target as `ok`, `unresolved` or `ambiguous`
+  instead of collapsing missing and duplicate names into one absent-id state;
 - report ambiguity or missing facts explicitly instead of silently choosing hidden matches;
 - report unsupported query-root combinations explicitly in JSON mode instead of falling out of the
   provider envelope;

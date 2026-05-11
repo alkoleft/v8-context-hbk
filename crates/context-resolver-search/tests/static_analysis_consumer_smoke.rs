@@ -245,7 +245,7 @@ mod analyzer_lookup {
                 .info
                 .types
                 .first()
-                .and_then(|type_ref| type_ref.id.as_ref())
+                .and_then(|type_ref| type_ref.resolved_id())
                 .expect("member type id must be resolved")
                 .0
                 .local_id,
@@ -255,7 +255,7 @@ mod analyzer_lookup {
             .info
             .types
             .first()
-            .and_then(|type_ref| type_ref.id.clone())
+            .and_then(|type_ref| type_ref.resolved_id().cloned())
             .expect("member type id must be available for callable owner lookup");
 
         let availability = resolver
@@ -286,8 +286,7 @@ mod analyzer_lookup {
         assert_eq!(callable.info.signatures[0].parameters[0].name, "Значение");
         assert_eq!(
             callable.info.return_types[0]
-                .id
-                .as_ref()
+                .resolved_id()
                 .expect("return type id must be resolved")
                 .0
                 .local_id,

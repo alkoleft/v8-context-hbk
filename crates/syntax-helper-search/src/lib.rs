@@ -12,7 +12,7 @@ use strsim::levenshtein;
 use syntax_helper_language as language;
 pub use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 12;
+pub const INDEX_SCHEMA_VERSION: u32 = 13;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 type TypeTemplateRow = (
@@ -377,9 +377,32 @@ pub struct SearchParameter {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchTypeRef {
     pub name: String,
-    pub target_type_id: Option<String>,
+    pub target: SearchTypeRefTarget,
     pub type_template_key: Option<model::PlatformTypeTemplateKey>,
     pub template_binding: Option<model::TypeTemplateBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SearchTypeRefTarget {
+    Ok(String),
+    Unresolved,
+    Ambiguous(Vec<String>),
+}
+
+impl SearchTypeRefTarget {
+    pub fn target_type_id(&self) -> Option<&str> {
+        match self {
+            Self::Ok(type_id) => Some(type_id.as_str()),
+            Self::Unresolved | Self::Ambiguous(_) => None,
+        }
+    }
+
+    pub fn candidate_type_ids(&self) -> &[String] {
+        match self {
+            Self::Ambiguous(candidates) => candidates,
+            Self::Ok(_) | Self::Unresolved => &[],
+        }
+    }
 }
 
 impl SearchDocument {
@@ -1718,7 +1741,6 @@ impl SearchIndex {
         &self,
         top_limit: usize,
     ) -> Result<TypeReferenceGapReport, SearchError> {
-        let candidates_by_key = self.type_reference_candidate_ids_by_key()?;
         let mut role_counts = BTreeMap::<String, TypeReferenceCounts>::new();
         let mut total_counts = TypeReferenceCounts::default();
         let mut unresolved = BTreeMap::<(String, String), GapAccumulator>::new();
@@ -1728,7 +1750,8 @@ impl SearchIndex {
             .connection
             .prepare(
                 "SELECT r.source_document_id, r.ref_kind, r.target_type_name,
-                        r.target_type_id, r.template_binding_kind,
+                        r.target_resolution_status, r.target_candidate_type_ids,
+                        r.template_binding_kind,
                         d.kind, d.name_primary, d.name_alias, d.owner_primary, d.owner_alias
                  FROM type_refs r
                  JOIN documents d ON d.id = r.source_document_id
@@ -1737,21 +1760,25 @@ impl SearchIndex {
             .map_err(|source| self.sqlite(source))?;
         let rows = statement
             .query_map([], |row| {
-                let kind_value: String = row.get(5)?;
+                let kind_value: String = row.get(6)?;
                 let kind = SearchDocumentKind::from_storage(&kind_value)
                     .ok_or_else(|| rusqlite::Error::InvalidQuery)?;
-                let source_owner_primary: Option<String> = row.get(8)?;
-                let source_owner_alias: Option<String> = row.get(9)?;
+                let source_owner_primary: Option<String> = row.get(9)?;
+                let source_owner_alias: Option<String> = row.get(10)?;
                 Ok(TypeReferenceMeasurementRow {
                     source_document_id: row.get(0)?,
                     role: row.get(1)?,
                     target_type_name: row.get(2)?,
-                    target_type_id: row.get(3)?,
-                    has_template_binding: row.get::<_, Option<String>>(4)?.is_some(),
+                    status: type_reference_status_from_storage(row.get::<_, String>(3)?)?,
+                    candidate_type_ids: row
+                        .get::<_, Option<String>>(4)?
+                        .map(|value| value.lines().map(str::to_string).collect())
+                        .unwrap_or_default(),
+                    has_template_binding: row.get::<_, Option<String>>(5)?.is_some(),
                     source_kind: kind,
                     source_name: model::LocalizedName {
-                        primary: row.get(6)?,
-                        alias: row.get(7)?,
+                        primary: row.get(7)?,
+                        alias: row.get(8)?,
                     },
                     source_owner: source_owner_primary.map(|primary| model::LocalizedName {
                         primary,
@@ -1763,17 +1790,7 @@ impl SearchIndex {
 
         for row in rows {
             let row = row.map_err(|source| self.sqlite(source))?;
-            let candidate_type_ids = candidates_by_key
-                .get(&normalize_lookup_key(&row.target_type_name))
-                .cloned()
-                .unwrap_or_default();
-            let status = if row.target_type_id.is_some() {
-                TypeReferenceStatus::Resolved
-            } else if candidate_type_ids.len() > 1 {
-                TypeReferenceStatus::Ambiguous
-            } else {
-                TypeReferenceStatus::Unresolved
-            };
+            let status = row.status;
             total_counts.add(status, row.has_template_binding);
             role_counts
                 .entry(row.role.clone())
@@ -1781,12 +1798,8 @@ impl SearchIndex {
                 .add(status, row.has_template_binding);
 
             match status {
-                TypeReferenceStatus::Unresolved => {
-                    accumulate_gap(&mut unresolved, row, candidate_type_ids)
-                }
-                TypeReferenceStatus::Ambiguous => {
-                    accumulate_gap(&mut ambiguous, row, candidate_type_ids)
-                }
+                TypeReferenceStatus::Unresolved => accumulate_gap(&mut unresolved, row),
+                TypeReferenceStatus::Ambiguous => accumulate_gap(&mut ambiguous, row),
                 TypeReferenceStatus::Resolved => {}
             }
         }
@@ -1811,68 +1824,6 @@ impl SearchIndex {
             top_unresolved: top_gaps(unresolved, top_limit),
             top_ambiguous: top_gaps(ambiguous, top_limit),
         })
-    }
-
-    fn type_reference_candidate_ids_by_key(
-        &self,
-    ) -> Result<BTreeMap<String, Vec<String>>, SearchError> {
-        let mut candidates = BTreeMap::<String, BTreeSet<String>>::new();
-        let mut statement = self
-            .connection
-            .prepare(
-                "SELECT name_primary, name_alias, type_id
-                 FROM type_identities
-                 ORDER BY name_primary, name_alias, type_id",
-            )
-            .map_err(|source| self.sqlite(source))?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            })
-            .map_err(|source| self.sqlite(source))?;
-        for row in rows {
-            let (primary, alias, type_id) = row.map_err(|source| self.sqlite(source))?;
-            candidates
-                .entry(normalize_lookup_key(&primary))
-                .or_default()
-                .insert(type_id.clone());
-            if let Some(alias) = alias {
-                candidates
-                    .entry(normalize_lookup_key(&alias))
-                    .or_default()
-                    .insert(type_id);
-            }
-        }
-
-        let mut statement = self
-            .connection
-            .prepare(
-                "SELECT metadata_kind, document_id
-                 FROM type_templates
-                 ORDER BY metadata_kind, document_id",
-            )
-            .map_err(|source| self.sqlite(source))?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(|source| self.sqlite(source))?;
-        for row in rows {
-            let (metadata_kind, type_id) = row.map_err(|source| self.sqlite(source))?;
-            candidates
-                .entry(normalize_lookup_key(&metadata_kind))
-                .or_default()
-                .insert(type_id);
-        }
-
-        Ok(candidates
-            .into_iter()
-            .map(|(key, ids)| (key, ids.into_iter().collect()))
-            .collect())
     }
 
     fn get_by_key(&self, key: &str) -> Result<Vec<SearchHit>, SearchError> {
@@ -2306,8 +2257,9 @@ impl SearchIndex {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT target_type_name, target_type_id, type_template_family,
-                        type_template_variant, template_binding_kind,
+                "SELECT target_type_name, target_type_id, target_resolution_status,
+                        target_candidate_type_ids, type_template_family, type_template_variant,
+                        template_binding_kind,
                         template_binding_owner_parameter_index,
                         template_binding_target_parameter_index,
                         template_binding_arguments
@@ -2421,8 +2373,9 @@ impl SearchIndex {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT target_type_name, target_type_id, type_template_family,
-                        type_template_variant, template_binding_kind,
+                "SELECT target_type_name, target_type_id, target_resolution_status,
+                        target_candidate_type_ids, type_template_family, type_template_variant,
+                        template_binding_kind,
                         template_binding_owner_parameter_index,
                         template_binding_target_parameter_index,
                         template_binding_arguments
@@ -2754,6 +2707,8 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  source_parameter_ordinal INTEGER,
                  target_type_name TEXT NOT NULL,
                  target_type_id TEXT REFERENCES type_identities(type_id),
+                 target_resolution_status TEXT NOT NULL,
+                 target_candidate_type_ids TEXT,
                  type_template_family TEXT,
                  type_template_variant TEXT,
                  template_binding_kind TEXT,
@@ -2964,22 +2919,22 @@ fn insert_normalized_facts(
     documents: &[SearchDocument],
 ) -> Result<(), SearchError> {
     let by_name = relation_lookup(documents);
-    let mut type_id_by_key = BTreeMap::new();
+    let mut type_ids_by_key = BTreeMap::new();
     let mut type_id_by_normalized_id = BTreeMap::new();
-    let mut type_id_by_metadata_kind = BTreeMap::new();
+    let mut type_ids_by_metadata_kind = BTreeMap::new();
     let mut type_template_by_type_id = BTreeMap::new();
     for document in documents
         .iter()
         .filter(|document| document.kind == SearchDocumentKind::PlatformType)
     {
         insert_type_lookup_key(
-            &mut type_id_by_key,
+            &mut type_ids_by_key,
             normalize_lookup_key(&document.name.primary),
             &document.id,
         );
         if let Some(alias) = &document.name.alias {
             insert_type_lookup_key(
-                &mut type_id_by_key,
+                &mut type_ids_by_key,
                 normalize_lookup_key(alias),
                 &document.id,
             );
@@ -2987,7 +2942,7 @@ fn insert_normalized_facts(
         type_id_by_normalized_id.insert(normalize_lookup_key(&document.id), document.id.clone());
         if let Some(metadata_kind) = &document.metadata_kind {
             insert_type_lookup_key(
-                &mut type_id_by_metadata_kind,
+                &mut type_ids_by_metadata_kind,
                 normalize_lookup_key(metadata_kind),
                 &document.id,
             );
@@ -3064,10 +3019,11 @@ fn insert_normalized_facts(
             "INSERT INTO type_refs(
                 source_document_id, ref_kind, ordinal, source_signature_id,
                 source_signature_ordinal, source_parameter_ordinal, target_type_name,
-                target_type_id, type_template_family, type_template_variant,
-                template_binding_kind, template_binding_owner_parameter_index,
-                template_binding_target_parameter_index, template_binding_arguments
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                target_type_id, target_resolution_status, target_candidate_type_ids,
+                type_template_family, type_template_variant, template_binding_kind,
+                template_binding_owner_parameter_index, template_binding_target_parameter_index,
+                template_binding_arguments
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         )
         .map_err(|source| SearchError::Sqlite {
             path: path.to_path_buf(),
@@ -3179,8 +3135,8 @@ fn insert_normalized_facts(
                         insert_type_ref(
                             &mut type_ref_statement,
                             path,
-                            &type_id_by_key,
-                            &type_id_by_metadata_kind,
+                            &type_ids_by_key,
+                            &type_ids_by_metadata_kind,
                             &type_template_by_type_id,
                             TypeRefRow {
                                 source_document_id: &document.id,
@@ -3202,8 +3158,8 @@ fn insert_normalized_facts(
             insert_type_ref(
                 &mut type_ref_statement,
                 path,
-                &type_id_by_key,
-                &type_id_by_metadata_kind,
+                &type_ids_by_key,
+                &type_ids_by_metadata_kind,
                 &type_template_by_type_id,
                 TypeRefRow {
                     source_document_id: &document.id,
@@ -3221,8 +3177,8 @@ fn insert_normalized_facts(
             insert_type_ref(
                 &mut type_ref_statement,
                 path,
-                &type_id_by_key,
-                &type_id_by_metadata_kind,
+                &type_ids_by_key,
+                &type_ids_by_metadata_kind,
                 &type_template_by_type_id,
                 TypeRefRow {
                     source_document_id: &document.id,
@@ -3242,8 +3198,8 @@ fn insert_normalized_facts(
             insert_type_ref(
                 &mut type_ref_statement,
                 path,
-                &type_id_by_key,
-                &type_id_by_metadata_kind,
+                &type_ids_by_key,
+                &type_ids_by_metadata_kind,
                 &type_template_by_type_id,
                 TypeRefRow {
                     source_document_id: &document.id,
@@ -3259,7 +3215,9 @@ fn insert_normalized_facts(
             connection
                 .execute(
                     "UPDATE type_refs
-                     SET target_type_id = ?1
+                     SET target_type_id = ?1,
+                         target_resolution_status = 'ok',
+                         target_candidate_type_ids = NULL
                      WHERE source_document_id = ?2 AND ref_kind = 'constructor_result'",
                     params![owner_type_id, document.id],
                 )
@@ -3286,19 +3244,18 @@ struct TypeRefRow<'a> {
 fn insert_type_ref(
     statement: &mut Statement<'_>,
     path: &Path,
-    type_id_by_key: &BTreeMap<String, Option<String>>,
-    type_id_by_metadata_kind: &BTreeMap<String, Option<String>>,
+    type_ids_by_key: &BTreeMap<String, BTreeSet<String>>,
+    type_ids_by_metadata_kind: &BTreeMap<String, BTreeSet<String>>,
     type_template_by_type_id: &BTreeMap<String, TypeTemplateFact>,
     row: TypeRefRow<'_>,
 ) -> Result<(), SearchError> {
-    let mut target_type_id = type_id_by_key
-        .get(&normalize_lookup_key(row.target_type_name))
-        .and_then(|type_id| type_id.as_deref());
-    if target_type_id.is_none() {
-        target_type_id = type_id_by_metadata_kind
-            .get(&normalize_lookup_key(row.target_type_name))
-            .and_then(|type_id| type_id.as_deref());
-    }
+    let target = resolve_type_ref_target(
+        row.target_type_name,
+        type_ids_by_key,
+        type_ids_by_metadata_kind,
+    );
+    let target_type_id = target.target_type_id();
+    let candidate_type_ids = target.candidate_type_ids().join("\n");
     let type_template_key =
         target_type_id.and_then(|type_id| type_template_by_type_id.get(type_id));
     let template_binding =
@@ -3313,6 +3270,8 @@ fn insert_type_ref(
             row.source_parameter_ordinal.map(|value| value as i64),
             row.target_type_name,
             target_type_id,
+            target_resolution_status(&target),
+            (!candidate_type_ids.is_empty()).then_some(candidate_type_ids),
             type_template_key.map(|fact| fact.key.family.as_str()),
             type_template_key.map(|fact| fact.key.variant.as_str()),
             template_binding.as_ref().map(|_| "owner_parameter"),
@@ -3386,18 +3345,42 @@ fn binding_arguments_to_storage(binding: &OwnerParameterBinding) -> String {
 }
 
 fn insert_type_lookup_key(
-    type_id_by_key: &mut BTreeMap<String, Option<String>>,
+    type_ids_by_key: &mut BTreeMap<String, BTreeSet<String>>,
     key: String,
     type_id: &str,
 ) {
-    match type_id_by_key.get_mut(&key) {
-        Some(existing) if existing.as_deref() == Some(type_id) => {}
-        Some(existing) => {
-            *existing = None;
-        }
-        None => {
-            type_id_by_key.insert(key, Some(type_id.to_string()));
-        }
+    type_ids_by_key
+        .entry(key)
+        .or_default()
+        .insert(type_id.to_string());
+}
+
+fn resolve_type_ref_target(
+    target_type_name: &str,
+    type_ids_by_key: &BTreeMap<String, BTreeSet<String>>,
+    type_ids_by_metadata_kind: &BTreeMap<String, BTreeSet<String>>,
+) -> SearchTypeRefTarget {
+    let key = normalize_lookup_key(target_type_name);
+    let mut candidates = BTreeSet::new();
+    if let Some(ids) = type_ids_by_key.get(&key) {
+        candidates.extend(ids.iter().cloned());
+    }
+    if let Some(ids) = type_ids_by_metadata_kind.get(&key) {
+        candidates.extend(ids.iter().cloned());
+    }
+    let candidates = candidates.into_iter().collect::<Vec<_>>();
+    match candidates.as_slice() {
+        [] => SearchTypeRefTarget::Unresolved,
+        [type_id] => SearchTypeRefTarget::Ok(type_id.clone()),
+        _ => SearchTypeRefTarget::Ambiguous(candidates),
+    }
+}
+
+fn target_resolution_status(target: &SearchTypeRefTarget) -> &'static str {
+    match target {
+        SearchTypeRefTarget::Ok(_) => "ok",
+        SearchTypeRefTarget::Unresolved => "unresolved",
+        SearchTypeRefTarget::Ambiguous(_) => "ambiguous",
     }
 }
 
@@ -3435,7 +3418,8 @@ struct TypeReferenceMeasurementRow {
     source_document_id: String,
     role: String,
     target_type_name: String,
-    target_type_id: Option<String>,
+    status: TypeReferenceStatus,
+    candidate_type_ids: Vec<String>,
     has_template_binding: bool,
     source_kind: SearchDocumentKind,
     source_name: model::LocalizedName,
@@ -3475,13 +3459,12 @@ struct GapAccumulator {
 fn accumulate_gap(
     gaps: &mut BTreeMap<(String, String), GapAccumulator>,
     row: TypeReferenceMeasurementRow,
-    candidate_type_ids: Vec<String>,
 ) {
     let key = (row.role.clone(), row.target_type_name.clone());
     let gap = gaps.entry(key).or_default();
     gap.count += 1;
     if gap.candidate_type_ids.is_empty() {
-        gap.candidate_type_ids = candidate_type_ids;
+        gap.candidate_type_ids = row.candidate_type_ids.clone();
     }
     gap.examples
         .entry(row.source_document_id.clone())
@@ -3491,6 +3474,15 @@ fn accumulate_gap(
             source_name: row.source_name,
             source_owner: row.source_owner,
         });
+}
+
+fn type_reference_status_from_storage(value: String) -> rusqlite::Result<TypeReferenceStatus> {
+    match value.as_str() {
+        "ok" => Ok(TypeReferenceStatus::Resolved),
+        "unresolved" => Ok(TypeReferenceStatus::Unresolved),
+        "ambiguous" => Ok(TypeReferenceStatus::Ambiguous),
+        _ => Err(rusqlite::Error::InvalidQuery),
+    }
 }
 
 fn top_gaps(
@@ -3621,18 +3613,29 @@ fn visit_relations_from_documents<E>(
     mut visit: impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
     let by_name = relation_lookup(documents);
+    let type_ref_targets_by_key = type_ref_target_lookup(documents);
+    let document_ids = documents
+        .iter()
+        .map(|document| document.id.clone())
+        .collect::<BTreeSet<_>>();
     let mut emitted = BTreeSet::new();
     for document in documents {
-        visit_document_relations(document, &by_name, |relation| {
-            if emitted.insert((
-                relation.source_id.clone(),
-                relation.target_id.clone(),
-                relation.edge_kind,
-            )) {
-                visit(relation)?;
-            }
-            Ok(())
-        })?;
+        visit_document_relations(
+            document,
+            &by_name,
+            &type_ref_targets_by_key,
+            &document_ids,
+            |relation| {
+                if emitted.insert((
+                    relation.source_id.clone(),
+                    relation.target_id.clone(),
+                    relation.edge_kind,
+                )) {
+                    visit(relation)?;
+                }
+                Ok(())
+            },
+        )?;
     }
     Ok(())
 }
@@ -3640,11 +3643,13 @@ fn visit_relations_from_documents<E>(
 fn visit_document_relations<E>(
     document: &SearchDocument,
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
+    type_ref_targets_by_key: &BTreeMap<String, BTreeSet<String>>,
+    document_ids: &BTreeSet<String>,
     mut visit: impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
     visit_owner_relations(document, by_name, &mut visit)?;
     visit_constructor_relation(document, by_name, &mut visit)?;
-    visit_type_reference_relations(document, by_name, &mut visit)
+    visit_type_reference_relations(document, type_ref_targets_by_key, document_ids, &mut visit)
 }
 
 fn visit_owner_relations<E>(
@@ -3712,24 +3717,24 @@ fn visit_constructor_relation<E>(
 
 fn visit_type_reference_relations<E>(
     document: &SearchDocument,
-    by_name: &BTreeMap<String, (&SearchDocument, String)>,
+    type_ref_targets_by_key: &BTreeMap<String, BTreeSet<String>>,
+    document_ids: &BTreeSet<String>,
     visit: &mut impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
     for (ordinal, type_name) in document.type_refs.iter().enumerate() {
-        let Some(target_key) = explicit_or_fallback_type_ref_key(
+        let Some(target_id) = explicit_or_unique_type_ref_target_id(
             document,
             &document.explicit_type_ref_ids,
             ordinal,
             type_name,
+            type_ref_targets_by_key,
+            document_ids,
         ) else {
-            continue;
-        };
-        let Some((_, target_id)) = by_name.get(&target_key) else {
             continue;
         };
         visit(Relation {
             source_id: document.id.clone(),
-            target_id: target_id.clone(),
+            target_id,
             edge_kind: "has_type",
             label: type_name.clone(),
             evidence: "type_ref",
@@ -3737,20 +3742,19 @@ fn visit_type_reference_relations<E>(
         })?;
     }
     for (ordinal, type_name) in document.return_types.iter().enumerate() {
-        let Some(target_key) = explicit_or_fallback_type_ref_key(
+        let Some(target_id) = explicit_or_unique_type_ref_target_id(
             document,
             &document.explicit_return_type_ref_ids,
             ordinal,
             type_name,
+            type_ref_targets_by_key,
+            document_ids,
         ) else {
-            continue;
-        };
-        let Some((_, target_id)) = by_name.get(&target_key) else {
             continue;
         };
         visit(Relation {
             source_id: document.id.clone(),
-            target_id: target_id.clone(),
+            target_id,
             edge_kind: "returns",
             label: type_name.clone(),
             evidence: "type_ref",
@@ -3760,16 +3764,27 @@ fn visit_type_reference_relations<E>(
     Ok(())
 }
 
-fn explicit_or_fallback_type_ref_key(
+fn explicit_or_unique_type_ref_target_id(
     document: &SearchDocument,
     explicit_ids: &[Option<String>],
     ordinal: usize,
     type_name: &str,
+    type_ref_targets_by_key: &BTreeMap<String, BTreeSet<String>>,
+    document_ids: &BTreeSet<String>,
 ) -> Option<String> {
-    explicit_ids
-        .get(ordinal)
-        .and_then(|id| id.clone())
-        .or_else(|| (!document.kind.is_language()).then(|| normalize_lookup_key(type_name)))
+    if let Some(Some(id)) = explicit_ids.get(ordinal) {
+        return document_ids.contains(id).then(|| id.clone());
+    }
+    if document.kind.is_language() {
+        return None;
+    }
+    let key = normalize_lookup_key(type_name);
+    let ids = type_ref_targets_by_key.get(&key)?;
+    if ids.len() == 1 {
+        ids.iter().next().cloned()
+    } else {
+        None
+    }
 }
 
 fn validate_index(connection: &Connection, path: &Path) -> Result<(), SearchError> {
@@ -4083,6 +4098,32 @@ fn relation_lookup(documents: &[SearchDocument]) -> BTreeMap<String, (&SearchDoc
     by_name
 }
 
+fn type_ref_target_lookup(documents: &[SearchDocument]) -> BTreeMap<String, BTreeSet<String>> {
+    let mut by_key = BTreeMap::<String, BTreeSet<String>>::new();
+    for document in documents
+        .iter()
+        .filter(|document| document.kind == SearchDocumentKind::PlatformType)
+    {
+        by_key
+            .entry(normalize_lookup_key(&document.name.primary))
+            .or_default()
+            .insert(document.id.clone());
+        if let Some(alias) = &document.name.alias {
+            by_key
+                .entry(normalize_lookup_key(alias))
+                .or_default()
+                .insert(document.id.clone());
+        }
+        if let Some(metadata_kind) = &document.metadata_kind {
+            by_key
+                .entry(normalize_lookup_key(metadata_kind))
+                .or_default()
+                .insert(document.id.clone());
+        }
+    }
+    by_key
+}
+
 fn document_lookup_keys(document: &SearchDocument) -> Vec<String> {
     let mut keys = vec![normalize_lookup_key(&document.name.primary)];
     if let Some(alias) = &document.name.alias {
@@ -4144,13 +4185,13 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
 
 fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchTypeRef> {
     let type_template_key = type_template_key_from_codes(
-        row.get::<_, Option<String>>(2)?,
-        row.get::<_, Option<String>>(3)?,
+        row.get::<_, Option<String>>(4)?,
+        row.get::<_, Option<String>>(5)?,
     );
-    let binding_kind: Option<String> = row.get(4)?;
-    let owner_parameter_index: Option<i64> = row.get(5)?;
-    let target_parameter_index: Option<i64> = row.get(6)?;
-    let binding_arguments: Option<String> = row.get(7)?;
+    let binding_kind: Option<String> = row.get(6)?;
+    let owner_parameter_index: Option<i64> = row.get(7)?;
+    let target_parameter_index: Option<i64> = row.get(8)?;
+    let binding_arguments: Option<String> = row.get(9)?;
     let template_binding = match (
         type_template_key.clone(),
         binding_kind.as_deref(),
@@ -4179,9 +4220,24 @@ fn search_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchT
         }),
         _ => None,
     };
+    let target_type_id: Option<String> = row.get(1)?;
+    let target = match row.get::<_, String>(2)?.as_str() {
+        "ok" => {
+            SearchTypeRefTarget::Ok(target_type_id.ok_or_else(|| rusqlite::Error::InvalidQuery)?)
+        }
+        "unresolved" => SearchTypeRefTarget::Unresolved,
+        "ambiguous" => {
+            let candidates = row
+                .get::<_, Option<String>>(3)?
+                .map(|value| value.lines().map(str::to_string).collect())
+                .unwrap_or_default();
+            SearchTypeRefTarget::Ambiguous(candidates)
+        }
+        _ => return Err(rusqlite::Error::InvalidQuery),
+    };
     Ok(SearchTypeRef {
         name: row.get(0)?,
-        target_type_id: row.get(1)?,
+        target,
         type_template_key,
         template_binding,
     })
@@ -5449,7 +5505,10 @@ mod tests {
             .expect("property must resolve");
 
         assert_eq!(property.document.type_ref_facts.len(), 1);
-        assert_eq!(property.document.type_ref_facts[0].target_type_id, None);
+        assert!(matches!(
+            property.document.type_ref_facts[0].target,
+            SearchTypeRefTarget::Ambiguous(_)
+        ));
         assert_eq!(property.document.type_ref_facts[0].template_binding, None);
     }
 
@@ -6737,19 +6796,30 @@ mod tests {
             )
             .expect("duplicate type identity count must be readable");
         assert_eq!(duplicate_count, 2);
-        let target_type_id: Option<String> = index
+        let (target_type_id, status, candidates): (Option<String>, String, Option<String>) = index
             .connection
             .query_row(
-                "SELECT target_type_id
+                "SELECT target_type_id, target_resolution_status, target_candidate_type_ids
                  FROM type_refs
                  WHERE source_document_id = 'type_property:platform_type:ГруппаФормы:Элементы'
                    AND ref_kind = 'property_type'
                    AND target_type_name = 'ЭлементыФормы'",
                 [],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .expect("ambiguous type ref row must exist");
         assert_eq!(target_type_id, None);
+        assert_eq!(status, "ambiguous");
+        assert_eq!(
+            candidates
+                .expect("ambiguous candidates must be stored")
+                .lines()
+                .collect::<Vec<_>>(),
+            vec![
+                "platform_type:ЭлементыФормы:Форма",
+                "platform_type:ЭлементыФормы:ФормаКлиентскогоПриложения"
+            ]
+        );
 
         let related_type_refs = index
             .related_by_id_and_edge(
@@ -6761,6 +6831,65 @@ mod tests {
         assert!(
             related_type_refs.is_empty(),
             "edge-filtered traversal must not choose a hidden duplicate type identity"
+        );
+        let related = index
+            .related_by_id("type_property:platform_type:ГруппаФормы:Элементы", 1, 20)
+            .expect("generic related traversal must query without hidden type winners");
+        assert!(
+            related
+                .iter()
+                .flat_map(|hit| hit.via.iter())
+                .all(|edge| edge.edge_kind != "has_type"),
+            "generic related traversal must not expose legacy has_type winners for ambiguous rows"
+        );
+    }
+
+    #[test]
+    fn type_ref_resolution_combines_name_and_metadata_kind_candidates() {
+        let path = temp_path("mixed-name-metadata-type-ref.sqlite");
+        let mut template = platform_type(
+            "ДубльТип.<Имя объекта>",
+            Some("DuplicateType.<Object name>"),
+            "metadata template",
+        );
+        template.type_kind = model::PlatformTypeKind::MetadataTemplate;
+        template.metadata_kind = Some("ДубльТип".to_string());
+        let context = model::PlatformContext {
+            platform_types: vec![
+                platform_type("Владелец", None, "owner"),
+                platform_type("ДубльТип", None, "regular type"),
+                template,
+            ],
+            type_properties: vec![type_property("Владелец", "Поле", "ДубльТип")],
+            ..model::PlatformContext::default()
+        };
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let (target_type_id, status, candidates): (Option<String>, String, Option<String>) = index
+            .connection
+            .query_row(
+                "SELECT target_type_id, target_resolution_status, target_candidate_type_ids
+                 FROM type_refs
+                 WHERE source_document_id = 'type_property:platform_type:Владелец:Поле'
+                   AND ref_kind = 'property_type'
+                   AND target_type_name = 'ДубльТип'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("mixed type ref row must exist");
+
+        assert_eq!(target_type_id, None);
+        assert_eq!(status, "ambiguous");
+        assert_eq!(
+            candidates
+                .expect("mixed candidates must be stored")
+                .lines()
+                .collect::<Vec<_>>(),
+            vec![
+                "platform_type:ДубльТип",
+                "platform_type:ДубльТип.<Имя объекта>"
+            ]
         );
     }
 

@@ -115,8 +115,24 @@ pub struct FactRelation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeRef {
     pub name: String,
-    pub id: Option<TypeId>,
+    pub target: TypeRefTarget,
     pub template_binding: Option<TypeTemplateBinding>,
+}
+
+impl TypeRef {
+    pub fn resolved_id(&self) -> Option<&TypeId> {
+        match &self.target {
+            TypeRefTarget::Ok(id) => Some(id),
+            TypeRefTarget::Unresolved | TypeRefTarget::Ambiguous(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeRefTarget {
+    Ok(TypeId),
+    Unresolved,
+    Ambiguous(Vec<TypeId>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1293,7 +1309,7 @@ mod tests {
         ));
         let target = TypeRef {
             name: "Строка".to_string(),
-            id: None,
+            target: TypeRefTarget::Unresolved,
             template_binding: None,
         };
         let fake = FakeSource::new("fake", LanguageDomain::PlatformApi)
@@ -1397,7 +1413,7 @@ mod tests {
                 required: true,
                 types: vec![TypeRef {
                     name: "Строка".to_string(),
-                    id: None,
+                    target: TypeRefTarget::Unresolved,
                     template_binding: None,
                 }],
                 description: None,
@@ -1407,7 +1423,7 @@ mod tests {
                 required: false,
                 types: vec![TypeRef {
                     name: "Булево".to_string(),
-                    id: Some(bool_type),
+                    target: TypeRefTarget::Ok(bool_type),
                     template_binding: None,
                 }],
                 description: None,
@@ -1420,7 +1436,7 @@ mod tests {
             parameters,
             vec![TypeRef {
                 name: "HTTPСоединение".to_string(),
-                id: Some(owner.clone()),
+                target: TypeRefTarget::Ok(owner.clone()),
                 template_binding: None,
             }],
         );
@@ -1448,7 +1464,7 @@ mod tests {
             .map(|parameter| parameter.name.as_str())
             .collect::<Vec<_>>();
         assert_eq!(parameter_names, ["Сервер", "ИспользоватьАутентификациюОС"]);
-        assert_eq!(callable.info.return_types[0].id.as_ref(), Some(&owner));
+        assert_eq!(callable.info.return_types[0].resolved_id(), Some(&owner));
     }
 
     #[test]

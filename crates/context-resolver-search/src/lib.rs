@@ -7,11 +7,11 @@ use context_resolver_core::{
     MetadataTemplateInfo, Name, Parameter, PlatformTypeTemplateKey, RelationKind, ResolveContext,
     ResolveError, ResolveResponse, ResolvedCallable, ResolvedMember, ResolvedType, Signature,
     SourceCapabilities, SourceDescriptor, SourceId, TemplateParameterBinding, TypeId, TypeInfo,
-    TypeLookup, TypeRef, TypeTemplateBinding,
+    TypeLookup, TypeRef, TypeRefTarget, TypeTemplateBinding,
 };
 use syntax_helper_search::{
     RelatedHit, SearchDocument, SearchDocumentKind, SearchError, SearchHit, SearchIndex,
-    SearchTypeRef,
+    SearchTypeRef, SearchTypeRefTarget,
 };
 
 const DEFAULT_SOURCE_ID: &str = "shcntx-platform";
@@ -89,11 +89,21 @@ impl PlatformSearchSource {
     fn type_ref_fact(&self, type_ref: &SearchTypeRef) -> TypeRef {
         TypeRef {
             name: type_ref.name.clone(),
-            id: type_ref
-                .target_type_id
-                .as_ref()
-                .map(|type_id| self.type_id(type_id.clone())),
+            target: self.type_ref_target(&type_ref.target),
             template_binding: type_ref.template_binding.as_ref().map(map_template_binding),
+        }
+    }
+
+    fn type_ref_target(&self, target: &SearchTypeRefTarget) -> TypeRefTarget {
+        match target {
+            SearchTypeRefTarget::Ok(type_id) => TypeRefTarget::Ok(self.type_id(type_id.clone())),
+            SearchTypeRefTarget::Unresolved => TypeRefTarget::Unresolved,
+            SearchTypeRefTarget::Ambiguous(candidates) => TypeRefTarget::Ambiguous(
+                candidates
+                    .iter()
+                    .map(|type_id| self.type_id(type_id.clone()))
+                    .collect(),
+            ),
         }
     }
 
@@ -113,7 +123,7 @@ impl PlatformSearchSource {
             .map(|hit| {
                 Ok(TypeRef {
                     name: hit.document.name.primary,
-                    id: Some(self.type_id(hit.document.id)),
+                    target: TypeRefTarget::Ok(self.type_id(hit.document.id)),
                     template_binding: None,
                 })
             })
@@ -563,7 +573,7 @@ impl LanguageSearchSource {
             .iter()
             .map(|name| TypeRef {
                 name: name.clone(),
-                id: None,
+                target: TypeRefTarget::Unresolved,
                 template_binding: None,
             })
             .collect()
@@ -1513,7 +1523,7 @@ mod tests {
             .first()
             .expect("type-template property type must be exposed");
         assert_eq!(
-            property_type.id.as_ref().map(|id| id.0.local_id.as_str()),
+            property_type.resolved_id().map(|id| id.0.local_id.as_str()),
             Some("platform_type:ДокументСсылка.<Имя документа>")
         );
         let binding = property_type
@@ -1562,7 +1572,7 @@ mod tests {
             .first()
             .expect("type-template constructor result type must be exposed");
         assert_eq!(
-            result_type.id.as_ref().map(|id| id.0.local_id.as_str()),
+            result_type.resolved_id().map(|id| id.0.local_id.as_str()),
             Some("platform_type:ДокументОбъект.<Имя документа>")
         );
         let binding = result_type
@@ -1683,13 +1693,13 @@ mod tests {
         );
         assert!(callable_elapsed.as_millis() < 100);
         assert_eq!(
-            callable.facts[0].info.return_types[0]
-                .id
-                .as_ref()
-                .expect("return type id must be preserved")
-                .0
-                .local_id,
-            "platform_type:ЭлементОтбораКомпоновкиДанных"
+            callable.facts[0].info.return_types[0].target,
+            TypeRefTarget::Ok(TypeId(FactId::new(
+                source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:ЭлементОтбораКомпоновкиДанных",
+            )))
         );
 
         let returns = adapter
@@ -1716,13 +1726,13 @@ mod tests {
         assert_eq!(constructor.status, ResolveStatus::Ok);
         assert_eq!(constructor.facts.len(), 1);
         assert_eq!(
-            constructor.facts[0].info.return_types[0]
-                .id
-                .as_ref()
-                .expect("constructor type id must be preserved")
-                .0
-                .local_id,
-            "platform_type:ОтборКомпоновкиДанных"
+            constructor.facts[0].info.return_types[0].target,
+            TypeRefTarget::Ok(TypeId(FactId::new(
+                source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:ОтборКомпоновкиДанных",
+            )))
         );
         let constructs = adapter
             .related(
@@ -1746,6 +1756,95 @@ mod tests {
         assert_eq!(
             member_of.facts[0].id.local_id,
             "platform_type:НастройкиКомпоновкиДанных"
+        );
+    }
+
+    #[test]
+    fn platform_adapter_preserves_type_ref_resolution_status() {
+        let source = fixture_source();
+        let path = temp_path("platform-adapter-type-ref-resolution.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        for record in [
+            platform_type("Владелец", None),
+            platform_type("РазрешенныйТип", None),
+            platform_type_with_owner_path("ДубльТип", "Первый"),
+            platform_type_with_owner_path("ДубльТип", "Второй"),
+        ] {
+            builder
+                .platform_type(record)
+                .expect("platform type must sink");
+        }
+        builder
+            .type_property(model::PlatformProperty {
+                owner: name("Владелец", None),
+                owner_identity: Some("platform_type:Владелец".to_string()),
+                name: name("Поле", None),
+                semantic: model::SemanticContext::default(),
+                usage: None,
+                type_refs: vec![
+                    model::TypeRef {
+                        name: "РазрешенныйТип".to_string(),
+                    },
+                    model::TypeRef {
+                        name: "НесуществующийТип".to_string(),
+                    },
+                    model::TypeRef {
+                        name: "ДубльТип".to_string(),
+                    },
+                ],
+                description: None,
+                facts: model::SectionFacts::default(),
+                source: source_ref("owner-field"),
+            })
+            .expect("property must sink");
+        build_index_from_builder(&path, &metadata(), builder).expect("index must build");
+        let adapter = PlatformSearchSource::with_source_id(open_index(&path), source.clone());
+        let owner = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:Владелец",
+        ));
+
+        let members = adapter
+            .members(
+                &owner,
+                MemberQuery {
+                    name: Some("Поле"),
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("member lookup must not fail");
+
+        let types = &members.facts[0].info.types;
+        assert_eq!(types.len(), 3);
+        assert_eq!(
+            types[0].target,
+            TypeRefTarget::Ok(TypeId(FactId::new(
+                source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:РазрешенныйТип",
+            )))
+        );
+        assert_eq!(types[1].target, TypeRefTarget::Unresolved);
+        assert_eq!(
+            types[2].target,
+            TypeRefTarget::Ambiguous(vec![
+                TypeId(FactId::new(
+                    source.clone(),
+                    LanguageDomain::PlatformApi,
+                    FactKind::Type,
+                    "platform_type:ДубльТип:Второй",
+                )),
+                TypeId(FactId::new(
+                    source,
+                    LanguageDomain::PlatformApi,
+                    FactKind::Type,
+                    "platform_type:ДубльТип:Первый",
+                )),
+            ])
         );
     }
 
@@ -2292,6 +2391,16 @@ mod tests {
             facts: model::SectionFacts::default(),
             source: source_ref(primary),
         }
+    }
+
+    fn platform_type_with_owner_path(primary: &str, owner_path: &str) -> model::PlatformType {
+        let mut record = platform_type(primary, None);
+        record.semantic = model::SemanticContext::new(
+            model::BranchKind::PlatformObjects,
+            model::RecordFamily::PlatformType,
+        )
+        .with_owner_path(vec![name(owner_path, None)]);
+        record
     }
 
     fn platform_template_type(

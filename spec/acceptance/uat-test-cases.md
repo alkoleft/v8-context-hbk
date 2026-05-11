@@ -1049,12 +1049,13 @@ Expected result:
 - The index artifact is a SQLite database.
 - The database contains schema metadata plus deterministic document, exact-name, FTS and
   relationship-edge data.
-- The database uses search-index schema version `6`; analyzer-critical callable, parameter,
+- The database uses current search-index schema version `13`; analyzer-critical callable, parameter,
   member and type-reference facts are present in normalized relational tables rather than
   `documents.signature_json` or presentation-only `documents.preview` columns.
 - Type identity and exact owner-type member/callable lookup have indexed joins from lookup keys back
   to normalized rows.
-- Type references to duplicate platform type names keep `target_type_name` but do not silently pin
+- Type references to duplicate platform type names keep source `target_type_name`, store
+  `target_resolution_status="ambiguous"` plus deterministic candidate ids, and do not silently pin
   `target_type_id` to one hidden winner.
 - The index build records locale `ru`, source locale `ru`, source HBK identity and index/extraction
   schema version.

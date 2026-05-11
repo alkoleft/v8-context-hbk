@@ -1952,6 +1952,28 @@ mapping between provider-local facts and resolver DTOs. This does not change cod
 membership, provider JSON, canonical export JSON, SQLite schema, parser behavior, UAT cases or the
 T136 quality-gate values.
 
+T139 splits source-backed type-reference spelling from resolved target identity. The private
+rebuildable search-index schema is now `13`: each `type_refs` row keeps raw `target_type_name`,
+stores `target_resolution_status` as `ok`, `unresolved` or `ambiguous`, stores `target_type_id` only
+for unique resolved targets and stores deterministic ambiguous candidate ids when the reference name
+matches multiple platform type identities. Provider JSON `types` and `return` fields remain
+export-compatible source-name arrays; Rust resolver DTOs now expose the target outcome explicitly
+instead of collapsing unresolved and ambiguous references into the same absent id. The focused test
+coverage exercises resolved, unresolved and ambiguous type-reference rows through both
+`syntax-helper-search` and `context-resolver-search`. The T136 quality-gate values are unchanged by
+this storage/DTO split. A representative T139 UAT run on 2026-05-11 against
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` rebuilt
+`target/uat/t139-sh-search-ru.sqlite` with 25415 documents in 41057 ms, confirmed search-index
+schema version `13`, confirmed the new `type_refs.target_resolution_status` and
+`type_refs.target_candidate_type_ids` columns, verified that ambiguous normalized rows do not
+materialize legacy `has_type` / `returns` relation-table edges, verified exact get / constructors /
+related provider JSON still uses export-compatible `types` and `return` fields, and reran
+deterministic `syntax type-ref-gaps` twice with unchanged RU totals: `47156` total, `29776`
+resolved, `17367` unresolved, `13` ambiguous and `353` template-binding rows. The same verification
+rebuilt `target/uat/t139-sh-search-root.sqlite` from `shcntx_root.hbk` with 25415 documents in
+29594 ms and confirmed unchanged root totals: `50034` total, `32823` resolved, `17211` unresolved,
+`0` ambiguous and `335` template-binding rows.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

@@ -148,8 +148,9 @@ source-of-truth layers:
   adapters, but the model crate must not depend on SQLite, resolver domains, CLI/provider JSON or
   downstream analyzer concepts.
 - `syntax-helper-search` owns index-time resolution of those source-backed type references into
-  `target_type_id`, explicit unresolved/ambiguous measurement, type-template classification
-  persistence and private rebuildable SQLite layout. Resolved target ids, ambiguous candidate
+  an explicit target resolution result: `ok` with `target_type_id`, `unresolved` with no candidates
+  or `ambiguous` with deterministic candidate ids. Type-template classification persistence and
+  private rebuildable SQLite layout also belong here. Resolved target ids, ambiguous candidate
   reporting and quality-gap counters are index/provider state, not extraction-domain identity.
 - `context-resolver-core` owns source-neutral resolver ids and DTOs for in-process static-analysis
   integration: `FactId`, `TypeId`, resolver `TypeRef`, `PlatformTypeTemplateKey`,
@@ -657,7 +658,7 @@ than building from consumer JSON export directories.
 
 Implemented first slice:
 
-- `syntax-helper-search` owns `index.sqlite` schema version `12`, read-only query opens, FTS5 keyword
+- `syntax-helper-search` owns `index.sqlite` schema version `13`, read-only query opens, FTS5 keyword
   search, prefix-bounded fuzzy candidate selection, exact name/alias and owner/member lookup, and
   directed owner/type-reference relationship traversal.
 - `SearchHit`, `SearchDocument`, `RelatedHit` and `RelationStep` are Rust query result structs for
@@ -704,6 +705,10 @@ Implemented first slice:
   persisted type-template classification evidence and multi-argument owner-parameter template
   bindings. Consumers must use the Rust search/resolver APIs for those facts; SQLite tables and
   columns remain private provider state and older indexes are rejected with rebuild instructions.
+- T139 raises the private rebuildable search-index schema to version `13` so each normalized
+  `type_refs` row stores source spelling separately from target resolution status and ambiguous
+  candidate ids. Provider JSON keeps export-compatible `types` / `return` name arrays, while Rust
+  resolver DTOs expose target resolution as data instead of `Option<TypeId>`.
 
 T87 classifies the remaining duplicate-looking query/provider mechanisms as boundary decisions
 rather than immediate cleanup work:
