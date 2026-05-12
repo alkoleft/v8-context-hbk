@@ -9,6 +9,9 @@ directories are service data unless promoted here.
 - T9 Syntax Assistant acceptance passed for `shcntx_ru.hbk` and `shcntx_root.hbk`.
 - T10 all-HBK smoke passed for every `*.hbk` file under `/opt/1cv8/x86_64/8.5.1.1150/`.
 - T12 workspace split passed with package-level checks and preserved CLI behavior.
+- T151 internal module decomposition split the mandatory large crate entrypoints by responsibility
+  while preserving existing public API, provider/export JSON, resolver behavior and SQLite schema.
+  Verification passed with `cargo fmt --all --check` and `cargo test --workspace`.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.

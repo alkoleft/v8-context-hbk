@@ -29,7 +29,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T151.
+Current first unchecked task: none.
 
 ## Loop Rule
 
@@ -325,33 +325,40 @@ Decision: decompose large `src/lib.rs` files inside their current crates first. 
 crates, change public API, change provider/export JSON, or move behavior across context boundaries in
 this task.
 
-- [ ] Before refactoring, verify `implementation/components.md` still records the intended internal
+- [x] Before refactoring, verify `implementation/components.md` still records the intended internal
       module boundaries for every touched crate.
-- [ ] Split `syntax-helper-search` internals by responsibility: public DTO/facade exports, index
+- [x] Split `syntax-helper-search` internals by responsibility: public DTO/facade exports, index
       builder, SQLite schema/storage/lifecycle, read-only query methods, relation traversal,
       type-reference resolution/gap reports and type-template classification. Keep
       `syntax-helper-search` as the owner of the private SQLite artifact and search/index behavior.
-- [ ] Split `context-resolver-search` into platform adapter, BSL/query-language adapter,
+- [x] Split `context-resolver-search` into platform adapter, BSL/query-language adapter,
       global-context adapter support and shared mapping helpers. This split should prepare T146
       without implementing new resolver behavior unless that task is active.
-- [ ] Split `syntax-helper-language` into shared model/parser helpers plus `shlang`, `shquery` and
+- [x] Split `syntax-helper-language` into shared model/parser helpers plus `shlang`, `shquery` and
       `dcsui` parser modules. Preserve the BSL vs SDBL/query context boundary.
-- [ ] Split `hbk-book-export` into request/planning, raw export, Markdown rendering, link rewriting,
+- [x] Split `hbk-book-export` into request/planning, raw export, Markdown rendering, link rewriting,
       HTML/code normalization, filesystem write and error modules.
-- [ ] Split `hbk-doc-site` into source discovery/loading, site-data/TOC merge, page/link planning,
+- [x] Split `hbk-doc-site` into source discovery/loading, site-data/TOC merge, page/link planning,
       artifact writing and stable-id helpers.
-- [ ] Optionally split `context-resolver-core` into ids/facts, query/response DTOs, traits and
+- [x] Optionally split `context-resolver-core` into ids/facts, query/response DTOs, traits and
       composite resolver modules only if it reduces coupling while keeping the source-neutral public
       API intact.
-- [ ] Optionally split `syntax-helper-model` into discovery DTOs, identity helpers, platform records
+- [x] Optionally split `syntax-helper-model` into discovery DTOs, identity helpers, platform records
       and sink/diagnostic modules only as a readability cleanup.
-- [ ] Split `v8-context-hbk-cli` by command family and provider rendering responsibility. Do not move
+- [x] Split `v8-context-hbk-cli` by command family and provider rendering responsibility. Do not move
       provider search/index ownership into the CLI.
-- [ ] Avoid broad formatting-only churn outside the touched modules.
+- [x] Avoid broad formatting-only churn outside the touched modules.
+
+Result: T151 decomposed the mandatory large entrypoints into responsibility-named internal files
+inside the same crates while preserving the existing root facade scope and private helper
+visibility. No new crates, public Rust API changes, provider/export JSON changes, resolver behavior,
+SQLite schema changes or parser behavior changes were introduced. `context-resolver-core` and
+`syntax-helper-model` were evaluated and intentionally left as-is for this task because splitting
+their source-neutral/model surfaces would add churn without reducing coupling in the T151 scope.
 
 Verification:
 
-- [ ] Existing tests pass without changing public CLI behavior, provider JSON, export JSON, resolver
+- [x] Existing tests pass without changing public CLI behavior, provider JSON, export JSON, resolver
       public API or SQLite schema.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test --workspace`
+- [x] `cargo fmt --all --check`
+- [x] `cargo test --workspace`

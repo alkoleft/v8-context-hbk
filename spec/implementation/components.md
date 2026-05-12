@@ -101,6 +101,13 @@ Solution-context Rust resolution is described in
 Large `src/lib.rs` files should remain facade modules after decomposition. Splits are structural
 only unless a separate requirement changes behavior or public contracts.
 
+T151 implementation note: the first decomposition pass keeps existing crate root scopes intact and
+moves implementation sections into responsibility-named files included by the facade. This preserves
+the provisional root-level Rust API and private helper visibility while separating code by context
+boundary. `context-resolver-core` and `syntax-helper-model` remain unsplit after evaluation because
+their current source-neutral/model surfaces are smaller than the mandatory split targets and a file
+split would not reduce coupling in this task.
+
 - `syntax-helper-search` should split by internal index responsibilities:
   - public DTOs and facade exports;
   - index builder and extracted-record ingestion;
