@@ -1626,6 +1626,18 @@ UAT-SH-024 passed:
 time was `0.15` seconds, within NFR-QUERY-001, and both `--graph --compact` and
 `--graph --id "query_table:БизнесПроцесс"` returned explicit `unsupported` provider responses.
 
+T145 broadened UAT-SH-024 on a fresh Russian index at `target/uat/t145-type-graph.sqlite` with
+schema `13`, `25415` documents and `44819 ms` build time. Three additional expression-chain graph
+queries passed without changing provider schema or unsupported graph combinations:
+`Запрос.Выполнить` reached `РезультатЗапроса`, `РезультатЗапроса.Выбрать`,
+`ВыборкаИзРезультатаЗапроса`, `Следующий` and `<Имя поля>` in `0.11` seconds;
+`HTTPСоединение.Получить` reached `HTTPОтвет`, `КодСостояния`, `Заголовки`,
+`ПолучитьТелоКакСтроку` and `ПолучитьТелоКакДвоичныеДанные` in `0.17` seconds; and
+`ДвоичныеДанные.ОткрытьПотокДляЧтения` reached `Поток`, `Прочитать`, `Закрыть`,
+`ДоступноЧтение` and `ПолучитьПотокТолькоДляЧтения` in `0.04` seconds. All measured graph queries
+remained within NFR-QUERY-001, and graph metadata stayed under `results[].meta` while shared fact
+fields remained export-compatible.
+
 T65 accepted ADR-0008 and the Rust solution-context resolver API design. This is a spec-only
 decision and does not change CLI behavior, provider JSON, SQLite schema or parser output. ADR-0008
 adds a future in-process Rust boundary for a concrete full-context application that needs fast

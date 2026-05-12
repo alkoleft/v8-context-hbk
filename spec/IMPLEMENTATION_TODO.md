@@ -29,7 +29,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T145.
+Current first unchecked task: T146.
 
 ## Loop Rule
 
@@ -121,24 +121,32 @@ Verification:
 References: T142, UAT-SH-024, FR-SH-PROVIDER-001, FR-SH-SEARCH-001,
 FR-SH-SEARCH-002, NFR-QUERY-001, `implementation/syntax-helper-query-cli.md`.
 
-- [ ] Select two or three additional real expression-chain workflows beyond the accepted SKD
+- [x] Select two or three additional real expression-chain workflows beyond the accepted SKD
       `НастройкиКомпоновкиДанных.Отбор` scenario.
-- [ ] For each workflow, define the exact graph root, expected reachable facts and why one bounded
+- [x] For each workflow, define the exact graph root, expected reachable facts and why one bounded
       `syntax related --graph` call is enough for analyzer-style inference.
-- [ ] Add UAT coverage only for externally observable provider behavior; keep graph internals and
+- [x] Add UAT coverage only for externally observable provider behavior; keep graph internals and
       SQLite schema private.
-- [ ] Preserve current unsupported combinations for graph mode unless a spec change explicitly expands
+- [x] Preserve current unsupported combinations for graph mode unless a spec change explicitly expands
       the contract.
-- [ ] Record measured graph-query latency against the accepted corpus and keep it within
+- [x] Record measured graph-query latency against the accepted corpus and keep it within
       NFR-QUERY-001 or document the measured blocker.
+
+Result: T145 broadened UAT-SH-024 with three additional exact graph roots:
+`type_method:platform_type:Запрос:Выполнить`,
+`type_method:platform_type:HTTPСоединение:Получить` and
+`type_method:platform_type:ДвоичныеДанные:ОткрытьПотокДляЧтения`. The existing type graph contract
+was sufficient; no parser, SQLite schema, provider envelope, unsupported-combination or analyzer
+implementation changes were made. Fresh `shcntx_ru.hbk` UAT measurements were recorded in
+`acceptance/baseline.md`.
 
 Verification:
 
-- [ ] New UAT cases pass against a fresh local index built from the accepted corpus.
-- [ ] Provider JSON keeps graph metadata under `results[].meta` or envelope diagnostics, not inside
+- [x] New UAT cases pass against a fresh local index built from the accepted corpus.
+- [x] Provider JSON keeps graph metadata under `results[].meta` or envelope diagnostics, not inside
       shared fact fields.
-- [ ] `cargo fmt --all --check` if code or Rust examples are touched.
-- [ ] `cargo test --workspace` if code is touched.
+- [x] Not required: `cargo fmt --all --check` (no code or Rust examples touched).
+- [x] Not required: `cargo test --workspace` (no code touched).
 
 ### T146: Add Global Context Resolver Scope and Fix Callable/Member Gaps
 

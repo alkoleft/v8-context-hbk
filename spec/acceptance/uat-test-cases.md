@@ -2052,12 +2052,14 @@ Related use case: UC-SH-005B, UC-SH-005C and UC-SH-005D.
 
 Related requirements: FR-SH-SEARCH-001, FR-SH-SEARCH-002, FR-SH-PROVIDER-001, NFR-QUERY-001.
 
-Status: implementation UAT for T142.
+Status: implementation UAT for T142 and broadened consumer-workflow coverage for T145.
 
 Preconditions:
 
 - `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` exists.
 - `target/uat/t142-type-graph.sqlite` can be created or removed.
+- `target/uat/t145-type-graph.sqlite` can be created or removed when running the broadened T145
+  workflow coverage.
 - `jq` is available for JSON assertions.
 
 Steps:
@@ -2161,6 +2163,128 @@ jq -e '.status == "unsupported" and any(.diagnostics[]; .code == "UNSUPPORTED_QU
   target/uat/t142-type-graph-unsupported-root.json
 ```
 
+Additional T145 graph workflow coverage:
+
+```bash
+rm -f target/uat/t145-type-graph.sqlite target/uat/t145-type-graph*.json \
+  target/uat/t145-type-graph*.time
+cargo run -p v8-context-hbk-cli --bin v8-context-hbk -- \
+  syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/uat/t145-type-graph.sqlite
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t145-type-graph.sqlite \
+  /usr/bin/time -f '%e' -o target/uat/t145-type-graph-query-execute.time \
+  target/debug/v8-context-hbk syntax related \
+    --id "type_method:platform_type:Запрос:Выполнить" \
+    --graph --limit 200 --format json \
+  > target/uat/t145-type-graph-query-execute.json
+awk 'BEGIN { ok = 0 } { if ($1 < 2.0) ok = 1 } END { exit ok ? 0 : 1 }' \
+  target/uat/t145-type-graph-query-execute.time
+jq -e '
+  .status == "ok"
+  and .query.kind == "type_graph"
+  and .query.root.id == "type_method:platform_type:Запрос:Выполнить"
+  and .results[0].fact.id == "type_method:platform_type:Запрос:Выполнить"
+  and any(.results[]; .fact.id == "platform_type:РезультатЗапроса")
+  and any(.results[]; .fact.id == "type_method:platform_type:РезультатЗапроса:Выбрать")
+  and any(.results[]; .fact.id == "platform_type:ВыборкаИзРезультатаЗапроса")
+  and any(.results[]; .fact.id == "type_method:platform_type:ВыборкаИзРезультатаЗапроса:Следующий")
+  and any(.results[]; .fact.id == "type_property:platform_type:ВыборкаИзРезультатаЗапроса:<Имя поля>")
+' target/uat/t145-type-graph-query-execute.json
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t145-type-graph.sqlite \
+  /usr/bin/time -f '%e' -o target/uat/t145-type-graph-http-get.time \
+  target/debug/v8-context-hbk syntax related \
+    --id "type_method:platform_type:HTTPСоединение:Получить" \
+    --graph --limit 200 --format json \
+  > target/uat/t145-type-graph-http-get.json
+awk 'BEGIN { ok = 0 } { if ($1 < 2.0) ok = 1 } END { exit ok ? 0 : 1 }' \
+  target/uat/t145-type-graph-http-get.time
+jq -e '
+  .status == "ok"
+  and .query.kind == "type_graph"
+  and .query.root.id == "type_method:platform_type:HTTPСоединение:Получить"
+  and .results[0].fact.id == "type_method:platform_type:HTTPСоединение:Получить"
+  and any(.results[]; .fact.id == "platform_type:HTTPОтвет")
+  and any(.results[]; .fact.id == "type_property:platform_type:HTTPОтвет:КодСостояния")
+  and any(.results[]; .fact.id == "type_property:platform_type:HTTPОтвет:Заголовки")
+  and any(.results[]; .fact.id == "type_method:platform_type:HTTPОтвет:ПолучитьТелоКакСтроку")
+  and any(.results[]; .fact.id == "type_method:platform_type:HTTPОтвет:ПолучитьТелоКакДвоичныеДанные")
+' target/uat/t145-type-graph-http-get.json
+
+V8_CONTEXT_HBK_SYNTAX_INDEX=target/uat/t145-type-graph.sqlite \
+  /usr/bin/time -f '%e' -o target/uat/t145-type-graph-binary-stream.time \
+  target/debug/v8-context-hbk syntax related \
+    --id "type_method:platform_type:ДвоичныеДанные:ОткрытьПотокДляЧтения" \
+    --graph --limit 200 --format json \
+  > target/uat/t145-type-graph-binary-stream.json
+awk 'BEGIN { ok = 0 } { if ($1 < 2.0) ok = 1 } END { exit ok ? 0 : 1 }' \
+  target/uat/t145-type-graph-binary-stream.time
+jq -e '
+  .status == "ok"
+  and .query.kind == "type_graph"
+  and .query.root.id == "type_method:platform_type:ДвоичныеДанные:ОткрытьПотокДляЧтения"
+  and .results[0].fact.id == "type_method:platform_type:ДвоичныеДанные:ОткрытьПотокДляЧтения"
+  and any(.results[]; .fact.id == "platform_type:Поток")
+  and any(.results[]; .fact.id == "type_method:platform_type:Поток:Прочитать")
+  and any(.results[]; .fact.id == "type_method:platform_type:Поток:Закрыть")
+  and any(.results[]; .fact.id == "type_property:platform_type:Поток:ДоступноЧтение")
+  and any(.results[]; .fact.id == "type_method:platform_type:Поток:ПолучитьПотокТолькоДляЧтения")
+' target/uat/t145-type-graph-binary-stream.json
+
+jq -e '
+  all(.results[];
+    (.meta | has("depth"))
+    and (.meta | has("path"))
+    and (.fact | has("type_references") | not)
+    and (.fact | has("type_refs") | not)
+    and (.fact | has("return_types") | not)
+    and (.fact | has("source") | not)
+    and (.fact | has("source_hbk") | not)
+    and (.fact | has("toc_path") | not)
+    and (.fact | has("html_path") | not)
+    and (.fact | has("page_title") | not)
+    and (.fact | has("rowid") | not)
+    and (.fact | has("parameter_text") | not)
+    and (.fact | has("parameter_terms") | not)
+    and (.fact | has("relation_keys") | not))
+' target/uat/t145-type-graph-query-execute.json
+jq -e '
+  all(.results[];
+    (.meta | has("depth"))
+    and (.meta | has("path"))
+    and (.fact | has("type_references") | not)
+    and (.fact | has("type_refs") | not)
+    and (.fact | has("return_types") | not)
+    and (.fact | has("source") | not)
+    and (.fact | has("source_hbk") | not)
+    and (.fact | has("toc_path") | not)
+    and (.fact | has("html_path") | not)
+    and (.fact | has("page_title") | not)
+    and (.fact | has("rowid") | not)
+    and (.fact | has("parameter_text") | not)
+    and (.fact | has("parameter_terms") | not)
+    and (.fact | has("relation_keys") | not))
+' target/uat/t145-type-graph-http-get.json
+jq -e '
+  all(.results[];
+    (.meta | has("depth"))
+    and (.meta | has("path"))
+    and (.fact | has("type_references") | not)
+    and (.fact | has("type_refs") | not)
+    and (.fact | has("return_types") | not)
+    and (.fact | has("source") | not)
+    and (.fact | has("source_hbk") | not)
+    and (.fact | has("toc_path") | not)
+    and (.fact | has("html_path") | not)
+    and (.fact | has("page_title") | not)
+    and (.fact | has("rowid") | not)
+    and (.fact | has("parameter_text") | not)
+    and (.fact | has("parameter_terms") | not)
+    and (.fact | has("relation_keys") | not))
+' target/uat/t145-type-graph-binary-stream.json
+```
+
 Expected result:
 
 - The graph command exits with code `0`, reads the prebuilt index and does not accept an HBK source
@@ -2171,6 +2295,14 @@ Expected result:
   that root.
 - The single response contains the accepted SKD expression-chain facts: the settings `Отбор`
   property, `ОтборКомпоновкиДанных`, `Элементы`, collection `Добавить` and filter-item fields.
+- The broadened T145 responses cover three additional expression-chain workflows in one bounded
+  `syntax related --graph` call each:
+  - `Запрос.Выполнить` reaches `РезультатЗапроса`, `РезультатЗапроса.Выбрать`,
+    `ВыборкаИзРезультатаЗапроса`, `Следующий` and `<Имя поля>`.
+  - `HTTPСоединение.Получить` reaches `HTTPОтвет`, response status/header facts and body-access
+    methods.
+  - `ДвоичныеДанные.ОткрытьПотокДляЧтения` reaches `Поток`, read/close methods and readable-stream
+    capability facts.
 - Shared platform fact fields stay export-compatible under `results[].fact`.
 - Graph and resolution details, including type-reference target status and relationship paths, stay
   under `results[].meta`.
@@ -2186,8 +2318,10 @@ Expected result:
 
 Cleanup:
 
-- `target/uat/t142-type-graph.sqlite`, `target/uat/t142-type-graph*.json` and
-  `target/uat/t142-type-graph.time` are service data and may be deleted after the run.
+- `target/uat/t142-type-graph.sqlite`, `target/uat/t142-type-graph*.json`,
+  `target/uat/t142-type-graph.time`, `target/uat/t145-type-graph.sqlite`,
+  `target/uat/t145-type-graph*.json` and `target/uat/t145-type-graph*.time` are service data and
+  may be deleted after the run.
 
 ## UAT-SH-007: Locale-Complete Syntax Assistant Type References and Clean Descriptions
 

@@ -886,6 +886,22 @@ property itself, the referenced `ОтборКомпоновкиДанных` typ
 `КоллекцияЭлементовОтбораКомпоновкиДанных.Добавить` callable and the documented
 `ЭлементОтбораКомпоновкиДанных` fields needed by the expression-chain provider scenario.
 
+T145 broadened the consumer UAT roots without changing the graph contract or storage shape. The
+additional accepted roots are:
+
+- `type_method:platform_type:Запрос:Выполнить`, which must let an analyzer-style consumer traverse
+  from query execution to `РезультатЗапроса`, `РезультатЗапроса.Выбрать`,
+  `ВыборкаИзРезультатаЗапроса`, iteration and field-access facts in one bounded graph call.
+- `type_method:platform_type:HTTPСоединение:Получить`, which must traverse from an HTTP request call
+  to `HTTPОтвет`, status/header properties and body-access methods in one bounded graph call.
+- `type_method:platform_type:ДвоичныеДанные:ОткрытьПотокДляЧтения`, which must traverse from binary
+  data stream opening to `Поток`, read/close methods and readable-stream capability facts in one
+  bounded graph call.
+
+These scenarios are acceptance coverage for externally observable provider JSON only. They do not
+stabilize SQLite tables, traversal internals or a downstream analyzer API, and they preserve the
+T142 unsupported combinations for graph mode.
+
 ### `relations`
 
 Directed relationship edges:
