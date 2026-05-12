@@ -1638,6 +1638,15 @@ queries passed without changing provider schema or unsupported graph combination
 remained within NFR-QUERY-001, and graph metadata stayed under `results[].meta` while shared fact
 fields remained export-compatible.
 
+T148 kept provider JSON schema `1` and canonical export schema `11` stable while recording the
+smallest CLI provider JSON assembly boundary: command handlers execute query paths, while private
+`v8-context-hbk-cli` provider helpers assemble envelopes, shared facts, metadata and diagnostics.
+Graph type-reference metadata is rendered explicitly from search DTOs instead of serializing
+internal model objects wholesale: statuses are `ok`, `unresolved` and `ambiguous`, resolved targets
+use `target_type_id`, ambiguous targets use `candidate_type_ids`, and template bindings expose only
+`template_key.family`, `template_key.variant` and provider-owned argument objects under
+`results[].meta.type_references[].template_binding`.
+
 T146 implemented the first-class Rust resolver global-context scope and closed callable/member
 adapter gaps without changing CLI behavior, provider JSON, consumer export JSON or the private
 search-index schema version. `context-resolver-core` now exposes `global_context` lookup for BSL

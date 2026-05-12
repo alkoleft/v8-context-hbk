@@ -182,6 +182,40 @@ hot-path integration should use ADR-0008's resolver/source traits and adapters i
 these CLI commands or introducing HTTP/MCP transport. The CLI JSON provider remains the
 language-agnostic tool boundary and UAT-friendly compatibility surface.
 
+### Provider JSON Assembly Boundary
+
+T148 keeps the smallest provider JSON assembly boundary inside `v8-context-hbk-cli`. Command
+handlers may parse CLI arguments, resolve the effective index path, execute `SearchIndex` queries
+and select text versus JSON presentation, but provider envelope/result shaping belongs to the
+private provider-JSON helper layer in the CLI crate.
+
+That helper layer owns:
+
+- the provider response envelope for `syntax get`, `syntax constructors`, `syntax search`,
+  `syntax related` and `syntax related --graph`;
+- export-compatible shared fact objects under `results[].fact`, including `signatures`,
+  `signatures[].parameters[]`, `types`, `return`, `name`, `owner`, `id` and `kind`;
+- query-only metadata under `results[].meta`, including search rank/score, relationship paths,
+  owner/type resolution aids and graph type-reference resolution data;
+- provider diagnostics for unsupported, missing, ambiguous, unresolved and ambiguous graph
+  type-reference outcomes.
+
+The boundary deliberately does not move JSON shape ownership into `syntax-helper-search`: that crate
+owns index storage, lookup and graph traversal DTOs, while the CLI provider layer converts those
+DTOs into the public provisional provider JSON contract. The CLI provider layer must not serialize
+internal search/model DTOs wholesale with `json!(...)` when those DTOs carry fields outside the
+provider contract. Graph type-reference metadata renders target status and template-binding data
+explicitly:
+
+- `status` is one of `ok`, `unresolved` or `ambiguous`;
+- `target_type_id` is emitted only for resolved references;
+- `candidate_type_ids` is emitted only for ambiguous references;
+- `template_binding` uses an explicit object with `template_key.family`,
+  `template_key.variant` and provider-owned binding argument objects.
+
+This is a boundary hardening task only. It preserves provider `schema_version: 1`, the accepted
+envelope shape and the canonical `syntax export` consumer schema.
+
 T131 implementation note: schema version 8 stores platform metadata-template facts for resolver
 consumers: metadata kind and template parameters for `PlatformTypeKind::MetadataTemplate` records.
 The data is exposed through `context-resolver-core::TypeInfo`, not as a public SQLite schema

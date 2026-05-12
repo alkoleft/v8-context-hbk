@@ -80,6 +80,14 @@ Solution-context Rust resolution is described in
   and language facts and the source-neutral resolver model. It must not expose SQLite tables, FTS
   fields, query-table provider facts or Syntax Assistant provenance as generic resolver facts.
 - `v8-context-hbk-cli` wires commands and error presentation only.
+- `v8-context-hbk-cli` owns the current CLI provider JSON assembly boundary for `syntax get`,
+  `syntax constructors`, `syntax search`, `syntax related`, `syntax related --graph` and
+  `syntax type-ref-gaps`. Command handlers should stay responsible for argument classification,
+  index-path resolution, query execution and text-versus-JSON dispatch, while private provider JSON
+  helpers shape the versioned envelope, `results[].fact`, `results[].meta` and diagnostics. This
+  boundary must translate `syntax-helper-search` DTOs into export-compatible provider facts instead
+  of serializing internal search/model DTOs wholesale. SQLite schema details, FTS/search tokens,
+  HBK provenance and downstream analyzer concepts must not leak through this layer.
 - Syntax Assistant search/query code must not make `hbk-syntax-export` carry search-only fields in the
   lean consumer export. Use a search-specific index when structured links or provenance are required
   for query workflows.

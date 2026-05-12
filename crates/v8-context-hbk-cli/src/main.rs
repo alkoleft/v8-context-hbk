@@ -2594,6 +2594,15 @@ mod tests {
             })
         );
         assert!(
+            results[0]["meta"]["type_references"][0]["template_binding"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .all(|key| key == "template_key" || key == "arguments")
+        );
+        assert_eq!(results[0]["meta"]["type_references"][0]["status"], "ok");
+        assert_eq!(results[0]["meta"]["type_references"][0]["name"], "Строка");
+        assert!(
             results[0]["meta"]["type_references"]
                 .as_array()
                 .unwrap()
@@ -2612,6 +2621,15 @@ mod tests {
                     && value["parameter_name"] == "Параметр"
                     && value["signature_ordinal"] == 0
                     && value["parameter_ordinal"] == 0)
+        );
+        assert!(
+            results[0]["meta"]["type_references"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|value| value.get("type_template_key").is_none()
+                    && value.get("generic_template_key").is_none()
+                    && value.get("generic_binding").is_none())
         );
         assert_eq!(diagnostics.len(), 2);
         assert!(diagnostics.iter().any(|diagnostic| {

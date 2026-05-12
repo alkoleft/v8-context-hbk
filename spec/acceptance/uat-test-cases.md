@@ -2312,6 +2312,10 @@ Expected result:
 - Shared platform fact fields stay export-compatible under `results[].fact`.
 - Graph and resolution details, including type-reference target status and relationship paths, stay
   under `results[].meta`.
+- Graph `meta.type_references[]` uses explicit provider-owned resolution fields: `status` values
+  are `ok`, `unresolved` or `ambiguous`; resolved rows may expose `target_type_id`; ambiguous rows
+  may expose `candidate_type_ids`; template-bound rows expose `template_binding.template_key.family`,
+  `template_binding.template_key.variant` and explicit binding argument objects.
 - Recoverable unresolved or ambiguous type-reference diagnostics may be present while
   `status="ok"` when the root exists; they are graph-quality diagnostics, not lookup failures.
 - Public JSON does not expose SQLite table names, rowids, FTS/search token fields, HBK paths, TOC

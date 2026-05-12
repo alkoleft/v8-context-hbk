@@ -229,24 +229,33 @@ Verification:
 References: FR-SH-PROVIDER-001, FR-EXPORT-001, T142,
 `implementation/syntax-helper-query-cli.md`, `implementation/components.md`.
 
-- [ ] Specify the smallest provider JSON assembly boundary for `syntax get`, `syntax related`,
+- [x] Specify the smallest provider JSON assembly boundary for `syntax get`, `syntax related`,
       `syntax related --graph` and `syntax type-ref-gaps`. Keep CLI argument parsing separate from
       provider envelope/result shaping.
-- [ ] Render graph `template_binding` metadata explicitly instead of serializing internal model DTOs
+- [x] Render graph `template_binding` metadata explicitly instead of serializing internal model DTOs
       wholesale through `json!(...)`.
-- [ ] Preserve the current provider envelope and `schema_version` unless the spec explicitly approves
+- [x] Preserve the current provider envelope and `schema_version` unless the spec explicitly approves
       a public provider JSON change.
-- [ ] Do not move SQLite schema details, search internals or downstream analyzer concepts into the CLI
+- [x] Do not move SQLite schema details, search internals or downstream analyzer concepts into the CLI
       JSON layer.
+
+Result: T148 kept the public provider JSON envelope at `schema_version: 1` and the canonical
+consumer export at `schema_version: 11`. The provider assembly boundary is recorded in
+`implementation/syntax-helper-query-cli.md` and `implementation/components.md`: command handlers
+classify arguments, resolve the index, execute `SearchIndex` queries and dispatch text versus JSON,
+while private CLI provider helpers assemble envelopes, `results[].fact`, `results[].meta` and
+diagnostics. Existing graph metadata already rendered template bindings explicitly; focused tests
+now pin the `ok`, `unresolved`, `ambiguous` and template-bound graph type-reference shapes and
+assert that internal type-template DTO fields do not leak into provider JSON.
 
 Verification:
 
-- [ ] Focused CLI/provider tests prove graph metadata shape for `ok`, `unresolved`, `ambiguous` and
+- [x] Focused CLI/provider tests prove graph metadata shape for `ok`, `unresolved`, `ambiguous` and
       template-bound type references.
-- [ ] Existing `syntax get`, `syntax related`, `syntax related --graph` and `syntax type-ref-gaps`
+- [x] Existing `syntax get`, `syntax related`, `syntax related --graph` and `syntax type-ref-gaps`
       JSON tests continue to pass.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test -p v8-context-hbk-cli`
+- [x] `cargo fmt --all --check`
+- [x] `cargo test -p v8-context-hbk-cli`
 
 ### T149: Reduce Query-Table Page Re-Parsing During Syntax Extraction
 
