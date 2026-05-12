@@ -183,6 +183,25 @@ pub fn platform_type_owner_semantic_key(
     semantic_relation_key(semantic, &owner.primary)
 }
 
+pub fn type_event_owner_semantic_key(semantic: &SemanticContext) -> Option<String> {
+    if semantic.record_family != RecordFamily::TypeEvent {
+        return None;
+    }
+    let mut owner_path = semantic.owner_path.as_slice();
+    if owner_path
+        .last()
+        .is_some_and(|name| event_group_label(&name.primary))
+    {
+        owner_path = &owner_path[..owner_path.len() - 1];
+    }
+    let (owner_name, owner_path) = owner_path.split_last()?;
+    Some(platform_type_semantic_key(
+        &owner_name.primary,
+        &SemanticContext::new(semantic.branch_kind, RecordFamily::PlatformType)
+            .with_owner_path(owner_path.to_vec()),
+    ))
+}
+
 pub fn platform_type_template_base(name: &LocalizedName) -> Option<String> {
     platform_type_template_base_for_source(name, false)
 }
@@ -660,6 +679,8 @@ pub struct GlobalProperty {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GlobalContextEvent {
     pub name: LocalizedName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_identity: Option<String>,
     pub semantic: SemanticContext,
     pub module: ModuleEventContext,
     pub signatures: Vec<Signature>,

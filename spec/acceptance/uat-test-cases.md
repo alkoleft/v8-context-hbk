@@ -987,7 +987,7 @@ assert cur.execute(
     "select count(*) from documents where id='type_event:owner:События:ОбработкаВыбора'"
 ).fetchone()[0] == 0
 assert cur.execute(
-    "select count(*) from documents where kind='type_event' and name_primary='ОбработкаВыбора' and id like 'type_event:owner:%.%:%'"
+    "select count(*) from documents where kind='type_event' and name_primary='ОбработкаВыбора' and id like 'type_event:platform_type:%:%'"
 ).fetchone()[0] >= 2
 assert cur.execute(
     "select count(*) from documents where id='constructor:platform_type:МенеджерКриптографии:Новый МенеджерКриптографии(<ИспользованиеИнтерактивногоРежима>)'"
@@ -1075,7 +1075,7 @@ Expected result:
   relation endpoints.
 - Query table field and parameter ids use the final parent query-table id; generic table titles
   such as `query_table:Основная таблица` are not used as member owners.
-- Type event ids use the composed TOC-derived semantic owner and do not collapse under generic
+- Type event ids use extracted platform owner identities and do not collapse under generic
   event-group owners such as `type_event:owner:События`.
 - Duplicate source pages for the `МенеджерКриптографии` constructor signature are reported during
   index build and produce one constructor document instead of aborting the rebuild.

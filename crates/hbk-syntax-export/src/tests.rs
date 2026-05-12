@@ -378,6 +378,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
         global_context_events: vec![
             model::GlobalContextEvent {
                 name: name("ПередЗавершениемРаботыСистемы"),
+                owner_identity: None,
                 semantic: semantic(
                     model::BranchKind::GlobalContext,
                     model::RecordFamily::ModuleEvent,
@@ -408,6 +409,7 @@ fn exporter_writes_lean_consumer_records_and_diagnostics_source() {
             },
             model::GlobalContextEvent {
                 name: name("ПередЗаписью"),
+                owner_identity: None,
                 semantic: semantic(
                     model::BranchKind::ManagedForms,
                     model::RecordFamily::TypeEvent,
@@ -1019,6 +1021,7 @@ fn streaming_export_writes_lean_records_without_full_context() {
     export
         .global_context_event(model::GlobalContextEvent {
             name: name("ПередЗаписью"),
+            owner_identity: None,
             semantic: semantic(
                 model::BranchKind::ManagedForms,
                 model::RecordFamily::TypeEvent,

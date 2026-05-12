@@ -29,7 +29,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T146.
+Current first unchecked task: T147.
 
 ## Loop Rule
 
@@ -153,34 +153,43 @@ Verification:
 References: ADR-0008, FR-CTX-RESOLVE-001, FR-SH-PROVIDER-001,
 `implementation/solution-context-resolve.md`, `implementation/syntax-helper-query-cli.md`.
 
-- [ ] Before implementation, finalize the `global_context` resolver contract in
+- [x] Before implementation, finalize the `global_context` resolver contract in
       `implementation/solution-context-resolve.md`: analyzer setup must be able to retrieve the
       BSL and SDBL/query-language global scopes with globally visible methods/properties/facts.
-- [ ] Implement a first-class global-context lookup in `context-resolver-core` and the HBK-backed
+- [x] Implement a first-class global-context lookup in `context-resolver-core` and the HBK-backed
       search adapter. Do not model global platform facts through a fake owner `TypeId`, and do not
       fold SDBL/query-language facts into the BSL/platform scope by matching display names.
-- [ ] Make platform global methods reachable through the resolver callable API when callers use an
+- [x] Make platform global methods reachable through the resolver callable API when callers use an
       ownerless callable-name lookup in the BSL context; this must delegate to the same
       global-context-backed facts, not to a separate ad hoc search path.
-- [ ] Expose platform global properties through the global-context result shape or an explicit
+- [x] Expose platform global properties through the global-context result shape or an explicit
       global-property point lookup chosen in the implementation spec before code.
-- [ ] Ensure type-event facts returned as members can be resolved back by the exact member id returned
+- [x] Ensure type-event facts returned as members can be resolved back by the exact member id returned
       from the resolver. The fact kind used for listing and id lookup must be consistent.
-- [ ] Decide and implement the exact-member miss status: an exact named member lookup with no matching
+- [x] Decide and implement the exact-member miss status: an exact named member lookup with no matching
       member should not silently look like a successful non-empty lookup. Preserve broad member-list
       behavior for owners that intentionally have zero members.
-- [ ] Keep source/domain-qualified identity intact; do not widen platform resolver lookup into
+- [x] Keep source/domain-qualified identity intact; do not widen platform resolver lookup into
       language, query or downstream configuration/source-code domains.
+
+Result: T146 added first-class Rust resolver `global_context` lookup for BSL and SDBL/query scopes,
+implemented HBK-backed platform/language adapter support over prebuilt search indexes, made
+ownerless platform callable lookup resolve only global methods, returned platform global properties
+through the global-context property collection without a fake owner type, fixed type-event
+member-list-to-id round trips through read-phase `owner_identity`, and changed exact named member
+miss to `NotFound`. Ownerless platform callable lookup delegates through the BSL global-context
+scope. CLI behavior, provider JSON, consumer export JSON and the private search-index schema version
+are unchanged.
 
 Verification:
 
-- [ ] Focused resolver tests cover retrieving BSL and SDBL global contexts separately, finding a
+- [x] Focused resolver tests cover retrieving BSL and SDBL global contexts separately, finding a
       known BSL-visible global method/property through the BSL result, keeping a known SDBL function
       in the query-language context, resolving a known platform global method by ownerless
       callable-name lookup, a type-event member-list-to-id round trip and an exact member miss.
-- [ ] Existing static-analysis consumer smoke still passes.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test --workspace`
+- [x] Existing static-analysis consumer smoke still passes.
+- [x] `cargo fmt --all --check`
+- [x] `cargo test --workspace`
 
 ### T147: Fix Generated Documentation Viewer Link Navigation
 

@@ -206,6 +206,9 @@ where
                     event.semantic = catalog_page.semantic.clone();
                     if event.semantic.record_family == RecordFamily::ModuleEvent {
                         event.module = module_context(&catalog_page.semantic);
+                    } else if event.semantic.record_family == RecordFamily::TypeEvent {
+                        event.owner_identity =
+                            parent_identities.type_event_owner(&catalog_page, &event.semantic);
                     }
                     sink.global_context_event(event)
                         .map_err(SyntaxHelperStreamError::Sink)?
@@ -379,6 +382,19 @@ impl ParentIdentities {
 
     fn enum_owner(&self, html_path: &str) -> Option<String> {
         enum_parent_html_path(html_path).and_then(|html_path| self.enums.get(&html_path).cloned())
+    }
+
+    fn type_event_owner(
+        &self,
+        catalog_page: &CatalogPage,
+        semantic: &SemanticContext,
+    ) -> Option<String> {
+        platform_parent_html_path(&catalog_page.source.html_path)
+            .and_then(|html_path| self.platform_types.get(&html_path).cloned())
+            .or_else(|| {
+                type_event_owner_semantic_key(semantic)
+                    .and_then(|key| self.platform_types_by_semantic.get(&key).cloned())
+            })
     }
 }
 

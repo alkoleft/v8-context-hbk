@@ -3,9 +3,10 @@ use std::path::Path;
 use context_resolver_core::{
     AvailabilityContext, AvailabilityFact, AvailabilityInfo, CallableId, CallableInfo,
     CallableKind, CallableLookup, ContextFact, ContextSource, FactDetails, FactId, FactKind,
-    FactRelation, LanguageDomain, MemberId, MemberInfo, MemberKind, MemberQuery, MemberQueryKind,
-    MetadataTemplateInfo, Name, Parameter, PlatformTypeTemplateKey, RelationKind, ResolveContext,
-    ResolveError, ResolveResponse, ResolvedCallable, ResolvedMember, ResolvedType, Signature,
+    FactRelation, GlobalContextLanguage, GlobalContextQuery, LanguageDomain, MemberId, MemberInfo,
+    MemberKind, MemberQuery, MemberQueryKind, MetadataTemplateInfo, Name, Parameter,
+    PlatformTypeTemplateKey, RelationKind, ResolveContext, ResolveError, ResolveResponse,
+    ResolvedCallable, ResolvedGlobalContext, ResolvedMember, ResolvedType, Signature,
     SourceCapabilities, SourceDescriptor, SourceId, TemplateParameterBinding, TypeId, TypeInfo,
     TypeLookup, TypeRef, TypeRefTarget, TypeTemplateBinding,
 };
@@ -143,17 +144,28 @@ impl PlatformSearchSource {
         ResolvedType { id, fact, info }
     }
 
-    fn map_context_fact(&self, hit: SearchHit) -> Result<Option<ContextFact>, ResolveError> {
+    fn map_context_fact_for_kind(
+        &self,
+        hit: SearchHit,
+        requested: Option<FactKind>,
+    ) -> Result<Option<ContextFact>, ResolveError> {
         match hit.document.kind {
             SearchDocumentKind::PlatformType => Ok(Some(self.map_type(hit).fact)),
-            SearchDocumentKind::TypeProperty
-            | SearchDocumentKind::GlobalProperty
-            | SearchDocumentKind::EnumValue => Ok(self.map_member(hit)?.map(|member| member.fact)),
+            SearchDocumentKind::TypeProperty | SearchDocumentKind::EnumValue => {
+                Ok(self.map_member(hit)?.map(|member| member.fact))
+            }
+            SearchDocumentKind::GlobalProperty => Ok(Some(self.map_global_property(hit.document))),
             SearchDocumentKind::TypeMethod
             | SearchDocumentKind::GlobalMethod
-            | SearchDocumentKind::Constructor
-            | SearchDocumentKind::TypeEvent
-            | SearchDocumentKind::ModuleEvent => {
+            | SearchDocumentKind::Constructor => {
+                Ok(self.map_callable(hit)?.map(|callable| callable.fact))
+            }
+            SearchDocumentKind::TypeEvent | SearchDocumentKind::ModuleEvent
+                if requested == Some(FactKind::Member) =>
+            {
+                Ok(self.map_member(hit)?.map(|member| member.fact))
+            }
+            SearchDocumentKind::TypeEvent | SearchDocumentKind::ModuleEvent => {
                 Ok(self.map_callable(hit)?.map(|callable| callable.fact))
             }
             SearchDocumentKind::Enum => Ok(Some(ContextFact {
@@ -176,8 +188,30 @@ impl PlatformSearchSource {
         }
     }
 
+    fn map_global_property(&self, document: SearchDocument) -> ContextFact {
+        let info = MemberInfo {
+            kind: MemberKind::Property,
+            types: self.type_ref_facts(&document.type_ref_facts),
+            description: document.description.clone(),
+        };
+        ContextFact {
+            id: self.fact_id(FactKind::Global, document.id.clone()),
+            name: map_name(&document),
+            owner: None,
+            details: FactDetails::Member(info),
+            relations: Vec::new(),
+        }
+    }
+
     fn id_kind_matches_document(&self, requested: FactKind, document: &SearchDocument) -> bool {
         fact_kind_for_document(document).is_some_and(|actual| actual == requested)
+            || matches!(
+                (requested, document.kind),
+                (
+                    FactKind::Member,
+                    SearchDocumentKind::TypeEvent | SearchDocumentKind::ModuleEvent
+                )
+            )
     }
 
     fn map_member(&self, hit: SearchHit) -> Result<Option<ResolvedMember>, ResolveError> {
@@ -621,6 +655,7 @@ impl ContextSource for LanguageSearchSource {
             members: false,
             callables: true,
             relations: true,
+            global_context: true,
         }
     }
 
@@ -796,6 +831,68 @@ impl ContextSource for LanguageSearchSource {
         ))
     }
 
+    fn global_context(
+        &self,
+        query: GlobalContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError> {
+        if !context.is_source_active(&self.source_id) {
+            return Ok(ResolveResponse::not_found("language source is not active"));
+        }
+        let GlobalContextQuery::Language { language, sources } = query;
+        let expected_domain = match language {
+            GlobalContextLanguage::Bsl => LanguageDomain::BslLanguage,
+            GlobalContextLanguage::Sdbl => LanguageDomain::QueryLanguage,
+        };
+        if self.domain != expected_domain
+            || (!sources.is_empty() && !sources.iter().any(|source| source == &self.source_id))
+        {
+            return Ok(ResolveResponse::not_found(
+                "language source does not expose requested global context",
+            ));
+        }
+
+        let mut methods = Vec::new();
+        let mut facts = Vec::new();
+        for kind in [
+            SearchDocumentKind::LanguageType,
+            SearchDocumentKind::LanguageConstruct,
+            SearchDocumentKind::LanguageFunction,
+            SearchDocumentKind::LanguageOperator,
+            SearchDocumentKind::LanguageKeyword,
+            SearchDocumentKind::LanguageLiteral,
+        ] {
+            for hit in self
+                .index
+                .documents_by_kind(kind)
+                .map_err(|source| self.source_failure(source))?
+                .into_iter()
+                .filter(|hit| self.document_belongs_to_source(&hit.document))
+            {
+                if let Some(callable) = self.map_callable(hit.clone()) {
+                    methods.push(callable);
+                } else if let Some(fact) = self.map_context_fact(hit) {
+                    facts.push(fact);
+                }
+            }
+        }
+
+        Ok(ResolveResponse::ok(vec![ResolvedGlobalContext {
+            id: self.fact_id(
+                FactKind::Global,
+                match language {
+                    GlobalContextLanguage::Bsl => "global_context:bsl",
+                    GlobalContextLanguage::Sdbl => "global_context:sdbl",
+                },
+            ),
+            language,
+            sources: vec![self.source_id.clone()],
+            methods,
+            properties: Vec::new(),
+            facts,
+        }]))
+    }
+
     fn related(
         &self,
         source: &FactId,
@@ -845,6 +942,7 @@ impl ContextSource for PlatformSearchSource {
             members: true,
             callables: true,
             relations: true,
+            global_context: true,
         }
     }
 
@@ -880,7 +978,7 @@ impl ContextSource for PlatformSearchSource {
                         "fact kind does not match indexed platform document",
                     ));
                 }
-                let Some(fact) = self.map_context_fact(hit)? else {
+                let Some(fact) = self.map_context_fact_for_kind(hit, Some(id.kind))? else {
                     return Ok(ResolveResponse::not_found("platform fact not found"));
                 };
                 Ok(ResolveResponse::ok(vec![fact]))
@@ -1030,6 +1128,9 @@ impl ContextSource for PlatformSearchSource {
                 Err(source) => Some(Err(source)),
             })
             .collect::<Result<Vec<_>, ResolveError>>()?;
+        if query.name.is_some() && facts.is_empty() {
+            return Ok(ResolveResponse::not_found("platform member not found"));
+        }
         Ok(ResolveResponse::ok(facts))
     }
 
@@ -1054,27 +1155,42 @@ impl ContextSource for PlatformSearchSource {
                 }
             }
             CallableLookup::OwnerName { owner, name } => {
-                let Some(owner) = owner else {
-                    return Ok(ResolveResponse::unsupported(
-                        "platform callable lookup requires a resolved owner id",
-                    ));
-                };
-                if owner.0.source != self.source_id || owner.0.domain != LanguageDomain::PlatformApi
-                {
-                    Vec::new()
+                if let Some(owner) = owner {
+                    if owner.0.source != self.source_id
+                        || owner.0.domain != LanguageDomain::PlatformApi
+                    {
+                        Vec::new()
+                    } else {
+                        let mut hits = self
+                            .index
+                            .callable_by_owner_type_id(&owner.0.local_id, name)
+                            .map_err(|source| self.source_failure(source))?;
+                        hits.extend(
+                            self.index
+                                .constructors_by_type_id(&owner.0.local_id)
+                                .map_err(|source| self.source_failure(source))?
+                                .into_iter()
+                                .filter(|hit| hit.document.name.primary == name),
+                        );
+                        hits
+                    }
                 } else {
-                    let mut hits = self
-                        .index
-                        .callable_by_owner_type_id(&owner.0.local_id, name)
-                        .map_err(|source| self.source_failure(source))?;
-                    hits.extend(
-                        self.index
-                            .constructors_by_type_id(&owner.0.local_id)
-                            .map_err(|source| self.source_failure(source))?
+                    let response = self.global_context(
+                        GlobalContextQuery::Language {
+                            language: GlobalContextLanguage::Bsl,
+                            sources: &[],
+                        },
+                        context,
+                    )?;
+                    return Ok(response_from_resolved_callables(
+                        response
+                            .facts
                             .into_iter()
-                            .filter(|hit| hit.document.name.primary == name),
-                    );
-                    hits
+                            .flat_map(|scope| scope.methods)
+                            .filter(|method| name_matches(&method.fact.name, name))
+                            .collect(),
+                        "platform callable not found",
+                    ));
                 }
             }
         };
@@ -1088,6 +1204,48 @@ impl ContextSource for PlatformSearchSource {
             facts,
             "platform callable not found",
         ))
+    }
+
+    fn global_context(
+        &self,
+        query: GlobalContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError> {
+        if !context.is_source_active(&self.source_id) {
+            return Ok(ResolveResponse::not_found("platform source is not active"));
+        }
+        let GlobalContextQuery::Language { language, sources } = query;
+        if language != GlobalContextLanguage::Bsl
+            || (!sources.is_empty() && !sources.iter().any(|source| source == &self.source_id))
+        {
+            return Ok(ResolveResponse::not_found(
+                "platform source does not expose requested global context",
+            ));
+        }
+
+        let methods = self
+            .index
+            .documents_by_kind(SearchDocumentKind::GlobalMethod)
+            .map_err(|source| self.source_failure(source))?
+            .into_iter()
+            .filter_map(|hit| self.map_callable(hit).transpose())
+            .collect::<Result<Vec<_>, ResolveError>>()?;
+        let properties = self
+            .index
+            .documents_by_kind(SearchDocumentKind::GlobalProperty)
+            .map_err(|source| self.source_failure(source))?
+            .into_iter()
+            .map(|hit| self.map_global_property(hit.document))
+            .collect::<Vec<_>>();
+
+        Ok(ResolveResponse::ok(vec![ResolvedGlobalContext {
+            id: self.fact_id(FactKind::Global, "global_context:bsl"),
+            language,
+            sources: vec![self.source_id.clone()],
+            methods,
+            properties,
+            facts: Vec::new(),
+        }]))
     }
 
     fn related(
@@ -1221,9 +1379,8 @@ fn is_platform_document_kind(kind: SearchDocumentKind) -> bool {
 fn fact_kind_for_document(document: &SearchDocument) -> Option<FactKind> {
     match document.kind {
         SearchDocumentKind::PlatformType => Some(FactKind::Type),
-        SearchDocumentKind::TypeProperty | SearchDocumentKind::GlobalProperty => {
-            Some(FactKind::Member)
-        }
+        SearchDocumentKind::TypeProperty => Some(FactKind::Member),
+        SearchDocumentKind::GlobalProperty => Some(FactKind::Global),
         SearchDocumentKind::TypeMethod
         | SearchDocumentKind::GlobalMethod
         | SearchDocumentKind::ModuleEvent
@@ -1242,6 +1399,10 @@ fn fact_kind_for_document(document: &SearchDocument) -> Option<FactKind> {
         | SearchDocumentKind::LanguageKeyword
         | SearchDocumentKind::LanguageLiteral => None,
     }
+}
+
+fn name_matches(name: &Name, value: &str) -> bool {
+    name.primary == value || name.alias.as_deref() == Some(value)
 }
 
 fn language_fact_kind_for_document(document: &SearchDocument) -> Option<FactKind> {
@@ -1401,9 +1562,9 @@ mod tests {
     use std::time::Instant;
 
     use context_resolver_core::{
-        CallableLookup, CompositeResolver, ContextResolver, ContextSource, MemberQuery,
-        PlatformTypeTemplateKey, RelationKind, ResolveContext, ResolveStatus,
-        TemplateParameterBinding, TypeLookup,
+        CallableLookup, CompositeResolver, ContextResolver, ContextSource, GlobalContextLanguage,
+        GlobalContextQuery, MemberQuery, PlatformTypeTemplateKey, RelationKind, ResolveContext,
+        ResolveStatus, TemplateParameterBinding, TypeLookup,
     };
     use syntax_helper_language::{LanguagePageInput, LanguageSourceFamily, extract_language_facts};
     use syntax_helper_model as model;
@@ -1763,6 +1924,192 @@ mod tests {
             member_of.facts[0].id.local_id,
             "platform_type:НастройкиКомпоновкиДанных"
         );
+    }
+
+    #[test]
+    fn platform_adapter_exposes_bsl_global_context_and_ownerless_global_callable() {
+        let source = fixture_source();
+        let adapter = PlatformSearchSource::with_source_id(
+            fixture_index("platform-global-context.sqlite"),
+            source.clone(),
+        );
+
+        let scope = adapter
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Bsl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("platform global context lookup must not fail");
+
+        assert_eq!(scope.status, ResolveStatus::Ok);
+        let scope = scope.facts.first().expect("BSL global scope must resolve");
+        assert_eq!(scope.language, GlobalContextLanguage::Bsl);
+        assert_eq!(scope.sources, vec![source.clone()]);
+        assert!(
+            scope
+                .methods
+                .iter()
+                .any(|method| method.fact.name.primary == "Сообщить")
+        );
+        assert!(scope.properties.iter().any(|property| {
+            property.name.primary == "ТекущийОтбор"
+                && matches!(property.details, FactDetails::Member(_))
+                && property.owner.is_none()
+        }));
+        let global_property = scope
+            .properties
+            .iter()
+            .find(|property| property.name.primary == "ТекущийОтбор")
+            .expect("global property must be present in BSL global context")
+            .id
+            .clone();
+        let resolved_property = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&global_property),
+                &ResolveContext::all(),
+            )
+            .expect("global property id lookup must not fail");
+        assert_eq!(resolved_property.status, ResolveStatus::Ok);
+        assert_eq!(resolved_property.facts[0].id.kind, FactKind::Global);
+
+        let callable = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: None,
+                    name: "Сообщить",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("ownerless global method lookup must not fail");
+
+        assert_eq!(callable.status, ResolveStatus::Ok);
+        assert_eq!(callable.facts.len(), 1);
+        assert_eq!(callable.facts[0].info.kind, CallableKind::GlobalMethod);
+        assert_eq!(callable.facts[0].owner, None);
+    }
+
+    #[test]
+    fn platform_adapter_type_event_member_id_round_trips_and_exact_miss_is_not_found() {
+        let source = fixture_source();
+        let filter = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:ОтборКомпоновкиДанных",
+        ));
+        let adapter = PlatformSearchSource::with_source_id(
+            fixture_index("platform-member-edge.sqlite"),
+            source,
+        );
+
+        let missing = adapter
+            .members(
+                &filter,
+                MemberQuery {
+                    name: Some("НетТакогоЧлена"),
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("exact member miss must not fail");
+        assert_eq!(missing.status, ResolveStatus::NotFound);
+
+        let events = adapter
+            .members(
+                &filter,
+                MemberQuery {
+                    name: Some("ПередЗаписью"),
+                    kind: Some(MemberQueryKind::Event),
+                },
+                &ResolveContext::all(),
+            )
+            .expect("type event member lookup must not fail");
+        assert_eq!(events.status, ResolveStatus::Ok);
+        assert_eq!(events.facts.len(), 1);
+        assert_eq!(events.facts[0].info.kind, MemberKind::Event);
+
+        let resolved = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&events.facts[0].id.0),
+                &ResolveContext::all(),
+            )
+            .expect("type event member id lookup must not fail");
+        assert_eq!(resolved.status, ResolveStatus::Ok);
+        assert_eq!(resolved.facts[0].id.kind, FactKind::Member);
+        assert_eq!(resolved.facts[0].name.primary, "ПередЗаписью");
+        assert!(matches!(resolved.facts[0].details, FactDetails::Member(_)));
+    }
+
+    #[test]
+    fn platform_adapter_binds_type_events_to_semantic_owner_identity() {
+        let path = temp_path("platform-type-event-semantic-owner.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        builder
+            .platform_type(platform_type_with_owner_path("ДубльТип", "Первый"))
+            .expect("first duplicate platform type must sink");
+        builder
+            .platform_type(platform_type_with_owner_path("ДубльТип", "Второй"))
+            .expect("second duplicate platform type must sink");
+        let mut event =
+            type_event_with_owner_path(&["Второй", "ДубльТип", "События"], "ПередЗаписью");
+        event.owner_identity = Some("platform_type:ДубльТип:Второй".to_string());
+        builder
+            .global_context_event(event)
+            .expect("type event must sink");
+        build_index_from_builder(&path, &metadata(), builder).expect("index must build");
+
+        let source = fixture_source();
+        let adapter = PlatformSearchSource::with_source_id(open_index(&path), source.clone());
+        let duplicate_types = open_index(&path)
+            .type_identities_by_name("ДубльТип")
+            .expect("duplicate type identities must be readable");
+        assert_eq!(duplicate_types.len(), 2);
+        let second_owner = duplicate_types
+            .iter()
+            .find(|hit| hit.document.id.contains("Второй"))
+            .expect("second semantic owner identity must be present");
+        let first_owner = duplicate_types
+            .iter()
+            .find(|hit| hit.document.id.contains("Первый"))
+            .expect("first semantic owner identity must be present");
+
+        let second_members = adapter
+            .members(
+                &TypeId(FactId::new(
+                    source.clone(),
+                    LanguageDomain::PlatformApi,
+                    FactKind::Type,
+                    second_owner.document.id.clone(),
+                )),
+                MemberQuery {
+                    name: Some("ПередЗаписью"),
+                    kind: Some(MemberQueryKind::Event),
+                },
+                &ResolveContext::all(),
+            )
+            .expect("second owner event lookup must not fail");
+        assert_eq!(second_members.status, ResolveStatus::Ok);
+        assert_eq!(second_members.facts.len(), 1);
+
+        let first_members = adapter
+            .members(
+                &TypeId(FactId::new(
+                    source,
+                    LanguageDomain::PlatformApi,
+                    FactKind::Type,
+                    first_owner.document.id.clone(),
+                )),
+                MemberQuery {
+                    name: Some("ПередЗаписью"),
+                    kind: Some(MemberQueryKind::Event),
+                },
+                &ResolveContext::all(),
+            )
+            .expect("first owner event lookup must not fail");
+        assert_eq!(first_members.status, ResolveStatus::NotFound);
     }
 
     #[test]
@@ -2184,6 +2531,53 @@ mod tests {
     }
 
     #[test]
+    fn language_adapter_exposes_bsl_and_sdbl_global_contexts_separately() {
+        let path = language_fixture_index("language-global-context.sqlite");
+        let shlang = LanguageSearchSource::shlang(open_index(&path));
+        let shquery = LanguageSearchSource::shquery(open_index(&path));
+
+        let bsl_scope = shlang
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Bsl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("BSL global context lookup must not fail");
+        assert_eq!(bsl_scope.status, ResolveStatus::Ok);
+        assert!(bsl_scope.facts[0].facts.iter().any(|fact| {
+            fact.id.domain == LanguageDomain::BslLanguage && fact.id.local_id == "def_String"
+        }));
+        assert!(
+            bsl_scope.facts[0]
+                .facts
+                .iter()
+                .all(|fact| fact.id.domain != LanguageDomain::QueryLanguage)
+        );
+
+        let sdbl_scope = shquery
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Sdbl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("SDBL global context lookup must not fail");
+        assert_eq!(sdbl_scope.status, ResolveStatus::Ok);
+        assert!(sdbl_scope.facts[0].methods.iter().any(|method| {
+            method.id.0.domain == LanguageDomain::QueryLanguage && method.id.0.local_id == "STRING"
+        }));
+        assert!(
+            sdbl_scope.facts[0]
+                .facts
+                .iter()
+                .all(|fact| fact.id.domain == LanguageDomain::QueryLanguage)
+        );
+    }
+
+    #[test]
     fn language_adapter_traverses_only_explicit_extracted_type_edges() {
         let path = language_fixture_index("language-resolver-relations.sqlite");
         let shquery = SourceId::new("shquery");
@@ -2393,6 +2787,40 @@ mod tests {
             })
             .expect("method must sink");
         builder
+            .global_method(model::GlobalMethod {
+                name: name("Сообщить", Some("Message")),
+                signatures: vec![model::Signature {
+                    text: "Сообщить(<Сообщение>)".to_string(),
+                    parameters: vec![model::Parameter {
+                        name: "Сообщение".to_string(),
+                        required: true,
+                        type_refs: vec![model::TypeRef {
+                            name: "Строка".to_string(),
+                        }],
+                        description: None,
+                    }],
+                    return_types: Vec::new(),
+                    variant: None,
+                }],
+                return_types: Vec::new(),
+                description: Some("Выводит сообщение.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("global-message"),
+            })
+            .expect("global method must sink");
+        builder
+            .global_property(model::GlobalProperty {
+                name: name("ТекущийОтбор", Some("CurrentFilter")),
+                usage: None,
+                type_refs: vec![model::TypeRef {
+                    name: "ОтборКомпоновкиДанных".to_string(),
+                }],
+                description: Some("Тестовое глобальное свойство.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("global-current-filter"),
+            })
+            .expect("global property must sink");
+        builder
             .type_property(model::PlatformProperty {
                 owner: name(
                     "ДокументОбъект.<Имя документа>",
@@ -2499,6 +2927,9 @@ mod tests {
                 source: source_ref("query-table-parameter"),
             })
             .expect("query table parameter must sink");
+        builder
+            .global_context_event(type_event("ОтборКомпоновкиДанных", "ПередЗаписью"))
+            .expect("type event must sink");
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
         path
     }
@@ -2543,6 +2974,43 @@ mod tests {
         record.metadata_kind = Some(metadata_kind.to_string());
         record.template_parameters = vec![template_parameter.to_string()];
         record
+    }
+
+    fn type_event(owner: &str, primary: &str) -> model::GlobalContextEvent {
+        type_event_with_owner_path(&[owner], primary)
+    }
+
+    fn type_event_with_owner_path(owner_path: &[&str], primary: &str) -> model::GlobalContextEvent {
+        model::GlobalContextEvent {
+            name: name(primary, Some("BeforeWrite")),
+            owner_identity: type_event_test_owner_identity(owner_path),
+            semantic: model::SemanticContext::new(
+                model::BranchKind::PlatformObjects,
+                model::RecordFamily::TypeEvent,
+            )
+            .with_owner_path(owner_path.iter().map(|owner| name(owner, None)).collect()),
+            module: model::ModuleEventContext::default(),
+            signatures: vec![model::Signature {
+                text: format!("{primary}()"),
+                parameters: Vec::new(),
+                return_types: Vec::new(),
+                variant: None,
+            }],
+            description: Some("event description".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source_ref(&format!("{}.{}", owner_path.join("."), primary)),
+        }
+    }
+
+    fn type_event_test_owner_identity(owner_path: &[&str]) -> Option<String> {
+        let mut owner_path = owner_path;
+        if owner_path
+            .last()
+            .is_some_and(|name| matches!(name.trim().to_lowercase().as_str(), "события" | "events"))
+        {
+            owner_path = &owner_path[..owner_path.len() - 1];
+        }
+        (!owner_path.is_empty()).then(|| format!("platform_type:{}", owner_path.join(".")))
     }
 
     fn name(primary: &str, alias: Option<&str>) -> model::LocalizedName {

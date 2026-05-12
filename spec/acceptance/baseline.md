@@ -1638,6 +1638,25 @@ queries passed without changing provider schema or unsupported graph combination
 remained within NFR-QUERY-001, and graph metadata stayed under `results[].meta` while shared fact
 fields remained export-compatible.
 
+T146 implemented the first-class Rust resolver global-context scope and closed callable/member
+adapter gaps without changing CLI behavior, provider JSON, consumer export JSON or the private
+search-index schema version. `context-resolver-core` now exposes `global_context` lookup for BSL
+and SDBL/query scopes. `context-resolver-search` composes platform `shcntx_*` global
+methods/properties into the BSL global context, exposes `shlang_*` facts in the BSL language scope
+and exposes `shquery_*` / `dcsui_*` facts in the SDBL/query scope. Ownerless platform callable
+lookup resolves only global methods; global properties are returned through the global-context
+properties collection without a fake owner `TypeId`. Exact named member misses now return
+`NotFound`, while broad member listing can still return `Ok([])`. Type-event members listed from a
+resolved owner can be looked up back by the exact `MemberId` returned by the resolver. Type-event
+search documents now consume read-phase `owner_identity` like other child/member records instead of
+building owner identity inside `syntax-helper-search`.
+
+T146 focused verification passed:
+
+- `cargo test -p context-resolver-core --lib`
+- `cargo test -p syntax-helper-search --lib`
+- `cargo test -p context-resolver-search`
+
 T65 accepted ADR-0008 and the Rust solution-context resolver API design. This is a spec-only
 decision and does not change CLI behavior, provider JSON, SQLite schema or parser output. ADR-0008
 adds a future in-process Rust boundary for a concrete full-context application that needs fast

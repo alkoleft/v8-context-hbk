@@ -538,30 +538,38 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
         &mut self,
         record: model::GlobalContextEvent,
     ) -> Result<(), Self::Error> {
-        let owner = event_owner(&record);
         let kind = match record.semantic.record_family {
             model::RecordFamily::ModuleEvent => SearchDocumentKind::ModuleEvent,
             model::RecordFamily::TypeEvent => SearchDocumentKind::TypeEvent,
             _ => SearchDocumentKind::UnknownEvent,
         };
-        self.drafts.push(DocumentDraft::new(
-            document(
-                kind,
-                owner.as_ref(),
-                &record.name,
-                &record.signatures,
-                &[],
-                &[],
-                record.description.as_deref(),
-                String::new(),
-            )
-            .with_section_facts(&record.facts),
+        let owner = match kind {
+            SearchDocumentKind::TypeEvent => None,
+            _ => event_owner(&record),
+        };
+        let document = document(
+            kind,
+            owner.as_ref(),
+            &record.name,
+            &record.signatures,
+            &[],
+            &[],
+            record.description.as_deref(),
+            String::new(),
+        )
+        .with_section_facts(&record.facts);
+        let identity = if kind == SearchDocumentKind::TypeEvent {
+            DraftIdentity::TypeOwned {
+                owner_identity: record.owner_identity,
+            }
+        } else {
             DraftIdentity::Immediate(document_identity(
                 kind.as_str(),
                 owner.as_ref(),
                 &record.name,
-            )),
-        ));
+            ))
+        };
+        self.drafts.push(DocumentDraft::new(document, identity));
         Ok(())
     }
 
@@ -1400,6 +1408,35 @@ impl SearchIndex {
     ) -> Result<Vec<SearchHit>, SearchError> {
         let key = owner_member_key(owner, member);
         self.get_by_key(&key)
+    }
+
+    pub fn documents_by_kind(
+        &self,
+        kind: SearchDocumentKind,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT id, kind, name_primary, name_alias, owner_primary,
+                        owner_alias, signature_text, description, availability_contexts,
+                        available_since
+                 FROM documents
+                 WHERE kind = ?1
+                 ORDER BY kind_priority, name_primary, id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map([kind.as_str()], |row| {
+                Ok(SearchHit {
+                    document: document_from_row(row)?,
+                    score: 0,
+                })
+            })
+            .map_err(|source| self.sqlite(source))?;
+        let hits = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        self.hydrate_hits(hits)
     }
 
     pub fn type_identity_by_id(&self, type_id: &str) -> Result<Option<SearchHit>, SearchError> {
@@ -4195,7 +4232,7 @@ fn event_owner(event: &model::GlobalContextEvent) -> Option<model::LocalizedName
     if let Some(owner) = event.module.owner_path.last().cloned() {
         return Some(owner);
     }
-    event.semantic.type_event_owner()
+    None
 }
 
 fn semantic_relation_key(semantic: &model::SemanticContext, fallback: &str) -> String {
@@ -6992,9 +7029,11 @@ mod tests {
             .map(|document| document.id.as_str())
             .collect::<Vec<_>>();
 
-        assert!(ids.contains(&"type_event:owner:Форма.Поле формы:ОбработкаВыбора"));
-        assert!(ids.contains(&"type_event:owner:Форма.Табличное поле формы:ОбработкаВыбора"));
-        assert!(!ids.contains(&"type_event:owner:События:ОбработкаВыбора"));
+        assert!(ids.contains(&"type_event:platform_type:Форма.Поле формы:ОбработкаВыбора"));
+        assert!(
+            ids.contains(&"type_event:platform_type:Форма.Табличное поле формы:ОбработкаВыбора")
+        );
+        assert!(!ids.contains(&"type_event:platform_type:События:ОбработкаВыбора"));
     }
 
     #[test]
@@ -7895,6 +7934,12 @@ mod tests {
                     unique_enum_owner_identity(&identities, &context.enums, record);
             }
         }
+        for record in &mut context.global_context_events {
+            if record.owner_identity.is_none() {
+                record.owner_identity = model::type_event_owner_semantic_key(&record.semantic)
+                    .and_then(|key| identities.platform_type_ids.get(&key).cloned());
+            }
+        }
         context
     }
 
@@ -8177,6 +8222,7 @@ mod tests {
     fn type_event_with_owner_path(owner_path: &[&str], primary: &str) -> model::GlobalContextEvent {
         model::GlobalContextEvent {
             name: name(primary, Some("BeforeWrite")),
+            owner_identity: type_event_test_owner_identity(owner_path),
             semantic: model::SemanticContext::new(
                 model::BranchKind::PlatformObjects,
                 model::RecordFamily::TypeEvent,
@@ -8193,6 +8239,17 @@ mod tests {
             facts: model::SectionFacts::default(),
             source: source(&format!("{}.{}", owner_path.join("."), primary)),
         }
+    }
+
+    fn type_event_test_owner_identity(owner_path: &[&str]) -> Option<String> {
+        let mut owner_path = owner_path;
+        if owner_path
+            .last()
+            .is_some_and(|name| matches!(name.trim().to_lowercase().as_str(), "события" | "events"))
+        {
+            owner_path = &owner_path[..owner_path.len() - 1];
+        }
+        (!owner_path.is_empty()).then(|| format!("platform_type:{}", owner_path.join(".")))
     }
 
     fn name(primary: &str, alias: Option<&str>) -> model::LocalizedName {

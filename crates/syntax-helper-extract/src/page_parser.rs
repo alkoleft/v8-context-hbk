@@ -82,6 +82,7 @@ pub(crate) fn parse_global_context_event(
 ) -> GlobalContextEvent {
     GlobalContextEvent {
         name: heading_name(content),
+        owner_identity: None,
         semantic: SemanticContext::new(BranchKind::GlobalContext, RecordFamily::ModuleEvent),
         module: ModuleEventContext::default(),
         signatures: parse_signatures(content),

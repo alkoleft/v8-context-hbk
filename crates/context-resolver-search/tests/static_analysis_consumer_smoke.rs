@@ -122,6 +122,21 @@ mod provider_setup {
                 source: source_ref("document-object-link"),
             })
             .expect("type-template method must sink");
+        builder
+            .global_method(model::GlobalMethod {
+                name: name("Сообщить"),
+                signatures: vec![model::Signature {
+                    text: "Сообщить(<Сообщение>)".to_string(),
+                    parameters: Vec::new(),
+                    return_types: Vec::new(),
+                    variant: None,
+                }],
+                return_types: Vec::new(),
+                description: Some("Выводит сообщение.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("global-message"),
+            })
+            .expect("global method must sink");
 
         for fact in shlang_string_facts() {
             builder.add_language_fact(fact);
@@ -247,9 +262,10 @@ mod analyzer_lookup {
     use std::path::Path;
 
     use context_resolver_core::{
-        AvailabilityContext, CallableLookup, CompositeResolver, ContextResolver, LanguageDomain,
-        MemberQuery, PlatformTypeTemplateKey, ResolveContext, ResolveStatus, SourceId,
-        TemplateParameterBinding, TypeLookup,
+        AvailabilityContext, CallableLookup, CompositeResolver, ContextResolver,
+        GlobalContextLanguage, GlobalContextQuery, LanguageDomain, MemberQuery,
+        PlatformTypeTemplateKey, ResolveContext, ResolveStatus, SourceId, TemplateParameterBinding,
+        TypeLookup,
     };
     use context_resolver_search::{LanguageSearchSource, PlatformSearchSource};
 
@@ -269,6 +285,33 @@ mod analyzer_lookup {
                     .expect("language source must open existing provider index"),
             ),
         ]);
+
+        let global_context = resolver
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Bsl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("BSL global context lookup must not fail");
+        assert_eq!(global_context.status, ResolveStatus::Ok);
+        let global_context = global_context
+            .facts
+            .first()
+            .expect("BSL global context must resolve");
+        assert!(
+            global_context
+                .facts
+                .iter()
+                .any(|fact| fact.id.domain == LanguageDomain::BslLanguage)
+        );
+        assert!(
+            global_context
+                .methods
+                .iter()
+                .any(|method| method.id.0.domain == LanguageDomain::PlatformApi)
+        );
 
         let settings = resolver
             .resolve_type(

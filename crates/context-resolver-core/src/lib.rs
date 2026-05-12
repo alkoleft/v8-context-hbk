@@ -293,6 +293,22 @@ pub struct ResolvedCallable {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlobalContextLanguage {
+    Bsl,
+    Sdbl,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedGlobalContext {
+    pub id: FactId,
+    pub language: GlobalContextLanguage,
+    pub sources: Vec<SourceId>,
+    pub methods: Vec<ResolvedCallable>,
+    pub properties: Vec<ContextFact>,
+    pub facts: Vec<ContextFact>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolveStatus {
     Ok,
     NotFound,
@@ -388,6 +404,7 @@ pub struct SourceCapabilities {
     pub members: bool,
     pub callables: bool,
     pub relations: bool,
+    pub global_context: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -430,6 +447,14 @@ pub enum CallableLookup<'a> {
     OwnerName {
         owner: Option<&'a TypeId>,
         name: &'a str,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlobalContextQuery<'a> {
+    Language {
+        language: GlobalContextLanguage,
+        sources: &'a [SourceId],
     },
 }
 
@@ -494,6 +519,17 @@ pub trait ContextSource {
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedCallable>, ResolveError>;
 
+    fn global_context(
+        &self,
+        query: GlobalContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError> {
+        let _ = (query, context);
+        Ok(ResolveResponse::unsupported(
+            "context source does not expose global context",
+        ))
+    }
+
     fn related(
         &self,
         source: &FactId,
@@ -537,6 +573,12 @@ pub trait ContextResolver {
         query: CallableLookup<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedCallable>, ResolveError>;
+
+    fn global_context(
+        &self,
+        query: GlobalContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError>;
 
     fn related(
         &self,
@@ -770,6 +812,75 @@ impl ContextResolver for CompositeResolver {
         }
     }
 
+    fn global_context(
+        &self,
+        query: GlobalContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError> {
+        let GlobalContextQuery::Language { language, sources } = query;
+        let mut merged = ResolvedGlobalContext {
+            id: FactId::new(
+                SourceId::new("composite"),
+                match language {
+                    GlobalContextLanguage::Bsl => LanguageDomain::BslLanguage,
+                    GlobalContextLanguage::Sdbl => LanguageDomain::QueryLanguage,
+                },
+                FactKind::Global,
+                match language {
+                    GlobalContextLanguage::Bsl => "global_context:bsl",
+                    GlobalContextLanguage::Sdbl => "global_context:sdbl",
+                },
+            ),
+            language,
+            sources: Vec::new(),
+            methods: Vec::new(),
+            properties: Vec::new(),
+            facts: Vec::new(),
+        };
+        let mut unsupported = Vec::new();
+
+        for source in self.active_sources(context) {
+            let source_id = source.descriptor().id;
+            if !sources.is_empty() && !sources.iter().any(|id| id == &source_id) {
+                continue;
+            }
+            let response = source.global_context(query, context)?;
+            match response.status {
+                ResolveStatus::Ok => {
+                    for scope in response.facts {
+                        for source_id in scope.sources {
+                            if !merged.sources.contains(&source_id) {
+                                merged.sources.push(source_id);
+                            }
+                        }
+                        merged.methods.extend(scope.methods);
+                        merged.properties.extend(scope.properties);
+                        merged.facts.extend(scope.facts);
+                    }
+                }
+                ResolveStatus::Unsupported => unsupported.extend(response.diagnostics),
+                ResolveStatus::NotFound | ResolveStatus::Ambiguous => {}
+            }
+        }
+
+        let has_facts = !merged.methods.is_empty()
+            || !merged.properties.is_empty()
+            || !merged.facts.is_empty()
+            || !merged.sources.is_empty();
+        if has_facts {
+            return Ok(ResolveResponse::ok(vec![merged]));
+        }
+        if !unsupported.is_empty() {
+            return Ok(ResolveResponse {
+                status: ResolveStatus::Unsupported,
+                facts: Vec::new(),
+                candidates: Vec::new(),
+                diagnostics: unsupported,
+            });
+        }
+        Ok(ResolveResponse::not_found("global context not found"))
+    }
+
     fn related(
         &self,
         source_id: &FactId,
@@ -844,6 +955,21 @@ impl CandidateView for ResolvedCallable {
     }
 }
 
+impl CandidateView for ResolvedGlobalContext {
+    fn candidate(&self) -> ResolveCandidate {
+        ResolveCandidate {
+            id: self.id.clone(),
+            name: Name::new(
+                match self.language {
+                    GlobalContextLanguage::Bsl => "BSL global context",
+                    GlobalContextLanguage::Sdbl => "SDBL global context",
+                },
+                None::<String>,
+            ),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -856,6 +982,7 @@ mod tests {
         members: Vec<ResolvedMember>,
         callables: Vec<ResolvedCallable>,
         relations: Vec<(FactId, RelationKind, ContextFact)>,
+        global_contexts: Vec<ResolvedGlobalContext>,
         resolve_type_status: Option<ResolveStatus>,
         callable_status: Option<ResolveStatus>,
     }
@@ -869,6 +996,7 @@ mod tests {
                 members: Vec::new(),
                 callables: Vec::new(),
                 relations: Vec::new(),
+                global_contexts: Vec::new(),
                 resolve_type_status: None,
                 callable_status: None,
             }
@@ -987,6 +1115,11 @@ mod tests {
             self
         }
 
+        fn with_global_context(mut self, scope: ResolvedGlobalContext) -> Self {
+            self.global_contexts.push(scope);
+            self
+        }
+
         fn with_resolve_type_status(mut self, status: ResolveStatus) -> Self {
             self.resolve_type_status = Some(status);
             self
@@ -1014,6 +1147,7 @@ mod tests {
                 members: true,
                 callables: true,
                 relations: true,
+                global_context: true,
             }
         }
 
@@ -1148,6 +1282,26 @@ mod tests {
             Ok(single_or_ambiguous(facts, "callable not found"))
         }
 
+        fn global_context(
+            &self,
+            query: GlobalContextQuery<'_>,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError> {
+            let GlobalContextQuery::Language { language, sources } = query;
+            if !sources.is_empty() && !sources.iter().any(|source| source == &self.source) {
+                return Ok(ResolveResponse::not_found(
+                    "global context source not active",
+                ));
+            }
+            let facts = self
+                .global_contexts
+                .iter()
+                .filter(|scope| scope.language == language)
+                .cloned()
+                .collect();
+            Ok(single_or_ambiguous(facts, "global context not found"))
+        }
+
         fn related(
             &self,
             source: &FactId,
@@ -1212,6 +1366,111 @@ mod tests {
         assert_ne!(bsl_string, query_string);
         assert_eq!(bsl_string.0.domain, LanguageDomain::BslLanguage);
         assert_eq!(query_string.0.domain, LanguageDomain::QueryLanguage);
+    }
+
+    #[test]
+    fn composite_merges_language_specific_global_context_scopes() {
+        let bsl_source = SourceId::new("shlang");
+        let platform_source = SourceId::new("platform");
+        let bsl_scope = ResolvedGlobalContext {
+            id: FactId::new(
+                bsl_source.clone(),
+                LanguageDomain::BslLanguage,
+                FactKind::Global,
+                "global_context:bsl",
+            ),
+            language: GlobalContextLanguage::Bsl,
+            sources: vec![bsl_source.clone()],
+            methods: Vec::new(),
+            properties: Vec::new(),
+            facts: vec![ContextFact {
+                id: FactId::new(
+                    bsl_source,
+                    LanguageDomain::BslLanguage,
+                    FactKind::Type,
+                    "def_String",
+                ),
+                name: Name::new("Строка", None::<String>),
+                owner: None,
+                details: FactDetails::Type(TypeInfo {
+                    description: None,
+                    metadata_template: None,
+                    type_template_key: None,
+                }),
+                relations: Vec::new(),
+            }],
+        };
+        let platform_scope = ResolvedGlobalContext {
+            id: FactId::new(
+                platform_source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Global,
+                "global_context:bsl",
+            ),
+            language: GlobalContextLanguage::Bsl,
+            sources: vec![platform_source.clone()],
+            methods: vec![ResolvedCallable {
+                id: CallableId(FactId::new(
+                    platform_source,
+                    LanguageDomain::PlatformApi,
+                    FactKind::Callable,
+                    "global_method:Сообщить",
+                )),
+                owner: None,
+                fact: ContextFact {
+                    id: FactId::new(
+                        SourceId::new("platform"),
+                        LanguageDomain::PlatformApi,
+                        FactKind::Callable,
+                        "global_method:Сообщить",
+                    ),
+                    name: Name::new("Сообщить", None::<String>),
+                    owner: None,
+                    details: FactDetails::Callable(CallableInfo {
+                        kind: CallableKind::GlobalMethod,
+                        signatures: Vec::new(),
+                        return_types: Vec::new(),
+                        description: None,
+                    }),
+                    relations: Vec::new(),
+                },
+                info: CallableInfo {
+                    kind: CallableKind::GlobalMethod,
+                    signatures: Vec::new(),
+                    return_types: Vec::new(),
+                    description: None,
+                },
+            }],
+            properties: Vec::new(),
+            facts: Vec::new(),
+        };
+        let resolver = CompositeResolver::new(vec![
+            Box::new(
+                FakeSource::new("shlang", LanguageDomain::BslLanguage)
+                    .with_global_context(bsl_scope),
+            ),
+            Box::new(
+                FakeSource::new("platform", LanguageDomain::PlatformApi)
+                    .with_global_context(platform_scope),
+            ),
+        ]);
+
+        let response = resolver
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Bsl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("global context lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ok);
+        let scope = &response.facts[0];
+        assert_eq!(scope.language, GlobalContextLanguage::Bsl);
+        assert_eq!(scope.sources.len(), 2);
+        assert_eq!(scope.methods[0].fact.name.primary, "Сообщить");
+        assert_eq!(scope.facts[0].name.primary, "Строка");
     }
 
     #[test]

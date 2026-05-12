@@ -168,6 +168,15 @@ callable parameter and overload return type references when the HBK-backed searc
 source-backed type-template links. This is an adapter/DTO guarantee, not a downstream analyzer
 implementation or a public SQLite table contract.
 
+T146 implementation note: `context-resolver-core` now exposes first-class `global_context` lookup
+through `GlobalContextQuery`, `GlobalContextLanguage` and `ResolvedGlobalContext`. The composite
+resolver merges source-specific scopes for one requested language without treating source order as a
+semantic winner rule. The HBK-backed platform adapter contributes `shcntx_*` global methods and
+global properties only to the BSL global context; global properties are returned under
+`ResolvedGlobalContext.properties` with no fake owner `TypeId`. The language adapter contributes
+`shlang_*` facts to the BSL global context and `shquery_*` / `dcsui_*` facts to the SDBL/query
+global context, preserving source/domain-qualified identities.
+
 Type boundary correction after the downstream `v8-context` platform-facts review: HBK remains the
 owner of source-backed platform type-template evidence, not the owner of generated configuration
 type composition. `PlatformTypeTemplateKey`, `TypeTemplateBinding`, template parameter slots and
@@ -466,10 +475,11 @@ first required scopes are:
   visible to query/expression analysis.
 
 Platform global methods and properties must be reachable through the BSL `global_context` for
-analyzer setup and through ownerless callable/property lookups for point queries, but resolver
-internals must not force those facts under a fake `TypeId`. SDBL functions must remain in the
-query-language global context and must not be folded into the BSL/platform scope by matching display
-names.
+analyzer setup. Platform global methods are additionally reachable through ownerless callable-name
+lookup for point queries; platform global properties stay in `global_context.properties` until a
+separate task defines an explicit global-property point lookup. Resolver internals must not force
+global facts under a fake `TypeId`. SDBL functions must remain in the query-language global context
+and must not be folded into the BSL/platform scope by matching display names.
 
 Responses keep recoverable lookup outcomes as data:
 
@@ -600,7 +610,7 @@ Mapping:
 - `member_by_owner_type_id` backs owner/member resolution;
 - `callable_by_id`, `callable_by_owner_type_id` and `constructors_by_type_id` back callable lookup;
 - source-backed global method and global property facts participate in the BSL `global_context` and
-  back ownerless point lookups for individual global facts;
+  global methods back ownerless callable-name lookup for BSL-visible point queries;
 - `related_by_id_and_edge` backs explicit relation traversal for `has_type`, `returns`,
   `constructs` and `member_of`.
 
@@ -625,6 +635,19 @@ T67 implementation notes:
 - Exact-name generic resolver lookup is intentionally limited to platform type identity lookup in
   this first adapter slice; broader name search remains the CLI/search-provider concern.
 - Query-table provider documents stay hidden from the platform adapter.
+
+T146 implementation notes:
+
+- `SearchIndex::documents_by_kind` backs global method/property enumeration from a prebuilt index;
+  resolver lookup still does not parse HBK or expose SQLite row/table contracts.
+- Ownerless platform callable lookup is intentionally limited to `global_method` documents. Owned
+  method/constructor lookup still requires a resolved owner `TypeId`.
+- Exact named member lookup with no matching member returns `NotFound`. Broad member listing for an
+  owner with zero members remains an `Ok` empty set.
+- Type-event documents that are listed as members keep `FactKind::Member` for exact id round trips.
+  Their search document ids are built from read-phase `owner_identity`, matching ADR-0011's
+  child/member boundary. Callable/event handling remains available through callable mapping where
+  the caller uses the callable fact shape.
 
 T92 implementation notes:
 
