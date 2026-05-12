@@ -539,6 +539,24 @@ The durable conclusion is FR-SH-003: fix Syntax Assistant reading/classification
 disambiguators for consumer records. The reader must derive source family, semantic owner and
 branch context from the TOC hierarchy before an export or index adapter sees the record.
 
+T144 source inspection on 2026-05-12 narrowed the RU type-reference ambiguity cases:
+
+- `ЭлементыФормы` has two distinct platform identities, not aliases of one fact:
+  `objects/catalog56/catalog246/Controls.html` is `ЭлементыФормы (Controls)` under
+  `Интерфейс (обычный) > Форма`, while `objects/catalog1649/catalog1890/FormItems.html` is
+  `ЭлементыФормы (FormItems)` under `Интерфейс (управляемый) > Форма клиентского приложения`.
+  Source property pages such as `Форма.ЭлементыФормы` and `ГруппаФормы.ПодчиненныеЭлементы`
+  contain HTML links to the intended target page, but the current type-reference model keeps only
+  the source spelling. Until link-backed target identity is preserved, the index must keep these
+  rows ambiguous instead of inferring a winner from owner names or availability.
+- `Настройка сервиса (IServiceSetting)` at
+  `objects/catalog1369/catalog1384/catalog1386/IServiceSetting.html` and
+  `НастройкаСервиса (ServiceSetting)` at
+  `objects/catalog1369/catalog2573/ServiceSetting.html` are distinct platform identities in
+  different administration branches. Their primary source spellings differ exactly, so T144 treats
+  exact source spelling as sufficient index-time type-reference disambiguation when the broader
+  whitespace-insensitive lookup finds both candidates.
+
 The accepted classification direction for T35 is:
 
 - classify TOC in two layers: branch kind and record family;

@@ -29,7 +29,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T144.
+Current first unchecked task: T145.
 
 ## Loop Rule
 
@@ -89,24 +89,32 @@ Verification:
 References: T135, T136, FR-SH-003, FR-SH-SEARCH-002, FR-SH-PROVIDER-001,
 `source-evidence.md`, `acceptance/baseline.md`.
 
-- [ ] Inspect source evidence for the current RU ambiguous type-reference names:
+- [x] Inspect source evidence for the current RU ambiguous type-reference names:
       `ЭлементыФормы`, `Настройка сервиса` and `НастройкаСервиса`.
-- [ ] For each ambiguous group, decide whether the candidates are distinct platform identities, aliases
+- [x] For each ambiguous group, decide whether the candidates are distinct platform identities, aliases
       of one source fact, duplicated source documentation, or facts missing an owner/domain key.
-- [ ] Implement a source-backed disambiguation or merge rule only when the evidence proves it; otherwise
+- [x] Implement a source-backed disambiguation or merge rule only when the evidence proves it; otherwise
       keep the ambiguity explicit and record the blocker/follow-up.
-- [ ] Preserve the no-hidden-winner contract: plain-name ambiguity must not silently choose the first
+- [x] Preserve the no-hidden-winner contract: plain-name ambiguity must not silently choose the first
       platform type or relation edge.
-- [ ] Update T136 gate values only if the measured ambiguous count changes; reducing ambiguity is
+- [x] Update T136 gate values only if the measured ambiguous count changes; reducing ambiguity is
       acceptable when the rule is source-backed.
+
+Result: T144 keeps all three inspected source groups as distinct platform identities.
+`Настройка сервиса` / `НастройкаСервиса` ambiguity was caused by index-time whitespace-insensitive
+type-reference lookup, not by duplicated source facts, so exact source spelling now disambiguates
+those rows. `ЭлементыФормы` remains explicit ambiguity because both `Controls` and `FormItems`
+share the same primary spelling; resolving it requires preserving the source HTML link target or an
+equivalent parser-owned target identity, not owner-name or availability heuristics. RU T136
+ambiguous gate changed from `13` to `5`; unresolved and template-binding gates are unchanged.
 
 Verification:
 
-- [ ] Focused tests cover each changed ambiguous group or prove that it intentionally remains
+- [x] Focused tests cover each changed ambiguous group or prove that it intentionally remains
       ambiguous.
-- [ ] Fresh `syntax type-ref-gaps --format json` runs are deterministic for the affected RU index.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test --workspace`
+- [x] Fresh `syntax type-ref-gaps --format json` runs are deterministic for the affected RU index.
+- [x] `cargo fmt --all --check`
+- [x] `cargo test --workspace`
 
 ### T145: Broaden Type-Graph Consumer UAT Scenarios
 

@@ -2037,6 +2037,9 @@ Expected result:
 - T136 baseline gates consume this report as an acceptance measurement. The report remains a
   measurement command output, not a provider JSON expansion for `syntax get`, `syntax constructors`,
   `syntax search` or `syntax related`.
+- Source-backed exact type-reference spelling may reduce ambiguous row counts when it selects one
+  candidate without changing public plain-name lookup semantics. Remaining ambiguous rows must keep
+  deterministic candidate ids and must not be hidden by first-match selection.
 
 Cleanup:
 

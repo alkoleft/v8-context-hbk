@@ -1921,10 +1921,10 @@ output by running JSON measurement twice for each index and comparing the files 
 The largest unresolved names in both RU/root reports are primitive/domain type names such as
 `Строка` / `String`, `Булево` / `Boolean` and `Число` / `Number`, especially in callable parameter
 and property type roles. This points to the already planned type-domain separation work rather than
-a safe platform-type hidden-winner rule. The RU report's ambiguous rows are narrow duplicate
-platform type-name cases: `ЭлементыФормы` in `property_type` rows and `Настройка сервиса` /
-`НастройкаСервиса` in `parameter_type` and `return_type` rows; the report lists candidate type ids
-and source document examples so a later parser/model/index task can choose an explicit rule.
+a safe platform-type hidden-winner rule. T144 resolved the whitespace-sensitive
+`Настройка сервиса` / `НастройкаСервиса` rows by exact source spelling. The remaining RU ambiguous
+rows are duplicate platform type-name cases for `ЭлементыФормы` in `property_type` rows, where the
+same source spelling maps to distinct `Controls` and `FormItems` platform types.
 
 T136 promotes the T135 type-reference and type-template measurements into acceptance quality gates
 for the current 8.5.1.1150 Syntax Assistant baseline. These gates are evaluated from fresh
@@ -1935,7 +1935,7 @@ Current gate values:
 
 | Source | Unresolved type references | Ambiguous type references | Classified metadata/type templates | Unclassified type-template diagnostics | Type-template bindings | Expression-chain provider scenario |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `shcntx_ru.hbk` | 17367 | 13 | 121 | 0 | 353 | UAT-SH-018 passed on the accepted provider workflow |
+| `shcntx_ru.hbk` | 17367 | 5 | 121 | 0 | 353 | UAT-SH-018 passed on the accepted provider workflow |
 | `shcntx_root.hbk` | 17211 | 0 | 121 | 0 | 335 | UAT-SH-018 is language-neutral provider coverage; RU remains the representative real-index run |
 
 Strict regression gates:
@@ -2045,6 +2045,24 @@ are classified separately as query/SKD-domain candidates. These rows remain unre
 platform type-reference counters until a source-backed language/configuration provider relation is
 implemented; T143 deliberately does not reduce counts by guessing a platform type. The T136 strict
 gate values are unchanged.
+
+T144 investigated the current RU ambiguous type-reference names against source TOC/page evidence.
+`Настройка сервиса` (`IServiceSetting`) and `НастройкаСервиса` (`ServiceSetting`) are distinct
+platform identities in separate administration branches, but their source spellings differ exactly.
+Index-time type-reference resolution now uses exact source spelling as a source-backed
+disambiguator when the broader whitespace-insensitive lookup has multiple candidates and the exact
+primary or alias spelling matches exactly one of them. This keeps plain-name query/provider lookup
+ambiguous while resolving the source-backed type-reference rows. A representative run on
+2026-05-12 rebuilt `target/uat/t144-sh-search-ru.sqlite` from
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` with 25415 documents in 44933 ms, reran
+`syntax type-ref-gaps --format json` twice with byte-identical output and updated RU totals to:
+`47156` total, `29784` resolved, `17367` unresolved, `5` ambiguous and `353` template-binding rows.
+The remaining 5 ambiguous rows are all `ЭлементыФормы` `property_type` rows with candidate ids
+`platform_type:ЭлементыФормы:Форма` and
+`platform_type:ЭлементыФормы:Форма клиентского приложения`. The source pages prove these are
+distinct `Controls` and `FormItems` platform identities. Resolving them safely requires preserving
+type-reference link targets or an equivalent source-owned target identity during parsing/indexing;
+T144 keeps them explicit rather than choosing a hidden winner from owner names or availability.
 
 Baseline update rule:
 

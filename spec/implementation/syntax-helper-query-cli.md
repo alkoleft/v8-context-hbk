@@ -496,6 +496,15 @@ target resolution. Index build is the single owner of target resolution for thes
 - `ambiguous`: the name maps to multiple platform type identities and stores deterministic
   candidate type ids.
 
+When index-time type-reference target resolution uses the source spelling from an extracted
+Syntax Assistant type reference, it may use exact primary/alias spelling as a disambiguator after
+the broader whitespace-insensitive lookup has found multiple candidates. This is deliberately
+narrower than public plain-name lookup: `syntax get --name`, owner-name/member lookup and graph root
+resolution must still report `ambiguous` when the caller provides an ambiguous display name.
+`ЭлементыФормы` remains ambiguous in the current RU baseline because both platform type identities
+share the same exact primary spelling; resolving those rows requires preserving source link target
+identity or an equivalent parser-owned target fact.
+
 Provider and resolver adapters must consume that stored resolution data instead of recomputing
 ambiguous candidates or unresolved status from type names in each layer. Export-compatible public
 fact fields continue to expose source names through `types` and `return`; resolution aids belong in

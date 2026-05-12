@@ -2976,6 +2976,7 @@ fn insert_normalized_facts(
 ) -> Result<(), SearchError> {
     let by_name = relation_lookup(documents);
     let mut type_ids_by_key = BTreeMap::new();
+    let mut type_ids_by_exact_key = BTreeMap::new();
     let mut type_id_by_normalized_id = BTreeMap::new();
     let mut type_ids_by_metadata_kind = BTreeMap::new();
     let mut type_template_by_type_id = BTreeMap::new();
@@ -2988,10 +2989,20 @@ fn insert_normalized_facts(
             normalize_lookup_key(&document.name.primary),
             &document.id,
         );
+        insert_type_lookup_key(
+            &mut type_ids_by_exact_key,
+            exact_type_ref_lookup_key(&document.name.primary),
+            &document.id,
+        );
         if let Some(alias) = &document.name.alias {
             insert_type_lookup_key(
                 &mut type_ids_by_key,
                 normalize_lookup_key(alias),
+                &document.id,
+            );
+            insert_type_lookup_key(
+                &mut type_ids_by_exact_key,
+                exact_type_ref_lookup_key(alias),
                 &document.id,
             );
         }
@@ -3192,6 +3203,7 @@ fn insert_normalized_facts(
                             &mut type_ref_statement,
                             path,
                             &type_ids_by_key,
+                            &type_ids_by_exact_key,
                             &type_ids_by_metadata_kind,
                             &type_template_by_type_id,
                             TypeRefRow {
@@ -3212,6 +3224,7 @@ fn insert_normalized_facts(
                         &mut type_ref_statement,
                         path,
                         &type_ids_by_key,
+                        &type_ids_by_exact_key,
                         &type_ids_by_metadata_kind,
                         &type_template_by_type_id,
                         TypeRefRow {
@@ -3234,6 +3247,7 @@ fn insert_normalized_facts(
                 &mut type_ref_statement,
                 path,
                 &type_ids_by_key,
+                &type_ids_by_exact_key,
                 &type_ids_by_metadata_kind,
                 &type_template_by_type_id,
                 TypeRefRow {
@@ -3253,6 +3267,7 @@ fn insert_normalized_facts(
                 &mut type_ref_statement,
                 path,
                 &type_ids_by_key,
+                &type_ids_by_exact_key,
                 &type_ids_by_metadata_kind,
                 &type_template_by_type_id,
                 TypeRefRow {
@@ -3274,6 +3289,7 @@ fn insert_normalized_facts(
                 &mut type_ref_statement,
                 path,
                 &type_ids_by_key,
+                &type_ids_by_exact_key,
                 &type_ids_by_metadata_kind,
                 &type_template_by_type_id,
                 TypeRefRow {
@@ -3320,6 +3336,7 @@ fn insert_type_ref(
     statement: &mut Statement<'_>,
     path: &Path,
     type_ids_by_key: &BTreeMap<String, BTreeSet<String>>,
+    type_ids_by_exact_key: &BTreeMap<String, BTreeSet<String>>,
     type_ids_by_metadata_kind: &BTreeMap<String, BTreeSet<String>>,
     type_template_by_type_id: &BTreeMap<String, TypeTemplateFact>,
     row: TypeRefRow<'_>,
@@ -3327,6 +3344,7 @@ fn insert_type_ref(
     let target = resolve_type_ref_target(
         row.target_type_name,
         type_ids_by_key,
+        type_ids_by_exact_key,
         type_ids_by_metadata_kind,
     );
     let target_type_id = target.target_type_id();
@@ -3433,21 +3451,49 @@ fn insert_type_lookup_key(
 fn resolve_type_ref_target(
     target_type_name: &str,
     type_ids_by_key: &BTreeMap<String, BTreeSet<String>>,
+    type_ids_by_exact_key: &BTreeMap<String, BTreeSet<String>>,
     type_ids_by_metadata_kind: &BTreeMap<String, BTreeSet<String>>,
 ) -> SearchTypeRefTarget {
     let key = normalize_lookup_key(target_type_name);
     let mut candidates = BTreeSet::new();
+    let mut has_metadata_candidates = false;
     if let Some(ids) = type_ids_by_key.get(&key) {
         candidates.extend(ids.iter().cloned());
     }
     if let Some(ids) = type_ids_by_metadata_kind.get(&key) {
+        has_metadata_candidates = !ids.is_empty();
         candidates.extend(ids.iter().cloned());
     }
     let candidates = candidates.into_iter().collect::<Vec<_>>();
+    if !has_metadata_candidates
+        && candidates.len() > 1
+        && let Some(exact_candidates) =
+            exact_type_ref_candidates(target_type_name, type_ids_by_exact_key, &candidates)
+    {
+        return exact_candidates;
+    }
     match candidates.as_slice() {
         [] => SearchTypeRefTarget::Unresolved,
         [type_id] => SearchTypeRefTarget::Ok(type_id.clone()),
         _ => SearchTypeRefTarget::Ambiguous(candidates),
+    }
+}
+
+fn exact_type_ref_candidates(
+    target_type_name: &str,
+    type_ids_by_exact_key: &BTreeMap<String, BTreeSet<String>>,
+    normalized_candidates: &[String],
+) -> Option<SearchTypeRefTarget> {
+    let exact = type_ids_by_exact_key.get(&exact_type_ref_lookup_key(target_type_name))?;
+    let exact = exact
+        .iter()
+        .filter(|candidate| normalized_candidates.contains(candidate))
+        .cloned()
+        .collect::<Vec<_>>();
+    match exact.as_slice() {
+        [type_id] => Some(SearchTypeRefTarget::Ok(type_id.clone())),
+        [] => None,
+        _ => Some(SearchTypeRefTarget::Ambiguous(exact)),
     }
 }
 
@@ -4586,6 +4632,10 @@ fn normalize_lookup_key(value: &str) -> String {
         .filter(|character| !character.is_whitespace())
         .flat_map(char::to_lowercase)
         .collect()
+}
+
+fn exact_type_ref_lookup_key(value: &str) -> String {
+    value.trim().chars().flat_map(char::to_lowercase).collect()
 }
 
 fn searchable_name(value: &str) -> String {
@@ -7092,6 +7142,79 @@ mod tests {
                 .flat_map(|hit| hit.via.iter())
                 .all(|edge| edge.edge_kind != "has_type"),
             "generic related traversal must not expose legacy has_type winners for ambiguous rows"
+        );
+    }
+
+    #[test]
+    fn exact_type_ref_spelling_disambiguates_whitespace_collisions() {
+        let path = temp_path("exact-type-ref-spelling.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![
+                platform_type("Владелец", None, "owner"),
+                platform_type(
+                    "Настройка сервиса",
+                    Some("IServiceSetting"),
+                    "COM service setting",
+                ),
+                platform_type(
+                    "НастройкаСервиса",
+                    Some("ServiceSetting"),
+                    "server service setting",
+                ),
+            ],
+            type_properties: vec![
+                type_property("Владелец", "ComSetting", "Настройка сервиса"),
+                type_property("Владелец", "ServerSetting", "НастройкаСервиса"),
+            ],
+            ..model::PlatformContext::default()
+        };
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let rows = index
+            .connection
+            .prepare(
+                "SELECT source_document_id, target_type_name, target_type_id, target_resolution_status,
+                        target_candidate_type_ids
+                 FROM type_refs
+                 WHERE source_document_id IN (
+                    'type_property:platform_type:Владелец:ComSetting',
+                    'type_property:platform_type:Владелец:ServerSetting'
+                 )
+                 ORDER BY source_document_id",
+            )
+            .expect("query must prepare")
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                ))
+            })
+            .expect("query must run")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("rows must decode");
+
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "type_property:platform_type:Владелец:ComSetting".to_string(),
+                    "Настройка сервиса".to_string(),
+                    Some("platform_type:Настройка сервиса".to_string()),
+                    "ok".to_string(),
+                    None,
+                ),
+                (
+                    "type_property:platform_type:Владелец:ServerSetting".to_string(),
+                    "НастройкаСервиса".to_string(),
+                    Some("platform_type:НастройкаСервиса".to_string()),
+                    "ok".to_string(),
+                    None,
+                ),
+            ]
         );
     }
 
