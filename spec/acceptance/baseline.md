@@ -24,6 +24,13 @@ directories are service data unless promoted here.
   unsupported/not-found outcomes until HBK extraction/indexing stores source-backed facts for them.
   Verification passed with `cargo fmt --all --check`, focused resolver/search tests and
   `cargo test --workspace`.
+- T157 replaced `hbk-doc-site` custom generated-identity helper implementations with narrow
+  library dependencies. `stable_hash_hex` uses `fnv::FnvHasher` and keeps standard FNV-1a values
+  such as `foobar -> 85944171f73967e8`; generated slug fragments use the `slug` crate and are
+  URL-safe ASCII. Page ids and build ids keep the existing hash shape, while node/source-book
+  readable id fragments may change for non-ASCII titles or file stems because the library
+  transliterates Unicode. Verification passed with `cargo fmt --all --check`,
+  `cargo test -p hbk-doc-site` and `cargo test --workspace`.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.
@@ -2157,6 +2164,18 @@ Cargo, validates exit code and representative output shape for `inspect`, `toc -
 `page --path`, records fixture absence as `SKIP` with a reason and returns non-zero only for failed
 cases. This smoke remains local-only for now because CI provisioning for
 `/opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` and `fmtdui_ru.hbk` is not specified.
+
+T158 replaced the `hbk-book` Book/TOC pre-tokenizing parser internals with a `winnow`-backed cursor
+while preserving the existing text grammar and public behavior. Focused regressions cover BOM
+trivia, comma separators and doubled quotes for Book metadata and TOC titles. Release-profile
+end-to-end `v8-context-hbk toc --format json` measurements on 2026-05-13 used the real local
+8.5.1.1150 books. On `shcntx_ru.hbk`, the old parser measured `1.76`, `1.76`, `1.69`, `1.72`,
+`2.17` seconds with about `80121 KiB` average max RSS; the `winnow` parser measured `1.65`, `1.72`,
+`1.66`, `1.65`, `2.27` seconds with about `88119 KiB` average max RSS. On `fmtdui_ru.hbk`, both
+paths remained below `/usr/bin/time`'s `0.01s` resolution and around `4.6-4.7 MiB` max RSS. The
+accepted result is better parser maintainability and lower non-outlier `shcntx_ru.hbk` CLI time
+readings, with average wall time roughly unchanged by outliers and higher process max RSS in this
+end-to-end path.
 
 Baseline update rule:
 

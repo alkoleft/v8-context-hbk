@@ -8,6 +8,7 @@ test-utils = []
 
 [dependencies]
 hbk-container.workspace = true
+winnow.workspace = true
 zip.workspace = true
 
 [dev-dependencies]

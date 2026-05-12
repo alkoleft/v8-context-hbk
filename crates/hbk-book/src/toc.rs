@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::normalize_storage_path_owned;
 
-use super::tokens::{TokenError, TokenParser, tokenize};
+use super::tokens::{TokenError, TokenParser};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalizedTitle {
@@ -177,11 +177,11 @@ struct TocChunk {
 }
 
 fn parse_chunks(content: &str) -> Result<Vec<TocChunk>, TocError> {
-    let mut parser = TokenParser::new(tokenize(content));
+    let mut parser = TokenParser::new(content);
     parser.expect("{", "TableOfContent: expected '{'")?;
     parser.number("TableOfContent: expected chunk count")?;
     let mut chunks = Vec::new();
-    while parser.peek().is_some_and(|token| token != "}") {
+    while parser.has_more() && !parser.next_is('}') {
         chunks.push(parse_chunk(&mut parser)?);
     }
     parser.expect("}", "TableOfContent: expected closing '}'")?;
@@ -218,7 +218,7 @@ fn parse_title(parser: &mut TokenParser) -> Result<LocalizedTitle, TocError> {
     parser.number("NameContainer: expected first number")?;
     parser.number("NameContainer: expected second number")?;
     let mut names = Vec::new();
-    while parser.peek().is_some_and(|token| token != "}") {
+    while parser.has_more() && !parser.next_is('}') {
         parser.expect("{", "NameObject: expected '{'")?;
         let language = parser.string("NameObject: expected language")?;
         let title = parser.string("NameObject: expected title")?;
@@ -301,5 +301,16 @@ mod tests {
         assert_eq!(toc.pages()[0].title.ru, "Корень");
         assert_eq!(toc.pages()[1].title.en, "");
         assert_eq!(toc.pages()[1].title.ru, "Только русский");
+    }
+
+    #[test]
+    fn parses_toc_with_legacy_tokenizer_edges() {
+        let toc = Toc::parse(
+            "\u{feff}{1,{1,0,0,{0,0,{0,0,{\"ru\",\"Корень \"\"А\"\"\"}},\"/root.html\"}},}",
+        )
+        .expect("toc must parse");
+
+        assert_eq!(toc.pages()[0].title.ru, "Корень \"А\"");
+        assert_eq!(toc.pages()[0].html_path, "root.html");
     }
 }

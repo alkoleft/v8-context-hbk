@@ -1,4 +1,7 @@
 use std::fmt;
+use winnow::Parser;
+use winnow::error::EmptyError;
+use winnow::token::{literal, take_while};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TokenError {
@@ -21,74 +24,25 @@ impl fmt::Display for TokenError {
 
 impl std::error::Error for TokenError {}
 
-pub(crate) fn tokenize(content: &str) -> Vec<String> {
-    const BOM: char = '\u{feff}';
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut chars = content.chars().peekable();
-    let mut in_string = false;
+const BOM: char = '\u{feff}';
 
-    while let Some(ch) = chars.next() {
-        match ch {
-            BOM => {}
-            '"' if in_string => {
-                if chars.peek() == Some(&'"') {
-                    current.push('"');
-                    chars.next();
-                } else {
-                    current.push(ch);
-                    tokens.push(std::mem::take(&mut current));
-                    in_string = false;
-                }
-            }
-            '"' => {
-                push_token(&mut tokens, &mut current);
-                current.push(ch);
-                in_string = true;
-            }
-            _ if in_string => current.push(ch),
-            ch if ch.is_whitespace() => push_token(&mut tokens, &mut current),
-            '{' | '}' | ',' => {
-                push_token(&mut tokens, &mut current);
-                if ch != ',' {
-                    tokens.push(ch.to_string());
-                }
-            }
-            _ => current.push(ch),
-        }
-    }
-    push_token(&mut tokens, &mut current);
-    tokens
+pub(crate) struct TokenParser<'a> {
+    input: &'a str,
 }
 
-fn push_token(tokens: &mut Vec<String>, current: &mut String) {
-    let token = current.trim();
-    if !token.is_empty() {
-        tokens.push(token.to_string());
-    }
-    current.clear();
-}
-
-pub(crate) struct TokenParser {
-    tokens: Vec<String>,
-    index: usize,
-}
-
-impl TokenParser {
-    pub(crate) fn new(tokens: Vec<String>) -> Self {
-        Self { tokens, index: 0 }
+impl<'a> TokenParser<'a> {
+    pub(crate) fn new(input: &'a str) -> Self {
+        Self { input }
     }
 
-    pub(crate) fn peek(&self) -> Option<&str> {
-        self.tokens.get(self.index).map(String::as_str)
+    pub(crate) fn next_is(&mut self, expected: char) -> bool {
+        self.skip_trivia();
+        self.input.starts_with(expected)
     }
 
-    pub(crate) fn next(&mut self, context: impl AsRef<str>) -> Result<String, TokenError> {
-        let token = self.tokens.get(self.index).cloned().ok_or_else(|| {
-            TokenError::new(format!("{}: unexpected end of input", context.as_ref()))
-        })?;
-        self.index += 1;
-        Ok(token)
+    pub(crate) fn has_more(&mut self) -> bool {
+        self.skip_trivia();
+        !self.input.is_empty()
     }
 
     pub(crate) fn expect(
@@ -96,18 +50,35 @@ impl TokenParser {
         expected: &str,
         context: impl AsRef<str>,
     ) -> Result<(), TokenError> {
-        let token = self.next(context.as_ref())?;
-        if token != expected {
+        self.skip_trivia();
+        if self.input.is_empty() {
             return Err(TokenError::new(format!(
-                "{}: expected '{expected}', got '{token}'",
+                "{}: unexpected end of input",
                 context.as_ref()
+            )));
+        }
+        if literal::<_, _, EmptyError>(expected)
+            .parse_next(&mut self.input)
+            .is_err()
+        {
+            return Err(TokenError::new(format!(
+                "{}: expected '{expected}', got '{}'",
+                context.as_ref(),
+                self.preview_token()
             )));
         }
         Ok(())
     }
 
     pub(crate) fn number(&mut self, context: impl AsRef<str>) -> Result<usize, TokenError> {
-        let token = self.next(context.as_ref())?;
+        self.skip_trivia();
+        if self.input.is_empty() {
+            return Err(TokenError::new(format!(
+                "{}: unexpected end of input",
+                context.as_ref()
+            )));
+        }
+        let token = self.next_token();
         token.parse::<usize>().map_err(|source| {
             TokenError::new(format!(
                 "{}: expected number, got '{token}': {source}",
@@ -117,24 +88,108 @@ impl TokenParser {
     }
 
     pub(crate) fn string(&mut self, context: impl AsRef<str>) -> Result<String, TokenError> {
-        let token = self.next(context.as_ref())?;
-        if !token.starts_with('"') || !token.ends_with('"') {
+        self.skip_trivia();
+        if self.input.is_empty() {
             return Err(TokenError::new(format!(
-                "{}: expected string, got '{token}'",
+                "{}: unexpected end of input",
                 context.as_ref()
             )));
         }
-        Ok(token[1..token.len() - 1].to_string())
+        if !self.input.starts_with('"') {
+            return Err(TokenError::new(format!(
+                "{}: expected string, got '{}'",
+                context.as_ref(),
+                self.preview_token()
+            )));
+        }
+        self.input = &self.input[1..];
+        let mut value = String::new();
+        loop {
+            let Some(ch) = self.input.chars().next() else {
+                return Err(TokenError::new(format!(
+                    "{}: unexpected end of input",
+                    context.as_ref()
+                )));
+            };
+            self.input = &self.input[ch.len_utf8()..];
+            if ch == '"' {
+                if self.input.starts_with('"') {
+                    value.push('"');
+                    self.input = &self.input[1..];
+                } else {
+                    return Ok(value);
+                }
+            } else if ch != BOM {
+                value.push(ch);
+            }
+        }
     }
 
-    pub(crate) fn expect_end(&self, context: &str) -> Result<(), TokenError> {
-        if self.index == self.tokens.len() {
+    pub(crate) fn expect_end(&mut self, context: &str) -> Result<(), TokenError> {
+        self.skip_trivia();
+        if self.input.is_empty() {
             Ok(())
         } else {
             Err(TokenError::new(format!(
                 "{context}: unexpected trailing token '{}'",
-                self.tokens[self.index]
+                self.preview_token()
             )))
+        }
+    }
+
+    fn skip_trivia(&mut self) {
+        let _: Result<_, EmptyError> =
+            take_while(0.., |ch: char| ch == BOM || ch == ',' || ch.is_whitespace())
+                .parse_next(&mut self.input);
+    }
+
+    fn next_token(&mut self) -> String {
+        let Some(first) = self.input.chars().next() else {
+            return "<end>".to_string();
+        };
+        if first == '{' || first == '}' {
+            self.input = &self.input[first.len_utf8()..];
+            return first.to_string();
+        }
+        let end = self
+            .input
+            .char_indices()
+            .find_map(|(index, ch)| {
+                (ch == BOM || ch == ',' || ch.is_whitespace() || ch == '{' || ch == '}')
+                    .then_some(index)
+            })
+            .unwrap_or(self.input.len());
+        let token = self.input[..end].to_string();
+        self.input = &self.input[end..];
+        token
+    }
+
+    fn preview_token(&self) -> String {
+        let mut chars = self.input.chars();
+        match chars.next() {
+            None => "<end>".to_string(),
+            Some(ch) if ch == '{' || ch == '}' => ch.to_string(),
+            Some('"') => {
+                let mut token = String::from("\"");
+                for ch in chars {
+                    token.push(ch);
+                    if ch == '"' {
+                        break;
+                    }
+                }
+                token
+            }
+            Some(first) => {
+                let mut token = String::new();
+                token.push(first);
+                for ch in chars {
+                    if ch == BOM || ch == ',' || ch.is_whitespace() || ch == '{' || ch == '}' {
+                        break;
+                    }
+                    token.push(ch);
+                }
+                token
+            }
         }
     }
 }

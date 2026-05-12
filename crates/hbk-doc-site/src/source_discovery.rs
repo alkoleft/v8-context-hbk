@@ -105,7 +105,7 @@ where
                 source,
             })?
             .len();
-        let base = slugify(&path_file_stem(book.path()));
+        let base = site_slug(&path_file_stem(book.path()));
         let id = unique_id(base, &mut used_ids);
         let title = if !book.meta().description.is_empty() {
             book.meta().description.clone()

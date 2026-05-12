@@ -316,6 +316,11 @@ or `FileStorage` bytes after construction. Page/file reads are path-backed: the 
 remain readable after `open` so `HbkBook` can create a short-lived `FileStorageReader` for access.
 `hbk-book` must not trust ZIP entry metadata sizes for unbounded allocation when reading `PackBlock`
 or `FileStorage` entries; entry bytes are read from the actual ZIP stream at the HBK input boundary.
+Book metadata and TOC text parsing use a narrow `winnow`-backed cursor over the original input
+instead of pre-tokenizing into an owned token vector. The internal parser must preserve the accepted
+HBK text grammar: BOM and commas are trivia outside strings, doubled quotes inside strings decode to
+one quote, Book metadata keeps the existing field order/trailing-zero validation, and TOC parsing
+still builds navigation from parsed chunk parent ids while normalizing storage paths.
 
 The supported ordinary page/file surface is `read_file`, `read_page` and `FileStorageReader`.
 `HbkBook::read_pages` is retired; deterministic repeated-page fixture checks should use

@@ -47,7 +47,7 @@ fn page_id(book: &SourceBook, page_key: &str) -> SitePageId {
 
 fn node_id(locale: &str, builder: &TocNodeBuilder) -> SiteTocNodeId {
     let hash = stable_hash_hex(&builder.id_seed);
-    SiteTocNodeId::new(format!("node-{locale}-{}-{hash}", slugify(&builder.title)))
+    SiteTocNodeId::new(format!("node-{locale}-{}-{hash}", site_slug(&builder.title)))
 }
 
 fn section_seed(parent_title_path: &[String], title: &str) -> String {
@@ -141,59 +141,19 @@ fn unique_id(base: String, used_ids: &mut BTreeSet<String>) -> String {
     unreachable!("unbounded counter must find a unique id")
 }
 
-fn slugify(value: &str) -> String {
-    let mut output = String::new();
-    let mut pending_separator = false;
-    for character in value.trim().chars() {
-        if character.is_alphanumeric() {
-            if pending_separator && !output.is_empty() {
-                output.push('-');
-            }
-            for lowercase in character.to_lowercase() {
-                output.push(lowercase);
-            }
-            pending_separator = false;
-        } else {
-            pending_separator = true;
-        }
-    }
-    if output.is_empty() {
+fn site_slug(value: &str) -> String {
+    let slug = library_slugify(value);
+    if slug.is_empty() {
         "item".to_string()
     } else {
-        output
+        slug
     }
 }
 
 fn stable_hash_hex(value: &str) -> String {
-    let mut hasher = StableFnv64::default();
+    let mut hasher = FnvHasher::default();
     hasher.write(value.as_bytes());
     format!("{:016x}", hasher.finish())
-}
-
-#[derive(Default)]
-struct StableFnv64(u64);
-
-impl Hasher for StableFnv64 {
-    fn finish(&self) -> u64 {
-        if self.0 == 0 {
-            0xcbf29ce484222325
-        } else {
-            self.0
-        }
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        let mut hash = if self.0 == 0 {
-            0xcbf29ce484222325
-        } else {
-            self.0
-        };
-        for byte in bytes {
-            hash ^= u64::from(*byte);
-            hash = hash.wrapping_mul(0x100000001b3);
-        }
-        self.0 = hash;
-    }
 }
 
 fn has_hbk_extension(path: &Path) -> bool {

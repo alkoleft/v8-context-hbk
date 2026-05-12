@@ -116,10 +116,18 @@ mod tests {
             .expect("root nodes must be an array");
         assert_eq!(root_nodes.len(), 1, "{root}");
         assert_eq!(root_nodes[0]["title"], "Общее");
+        assert!(
+            root_nodes[0]["id"].as_str().unwrap().is_ascii(),
+            "site node ids should use URL-safe ASCII slugs: {root}"
+        );
         assert_eq!(root_nodes[0]["has_children"], true);
         let children_path = root_nodes[0]["children_path"]
             .as_str()
             .expect("merged section must have children_path");
+        assert!(
+            children_path.is_ascii(),
+            "lazy TOC section paths should use URL-safe ASCII ids: {children_path}"
+        );
         let section = read_json(output.join("data/locales/ru").join(children_path));
         let section_nodes = section["nodes"]
             .as_array()
@@ -455,6 +463,19 @@ mod tests {
         assert_eq!(root_nodes[2]["book_id"], "gamma-ru");
         assert_ne!(root_nodes[0]["page_id"], root_nodes[1]["page_id"]);
         assert_ne!(root_nodes[0]["page_id"], root_nodes[2]["page_id"]);
+    }
+
+    #[test]
+    fn site_identity_helpers_use_library_backed_slug_and_fnv() {
+        assert_eq!(stable_hash_hex("foobar"), "85944171f73967e8");
+        let slug = site_slug("Общий раздел");
+        assert!(!slug.is_empty());
+        assert!(
+            slug.bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-'),
+            "slug should be URL-safe ASCII: {slug}"
+        );
+        assert_eq!(site_slug("!!!"), "item");
     }
 
     #[test]

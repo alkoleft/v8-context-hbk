@@ -166,6 +166,12 @@ The first implementation slice should stop at a usable documentation site withou
    `PageContent` construction for site Markdown pages, skipping unnecessary `FileStorage` reads
    during `HbkBook::open` when `PackBlock` is available and avoiding per-file metadata calls after
    generated artifact writes.
+9. Replace custom generated-identity helper implementations. Completed in T157: `hbk-doc-site`
+   still owns page ids, node ids, source book ids and build ids, but the hash helper now delegates
+   to the `fnv` crate and slug generation delegates to the `slug` crate. The hash format remains
+   16-character FNV-1a hex. Slug fragments are now URL-safe ASCII, so non-ASCII TOC titles and file
+   stems are transliterated in generated node/source-book id fragments while the generated data
+   contract remains internally consistent.
 
 Search and Syntax Assistant API behavior are intentionally later slices. When added, they should use
 generated local index artifacts or existing accepted local index contracts, not HBK parsing in web

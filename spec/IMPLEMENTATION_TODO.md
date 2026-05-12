@@ -66,3 +66,34 @@ Current first unchecked task: none.
     for indexed module-event kinds; `syntax-helper-search` schema version 14 preserves module event
     context kind as private provider state; resolved module context handles round-trip through
     exact id lookup; unsupported/self-member gaps remain explicit.
+
+- [x] T157: Replace documentation-site custom stable-id helpers with narrow library dependencies.
+  - Scope: replace local `StableFnv64` with the `fnv` crate and local `slugify` with the `slug`
+    crate in `hbk-doc-site` generated identity helpers.
+  - Boundaries: keep `hbk-doc-site` as the owner of generated page ids, node ids, source book ids
+    and build ids; do not change page-id seed composition, global TOC merge semantics, generated
+    data artifact layout, web-app routes or HBK parsing boundaries.
+  - Spec refs: `FR-HBK-005`, ADR-0010, `implementation/documentation-site.md`,
+    `implementation/components.md`.
+  - Verification: `cargo fmt --all --check`; `cargo test -p hbk-doc-site`; `cargo test
+    --workspace`.
+  - Result: `stable_hash_hex` now uses `fnv::FnvHasher`, preserving standard FNV-1a values;
+    generated slug components now use the `slug` crate and are URL-safe ASCII. Page ids and build
+    ids retain the existing hash format; node/source-book readable id fragments may change for
+    non-ASCII titles or file stems because the library transliterates Unicode into ASCII.
+
+- [x] T158: Evaluate replacing Book/TOC token parsing with a parser-combinator library.
+  - Scope: replace `hbk-book` Book metadata and TOC parsing internals with `winnow` if it preserves
+    the current text grammar and improves maintainability for related future HBK-like formats.
+  - Boundaries: no public `hbk-book` API redesign; no change to Book metadata, TOC tree, path
+    normalization or error-context contract; preserve legacy tokenizer semantics for BOM trivia,
+    comma separators and doubled quotes in strings.
+  - Spec refs: `FR-HBK-002`, `FR-HBK-003`, `implementation/components.md`.
+  - Verification: focused `hbk-book` parser tests; release CLI comparison on representative real
+    HBK files; `cargo fmt --all --check`; `cargo test -p hbk-book`; `cargo test --workspace`.
+  - Result: `hbk-book` now uses a `winnow`-backed cursor over the original Book/TOC text instead
+    of allocating a full token vector before parsing. The parser keeps BOM/comma trivia and doubled
+    quote semantics and preserves the existing Book metadata and TOC contracts. End-to-end release
+    CLI `toc --format json` measurements on `shcntx_ru.hbk` had lower non-outlier readings but
+    roughly unchanged average wall time because both old and new runs had outliers; process max RSS
+    was higher.

@@ -6,7 +6,7 @@ use zip::ZipArchive;
 
 use super::path::normalize_storage_path_owned;
 use super::toc::{Toc, TocError};
-use super::tokens::{TokenError, TokenParser, tokenize};
+use super::tokens::{TokenError, TokenParser};
 use hbk_container::{ContainerError, HbkContainer};
 
 const PACK_BLOCK_NAME: &str = "PackBlock";
@@ -427,8 +427,7 @@ impl From<TokenError> for MetaError {
 }
 
 pub fn parse_book_meta(content: &str) -> Result<BookMeta, MetaError> {
-    let tokens = tokenize(content);
-    let mut parser = TokenParser::new(tokens);
+    let mut parser = TokenParser::new(content);
     parser.expect("{", "PageDescription: expected '{'")?;
     parser.number("PageDescription: expected type")?;
     let book_name = parser.string("PageDescription: expected bookName")?;
@@ -509,6 +508,52 @@ mod tests {
         assert_eq!(meta.book_name, "Interface");
         assert_eq!(meta.description, "fmtdui");
         assert_eq!(meta.tags, vec!["tag1", "tag2"]);
+    }
+
+    #[test]
+    fn parses_book_metadata_with_legacy_tokenizer_edges() {
+        let meta = parse_book_meta(
+            "\u{feff}{+1,\"Interface \u{feff}\"\"Core\"\"\", {+1,+2,{\u{feff}\"en\",\"fmtdui\"}}, +1, \"tag, one\", {+0,+0}, +0,}",
+        )
+        .expect("metadata must parse");
+
+        assert_eq!(meta.book_name, "Interface \"Core\"");
+        assert_eq!(meta.description, "fmtdui");
+        assert_eq!(meta.tags, vec!["tag, one"]);
+    }
+
+    #[test]
+    fn rejects_book_metadata_with_non_zero_trailing_marker() {
+        let error =
+            parse_book_meta(r#"{1,"Interface", {1,2,{"en","fmtdui"}}, 1, "tag", {0,0}, 1}"#)
+                .expect_err("non-zero trailing marker must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "invalid HBK Book metadata: PageDescription: expected trailing zero, got 1"
+        );
+    }
+
+    #[test]
+    fn rejects_book_metadata_with_misordered_fields() {
+        let error = parse_book_meta(r#"{1,{1,2,{"en","fmtdui"}},"Interface",0,0}"#)
+            .expect_err("misordered metadata fields must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "invalid HBK Book metadata: PageDescription: expected bookName: expected string, got '{'"
+        );
+    }
+
+    #[test]
+    fn rejects_book_metadata_with_missing_required_field() {
+        let error = parse_book_meta(r#"{1,"Interface", {1,2,{"en","fmtdui"}}, 0}"#)
+            .expect_err("missing trailing marker must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "invalid HBK Book metadata: PageDescription: expected trailing zero: expected number, got '}': invalid digit found in string"
+        );
     }
 
     #[test]
