@@ -320,6 +320,9 @@ pub enum FactDetails {
     Type(TypeInfo),
     Member(MemberInfo),
     Callable(CallableInfo),
+    ModuleContext(ModuleContextInfo),
+    Enum,
+    EnumValue,
     QueryTable(QueryTableInfo),
     Language(LanguageInfo),
 }
@@ -365,6 +368,49 @@ pub enum GlobalContextLanguage {
     Bsl,
     Sdbl,
 }
+
+pub enum ModuleContextKind {
+    Common,
+    Object,
+    Manager,
+    Form,
+    Command,
+    RecordSet,
+    Session,
+    OrdinaryApplication,
+    ManagedApplication,
+    ExternalConnection,
+    WebService,
+    HttpService,
+    Unknown,
+    Unsupported,
+}
+
+pub struct ModuleContextInfo {
+    pub language: GlobalContextLanguage,
+    pub domain: LanguageDomain,
+    pub kind: ModuleContextKind,
+}
+
+pub struct ModuleContextQuery<'a> {
+    pub language: GlobalContextLanguage,
+    pub domain: LanguageDomain,
+    pub kind: ModuleContextKind,
+    pub sources: &'a [SourceId],
+}
+
+pub struct ResolvedModuleContext {
+    pub id: FactId,
+    pub language: GlobalContextLanguage,
+    pub domain: LanguageDomain,
+    pub kind: ModuleContextKind,
+    pub sources: Vec<SourceId>,
+    pub self_member: Option<ContextFact>,
+    pub properties: Vec<ContextFact>,
+    pub methods: Vec<ResolvedCallable>,
+    pub events: Vec<ResolvedCallable>,
+    pub facts: Vec<ContextFact>,
+}
 ```
 
 ## Resolver Traits
@@ -397,6 +443,12 @@ pub trait ContextResolver {
         query: GlobalContextQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError>;
+
+    fn module_context(
+        &self,
+        query: ModuleContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError>;
 
     fn callable(
         &self,
@@ -480,6 +532,19 @@ lookup for point queries; platform global properties stay in `global_context.pro
 separate task defines an explicit global-property point lookup. Resolver internals must not force
 global facts under a fake `TypeId`. SDBL functions must remain in the query-language global context
 and must not be folded into the BSL/platform scope by matching display names.
+
+Module context is a separate resolver concept for platform-owned facts visible in a concrete 1C
+module kind. The HBK-backed provider owns only source-backed platform module context facts:
+platform global methods/properties, module events, event signatures and their availability when
+Syntax Assistant/index evidence contains them. Metadata-owned facts stay outside this repository:
+concrete forms, form attributes, form elements, module ownership and generated configuration types
+belong to the metadata/source providers and are composed downstream by `v8-context`.
+
+`ModuleContextKind` is a provider-neutral key. Localized names and aliases such as
+`ЭтотОбъект` / `ThisObject` are returned as facts only when the provider has indexed evidence for
+that member. Until HBK extraction/indexing stores dedicated predefined module members, the
+HBK-backed adapter must report `NotFound` or `Unsupported` with diagnostics instead of fabricating
+an analyzer-side fallback list.
 
 Responses keep recoverable lookup outcomes as data:
 
@@ -611,6 +676,9 @@ Mapping:
 - `callable_by_id`, `callable_by_owner_type_id` and `constructors_by_type_id` back callable lookup;
 - source-backed global method and global property facts participate in the BSL `global_context` and
   global methods back ownerless callable-name lookup for BSL-visible point queries;
+- source-backed module-event facts participate in `module_context` when the search index preserves
+  their provider-neutral module context kind; event signatures and availability are exposed through
+  the same callable and availability DTOs used by other platform callables;
 - `related_by_id_and_edge` backs explicit relation traversal for `has_type`, `returns`,
   `constructs` and `member_of`.
 
@@ -648,6 +716,23 @@ T146 implementation notes:
   Their search document ids are built from read-phase `owner_identity`, matching ADR-0011's
   child/member boundary. Callable/event handling remains available through callable mapping where
   the caller uses the callable fact shape.
+
+T152 implementation notes:
+
+- `context-resolver-core` exposes first-class `module_context` lookup through
+  `ModuleContextQuery`, `ModuleContextKind` and `ResolvedModuleContext`.
+- `context-resolver-search` preserves `ModuleEventContext.kind` from indexed `module_event`
+  documents as private provider index state and maps it to `ModuleContextKind` at the Rust resolver
+  boundary. SQLite table names and storage columns remain private rebuildable provider state.
+- The HBK-backed adapter currently provider-backs platform global methods/properties, module events,
+  event signatures and availability for returned facts. Dedicated predefined self members and
+  module-specific platform properties/methods remain explicit absence until extraction/indexing
+  stores source evidence for them.
+- The module context `FactId` is a provider-owned resolver handle. When a module context resolves,
+  the same handle must round-trip through exact id lookup as a `ModuleContext` fact; unsupported or
+  absent contexts must not synthesize that fact.
+- `Command`, `RecordSet` and `Common` module contexts are not synthesized from localized names or
+  analyzer compatibility lists by this slice.
 
 T92 implementation notes:
 

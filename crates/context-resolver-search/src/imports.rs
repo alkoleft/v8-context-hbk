@@ -4,9 +4,10 @@ use context_resolver_core::{
     AvailabilityContext, AvailabilityFact, AvailabilityInfo, CallableId, CallableInfo,
     CallableKind, CallableLookup, ContextFact, ContextSource, FactDetails, FactId, FactKind,
     FactRelation, GlobalContextLanguage, GlobalContextQuery, LanguageDomain, MemberId, MemberInfo,
-    MemberKind, MemberQuery, MemberQueryKind, MetadataTemplateInfo, Name, Parameter,
-    PlatformTypeTemplateKey, RelationKind, ResolveContext, ResolveError, ResolveResponse,
-    ResolvedCallable, ResolvedGlobalContext, ResolvedMember, ResolvedType, Signature,
+    MemberKind, MemberQuery, MemberQueryKind, MetadataTemplateInfo, ModuleContextInfo,
+    ModuleContextKind, ModuleContextQuery, Name, Parameter, PlatformTypeTemplateKey, RelationKind,
+    ResolveContext, ResolveError, ResolveResponse, ResolveStatus, ResolvedCallable,
+    ResolvedGlobalContext, ResolvedMember, ResolvedModuleContext, ResolvedType, Signature,
     SourceCapabilities, SourceDescriptor, SourceId, TemplateParameterBinding, TypeId, TypeInfo,
     TypeLookup, TypeRef, TypeRefTarget, TypeTemplateBinding,
 };

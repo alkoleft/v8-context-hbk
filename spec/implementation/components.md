@@ -79,6 +79,9 @@ Solution-context Rust resolution is described in
 - `context-resolver-search` owns translation between `syntax-helper-search::SearchIndex` platform
   and language facts and the source-neutral resolver model. It must not expose SQLite tables, FTS
   fields, query-table provider facts or Syntax Assistant provenance as generic resolver facts.
+  Module-context lookup may consume private search-index module-context state, but the public
+  contract is the resolver DTO shape: provider-neutral module context kind, source-qualified facts,
+  signatures, availability diagnostics and exact-id lookup for resolved module context handles.
 - `v8-context-hbk-cli` wires commands and error presentation only.
 - `v8-context-hbk-cli` owns the current CLI provider JSON assembly boundary for `syntax get`,
   `syntax constructors`, `syntax search`, `syntax related`, `syntax related --graph` and
@@ -720,7 +723,7 @@ than building from consumer JSON export directories.
 
 Implemented first slice:
 
-- `syntax-helper-search` owns `index.sqlite` schema version `13`, read-only query opens, FTS5 keyword
+- `syntax-helper-search` owns `index.sqlite` schema version `14`, read-only query opens, FTS5 keyword
   search, prefix-bounded fuzzy candidate selection, exact name/alias and owner/member lookup, and
   directed owner/type-reference relationship traversal.
 - `SearchHit`, `SearchDocument`, `RelatedHit` and `RelationStep` are Rust query result structs for
@@ -771,6 +774,8 @@ Implemented first slice:
   `type_refs` row stores source spelling separately from target resolution status and ambiguous
   candidate ids. Provider JSON keeps export-compatible `types` / `return` name arrays, while Rust
   resolver DTOs expose target resolution as data instead of `Option<TypeId>`.
+- T152 raises the private rebuildable search-index schema to version `14` so module-event documents
+  preserve provider-neutral module context relation keys for resolver module-context lookup.
 
 T87 classifies the remaining duplicate-looking query/provider mechanisms as boundary decisions
 rather than immediate cleanup work:
@@ -825,6 +830,9 @@ Expected source-neutral public concepts:
 - `FactKind`
 - `ContextFact`
 - `FactRelation`
+- `ModuleContextKind`
+- `ModuleContextQuery`
+- `ResolvedModuleContext`
 
 The resolver core is implemented as `context-resolver-core`, a separate crate with no HBK, SQLite,
 CLI or parser dependencies. The platform and first language-domain adapters are implemented in
@@ -844,10 +852,18 @@ use deterministic source order for candidate ordering only; omitted source, doma
 constraints that leave multiple candidates must produce ambiguity rather than a hidden winner.
 
 The platform adapter over `syntax-helper-search` initially exposes platform API type, member and
-callable facts only. Existing query-table documents in the search index remain outside that adapter.
+callable facts, global context and provider-backed module context facts only. Existing query-table
+documents in the search index remain outside that adapter.
 T66 selected current `shcntx_*` query-table documents to remain CLI/provider facts for now, not the
 first `QueryLanguage` resolver source. A later language-domain task must define an explicit mapping
 or relation shape before exposing them through the source-neutral resolver.
+
+For module context, HBK owns platform facts that come from Syntax Assistant evidence: platform
+global methods/properties, module events, event signatures and availability. Downstream
+`v8-context-metadata` owns raw metadata module/form facts such as concrete form attributes, form
+elements, module ownership and generated configuration types. `v8-context` composes both providers
+and must not read private HBK/search-index storage or maintain analyzer-side fallback lists for
+platform module facts.
 
 The first language-domain adapter slice exposes T89 language facts through source-specific
 `shlang`, `shquery` and `dcsui` resolver sources. `shlang` maps to `BslLanguage`; `shquery` and

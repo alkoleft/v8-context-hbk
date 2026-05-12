@@ -12,6 +12,18 @@ directories are service data unless promoted here.
 - T151 internal module decomposition split the mandatory large crate entrypoints by responsibility
   while preserving existing public API, provider/export JSON, resolver behavior and SQLite schema.
   Verification passed with `cargo fmt --all --check` and `cargo test --workspace`.
+- T152 added the public Rust resolver module-context boundary for HBK-owned platform module facts.
+  `context-resolver-core` now exposes `ModuleContextKind`, `ModuleContextQuery` and
+  `ResolvedModuleContext`; `context-resolver-search` maps HBK-backed platform global
+  methods/properties and indexed `module_event` facts into BSL module contexts, preserving event
+  signatures and availability through existing callable/availability DTOs. `syntax-helper-search`
+  schema version 14 stores provider-neutral module context kind for module-event documents as
+  private rebuildable provider state. Resolved module context handles round-trip through exact id
+  lookup as `ModuleContext` facts. Dedicated predefined self members such as `ЭтотОбъект` /
+  `ThisObject`, command module context and record-set module context remain explicit
+  unsupported/not-found outcomes until HBK extraction/indexing stores source-backed facts for them.
+  Verification passed with `cargo fmt --all --check`, focused resolver/search tests and
+  `cargo test --workspace`.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.

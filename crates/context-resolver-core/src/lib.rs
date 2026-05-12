@@ -37,6 +37,7 @@ pub enum FactKind {
     Callable,
     Constructor,
     Global,
+    ModuleContext,
     Enum,
     EnumValue,
     QueryTable,
@@ -229,6 +230,7 @@ pub enum FactDetails {
     Type(TypeInfo),
     Member(MemberInfo),
     Callable(CallableInfo),
+    ModuleContext(ModuleContextInfo),
     Enum,
     EnumValue,
     Language,
@@ -305,6 +307,66 @@ pub struct ResolvedGlobalContext {
     pub sources: Vec<SourceId>,
     pub methods: Vec<ResolvedCallable>,
     pub properties: Vec<ContextFact>,
+    pub facts: Vec<ContextFact>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ModuleContextKind {
+    Common,
+    Object,
+    Manager,
+    Form,
+    Command,
+    RecordSet,
+    Session,
+    OrdinaryApplication,
+    ManagedApplication,
+    ExternalConnection,
+    WebService,
+    HttpService,
+    Unknown,
+    Unsupported,
+}
+
+impl ModuleContextKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Common => "common",
+            Self::Object => "object",
+            Self::Manager => "manager",
+            Self::Form => "form",
+            Self::Command => "command",
+            Self::RecordSet => "record_set",
+            Self::Session => "session",
+            Self::OrdinaryApplication => "ordinary_application",
+            Self::ManagedApplication => "managed_application",
+            Self::ExternalConnection => "external_connection",
+            Self::WebService => "web_service",
+            Self::HttpService => "http_service",
+            Self::Unknown => "unknown",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleContextInfo {
+    pub language: GlobalContextLanguage,
+    pub domain: LanguageDomain,
+    pub kind: ModuleContextKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedModuleContext {
+    pub id: FactId,
+    pub language: GlobalContextLanguage,
+    pub domain: LanguageDomain,
+    pub kind: ModuleContextKind,
+    pub sources: Vec<SourceId>,
+    pub self_member: Option<ContextFact>,
+    pub properties: Vec<ContextFact>,
+    pub methods: Vec<ResolvedCallable>,
+    pub events: Vec<ResolvedCallable>,
     pub facts: Vec<ContextFact>,
 }
 
@@ -405,6 +467,7 @@ pub struct SourceCapabilities {
     pub callables: bool,
     pub relations: bool,
     pub global_context: bool,
+    pub module_context: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -456,6 +519,14 @@ pub enum GlobalContextQuery<'a> {
         language: GlobalContextLanguage,
         sources: &'a [SourceId],
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModuleContextQuery<'a> {
+    pub language: GlobalContextLanguage,
+    pub domain: LanguageDomain,
+    pub kind: ModuleContextKind,
+    pub sources: &'a [SourceId],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -530,6 +601,16 @@ pub trait ContextSource {
         ))
     }
 
+    fn module_context(
+        &self,
+        _query: ModuleContextQuery<'_>,
+        _context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError> {
+        Ok(ResolveResponse::unsupported(
+            "context source does not expose module context",
+        ))
+    }
+
     fn related(
         &self,
         source: &FactId,
@@ -579,6 +660,12 @@ pub trait ContextResolver {
         query: GlobalContextQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError>;
+
+    fn module_context(
+        &self,
+        query: ModuleContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError>;
 
     fn related(
         &self,
@@ -889,6 +976,93 @@ impl ContextResolver for CompositeResolver {
         Ok(ResolveResponse::not_found("global context not found"))
     }
 
+    fn module_context(
+        &self,
+        query: ModuleContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError> {
+        let mut merged = ResolvedModuleContext {
+            id: FactId::new(
+                SourceId::new("composite"),
+                query.domain,
+                FactKind::ModuleContext,
+                format!("module_context:{}", query.kind.as_str()),
+            ),
+            language: query.language,
+            domain: query.domain,
+            kind: query.kind,
+            sources: Vec::new(),
+            self_member: None,
+            properties: Vec::new(),
+            methods: Vec::new(),
+            events: Vec::new(),
+            facts: Vec::new(),
+        };
+        let mut unsupported = Vec::new();
+        let mut candidates = Vec::new();
+        let mut has_source_owned_id = false;
+
+        for source in self.active_sources(context) {
+            let source_id = source.descriptor().id;
+            if !query.sources.is_empty() && !query.sources.iter().any(|id| id == &source_id) {
+                continue;
+            }
+            let response = source.module_context(query, context)?;
+            match response.status {
+                ResolveStatus::Ok => {
+                    for scope in response.facts {
+                        if !has_source_owned_id {
+                            merged.id = scope.id.clone();
+                            has_source_owned_id = true;
+                        }
+                        for source_id in scope.sources {
+                            if !merged.sources.contains(&source_id) {
+                                merged.sources.push(source_id);
+                            }
+                        }
+                        if merged.self_member.is_none() {
+                            merged.self_member = scope.self_member;
+                        } else if let Some(self_member) = scope.self_member {
+                            merged.facts.push(self_member);
+                        }
+                        merged.properties.extend(scope.properties);
+                        merged.methods.extend(scope.methods);
+                        merged.events.extend(scope.events);
+                        merged.facts.extend(scope.facts);
+                    }
+                }
+                ResolveStatus::Ambiguous => candidates.extend(response.candidates),
+                ResolveStatus::Unsupported => unsupported.extend(response.diagnostics),
+                ResolveStatus::NotFound => {}
+            }
+        }
+
+        let has_facts = merged.self_member.is_some()
+            || !merged.properties.is_empty()
+            || !merged.methods.is_empty()
+            || !merged.events.is_empty()
+            || !merged.facts.is_empty()
+            || !merged.sources.is_empty();
+        if !candidates.is_empty() {
+            if has_facts {
+                candidates.push(merged.candidate());
+            }
+            return Ok(ResolveResponse::ambiguous(candidates));
+        }
+        if has_facts {
+            return Ok(ResolveResponse::ok(vec![merged]));
+        }
+        if !unsupported.is_empty() {
+            return Ok(ResolveResponse {
+                status: ResolveStatus::Unsupported,
+                facts: Vec::new(),
+                candidates: Vec::new(),
+                diagnostics: unsupported,
+            });
+        }
+        Ok(ResolveResponse::not_found("module context not found"))
+    }
+
     fn related(
         &self,
         source_id: &FactId,
@@ -978,6 +1152,18 @@ impl CandidateView for ResolvedGlobalContext {
     }
 }
 
+impl CandidateView for ResolvedModuleContext {
+    fn candidate(&self) -> ResolveCandidate {
+        ResolveCandidate {
+            id: self.id.clone(),
+            name: Name::new(
+                format!("{} module context", self.kind.as_str()),
+                None::<String>,
+            ),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -991,6 +1177,7 @@ mod tests {
         callables: Vec<ResolvedCallable>,
         relations: Vec<(FactId, RelationKind, ContextFact)>,
         global_contexts: Vec<ResolvedGlobalContext>,
+        module_contexts: Vec<ResolvedModuleContext>,
         resolve_type_status: Option<ResolveStatus>,
         callable_status: Option<ResolveStatus>,
     }
@@ -1005,6 +1192,7 @@ mod tests {
                 callables: Vec::new(),
                 relations: Vec::new(),
                 global_contexts: Vec::new(),
+                module_contexts: Vec::new(),
                 resolve_type_status: None,
                 callable_status: None,
             }
@@ -1128,6 +1316,11 @@ mod tests {
             self
         }
 
+        fn with_module_context(mut self, scope: ResolvedModuleContext) -> Self {
+            self.module_contexts.push(scope);
+            self
+        }
+
         fn with_resolve_type_status(mut self, status: ResolveStatus) -> Self {
             self.resolve_type_status = Some(status);
             self
@@ -1156,6 +1349,7 @@ mod tests {
                 callables: true,
                 relations: true,
                 global_context: true,
+                module_context: true,
             }
         }
 
@@ -1169,6 +1363,20 @@ mod tests {
                     .types
                     .iter()
                     .map(|resolved| resolved.fact.clone())
+                    .chain(self.module_contexts.iter().map(|scope| ContextFact {
+                        id: scope.id.clone(),
+                        name: Name::new(
+                            format!("{} module context", scope.kind.as_str()),
+                            None::<String>,
+                        ),
+                        owner: None,
+                        details: FactDetails::ModuleContext(ModuleContextInfo {
+                            language: scope.language,
+                            domain: scope.domain,
+                            kind: scope.kind,
+                        }),
+                        relations: Vec::new(),
+                    }))
                     .find(|fact| &fact.id == id)
                     .into_iter()
                     .collect(),
@@ -1308,6 +1516,29 @@ mod tests {
                 .cloned()
                 .collect();
             Ok(single_or_ambiguous(facts, "global context not found"))
+        }
+
+        fn module_context(
+            &self,
+            query: ModuleContextQuery<'_>,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError> {
+            if !query.sources.is_empty()
+                && !query.sources.iter().any(|source| source == &self.source)
+            {
+                return Ok(ResolveResponse::not_found(
+                    "module context source not active",
+                ));
+            }
+            let facts = self
+                .module_contexts
+                .iter()
+                .filter(|scope| scope.language == query.language)
+                .filter(|scope| scope.domain == query.domain)
+                .filter(|scope| scope.kind == query.kind)
+                .cloned()
+                .collect();
+            Ok(single_or_ambiguous(facts, "module context not found"))
         }
 
         fn related(
@@ -1472,6 +1703,82 @@ mod tests {
         assert_eq!(scope.sources.len(), 2);
         assert_eq!(scope.methods[0].fact.name.primary, "Сообщить");
         assert_eq!(scope.facts[0].name.primary, "Строка");
+    }
+
+    #[test]
+    fn composite_merges_module_context_scopes_without_fabricating_self_member() {
+        let platform_source = SourceId::new("platform");
+        let event_id = CallableId(FactId::new(
+            platform_source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Callable,
+            "module_event:form:ПриОткрытии",
+        ));
+        let event_info = CallableInfo {
+            kind: CallableKind::Event,
+            signatures: Vec::new(),
+            return_types: Vec::new(),
+            description: None,
+        };
+        let scope = ResolvedModuleContext {
+            id: FactId::new(
+                platform_source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::ModuleContext,
+                "module_context:form",
+            ),
+            language: GlobalContextLanguage::Bsl,
+            domain: LanguageDomain::PlatformApi,
+            kind: ModuleContextKind::Form,
+            sources: vec![platform_source.clone()],
+            self_member: None,
+            properties: Vec::new(),
+            methods: Vec::new(),
+            events: vec![ResolvedCallable {
+                id: event_id.clone(),
+                owner: None,
+                fact: ContextFact {
+                    id: event_id.0,
+                    name: Name::new("ПриОткрытии", Some("OnOpen")),
+                    owner: None,
+                    details: FactDetails::Callable(event_info.clone()),
+                    relations: Vec::new(),
+                },
+                info: event_info,
+            }],
+            facts: Vec::new(),
+        };
+        let resolver = CompositeResolver::new(vec![Box::new(
+            FakeSource::new("platform", LanguageDomain::PlatformApi).with_module_context(scope),
+        )]);
+
+        let response = resolver
+            .module_context(
+                ModuleContextQuery {
+                    language: GlobalContextLanguage::Bsl,
+                    domain: LanguageDomain::PlatformApi,
+                    kind: ModuleContextKind::Form,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("module context lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ok);
+        let scope = response.facts.first().expect("module context must resolve");
+        assert_eq!(&scope.id.source, &platform_source);
+        assert_eq!(scope.sources, vec![platform_source.clone()]);
+        assert_eq!(scope.self_member, None);
+        assert_eq!(scope.events[0].fact.name.alias.as_deref(), Some("OnOpen"));
+
+        let resolved = resolver
+            .resolve(ResolveQuery::Id(&scope.id), &ResolveContext::all())
+            .expect("module context id lookup must not fail");
+        assert_eq!(resolved.status, ResolveStatus::Ok);
+        assert!(matches!(
+            resolved.facts[0].details,
+            FactDetails::ModuleContext(_)
+        ));
     }
 
     #[test]

@@ -271,6 +271,7 @@ impl ContextSource for LanguageSearchSource {
             callables: true,
             relations: true,
             global_context: true,
+            module_context: false,
         }
     }
 

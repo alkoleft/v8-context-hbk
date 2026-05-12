@@ -59,6 +59,29 @@ mod tests {
     }
 
     #[test]
+    fn module_event_index_preserves_provider_neutral_module_context_kind() {
+        let path = temp_path("module-context-kind.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        builder
+            .global_context_event(module_event(
+                model::ModuleKind::Form,
+                &["Форма", "Form"],
+                "ПриОткрытии",
+            ))
+            .expect("module event must sink");
+        build_index_from_builder(&path, &metadata(), builder).expect("index must build");
+        let index = SearchIndex::open_read_only(&path).expect("index must open");
+
+        let events = index
+            .get_by_name("module_context:form")
+            .expect("module context relation lookup must not fail");
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].document.name.primary, "ПриОткрытии");
+        assert_eq!(events[0].document.kind, SearchDocumentKind::ModuleEvent);
+    }
+
+    #[test]
     fn index_accepts_language_facts_with_distinct_source_qualified_ids() {
         let path = temp_path("language.sqlite");
         let mut builder = SearchIndexBuilder::new();
@@ -3339,6 +3362,49 @@ mod tests {
 
     fn type_event(owner: &str, primary: &str) -> model::GlobalContextEvent {
         type_event_with_owner_path(&[owner], primary)
+    }
+
+    fn module_event(
+        kind: model::ModuleKind,
+        owner_path: &[&str],
+        primary: &str,
+    ) -> model::GlobalContextEvent {
+        model::GlobalContextEvent {
+            name: name(primary, Some("OnOpen")),
+            owner_identity: None,
+            semantic: model::SemanticContext::new(
+                model::BranchKind::ManagedForms,
+                model::RecordFamily::ModuleEvent,
+            )
+            .with_owner_path(
+                owner_path
+                    .iter()
+                    .map(|owner| name(owner, Some("Form")).clone())
+                    .collect(),
+            ),
+            module: model::ModuleEventContext {
+                kind,
+                owner_path: owner_path
+                    .iter()
+                    .map(|owner| {
+                        if *owner == "Form" {
+                            name("Форма", Some("Form"))
+                        } else {
+                            name(owner, None)
+                        }
+                    })
+                    .collect(),
+            },
+            signatures: vec![model::Signature {
+                text: format!("{primary}()"),
+                parameters: Vec::new(),
+                return_types: Vec::new(),
+                variant: None,
+            }],
+            description: Some("module event description".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source(&format!("module-{primary}")),
+        }
     }
 
     fn type_event_with_owner_path(owner_path: &[&str], primary: &str) -> model::GlobalContextEvent {

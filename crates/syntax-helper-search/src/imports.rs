@@ -12,7 +12,7 @@ use strsim::levenshtein;
 use syntax_helper_language as language;
 pub use syntax_helper_model as model;
 
-pub const INDEX_SCHEMA_VERSION: u32 = 13;
+pub const INDEX_SCHEMA_VERSION: u32 = 14;
 const TYPE_REFERENCE_RELATION_WEIGHT: i64 = 12;
 
 type TypeTemplateRow = (

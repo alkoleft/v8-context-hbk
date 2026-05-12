@@ -40,6 +40,27 @@ impl PlatformSearchSource {
         TypeId(self.fact_id(FactKind::Type, local_id))
     }
 
+    fn module_context_id(&self, kind: ModuleContextKind) -> FactId {
+        self.fact_id(
+            FactKind::ModuleContext,
+            format!("module_context:{}", kind.as_str()),
+        )
+    }
+
+    fn module_context_fact(&self, kind: ModuleContextKind) -> ContextFact {
+        ContextFact {
+            id: self.module_context_id(kind),
+            name: Name::new(format!("{} module context", kind.as_str()), None::<String>),
+            owner: None,
+            details: FactDetails::ModuleContext(ModuleContextInfo {
+                language: GlobalContextLanguage::Bsl,
+                domain: LanguageDomain::PlatformApi,
+                kind,
+            }),
+            relations: Vec::new(),
+        }
+    }
+
     fn owner_id_for_document(
         &self,
         document: &SearchDocument,
@@ -164,6 +185,37 @@ impl PlatformSearchSource {
             details: FactDetails::Member(info),
             relations: Vec::new(),
         }
+    }
+
+    fn map_global_methods(&self) -> Result<Vec<ResolvedCallable>, ResolveError> {
+        self.index
+            .documents_by_kind(SearchDocumentKind::GlobalMethod)
+            .map_err(|source| self.source_failure(source))?
+            .into_iter()
+            .filter_map(|hit| self.map_callable(hit).transpose())
+            .collect::<Result<Vec<_>, ResolveError>>()
+    }
+
+    fn map_global_properties(&self) -> Result<Vec<ContextFact>, ResolveError> {
+        Ok(self
+            .index
+            .documents_by_kind(SearchDocumentKind::GlobalProperty)
+            .map_err(|source| self.source_failure(source))?
+            .into_iter()
+            .map(|hit| self.map_global_property(hit.document))
+            .collect())
+    }
+
+    fn map_module_event(
+        &self,
+        hit: SearchHit,
+        context_id: &FactId,
+    ) -> Result<Option<ResolvedCallable>, ResolveError> {
+        let Some(mut callable) = self.map_callable(hit)? else {
+            return Ok(None);
+        };
+        callable.fact.owner = Some(context_id.clone());
+        Ok(Some(callable))
     }
 
     fn id_kind_matches_document(&self, requested: FactKind, document: &SearchDocument) -> bool {

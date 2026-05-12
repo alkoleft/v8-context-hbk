@@ -108,7 +108,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
             SearchDocumentKind::TypeEvent => None,
             _ => event_owner(&record),
         };
-        let document = document(
+        let mut document = document(
             kind,
             owner.as_ref(),
             &record.name,
@@ -119,6 +119,11 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
             String::new(),
         )
         .with_section_facts(&record.facts);
+        if kind == SearchDocumentKind::ModuleEvent {
+            document
+                .relation_keys
+                .push(module_context_relation_key(record.module.kind));
+        }
         let identity = if kind == SearchDocumentKind::TypeEvent {
             DraftIdentity::TypeOwned {
                 owner_identity: record.owner_identity,

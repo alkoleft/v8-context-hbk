@@ -244,6 +244,11 @@ candidate ids. This keeps `types` / `return` public fact fields export-compatibl
 arrays while giving search/resolver adapters one owner for resolved, unresolved and ambiguous
 target outcomes.
 
+T152 implementation note: schema version 14 stores module-context relation keys for module-event
+documents as private rebuildable provider state. The Rust resolver adapter uses those keys to expose
+provider-backed module contexts without adding a public SQLite table or changing provider JSON,
+canonical `syntax export` JSON or query-time HBK access.
+
 T135 implementation note: `syntax type-ref-gaps` is a report command over an existing prebuilt
 SQLite index. It counts `type_refs` rows by source role and resolution status, reports template
 bindings as an additional subset counter, and lists top unresolved/ambiguous target names with

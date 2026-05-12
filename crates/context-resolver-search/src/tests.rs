@@ -434,6 +434,115 @@ mod tests {
     }
 
     #[test]
+    fn platform_adapter_exposes_provider_backed_module_context_events() {
+        let source = fixture_source();
+        let adapter = PlatformSearchSource::with_source_id(
+            fixture_index("platform-module-context.sqlite"),
+            source.clone(),
+        );
+
+        let context = adapter
+            .module_context(
+                ModuleContextQuery {
+                    language: GlobalContextLanguage::Bsl,
+                    domain: LanguageDomain::PlatformApi,
+                    kind: ModuleContextKind::Form,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("module context lookup must not fail");
+
+        assert_eq!(context.status, ResolveStatus::Ok);
+        let context = context
+            .facts
+            .first()
+            .expect("form module context must resolve");
+        assert_eq!(context.id.kind, FactKind::ModuleContext);
+        assert_eq!(context.kind, ModuleContextKind::Form);
+        assert_eq!(context.sources, vec![source.clone()]);
+        assert_eq!(context.self_member, None);
+        let context_fact = context
+            .facts
+            .first()
+            .expect("module context handle fact must be returned");
+        assert_eq!(context_fact.id, context.id);
+        assert!(matches!(
+            context_fact.details,
+            FactDetails::ModuleContext(_)
+        ));
+        let resolved_context_fact = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&context_fact.id),
+                &ResolveContext::all(),
+            )
+            .expect("module context fact lookup must not fail");
+        assert_eq!(resolved_context_fact.status, ResolveStatus::Ok);
+        assert_eq!(resolved_context_fact.facts[0], *context_fact);
+        assert!(
+            context
+                .methods
+                .iter()
+                .any(|method| method.fact.name.primary == "Сообщить")
+        );
+        assert!(
+            context
+                .properties
+                .iter()
+                .any(|property| property.name.primary == "ТекущийОтбор")
+        );
+        let event = context
+            .events
+            .iter()
+            .find(|event| event.fact.name.primary == "ПриОткрытии")
+            .expect("form module event must be returned");
+        assert_eq!(event.id.0.source, source.clone());
+        assert_eq!(event.id.0.domain, LanguageDomain::PlatformApi);
+        assert_eq!(event.info.kind, CallableKind::Event);
+        assert_eq!(event.fact.owner.as_ref(), Some(&context.id));
+        assert_eq!(event.fact.name.alias.as_deref(), Some("OnOpen"));
+        assert_eq!(event.info.signatures.len(), 1);
+        assert_eq!(event.info.signatures[0].parameters[0].name, "Отказ");
+
+        let availability = adapter
+            .availability(&event.id.0, &ResolveContext::all())
+            .expect("event availability lookup must not fail");
+        assert_eq!(availability.status, ResolveStatus::Ok);
+        assert_eq!(
+            availability.facts[0].availability.since.as_deref(),
+            Some("8.3.1")
+        );
+    }
+
+    #[test]
+    fn platform_adapter_does_not_fabricate_unsupported_module_self_member() {
+        let adapter = PlatformSearchSource::with_source_id(
+            fixture_index("platform-module-context-unsupported.sqlite"),
+            fixture_source(),
+        );
+
+        let context = adapter
+            .module_context(
+                ModuleContextQuery {
+                    language: GlobalContextLanguage::Bsl,
+                    domain: LanguageDomain::PlatformApi,
+                    kind: ModuleContextKind::Command,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("unsupported module context lookup must not fail");
+
+        assert_eq!(context.status, ResolveStatus::Unsupported);
+        assert!(context.facts.is_empty());
+        assert!(
+            context.diagnostics[0]
+                .message
+                .contains("not provider-backed")
+        );
+    }
+
+    #[test]
     fn platform_adapter_type_event_member_id_round_trips_and_exact_miss_is_not_found() {
         let source = fixture_source();
         let filter = TypeId(FactId::new(
@@ -1372,6 +1481,14 @@ mod tests {
         builder
             .global_context_event(type_event("ОтборКомпоновкиДанных", "ПередЗаписью"))
             .expect("type event must sink");
+        builder
+            .global_context_event(module_event(
+                model::ModuleKind::Form,
+                &["Форма"],
+                "ПриОткрытии",
+                "OnOpen",
+            ))
+            .expect("module event must sink");
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
         path
     }
@@ -1420,6 +1537,51 @@ mod tests {
 
     fn type_event(owner: &str, primary: &str) -> model::GlobalContextEvent {
         type_event_with_owner_path(&[owner], primary)
+    }
+
+    fn module_event(
+        kind: model::ModuleKind,
+        owner_path: &[&str],
+        primary: &str,
+        alias: &str,
+    ) -> model::GlobalContextEvent {
+        model::GlobalContextEvent {
+            name: name(primary, Some(alias)),
+            owner_identity: None,
+            semantic: model::SemanticContext::new(
+                model::BranchKind::ManagedForms,
+                model::RecordFamily::ModuleEvent,
+            )
+            .with_owner_path(owner_path.iter().map(|owner| name(owner, None)).collect()),
+            module: model::ModuleEventContext {
+                kind,
+                owner_path: owner_path.iter().map(|owner| name(owner, None)).collect(),
+            },
+            signatures: vec![model::Signature {
+                text: format!("{primary}(<Отказ>)"),
+                parameters: vec![model::Parameter {
+                    name: "Отказ".to_string(),
+                    required: true,
+                    type_refs: Vec::new(),
+                    description: None,
+                }],
+                return_types: Vec::new(),
+                variant: None,
+            }],
+            description: Some("module event description".to_string()),
+            facts: model::SectionFacts {
+                availability: model::Availability {
+                    contexts: Vec::new(),
+                },
+                examples: Vec::new(),
+                see_also: Vec::new(),
+                available_since: Some(model::VersionFact {
+                    version: Some("8.3.1".to_string()),
+                    text: "Available since version 8.3.1.".to_string(),
+                }),
+            },
+            source: source_ref(&format!("module-event-{primary}")),
+        }
     }
 
     fn type_event_with_owner_path(owner_path: &[&str], primary: &str) -> model::GlobalContextEvent {

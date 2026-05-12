@@ -249,6 +249,24 @@ fn event_owner(event: &model::GlobalContextEvent) -> Option<model::LocalizedName
     None
 }
 
+fn module_context_relation_key(kind: model::ModuleKind) -> String {
+    normalize_lookup_key(&format!(
+        "module_context:{}",
+        match kind {
+            model::ModuleKind::Session => "session",
+            model::ModuleKind::OrdinaryApplication => "ordinary_application",
+            model::ModuleKind::ManagedApplication => "managed_application",
+            model::ModuleKind::ExternalConnection => "external_connection",
+            model::ModuleKind::Object => "object",
+            model::ModuleKind::Manager => "manager",
+            model::ModuleKind::Form => "form",
+            model::ModuleKind::WebService => "web_service",
+            model::ModuleKind::HttpService => "http_service",
+            model::ModuleKind::Unknown => "unknown",
+        }
+    ))
+}
+
 fn semantic_relation_key(semantic: &model::SemanticContext, fallback: &str) -> String {
     let mut parts = semantic
         .owner_path

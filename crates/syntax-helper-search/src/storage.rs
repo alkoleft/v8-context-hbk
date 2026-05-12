@@ -1180,6 +1180,13 @@ fn insert_name_keys(
             }
         }
     }
+    for key in document
+        .relation_keys
+        .iter()
+        .filter(|key| key.starts_with("module_context:"))
+    {
+        keys.insert((key.clone(), "module_context"));
+    }
     for (key, kind) in keys {
         statement
             .execute(params![key, kind, document.id])

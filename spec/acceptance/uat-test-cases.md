@@ -1103,7 +1103,7 @@ Expected result:
 - The index artifact is a SQLite database.
 - The database contains schema metadata plus deterministic document, exact-name, FTS and
   relationship-edge data.
-- The database uses current search-index schema version `13`; analyzer-critical callable, parameter,
+- The database uses current search-index schema version `14`; analyzer-critical callable, parameter,
   member and type-reference facts are present in normalized relational tables rather than
   `documents.signature_json` or presentation-only `documents.preview` columns.
 - Type identity and exact owner-type member/callable lookup have indexed joins from lookup keys back

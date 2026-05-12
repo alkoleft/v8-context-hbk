@@ -840,6 +840,9 @@ The resolver API must be source-neutral and fact-oriented:
   globally visible facts; the first required scopes are BSL and SDBL/query language contexts;
 - list global methods and global properties through the explicit global-context scope without
   inventing a fake owner type;
+- retrieve platform-owned BSL module context scopes through provider-neutral module-kind keys,
+  including platform global methods/properties, module events, event signatures and availability
+  when those facts are present in the HBK-backed provider index;
 - retrieve callable overloads with ordered parameters and return or constructor result types;
 - expose explicit relation edges such as ownership, type reference, return type, construction,
   generated-from, augments or maps-to when a provider has source-backed evidence;
@@ -944,6 +947,11 @@ Acceptance:
 - Existing `query_table`, `query_table_field` and `query_table_parameter` provider facts are not
   exposed through the platform adapter. T66 selected them to remain CLI/provider facts until a later
   language-domain task defines an explicit resolver mapping or relation shape.
+- HBK-owned module context facts stay in `LanguageDomain::PlatformApi` and must not include
+  metadata-owned facts such as concrete form attributes, form elements, module ownership or
+  generated configuration types. If a module-context fact such as `ЭтотОбъект` / `ThisObject` is not
+  present in the HBK-backed provider model, the resolver reports explicit absence or unsupported
+  capability instead of synthesizing analyzer-side compatibility lists.
 - A Rust static-analysis host can compose `CompositeResolver` with HBK-backed source adapters in
   process from Cargo dependencies and perform lookup calls without spawning the CLI or calling a
   local network service.

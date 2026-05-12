@@ -48,3 +48,21 @@ Current first unchecked task: none.
 - Do not create empty commits.
 
 ## Active Tasks
+
+- [x] T152: Add public resolver module-context boundary for HBK-owned platform module facts.
+  - Scope: extend `context-resolver-core` with provider-neutral module context DTOs/query and
+    extend `context-resolver-search` so HBK-backed indexes expose platform global
+    methods/properties, module events, event signatures and availability through the public Rust
+    resolver API when indexed evidence exists.
+  - Boundaries: no dependency on `v8-context` or `v8-context-metadata`; no public SQLite/storage
+    table contract; no metadata-owned form/module/generated-type facts; no analyzer fallback lists
+    for `ЭтотОбъект` / `ThisObject` or other predefined members.
+  - Spec refs: `FR-CTX-RESOLVE-001`, `implementation/solution-context-resolve.md`,
+    `implementation/components.md`, ADR-0008.
+  - Verification: focused `context-resolver-core`, `syntax-helper-search` and
+    `context-resolver-search` tests; `cargo fmt --all --check`; `cargo test --workspace`.
+  - Result: `context-resolver-core` exposes `ModuleContextKind`, `ModuleContextQuery` and
+    `ResolvedModuleContext`; `context-resolver-search` exposes provider-backed BSL module contexts
+    for indexed module-event kinds; `syntax-helper-search` schema version 14 preserves module event
+    context kind as private provider state; resolved module context handles round-trip through
+    exact id lookup; unsupported/self-member gaps remain explicit.

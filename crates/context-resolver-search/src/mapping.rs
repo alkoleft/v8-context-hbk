@@ -184,6 +184,41 @@ fn relation_kind_from_edge(edge: &str) -> Option<RelationKind> {
     }
 }
 
+fn search_module_context_relation_key(kind: ModuleContextKind) -> Option<&'static str> {
+    match kind {
+        ModuleContextKind::Session => Some("module_context:session"),
+        ModuleContextKind::OrdinaryApplication => Some("module_context:ordinary_application"),
+        ModuleContextKind::ManagedApplication => Some("module_context:managed_application"),
+        ModuleContextKind::ExternalConnection => Some("module_context:external_connection"),
+        ModuleContextKind::Object => Some("module_context:object"),
+        ModuleContextKind::Manager => Some("module_context:manager"),
+        ModuleContextKind::Form => Some("module_context:form"),
+        ModuleContextKind::WebService => Some("module_context:web_service"),
+        ModuleContextKind::HttpService => Some("module_context:http_service"),
+        ModuleContextKind::Unknown => Some("module_context:unknown"),
+        ModuleContextKind::Common
+        | ModuleContextKind::Command
+        | ModuleContextKind::RecordSet
+        | ModuleContextKind::Unsupported => None,
+    }
+}
+
+fn module_context_kind_from_local_id(local_id: &str) -> Option<ModuleContextKind> {
+    match local_id.strip_prefix("module_context:")? {
+        "session" => Some(ModuleContextKind::Session),
+        "ordinary_application" => Some(ModuleContextKind::OrdinaryApplication),
+        "managed_application" => Some(ModuleContextKind::ManagedApplication),
+        "external_connection" => Some(ModuleContextKind::ExternalConnection),
+        "object" => Some(ModuleContextKind::Object),
+        "manager" => Some(ModuleContextKind::Manager),
+        "form" => Some(ModuleContextKind::Form),
+        "web_service" => Some(ModuleContextKind::WebService),
+        "http_service" => Some(ModuleContextKind::HttpService),
+        "unknown" => Some(ModuleContextKind::Unknown),
+        _ => None,
+    }
+}
+
 fn response_from_facts(
     facts: Vec<ContextFact>,
     not_found: &'static str,

@@ -15,6 +15,7 @@ impl ContextSource for PlatformSearchSource {
             callables: true,
             relations: true,
             global_context: true,
+            module_context: true,
         }
     }
 
@@ -32,6 +33,31 @@ impl ContextSource for PlatformSearchSource {
                     return Ok(ResolveResponse::not_found(
                         "fact source or domain does not match",
                     ));
+                }
+                if id.kind == FactKind::ModuleContext {
+                    let Some(kind) = module_context_kind_from_local_id(&id.local_id) else {
+                        return Ok(ResolveResponse::not_found(
+                            "module context local id is not recognized",
+                        ));
+                    };
+                    let context = self.module_context(
+                        ModuleContextQuery {
+                            language: GlobalContextLanguage::Bsl,
+                            domain: LanguageDomain::PlatformApi,
+                            kind,
+                            sources: &[],
+                        },
+                        context,
+                    )?;
+                    if context.status == ResolveStatus::Ok {
+                        return Ok(ResolveResponse::ok(vec![self.module_context_fact(kind)]));
+                    }
+                    return Ok(ResolveResponse {
+                        status: context.status,
+                        facts: Vec::new(),
+                        candidates: context.candidates,
+                        diagnostics: context.diagnostics,
+                    });
                 }
                 let Some(hit) = self
                     .index
@@ -295,20 +321,8 @@ impl ContextSource for PlatformSearchSource {
             ));
         }
 
-        let methods = self
-            .index
-            .documents_by_kind(SearchDocumentKind::GlobalMethod)
-            .map_err(|source| self.source_failure(source))?
-            .into_iter()
-            .filter_map(|hit| self.map_callable(hit).transpose())
-            .collect::<Result<Vec<_>, ResolveError>>()?;
-        let properties = self
-            .index
-            .documents_by_kind(SearchDocumentKind::GlobalProperty)
-            .map_err(|source| self.source_failure(source))?
-            .into_iter()
-            .map(|hit| self.map_global_property(hit.document))
-            .collect::<Vec<_>>();
+        let methods = self.map_global_methods()?;
+        let properties = self.map_global_properties()?;
 
         Ok(ResolveResponse::ok(vec![ResolvedGlobalContext {
             id: self.fact_id(FactKind::Global, "global_context:bsl"),
@@ -317,6 +331,61 @@ impl ContextSource for PlatformSearchSource {
             methods,
             properties,
             facts: Vec::new(),
+        }]))
+    }
+
+    fn module_context(
+        &self,
+        query: ModuleContextQuery<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError> {
+        if !context.is_source_active(&self.source_id) {
+            return Ok(ResolveResponse::not_found("platform source is not active"));
+        }
+        if query.language != GlobalContextLanguage::Bsl
+            || query.domain != LanguageDomain::PlatformApi
+            || (!query.sources.is_empty() && !query.sources.iter().any(|source| source == &self.source_id))
+        {
+            return Ok(ResolveResponse::not_found(
+                "platform source does not expose requested module context",
+            ));
+        }
+        let Some(search_key) = search_module_context_relation_key(query.kind) else {
+            return Ok(ResolveResponse::unsupported(format!(
+                "platform module context `{}` is not provider-backed by the HBK search index",
+                query.kind.as_str()
+            )));
+        };
+
+        let context_id = self.module_context_id(query.kind);
+        let methods = self.map_global_methods()?;
+        let properties = self.map_global_properties()?;
+        let events = self
+            .index
+            .get_by_name(search_key)
+            .map_err(|source| self.source_failure(source))?
+            .into_iter()
+            .filter(|hit| hit.document.kind == SearchDocumentKind::ModuleEvent)
+            .filter_map(|hit| self.map_module_event(hit, &context_id).transpose())
+            .collect::<Result<Vec<_>, ResolveError>>()?;
+
+        if methods.is_empty() && properties.is_empty() && events.is_empty() {
+            return Ok(ResolveResponse::not_found(
+                "platform module context facts not found",
+            ));
+        }
+
+        Ok(ResolveResponse::ok(vec![ResolvedModuleContext {
+            id: context_id,
+            language: query.language,
+            domain: query.domain,
+            kind: query.kind,
+            sources: vec![self.source_id.clone()],
+            self_member: None,
+            properties,
+            methods,
+            events,
+            facts: vec![self.module_context_fact(query.kind)],
         }]))
     }
 
