@@ -49,6 +49,7 @@ Otherwise reconcile the specification files before implementing.
   `completed-tasks-t48-t56.md`, `completed-tasks-t57-t65-t68-t85.md`,
   `completed-tasks-t66-t67-t86-t90.md`, `completed-tasks-t91-t110.md`,
   `completed-tasks-t111-t134.md`, `completed-tasks-t135-t142.md`,
+  `completed-tasks-t143-t151.md`,
   `implementation-todo-2026-05-04.md`, `implementation-todo-2026-05-05.md`).
 
 ## External Files

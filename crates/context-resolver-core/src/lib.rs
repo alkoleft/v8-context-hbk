@@ -838,6 +838,7 @@ impl ContextResolver for CompositeResolver {
             facts: Vec::new(),
         };
         let mut unsupported = Vec::new();
+        let mut candidates = Vec::new();
 
         for source in self.active_sources(context) {
             let source_id = source.descriptor().id;
@@ -858,8 +859,9 @@ impl ContextResolver for CompositeResolver {
                         merged.facts.extend(scope.facts);
                     }
                 }
+                ResolveStatus::Ambiguous => candidates.extend(response.candidates),
                 ResolveStatus::Unsupported => unsupported.extend(response.diagnostics),
-                ResolveStatus::NotFound | ResolveStatus::Ambiguous => {}
+                ResolveStatus::NotFound => {}
             }
         }
 
@@ -867,6 +869,12 @@ impl ContextResolver for CompositeResolver {
             || !merged.properties.is_empty()
             || !merged.facts.is_empty()
             || !merged.sources.is_empty();
+        if !candidates.is_empty() {
+            if has_facts {
+                candidates.push(merged.candidate());
+            }
+            return Ok(ResolveResponse::ambiguous(candidates));
+        }
         if has_facts {
             return Ok(ResolveResponse::ok(vec![merged]));
         }
@@ -1372,18 +1380,11 @@ mod tests {
     fn composite_merges_language_specific_global_context_scopes() {
         let bsl_source = SourceId::new("shlang");
         let platform_source = SourceId::new("platform");
-        let bsl_scope = ResolvedGlobalContext {
-            id: FactId::new(
-                bsl_source.clone(),
-                LanguageDomain::BslLanguage,
-                FactKind::Global,
-                "global_context:bsl",
-            ),
-            language: GlobalContextLanguage::Bsl,
-            sources: vec![bsl_source.clone()],
-            methods: Vec::new(),
-            properties: Vec::new(),
-            facts: vec![ContextFact {
+        let bsl_scope = global_context_scope(
+            bsl_source.clone(),
+            LanguageDomain::BslLanguage,
+            GlobalContextLanguage::Bsl,
+            vec![ContextFact {
                 id: FactId::new(
                     bsl_source,
                     LanguageDomain::BslLanguage,
@@ -1399,7 +1400,7 @@ mod tests {
                 }),
                 relations: Vec::new(),
             }],
-        };
+        );
         let platform_scope = ResolvedGlobalContext {
             id: FactId::new(
                 platform_source.clone(),
@@ -1471,6 +1472,61 @@ mod tests {
         assert_eq!(scope.sources.len(), 2);
         assert_eq!(scope.methods[0].fact.name.primary, "Сообщить");
         assert_eq!(scope.facts[0].name.primary, "Строка");
+    }
+
+    #[test]
+    fn composite_global_context_preserves_source_level_ambiguity() {
+        let bsl_source = SourceId::new("bsl-ok");
+        let ambiguous_source = SourceId::new("bsl-ambiguous");
+        let ok_scope = global_context_scope(
+            bsl_source.clone(),
+            LanguageDomain::BslLanguage,
+            GlobalContextLanguage::Bsl,
+            vec![language_fact(&bsl_source, "def_String", "Строка")],
+        );
+        let left_scope = global_context_scope(
+            ambiguous_source.clone(),
+            LanguageDomain::BslLanguage,
+            GlobalContextLanguage::Bsl,
+            vec![language_fact(&ambiguous_source, "left", "Левый")],
+        );
+        let right_scope = global_context_scope(
+            ambiguous_source.clone(),
+            LanguageDomain::BslLanguage,
+            GlobalContextLanguage::Bsl,
+            vec![language_fact(&ambiguous_source, "right", "Правый")],
+        );
+        let resolver = CompositeResolver::new(vec![
+            Box::new(
+                FakeSource::new("bsl-ok", LanguageDomain::BslLanguage)
+                    .with_global_context(ok_scope),
+            ),
+            Box::new(
+                FakeSource::new("bsl-ambiguous", LanguageDomain::BslLanguage)
+                    .with_global_context(left_scope)
+                    .with_global_context(right_scope),
+            ),
+        ]);
+
+        let response = resolver
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Bsl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("global context lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ambiguous);
+        assert_eq!(response.facts.len(), 0);
+        let candidate_sources = response
+            .candidates
+            .iter()
+            .map(|candidate| candidate.id.source.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(candidate_sources.contains("bsl-ambiguous"));
+        assert!(candidate_sources.contains("composite"));
     }
 
     #[test]
@@ -1779,6 +1835,46 @@ mod tests {
             }
             ResolveStatus::Unsupported => ResolveResponse::unsupported("forced unsupported"),
             ResolveStatus::NotFound => ResolveResponse::not_found("forced not found"),
+        }
+    }
+
+    fn global_context_scope(
+        source: SourceId,
+        domain: LanguageDomain,
+        language: GlobalContextLanguage,
+        facts: Vec<ContextFact>,
+    ) -> ResolvedGlobalContext {
+        ResolvedGlobalContext {
+            id: FactId::new(
+                source.clone(),
+                domain,
+                FactKind::Global,
+                "global_context:bsl",
+            ),
+            language,
+            sources: vec![source],
+            methods: Vec::new(),
+            properties: Vec::new(),
+            facts,
+        }
+    }
+
+    fn language_fact(source: &SourceId, local_id: &str, name: &str) -> ContextFact {
+        ContextFact {
+            id: FactId::new(
+                source.clone(),
+                LanguageDomain::BslLanguage,
+                FactKind::Type,
+                local_id,
+            ),
+            name: Name::new(name, None::<String>),
+            owner: None,
+            details: FactDetails::Type(TypeInfo {
+                description: None,
+                metadata_template: None,
+                type_template_key: None,
+            }),
+            relations: Vec::new(),
         }
     }
 }
