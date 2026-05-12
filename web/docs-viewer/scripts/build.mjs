@@ -14,6 +14,7 @@ for (const [from, to] of [
   ["src/app.js", "app.js"],
   ["src/data-client.js", "data-client.js"],
   ["src/markdown.js", "markdown.js"],
+  ["src/navigation.js", "navigation.js"],
   ["src/page-links.js", "page-links.js"],
 ]) {
   await copyFile(path.join(root, from), path.join(dist, to));

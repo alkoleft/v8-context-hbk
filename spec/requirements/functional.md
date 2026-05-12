@@ -208,9 +208,10 @@ Acceptance:
   lazy-child metadata.
 - A separate web application can serve or load the generated data and navigate from root TOC to a
   page without invoking HBK parsing in request paths.
-- Links from one generated Markdown page to another generated page, including `#fragment` section
-  links, open inside the web application and do not show generated service anchor markup as visible
-  page text.
+- Generated Markdown links open inside the web application: same-page fragment links remain safe
+  `#fragment` anchors, cross-page generated links keep `page-*.md#fragment` targets, generated
+  service anchors are not shown as visible page text and generated-link navigation keeps a human
+  page title instead of an opaque page id.
 - The web application bundle or server response does not include all generated page Markdown.
 - Site generation reports source book count, page count, output size and timing/resource
   measurements in the acceptance baseline before performance optimization tasks.

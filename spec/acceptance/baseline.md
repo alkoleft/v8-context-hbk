@@ -1846,6 +1846,15 @@ produced 1 source book, 1 locale, 397 TOC nodes, 365 pages, 410 files, 1127587 b
 `> Программа запуска - 1CEStart`, `> Интерактивная программа запуска - 1Cv8s` and
 `> Клиентское приложение`, and no longer contains `> |` table markup for that launch-flow block.
 
+T147 fixed generated documentation viewer link navigation. Documentation-site page Markdown now
+keeps same-page fragment links as `#fragment` anchors instead of generated page-file links or
+`index.md#fragment`, while cross-page generated links remain `page-*.md#fragment` targets for viewer
+routing. `web/docs-viewer` resolves same-page fragments against the currently loaded generated page,
+routes cross-page generated links through the page data client and derives the browser document title
+from the rendered human heading or human link/TOC title instead of the opaque generated page id.
+Verification passed with `npm test --prefix web/docs-viewer -- --test-reporter=tap` and
+`cargo test -p hbk-doc-site -p hbk-book-export -p v8-context-hbk-cli`.
+
 T132 moved platform type-template ownership into the HBK-backed provider boundary. The
 resolver model now exposes semantic type-template kind as metadata object kind, generated type
 role and template parameter role, and type references can carry owner-parameter template bindings.

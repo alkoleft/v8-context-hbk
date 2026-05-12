@@ -17,3 +17,29 @@ export function parseGeneratedPageLink(href) {
     fragment: fragmentPart || null,
   };
 }
+
+export function resolveGeneratedPageLink(href, currentPageId = null) {
+  const generated = parseGeneratedPageLink(href);
+  if (generated) {
+    return { ...generated, samePage: generated.pageId === currentPageId };
+  }
+
+  const fragment = parseSamePageFragment(href);
+  if (!fragment || !currentPageId) {
+    return null;
+  }
+  return {
+    pageId: currentPageId,
+    fragment,
+    samePage: true,
+  };
+}
+
+function parseSamePageFragment(href) {
+  const value = String(href ?? "").trim();
+  if (!value.startsWith("#")) {
+    return null;
+  }
+  const fragment = value.slice(1).split("?")[0].trim();
+  return fragment || null;
+}

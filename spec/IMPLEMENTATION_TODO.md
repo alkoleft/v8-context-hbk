@@ -195,24 +195,34 @@ Verification:
 
 References: ADR-0010, `implementation/documentation-site.md`, UAT-HBK-014, UAT-HBK-015.
 
-- [ ] Reproduce same-page generated Markdown fragment links in `hbk-doc-site` / `web/docs-viewer`
+- [x] Reproduce same-page generated Markdown fragment links in `hbk-doc-site` / `web/docs-viewer`
       using a deterministic fixture. A same-page `#fragment` link must not be rewritten into an
       unroutable `index.md#fragment` link in generated site output.
-- [ ] Fix generated page routing so intra-page fragments and cross-page generated links both navigate
+- [x] Fix generated page routing so intra-page fragments and cross-page generated links both navigate
       correctly in the viewer.
-- [ ] Preserve link safety rules: external HTTP(S), generated page links and safe relative anchors may
+- [x] Preserve link safety rules: external HTTP(S), generated page links and safe relative anchors may
       be rendered, but arbitrary unsupported hrefs must not bypass the existing sanitizer.
-- [ ] Preserve human page titles when navigating through generated Markdown links instead of replacing
+- [x] Preserve human page titles when navigating through generated Markdown links instead of replacing
       the document title with an opaque generated page id.
+
+Result: T147 fixed generated documentation viewer navigation without changing single-book
+`markdown/toc` export behavior. `hbk-doc-site` generated page Markdown now collapses same-page
+generated fragment links from `<current-page>.md#fragment` to safe `#fragment` anchors, while
+cross-page links keep `page-*.md#fragment` for viewer routing. `web/docs-viewer` resolves same-page
+fragments through the current page id, routes cross-page generated links through the page data
+client and derives the document title from the rendered Markdown heading or human link/TOC title
+instead of an opaque generated page id. The existing sanitizer boundary is preserved: generated page
+links, same-page anchors and HTTP(S) links remain allowed; unsupported hrefs continue to render as
+`#`.
 
 Verification:
 
-- [ ] `web/docs-viewer` tests cover same-page fragments, cross-page generated links and title
+- [x] `web/docs-viewer` tests cover same-page fragments, cross-page generated links and title
       preservation.
-- [ ] `hbk-doc-site` or `hbk-book-export` tests cover the generated Markdown shape that feeds the
+- [x] `hbk-doc-site` or `hbk-book-export` tests cover the generated Markdown shape that feeds the
       viewer.
-- [ ] `npm test -- --test-reporter=tap` in `web/docs-viewer`
-- [ ] `cargo test -p hbk-doc-site -p hbk-book-export -p v8-context-hbk-cli`
+- [x] `npm test -- --test-reporter=tap` in `web/docs-viewer`
+- [x] `cargo test -p hbk-doc-site -p hbk-book-export -p v8-context-hbk-cli`
 
 ### T148: Stabilize Provider JSON Assembly Boundaries
 

@@ -1117,7 +1117,16 @@ fn write_markdown_page<'a>(
         })?
         .markdown()
         .to_string();
+    let markdown = collapse_current_page_fragment_links(markdown, &page.page_id);
     write_text(output_path.to_path_buf(), &markdown)
+}
+
+fn collapse_current_page_fragment_links(markdown: String, page_id: &SitePageId) -> String {
+    let same_page_prefix = format!("]({}.md#", page_id.as_str());
+    if !markdown.contains(&same_page_prefix) {
+        return markdown;
+    }
+    markdown.replace(&same_page_prefix, "](#")
 }
 
 #[derive(Debug)]
@@ -1483,7 +1492,7 @@ mod tests {
             vec![
                 (
                     "alpha/page.html",
-                    "<html><body><h1>Страница</h1><p>alpha page body</p><a href=\"v8help://Alpha/alpha/section.html#Anchor\">section</a></body></html>".as_bytes(),
+                    "<html><body><h1>Страница</h1><p>alpha page body</p><a href=\"#Local\">local</a><a href=\"v8help://Alpha/alpha/section.html#Anchor\">section</a><h2 id=\"Local\">Local</h2></body></html>".as_bytes(),
                 ),
                 (
                     "alpha/section.html",
@@ -1605,6 +1614,9 @@ mod tests {
         .expect("beta page Markdown must be written");
         assert!(alpha_markdown.contains("# Страница"));
         assert!(alpha_markdown.contains("alpha page body"));
+        assert!(alpha_markdown.contains("[local](#Local)"));
+        assert!(!alpha_markdown.contains(&format!("[local]({alpha_page_id}.md#Local)")));
+        assert!(!alpha_markdown.contains("[local](index.md#Local)"));
         assert!(alpha_markdown.contains("[section]("));
         assert!(alpha_markdown.contains("#Anchor"));
         assert!(!alpha_markdown.contains("v8help://Alpha"));

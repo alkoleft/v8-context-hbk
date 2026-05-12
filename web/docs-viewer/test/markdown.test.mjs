@@ -47,6 +47,15 @@ test("renderMarkdown preserves generated page links for app routing", () => {
   assert.equal(link.attributes.get("href"), "page-ru-314485b4b83f6ad6.md#Details");
 });
 
+test("renderMarkdown preserves same-page fragment anchors for app routing", () => {
+  const document = new TestDocument();
+  globalThis.document = document;
+  const rendered = renderMarkdown("[Details](#Details)");
+  const link = rendered.children[0].children[0];
+  assert.equal(link.tagName, "a");
+  assert.equal(link.attributes.get("href"), "#Details");
+});
+
 test("renderMarkdown renders blockquotes without raw markdown markers", () => {
   const document = new TestDocument();
   globalThis.document = document;

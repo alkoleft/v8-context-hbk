@@ -745,6 +745,12 @@ Expected result:
 - The initial JavaScript bundle or server response does not contain representative page Markdown
   strings from generated pages.
 - Navigation from global TOC to a page works without a full page reload.
+- Same-page Markdown fragment links navigate to a local generated anchor and are not rewritten to
+  `index.md#fragment`.
+- Cross-page generated Markdown links keep `page-*.md#fragment` targets and navigate through the
+  viewer route.
+- Navigation through generated Markdown links preserves a human page title instead of replacing it
+  with an opaque generated page id.
 
 Skip rule:
 

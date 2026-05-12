@@ -270,6 +270,19 @@ improve the local 8.5.1.1150 run and increased peak RSS, so that worker-pool cha
 Further speed work should measure the remaining cost before adding concurrency or broader export
 pipeline changes.
 
+## T147 Generated Viewer Link Navigation Notes
+
+Generated documentation-site Markdown keeps same-page fragment links as `#fragment` anchors instead
+of rewriting them through a generated page file name or `index.md#fragment`. Cross-page generated
+links still use `page-*.md#fragment` so the viewer can load the target generated page and scroll to
+the section.
+
+`web/docs-viewer` now resolves both same-page `#fragment` links and cross-page generated Markdown
+links through one route helper. Same-page links scroll within the already loaded page; cross-page
+links load the target page data through the generated page id. After loading a generated-link target,
+the viewer derives the browser document title from the rendered Markdown heading, falling back to the
+human link/TOC title, and no longer uses the opaque generated page id as the visible title source.
+
 ## T118 Address-Based TOC Merge Notes
 
 The global TOC merge now treats same-level page-bearing nodes with the same normalized page address

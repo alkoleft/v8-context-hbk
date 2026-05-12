@@ -1,12 +1,14 @@
 import { DocsDataClient } from "./data-client.js";
 import { renderMarkdown } from "./markdown.js";
-import { parseGeneratedPageLink } from "./page-links.js";
+import { pageTitleFromRenderedMarkdown } from "./navigation.js";
+import { resolveGeneratedPageLink } from "./page-links.js";
 
 const client = new DocsDataClient();
 const state = {
   manifest: null,
   locale: null,
   sectionCache: new Map(),
+  currentPageId: null,
 };
 
 const localeBar = document.querySelector("#localeBar");
@@ -22,12 +24,16 @@ pagePanel.addEventListener("click", (event) => {
   if (!link) {
     return;
   }
-  const target = parseGeneratedPageLink(link.getAttribute("href"));
+  const target = resolveGeneratedPageLink(link.getAttribute("href"), state.currentPageId);
   if (!target) {
     return;
   }
   event.preventDefault();
-  openPageId(target.pageId, target.pageId, target.fragment).catch((error) => {
+  if (target.samePage) {
+    scrollToFragment(target.fragment);
+    return;
+  }
+  openPageId(target.pageId, link.textContent, target.fragment).catch((error) => {
     showStatus(pagePanel, error.message);
   });
 });
@@ -136,11 +142,17 @@ async function openPageId(pageId, title, fragment) {
   showStatus(pagePanel, "Loading page...");
   const pageRoot = state.manifest.page_roots[state.locale];
   const markdown = await client.page(state.locale, pageRoot, pageId);
-  pagePanel.replaceChildren(renderMarkdown(markdown));
+  const rendered = renderMarkdown(markdown);
+  pagePanel.replaceChildren(rendered);
+  state.currentPageId = pageId;
+  scrollToFragment(fragment);
+  document.title = `${pageTitleFromRenderedMarkdown(rendered, title)} - 1C Documentation`;
+}
+
+function scrollToFragment(fragment) {
   if (fragment) {
     document.getElementById(fragment)?.scrollIntoView();
   }
-  document.title = `${title} - 1C Documentation`;
 }
 
 function showStatus(element, message) {
