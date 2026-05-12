@@ -26,9 +26,19 @@ Expected result:
 - Output includes `PackBlock`, `FileStorage` and `Book`.
 - Output is readable as an inspection result, not a panic/backtrace.
 
-Skip rule:
+Pass/fail criteria:
+
+- Pass when the command exits with code `0` and the output contains all three required entity names.
+- Fail when the command exits non-zero, omits any required entity name or prints a panic/backtrace
+  instead of an inspection result.
+
+Skip note:
 
 - If the fixture is absent, record the skip reason and do not mark the case failed.
+
+Cleanup:
+
+- `target/uat/hbk-cli-smoke` is service data and may be deleted after automated smoke runs.
 
 ## UAT-HBK-002: Print Russian Help Book TOC as JSON
 
@@ -52,6 +62,21 @@ Expected result:
 - Output parses as JSON.
 - At least one TOC item contains a title and an `html_path`.
 
+Pass/fail criteria:
+
+- Pass when the command exits with code `0`, stdout parses as JSON and at least one recursive TOC
+  item has both `title` and `html_path`.
+- Fail when the command exits non-zero, stdout is not valid JSON or no TOC item exposes the required
+  output shape.
+
+Skip note:
+
+- If the fixture is absent, record the skip reason and do not mark the case failed.
+
+Cleanup:
+
+- `target/uat/hbk-cli-smoke` is service data and may be deleted after automated smoke runs.
+
 ## UAT-HBK-003: Read a Known Help Page
 
 Related use case: UC-HBK-002.
@@ -74,6 +99,29 @@ Expected result:
 
 - Exit code is `0`.
 - Output is non-empty HTML/text content from the requested page.
+
+Pass/fail criteria:
+
+- Pass when the command exits with code `0` and stdout contains non-empty requested page content.
+- Fail when the command exits non-zero, the known-page fixture is empty or stdout is empty.
+
+Skip note:
+
+- If the HBK fixture or known-page fixture is absent, record the skip reason and do not mark the case
+  failed.
+
+Cleanup:
+
+- `target/uat/hbk-cli-smoke` is service data and may be deleted after automated smoke runs.
+
+Automation:
+
+```bash
+scripts/uat/hbk-cli-smoke.sh
+```
+
+The smoke harness prints `PASS`, `SKIP` or `FAIL` per case and writes temporary outputs under
+`target/uat/hbk-cli-smoke`.
 
 ## UAT-HBK-004: Export Markdown TOC Corpus from Representative HBK Books
 

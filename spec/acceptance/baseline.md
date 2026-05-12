@@ -2135,6 +2135,14 @@ documents and `56769` relations, reported CLI `elapsed_ms: 38232`, and `/usr/bin
 `documents.id` groups and zero `query_table_field` / `query_table_parameter` documents owned by
 generic `query_table:Основная таблица`.
 
+T150 aligned UAT-HBK-001, UAT-HBK-002 and UAT-HBK-003 with the active UAT template by adding
+explicit pass/fail criteria, cleanup rules and skip notes. `scripts/uat/hbk-cli-smoke.sh` is the
+local executable black-box smoke harness for those three cases. It runs the public CLI through
+Cargo, validates exit code and representative output shape for `inspect`, `toc --format json` and
+`page --path`, records fixture absence as `SKIP` with a reason and returns non-zero only for failed
+cases. This smoke remains local-only for now because CI provisioning for
+`/opt/1cv8/x86_64/8.5.1.1150/fmtdui_root.hbk` and `fmtdui_ru.hbk` is not specified.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

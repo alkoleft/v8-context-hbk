@@ -29,7 +29,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T147.
+Current first unchecked task: T151.
 
 ## Loop Rule
 
@@ -293,22 +293,29 @@ Verification:
 References: `acceptance/test-case-requirements.md`, `acceptance/uat-test-cases.md`,
 UAT-HBK-001, UAT-HBK-002, UAT-HBK-003, FR-CLI-001, NFR-DIAG-001.
 
-- [ ] Reconcile the UAT case template with the current catalog: either add explicit pass/fail criteria
+- [x] Reconcile the UAT case template with the current catalog: either add explicit pass/fail criteria
       to active UAT cases or intentionally narrow the template requirement before editing cases.
-- [ ] Add an executable black-box smoke harness for `inspect`, `toc` and `page` that validates exit
+- [x] Add an executable black-box smoke harness for `inspect`, `toc` and `page` that validates exit
       code and representative output shape against the accepted small real fixtures when available.
-- [ ] Keep fixture absence as a recorded skip, not a passing assertion that hides missing platform
+- [x] Keep fixture absence as a recorded skip, not a passing assertion that hides missing platform
       coverage.
-- [ ] Document whether real-HBK smoke is local-only or expected in CI; do not imply CI coverage unless
+- [x] Document whether real-HBK smoke is local-only or expected in CI; do not imply CI coverage unless
       fixture provisioning is specified.
+
+Result: T150 added explicit pass/fail criteria, skip notes and cleanup rules to UAT-HBK-001,
+UAT-HBK-002 and UAT-HBK-003. `scripts/uat/hbk-cli-smoke.sh` is the local executable black-box
+smoke harness for the three cases. It runs the public CLI through Cargo, validates `inspect`,
+`toc --format json` and `page --path`, records missing platform fixtures as `SKIP` with a reason
+and returns non-zero only for failed cases. CI coverage is intentionally not claimed because
+platform HBK fixture provisioning is not specified.
 
 Verification:
 
-- [ ] Updated UAT cases comply with `acceptance/test-case-requirements.md`.
-- [ ] The black-box smoke harness can be run locally and reports skipped real-HBK cases explicitly when
+- [x] Updated UAT cases comply with `acceptance/test-case-requirements.md`.
+- [x] The black-box smoke harness can be run locally and reports skipped real-HBK cases explicitly when
       fixtures are absent.
-- [ ] `cargo fmt --all --check` if Rust code is touched.
-- [ ] `cargo test --workspace` if the smoke harness is Rust-based.
+- [x] Not required: `cargo fmt --all --check` (no Rust code or Rust examples touched).
+- [x] Not required: `cargo test --workspace` (the smoke harness is shell-based, not Rust-based).
 
 ### T151: Split Large Implementation Modules by Context Boundary
 
