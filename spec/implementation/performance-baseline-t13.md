@@ -785,5 +785,12 @@ accepted changes keep JSON output byte-identical while improving `shcntx_ru.hbk`
 `shcntx_root.hbk` memory class. Broader parser rewrites, `HashSet` visited tracking and empty-source
 streaming records are not justified by the measured regressions.
 
+T149 confirmed that the current query-table parent-identity prepass is not causing a second
+query-table page load during record emission in the normal reader flow. Focused loader-count
+instrumentation covers the full `extract_with_loader_into` path and proves that the parsed
+query-table record from parent-identity discovery is reused. The representative `shcntx_ru.hbk`
+debug index rebuild stayed in the current post-T127/T144 performance class, so no broader parser
+pipeline or cache mechanism is justified.
+
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
 by the current evidence.

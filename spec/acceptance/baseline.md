@@ -2113,6 +2113,28 @@ distinct `Controls` and `FormItems` platform identities. Resolving them safely r
 type-reference link targets or an equivalent source-owned target identity during parsing/indexing;
 T144 keeps them explicit rather than choosing a hidden winner from owner names or availability.
 
+T149 confirmed the query-table read-phase reuse path selected by ADR-0011/T127. Focused
+instrumentation over the full `extract_with_loader_into` reader flow now proves that a query-table
+page parsed during parent-identity discovery is loaded once and reused during record emission rather
+than reparsed. The change does not add a generic cache knob and does not change provider JSON,
+consumer export JSON, SQLite schema, query-table identity rules or no-fallback behavior for missing
+query-table member owners.
+
+A representative debug index rebuild on 2026-05-12 used:
+
+```bash
+/usr/bin/time -f 'elapsed=%e rss_kb=%M exit=%x' \
+  cargo run -p v8-context-hbk-cli -- syntax index \
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/t149-query-table-reparse.sqlite
+```
+
+The command completed successfully with existing `DUPLICATE_DOCUMENT_ID` warnings, produced `25415`
+documents and `56769` relations, reported CLI `elapsed_ms: 38232`, and `/usr/bin/time` reported
+`elapsed=40.38`, `rss_kb=346392`, `exit=0`. SQLite checks found zero duplicate final
+`documents.id` groups and zero `query_table_field` / `query_table_parameter` documents owned by
+generic `query_table:Основная таблица`.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

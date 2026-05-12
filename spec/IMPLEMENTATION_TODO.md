@@ -262,23 +262,31 @@ Verification:
 References: NFR-PERF-001, NFR-QUERY-001, ADR-0005,
 `implementation/performance-baseline-t13.md`, `implementation/components.md`.
 
-- [ ] Measure query-table page load/parse calls in the current Syntax Assistant reader flow before
+- [x] Measure query-table page load/parse calls in the current Syntax Assistant reader flow before
       changing behavior.
-- [ ] Remove avoidable repeated loading/parsing between parent-identity discovery and record emission
+- [x] Remove avoidable repeated loading/parsing between parent-identity discovery and record emission
       for query-table pages. Reuse source-backed parsed evidence where it belongs instead of adding a
       generic cache knob.
-- [ ] Preserve existing no-fallback identity rules for query-table and query-table member facts.
-- [ ] Record any measured runtime or memory effect in the acceptance/performance baseline only when
+- [x] Preserve existing no-fallback identity rules for query-table and query-table member facts.
+- [x] Record any measured runtime or memory effect in the acceptance/performance baseline only when
       the measurement is reproducible.
+
+Result: T149 confirmed and pinned the existing read-phase reuse path for query-table pages. The full
+`extract_with_loader_into` reader flow now has focused loader-count instrumentation proving that a
+query-table page parsed during parent-identity discovery is not loaded again during record emission.
+The production path continues to reuse source-backed `QueryTable` records from the parent-identity
+prepass; no generic cache knob, public provider JSON, consumer export JSON, SQLite schema or
+fallback identity rule changed. Representative `shcntx_ru.hbk` indexing was remeasured and recorded
+in `acceptance/baseline.md`.
 
 Verification:
 
-- [ ] Focused tests or instrumentation prove the repeated query-table page load/parse path is reduced.
-- [ ] Existing query-table identity and missing-syntax regression tests still pass.
-- [ ] Representative `shcntx_ru.hbk` extraction/indexing measurement is recorded when the change is
+- [x] Focused tests or instrumentation prove the repeated query-table page load/parse path is reduced.
+- [x] Existing query-table identity and missing-syntax regression tests still pass.
+- [x] Representative `shcntx_ru.hbk` extraction/indexing measurement is recorded when the change is
       expected to affect runtime.
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo test -p syntax-helper-extract -p syntax-helper-search`
+- [x] `cargo fmt --all --check`
+- [x] `cargo test -p syntax-helper-extract -p syntax-helper-search`
 
 ### T150: Align UAT Shape and CLI Smoke Automation
 

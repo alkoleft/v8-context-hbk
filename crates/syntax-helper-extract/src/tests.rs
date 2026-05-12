@@ -660,6 +660,75 @@ fn extraction_assigns_query_table_identity_from_toc_context() {
 }
 
 #[test]
+fn extract_with_loader_reuses_query_table_prepass_record_in_reader_flow() {
+    let toc = Toc::parse(
+        r#"{
+                4
+                {1,0,2,2,3,{0,0,{0,0,{"ru","Универсальные коллекции значений"}},"/objects/catalog234.html"}}
+                {2,1,0,{0,0,{0,0,{"ru","Массив"}},"/objects/catalog234/Array.html"}}
+                {3,1,1,4,{0,0,{0,0,{"ru","Таблица точек бизнес-процессов"}},"/tables/catalog1/table2.html"}}
+                {4,3,0,{0,0,{0,0,{"ru","Наименование"}},"/tables/catalog1/table2/fields/Description.html"}}
+            }"#,
+    )
+    .expect("fixture TOC must parse");
+    let mut sink = RecordingSink::default();
+    let mut load_counts = BTreeMap::<String, usize>::new();
+
+    extract_with_loader_into(
+        Path::new("shcntx_ru.hbk"),
+        "ru",
+        &toc,
+        |html_path| {
+            *load_counts.entry(html_path.to_string()).or_default() += 1;
+            let html = match html_path {
+                "objects/catalog234.html" => {
+                    include_str!("../../../tests/fixtures/syntax-helper/root_catalog_types_ru.html")
+                }
+                "objects/catalog234/Array.html" => {
+                    include_str!("../../../tests/fixtures/syntax-helper/object_array_ru.html")
+                }
+                "tables/catalog1/table2.html" => {
+                    r#"<html><body><h1 class="V8SH_pagetitle">БизнесПроцесс.&lt;Имя бизнес-процесса&gt;.Точки (BusinessProcess.&lt;Имя бизнес-процесса&gt;.Points)</h1><p class="V8SH_chapter">Синтаксис</p>БизнесПроцесс.&lt;Имя бизнес-процесса&gt;.Точки (BusinessProcess.&lt;Имя бизнес-процесса&gt;.Points)<p class="V8SH_chapter">Поля</p><p class="V8SH_chapter">Описание:</p><p>Предназначена для получения точек бизнес-процессов.</p></body></html>"#
+                }
+                "tables/catalog1/table2/fields/Description.html" => {
+                    r#"<html><body><h1 class="V8SH_pagetitle">Наименование</h1><p class="V8SH_heading">Наименование</p>Тип: <a href="v8help://SyntaxHelperLanguage/def_String">Строка</a>. <br>Описание задачи.<br></body></html>"#
+                }
+                other => panic!("unexpected fixture page load: {other}"),
+            };
+            Ok(fixture_content_from_raw(
+                &toc,
+                "shcntx_ru.hbk",
+                "ru",
+                html_path,
+                html,
+            ))
+        },
+        &mut sink,
+    )
+    .expect("fixture extraction must stream");
+
+    assert_eq!(
+        load_counts.get("tables/catalog1/table2.html"),
+        Some(&1),
+        "full reader flow must reuse the query table record parsed during parent identity discovery"
+    );
+    assert_eq!(
+        sink.query_tables
+            .iter()
+            .find(|table| table.name == "Таблица точек бизнес-процессов")
+            .and_then(|table| table.identity.as_deref()),
+        Some("query_table:БизнесПроцессТаблицаТочекБизнесПроцессов")
+    );
+    assert_eq!(
+        sink.table_fields
+            .iter()
+            .find(|field| field.name == "Наименование")
+            .and_then(|field| field.owner_identity.as_deref()),
+        Some("query_table:БизнесПроцессТаблицаТочекБизнесПроцессов")
+    );
+}
+
+#[test]
 fn resolves_query_table_member_owner_from_toc_semantic_context() {
     let toc = Toc::parse(
         r#"{
