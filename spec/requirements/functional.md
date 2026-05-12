@@ -352,6 +352,11 @@ Classification rules:
   member returning `DocumentReference<T>` must be represented as a reference to the document
   reference template with the result template argument bound to the owner template parameter slot,
   not as an analyzer-side localized-name heuristic.
+- HBK owns only source-backed platform type-template evidence: classification, open family/variant
+  keys, source template parameter slots, template-binding evidence and unresolved/ambiguous
+  diagnostics. It must not generate concrete `Configuration`-domain types such as
+  `DocumentRef.Invoice` or `CatalogManager.Products`; that composition belongs to downstream
+  type/typegen or analyzer layers that combine HBK evidence with metadata object identities.
 - Primitive types are shallow. Direct children of the `Примитивные типы` branch are primitive
   platform types; nested pages under a primitive type, such as `Булево > Истина` and
   `Булево > Ложь`, must not be traversed as platform types by ordinary object-catalog recursion.
@@ -843,6 +848,9 @@ The resolver API must be source-neutral and fact-oriented:
 - preserve template owner-parameter bindings on member, callable return and parameter type
   references where provider evidence shows a type template result such as
   `DocumentObject<T> -> DocumentReference<T>`;
+- keep generated configuration type composition out of HBK provider contracts: a resolver may expose
+  template evidence and explicit relations, but it must not turn metadata object names into concrete
+  `Configuration` facts or require metadata providers to depend on HBK internals;
 - distinguish `PlatformApi`, `BslLanguage`, `QueryLanguage`, `Configuration` and `SourceCode`
   domains instead of folding all same-name facts into platform API types;
 - use typed id wrappers for facts, types, members and callables; display names are lookup keys, not

@@ -168,6 +168,15 @@ callable parameter and overload return type references when the HBK-backed searc
 source-backed type-template links. This is an adapter/DTO guarantee, not a downstream analyzer
 implementation or a public SQLite table contract.
 
+Type boundary correction after the downstream `v8-context` platform-facts review: HBK remains the
+owner of source-backed platform type-template evidence, not the owner of generated configuration
+type composition. `PlatformTypeTemplateKey`, `TypeTemplateBinding`, template parameter slots and
+unresolved/ambiguous type-reference diagnostics remain HBK/provider evidence because they come from
+`shcntx_*`. A future shared type/typegen layer may reuse provider-neutral DTOs or compose
+`metadata object + platform template evidence -> Configuration type`, but it must not move HBK
+extraction, Syntax Assistant classification, search-index ownership or resolver source adapters out
+of this repository without a separate ADR.
+
 ## Source And Language Domains
 
 Resolution is domain-aware. A name alone is not identity.
@@ -212,6 +221,9 @@ Domain ownership rules:
 - Configuration metadata types are `Configuration` facts owned by a downstream metadata provider.
   They may reference or augment platform facts only through explicit relations such as `generated_from`
   or `augments`.
+- Concrete generated configuration types are composed outside this repository from downstream
+  metadata object identities plus HBK template evidence. HBK must not synthesize
+  `Configuration`-domain fact ids by substituting metadata names into platform template names.
 - Source-code declarations are `SourceCode` facts owned by a downstream source provider. They may
   shadow, override or call platform/configuration/language facts only through explicit source-backed
   relations; they do not replace another provider's identity.
