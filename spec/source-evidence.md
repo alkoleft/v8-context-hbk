@@ -166,6 +166,33 @@ The first verified cross-source language edge is the T89 SKD string function
 `dcsui:SKD_Functions_Strings#StringLength` `Строка` parameter type resolving by relation traversal
 to the BSL language type `shlang:def_String`.
 
+T143 rechecked unresolved `shcntx_*` type-reference names against the language-domain source
+evidence instead of treating unresolved names as missing platform types. The reproducible analysis
+path is `scripts/analysis/type-ref-domain-classification.sql` over a prebuilt schema-13 Syntax
+Assistant search index. It does not parse HBK files per query and does not change provider JSON,
+consumer export JSON or resolver DTOs.
+
+The durable classification conclusion is source/domain-qualified:
+
+- `Строка` / `String`, `Булево` / `Boolean`, `Число` / `Number`, `Дата` / `Date`,
+  `Неопределено` / `Undefined` and `Тип` / `Type` in non-query `shcntx_*` callable/property
+  references are likely BSL-language facts. The source anchors are the `shlang_*` primitive pages
+  `def_String`, `def_Boolean`, `def_Number`, `def_Date`, `def_Undefined` and `def_Type`.
+- Query-table field and parameter references with primitive/value names are likely query-language
+  or SKD facts. Source anchors include `shquery:LitString`, `shquery:LitDate`, `shquery:NULL`,
+  query boolean literals `TRUE` / `FALSE`, and the existing `dcsui_*` expression-language
+  function evidence.
+- Names such as `Ссылка на объект информационной базы` / `Reference to object of information base`
+  and prose-shaped template references belong to downstream configuration/source-code provider
+  analysis until explicit source-backed relations exist.
+- The remaining long tail stays `still_unclassified_platform_source_gap`: it includes potential
+  platform enum/value/type names and prose fragments, and must not be resolved by a hidden
+  platform-first winner rule.
+
+The classification is an acceptance-analysis note only. Same-display-name facts across
+`PlatformApi`, `BslLanguage`, `QueryLanguage`, `Configuration` and `SourceCode` remain distinct
+until an explicit source-backed relation connects them.
+
 ## Book and Navigation Observations
 
 Useful `hbk-reader` concepts:

@@ -29,7 +29,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T143.
+Current first unchecked task: T144.
 
 ## Loop Rule
 
@@ -54,31 +54,35 @@ References: T135, T136, T137, T139, FR-SH-002, FR-SH-PROVIDER-001,
 FR-CTX-RESOLVE-001, `source-evidence.md`, `implementation/solution-context-resolve.md`,
 `implementation/syntax-helper-query-cli.md`.
 
-- [ ] Before implementation, compare the current T135 top unresolved names against existing
+- [x] Before implementation, compare the current T135 top unresolved names against existing
       `shlang_*`, `shquery_*` and `dcsui_*` language-domain facts from `source-evidence.md`;
       explicitly cover primitive/domain names such as `Строка` / `String`, `Булево` / `Boolean` and
       `Число` / `Number`.
-- [ ] Add or reuse a reproducible analysis path that partitions unresolved type-reference rows into
+- [x] Add or reuse a reproducible analysis path that partitions unresolved type-reference rows into
       at least: likely BSL-language facts, likely query-language/SKD facts, configuration/source-code
       facts that belong to downstream providers, and still-unclassified platform-source gaps.
-- [ ] Do not reduce unresolved counts by guessing a platform type. Cross-domain matches must stay
+- [x] Do not reduce unresolved counts by guessing a platform type. Cross-domain matches must stay
       source/domain-qualified and require explicit source-backed relations before they are treated as
       resolved.
-- [ ] Decide whether the result remains an acceptance analysis note or requires provider/resolver
+- [x] Decide whether the result remains an acceptance analysis note or requires provider/resolver
       output changes. Update requirements, implementation specs or UAT before code if public behavior
       changes.
-- [ ] Keep T136 strict gate values unchanged unless the task changes the actual measured counters; if
+- [x] Keep T136 strict gate values unchanged unless the task changes the actual measured counters; if
       counters change, record old values, new values and source-backed rationale in
       `acceptance/baseline.md`.
 
+Result: T143 remains an acceptance/source-evidence analysis note. The reproducible classifier is
+`scripts/analysis/type-ref-domain-classification.sql` over a prebuilt schema-13 search index. Public
+provider JSON, resolver DTOs, export JSON and T136 gate counters are unchanged.
+
 Verification:
 
-- [ ] The classification report is reproducible from a prebuilt local index or checked-in fixtures and
+- [x] The classification report is reproducible from a prebuilt local index or checked-in fixtures and
       does not parse HBK books per query.
-- [ ] Durable conclusions are promoted to `acceptance/baseline.md` and/or `source-evidence.md`; raw
+- [x] Durable conclusions are promoted to `acceptance/baseline.md` and/or `source-evidence.md`; raw
       reports remain service data under `target/`.
-- [ ] `cargo fmt --all --check` if code or Rust examples are touched.
-- [ ] `cargo test --workspace` if code is touched.
+- [x] Not required: `cargo fmt --all --check` (no Rust code or Rust examples touched).
+- [x] Not required: `cargo test --workspace` (no code touched).
 
 ### T144: Investigate RU Ambiguous Type-Reference Cases
 

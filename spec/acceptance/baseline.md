@@ -2020,6 +2020,32 @@ coverage uses a focused synthetic parser fixture plus search/provider/resolver r
 no accepted real-source overload-return fixture is recorded yet. `schema_version` for provider JSON
 remains `1`; the private rebuildable search-index schema remains `13`.
 
+T143 classified the T135 unresolved type-reference rows by source/domain without changing the T136
+quality-gate counters. The checked-in analysis path is
+`scripts/analysis/type-ref-domain-classification.sql`; it reads only a prebuilt local SQLite search
+index and writes raw reports under `target/` as service data. A representative run on 2026-05-12
+rebuilt `target/uat/t143-sh-search-ru.sqlite` from
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` with 25415 documents in 11983 ms, reran
+`syntax type-ref-gaps --format json` twice with byte-identical output and preserved the current RU
+totals: `47156` total, `29776` resolved, `17367` unresolved, `13` ambiguous and `353`
+template-binding rows.
+
+The same prebuilt index produced a deterministic domain-classification report:
+
+| Classification | Rows | Distinct target names |
+| --- | ---: | ---: |
+| likely BSL-language facts | 13932 | 6 |
+| likely query-language or SKD facts | 422 | 10 |
+| downstream configuration/source-code provider facts | 53 | 3 |
+| still-unclassified platform-source gaps | 2960 | 707 |
+
+The largest classified BSL-language names are `Строка`, `Булево`, `Число`, `Дата`,
+`Неопределено` and `Тип`, backed by `shlang_*` primitive pages. Query-table primitive/value rows
+are classified separately as query/SKD-domain candidates. These rows remain unresolved in the
+platform type-reference counters until a source-backed language/configuration provider relation is
+implemented; T143 deliberately does not reduce counts by guessing a platform type. The T136 strict
+gate values are unchanged.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,
