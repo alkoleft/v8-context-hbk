@@ -322,6 +322,30 @@ mod tests {
             returns.facts[0].id.local_id,
             "platform_type:ЭлементОтбораКомпоновкиДанных"
         );
+        let enum_return_callable = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: None,
+                    name: "ПолучитьОбновлениеПредопределенныхДанныхИнформационнойБазы",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("enum-return callable lookup must not fail");
+        let enum_returns = adapter
+            .related(
+                &enum_return_callable.facts[0].id.0,
+                RelationKind::Returns,
+                &ResolveContext::all(),
+            )
+            .expect("enum returns traversal must not fail");
+        assert_eq!(enum_returns.status, ResolveStatus::Ok);
+        assert_eq!(enum_returns.facts.len(), 1);
+        assert_eq!(enum_returns.facts[0].id.kind, FactKind::Type);
+        assert_eq!(
+            enum_returns.facts[0].id.local_id,
+            "enum:system:ОбновлениеПредопределенныхДанных"
+        );
+        assert!(matches!(enum_returns.facts[0].details, FactDetails::Type(_)));
 
         let constructor = adapter
             .callable(
@@ -365,6 +389,31 @@ mod tests {
         assert_eq!(
             member_of.facts[0].id.local_id,
             "platform_type:НастройкиКомпоновкиДанных"
+        );
+
+        let enum_value_id = FactId::new(
+            source,
+            LanguageDomain::PlatformApi,
+            FactKind::EnumValue,
+            "enum_value:enum:system:ОбновлениеПредопределенныхДанных:Обновлять",
+        );
+        let enum_member_of = adapter
+            .related(&enum_value_id, RelationKind::MemberOf, &ResolveContext::all())
+            .expect("enum value member_of traversal must not fail");
+        assert_eq!(enum_member_of.status, ResolveStatus::Ok);
+        assert_eq!(enum_member_of.facts.len(), 1);
+        assert_eq!(enum_member_of.facts[0].id.kind, FactKind::Enum);
+        assert_eq!(
+            enum_member_of.facts[0].id.local_id,
+            "enum:system:ОбновлениеПредопределенныхДанных"
+        );
+        assert!(matches!(
+            enum_member_of.facts[0].details,
+            FactDetails::Enum
+        ));
+        assert_eq!(
+            enum_member_of.facts[0].relations[0].target.kind,
+            FactKind::Enum
         );
     }
 
@@ -1372,6 +1421,46 @@ mod tests {
             })
             .expect("global property must sink");
         builder
+            .enum_definition(enum_definition(
+                "ОбновлениеПредопределенныхДанных",
+                "PredefinedDataUpdate",
+            ))
+            .expect("enum definition must sink");
+        builder
+            .enum_value(model::EnumValue {
+                owner: name(
+                    "ОбновлениеПредопределенныхДанных",
+                    Some("PredefinedDataUpdate"),
+                ),
+                owner_identity: Some("enum:system:ОбновлениеПредопределенныхДанных".to_string()),
+                name: name("Обновлять", Some("Update")),
+                description: Some("Enum value description.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("predefined-data-update-value"),
+            })
+            .expect("enum value must sink");
+        builder
+            .global_method(model::GlobalMethod {
+                name: name(
+                    "ПолучитьОбновлениеПредопределенныхДанныхИнформационнойБазы",
+                    Some("GetPredefinedDataUpdate"),
+                ),
+                signatures: vec![model::Signature {
+                    text: "ПолучитьОбновлениеПредопределенныхДанныхИнформационнойБазы()"
+                        .to_string(),
+                    parameters: Vec::new(),
+                    return_types: Vec::new(),
+                    variant: None,
+                }],
+                return_types: vec![model::TypeRef {
+                    name: "ОбновлениеПредопределенныхДанных".to_string(),
+                }],
+                description: Some("Returns predefined data update mode.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("global-predefined-data-update"),
+            })
+            .expect("enum-backed global method must sink");
+        builder
             .type_property(model::PlatformProperty {
                 owner: name(
                     "ДокументОбъект.<Имя документа>",
@@ -1533,6 +1622,19 @@ mod tests {
         record.metadata_kind = Some(metadata_kind.to_string());
         record.template_parameters = vec![template_parameter.to_string()];
         record
+    }
+
+    fn enum_definition(primary: &str, alias: &str) -> model::EnumDefinition {
+        let mut source = source_ref(primary);
+        source.html_path = format!("objects/catalog2/{alias}.html");
+        model::EnumDefinition {
+            identity: None,
+            name: name(primary, Some(alias)),
+            value_links: Vec::new(),
+            description: Some(format!("{primary} enum description.")),
+            facts: model::SectionFacts::default(),
+            source,
+        }
     }
 
     fn type_event(owner: &str, primary: &str) -> model::GlobalContextEvent {

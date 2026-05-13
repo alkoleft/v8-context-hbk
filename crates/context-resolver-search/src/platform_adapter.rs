@@ -374,23 +374,34 @@ impl PlatformSearchSource {
         if !is_platform_document_kind(hit.document.kind) {
             return None;
         }
-        let kind = if hit.document.kind.is_type_ref_target() {
+        let kind = if hit.document.kind.is_type_ref_target()
+            && hit.via.iter().any(|step| {
+                matches!(
+                    step.edge_kind.as_str(),
+                    "has_type" | "returns" | "constructs"
+                )
+            }) {
             FactKind::Type
         } else {
             fact_kind_for_document(&hit.document)?
+        };
+        let details = match kind {
+            FactKind::Type => FactDetails::Type(type_info(&hit.document)),
+            FactKind::Enum => FactDetails::Enum,
+            _ => return None,
         };
         Some(ContextFact {
             id: self.fact_id(kind, hit.document.id.clone()),
             name: map_name(&hit.document),
             owner: None,
-            details: FactDetails::Type(type_info(&hit.document)),
+            details,
             relations: hit
                 .via
                 .into_iter()
                 .filter_map(|step| {
                     Some(FactRelation {
                         kind: relation_kind_from_edge(&step.edge_kind)?,
-                        target: self.fact_id(FactKind::Type, step.to),
+                        target: self.fact_id(kind, step.to),
                         evidence: Some(step.evidence),
                     })
                 })
