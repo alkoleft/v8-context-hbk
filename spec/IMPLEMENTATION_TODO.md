@@ -30,7 +30,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: none.
+Current first unchecked task: T159.
 
 ## Loop Rule
 
@@ -97,3 +97,42 @@ Current first unchecked task: none.
     CLI `toc --format json` measurements on `shcntx_ru.hbk` had lower non-outlier readings but
     roughly unchanged average wall time because both old and new runs had outliers; process max RSS
     was higher.
+
+- [ ] T159: Replace repeated manual error trait implementations with `thiserror`.
+  - Scope: convert hand-written `fmt::Display`, `std::error::Error` and simple `From` boilerplate
+    for library error enums to `thiserror` derives where this preserves the current public enum
+    variants and user-visible messages.
+  - Boundaries: keep typed library errors; do not introduce `anyhow` into library crates; do not
+    change error variants, diagnostics, CLI text, JSON output or recovery behavior; keep any custom
+    `PartialEq` implementations that encode test-visible comparison semantics.
+  - Spec refs: `NFR-DIAG-001`, `NFR-TEST-001`, `implementation/components.md`.
+  - Verification: focused tests for touched crates; `cargo fmt --all --check`; `cargo test
+    --workspace`.
+
+- [ ] T160: Replace narrow hand-written HTML escaping and Syntax Assistant HTML scans with existing
+  parser/escaping utilities where behavior is preserved.
+  - Scope: evaluate and replace local HTML entity escaping/decoding and raw string scans in
+    `hbk-book-export` and `syntax-helper-extract` with existing crates or already-used `scraper`
+    helpers when real HBK fixtures prove equivalent behavior.
+  - Boundaries: keep Syntax Assistant page-shape rules in `syntax-helper-extract`; do not move
+    domain section-label parsing into generic HTML helpers; do not change extraction schema,
+    Markdown export layout, heading-anchor behavior or current fixture snapshots without updating
+    the relevant acceptance/spec baseline.
+  - Spec refs: `FR-HBK-004`, `FR-EXPORT-001`, `implementation/components.md`,
+    `implementation/documentation-site.md`.
+  - Verification: focused `hbk-book-export` and `syntax-helper-extract` fixture tests;
+    representative real-HBK export/extraction comparison; `cargo fmt --all --check`; `cargo test
+    --workspace`.
+
+- [ ] T161: Spike library-backed link/path rewriting before replacing current HBK-specific rules.
+  - Scope: test whether `lol_html`, `url`, `path-clean` or similarly narrow crates can reduce
+    custom `href`, fragment and virtual storage-path handling in documentation parsing and Markdown
+    export without losing HBK-specific `v8help://`, same-book and cross-book semantics.
+  - Boundaries: spike only; do not replace `normalize_storage_path*`, `v8help://` handling,
+    same-book link rewriting or unresolved-link diagnostics until the spike documents exact
+    behavior deltas on fixtures and real HBK data; do not add recursive source discovery or generic
+    graph libraries as part of this task.
+  - Spec refs: `FR-HBK-004`, `FR-HBK-005`, ADR-0009, ADR-0010,
+    `implementation/components.md`.
+  - Verification: short written conclusion in the task result; fixture coverage for accepted
+    deltas if implementation proceeds; `cargo fmt --all --check`; relevant focused crate tests.
