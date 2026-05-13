@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::fmt;
 use std::path::{Path, PathBuf};
 
 use scraper::node::Node;
 use scraper::{ElementRef, Html, Selector};
+use thiserror::Error;
 
 use hbk_book::{
     BookError, FileStorageReader, HbkBook, Toc, normalize_storage_path_owned,
@@ -124,37 +124,15 @@ pub enum DiagnosticSeverity {
     Warning,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum DocumentationError {
+    #[error("failed to read documentation page '{html_path}' from '{}': {source}", path.display())]
     PageRead {
         path: PathBuf,
         html_path: String,
+        #[source]
         source: Box<BookError>,
     },
-}
-
-impl fmt::Display for DocumentationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::PageRead {
-                path,
-                html_path,
-                source,
-            } => write!(
-                f,
-                "failed to read documentation page '{html_path}' from '{}': {source}",
-                path.display()
-            ),
-        }
-    }
-}
-
-impl std::error::Error for DocumentationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::PageRead { source, .. } => Some(source.as_ref()),
-        }
-    }
 }
 
 pub fn parse_page_html(

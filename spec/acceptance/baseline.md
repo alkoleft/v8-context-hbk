@@ -31,6 +31,11 @@ directories are service data unless promoted here.
   readable id fragments may change for non-ASCII titles or file stems because the library
   transliterates Unicode. Verification passed with `cargo fmt --all --check`,
   `cargo test -p hbk-doc-site` and `cargo test --workspace`.
+- T159 replaced repeated hand-written library error trait implementations with `thiserror` derives.
+  Public error enum variants, user-visible messages, source-chain behavior, CLI text and JSON
+  contracts were preserved; `BookExportError` keeps its custom comparison semantics, and the only
+  remaining manual `From` conversions handle non-trivial message wrapping or boxing. Verification
+  passed with focused touched-crate tests, `cargo fmt --all --check` and `cargo test --workspace`.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.

@@ -1,7 +1,7 @@
-use std::fmt;
 use std::io::{self, Cursor, Read};
 use std::path::{Path, PathBuf};
 
+use thiserror::Error;
 use zip::ZipArchive;
 
 use super::path::normalize_storage_path_owned;
@@ -77,104 +77,37 @@ impl BookLocale {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum BookError {
-    Container(ContainerError),
+    #[error("{0}")]
+    Container(#[from] ContainerError),
+    #[error("HBK entity '{entity_name}' in '{}' is not UTF-8: {source}", path.display())]
     InvalidUtf8 {
         path: PathBuf,
         entity_name: &'static str,
+        #[source]
         source: std::string::FromUtf8Error,
     },
+    #[error("HBK entity '{entity_name}' in '{}' is not a readable ZIP stream: {source}", path.display())]
     InvalidZip {
         path: PathBuf,
         entity_name: &'static str,
+        #[source]
         source: zip::result::ZipError,
     },
+    #[error("failed to read ZIP entry '{entry_name}' from '{}': {source}", path.display())]
     Io {
         path: PathBuf,
         entry_name: String,
+        #[source]
         source: io::Error,
     },
-    MissingZipEntry {
-        path: PathBuf,
-        entry_name: String,
-    },
-    Meta(MetaError),
-    Toc(TocError),
-}
-
-impl fmt::Display for BookError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Container(source) => write!(f, "{source}"),
-            Self::InvalidUtf8 {
-                path,
-                entity_name,
-                source,
-            } => write!(
-                f,
-                "HBK entity '{entity_name}' in '{}' is not UTF-8: {source}",
-                path.display()
-            ),
-            Self::InvalidZip {
-                path,
-                entity_name,
-                source,
-            } => write!(
-                f,
-                "HBK entity '{entity_name}' in '{}' is not a readable ZIP stream: {source}",
-                path.display()
-            ),
-            Self::Io {
-                path,
-                entry_name,
-                source,
-            } => write!(
-                f,
-                "failed to read ZIP entry '{entry_name}' from '{}': {source}",
-                path.display()
-            ),
-            Self::MissingZipEntry { path, entry_name } => write!(
-                f,
-                "ZIP entry '{entry_name}' is not present in HBK FileStorage '{}'",
-                path.display()
-            ),
-            Self::Meta(source) => write!(f, "{source}"),
-            Self::Toc(source) => write!(f, "{source}"),
-        }
-    }
-}
-
-impl std::error::Error for BookError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Container(source) => Some(source),
-            Self::InvalidUtf8 { source, .. } => Some(source),
-            Self::InvalidZip { source, .. } => Some(source),
-            Self::Io { source, .. } => Some(source),
-            Self::Meta(source) => Some(source),
-            Self::Toc(source) => Some(source),
-            Self::MissingZipEntry { .. } => None,
-        }
-    }
-}
-
-impl From<ContainerError> for BookError {
-    fn from(value: ContainerError) -> Self {
-        Self::Container(value)
-    }
-}
-
-impl From<MetaError> for BookError {
-    fn from(value: MetaError) -> Self {
-        Self::Meta(value)
-    }
-}
-
-impl From<TocError> for BookError {
-    fn from(value: TocError) -> Self {
-        Self::Toc(value)
-    }
+    #[error("ZIP entry '{entry_name}' is not present in HBK FileStorage '{}'", path.display())]
+    MissingZipEntry { path: PathBuf, entry_name: String },
+    #[error("{0}")]
+    Meta(#[from] MetaError),
+    #[error("{0}")]
+    Toc(#[from] TocError),
 }
 
 #[derive(Debug)]
@@ -399,7 +332,8 @@ fn list_storage_page_paths(path: &Path, bytes: &[u8]) -> Result<Vec<String>, Boo
     Ok(paths)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid HBK Book metadata: {message}")]
 pub struct MetaError {
     message: String,
 }
@@ -411,14 +345,6 @@ impl MetaError {
         }
     }
 }
-
-impl fmt::Display for MetaError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid HBK Book metadata: {}", self.message)
-    }
-}
-
-impl std::error::Error for MetaError {}
 
 impl From<TokenError> for MetaError {
     fn from(value: TokenError) -> Self {

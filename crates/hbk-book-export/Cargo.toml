@@ -8,6 +8,7 @@ hbk-book.workspace = true
 hbk-docs.workspace = true
 quick_html2md.workspace = true
 scraper.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 hbk-book = { workspace = true, features = ["test-utils"] }

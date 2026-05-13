@@ -1,38 +1,49 @@
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum BookExportError {
+    #[error("invalid book export output root '{}': {reason}", output_root.display())]
     InvalidOutputRoot {
         output_root: PathBuf,
         reason: OutputRootError,
     },
+    #[error("unsupported book export combination: format={format}, hierarchy={hierarchy}")]
     UnsupportedCombination {
         format: BookExportFormat,
         hierarchy: BookExportHierarchy,
     },
+    #[error("unsafe FileStorage path '{entry_name}' cannot be exported: {reason}")]
     UnsafeStoragePath {
         entry_name: String,
         reason: StoragePathError,
     },
+    #[error("FileStorage path '{entry_name}' maps to duplicate export path '{}'", normalized_path.display())]
     DuplicateStoragePath {
         entry_name: String,
         normalized_path: PathBuf,
     },
+    #[error("FileStorage path '{entry_name}' maps to '{}' which collides with '{}'", normalized_path.display(), existing_path.display())]
     StoragePathCollision {
         entry_name: String,
         normalized_path: PathBuf,
         existing_path: PathBuf,
     },
+    #[error("TOC page '{html_path}' is not present in the opened HBK book")]
     TocPageNotFound {
         html_path: String,
     },
+    #[error("book export request source '{}' does not match opened book '{}'", request_source_path.display(), book_path.display())]
     SourcePathMismatch {
         request_source_path: PathBuf,
         book_path: PathBuf,
     },
-    Book(BookError),
-    Documentation(DocumentationError),
+    #[error("failed to read HBK book for export: {0}")]
+    Book(#[from] BookError),
+    #[error("failed to read documentation page for export: {0}")]
+    Documentation(#[from] DocumentationError),
+    #[error("failed to {operation} '{}': {source}", path.display())]
     Io {
         path: PathBuf,
         operation: BookExportIoOperation,
+        #[source]
         source: io::Error,
     },
 }
@@ -135,18 +146,6 @@ impl PartialEq for BookExportError {
 
 impl Eq for BookExportError {}
 
-impl From<BookError> for BookExportError {
-    fn from(value: BookError) -> Self {
-        Self::Book(value)
-    }
-}
-
-impl From<DocumentationError> for BookExportError {
-    fn from(value: DocumentationError) -> Self {
-        Self::Documentation(value)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BookExportIoOperation {
     CreateDirectory,
@@ -162,122 +161,24 @@ impl fmt::Display for BookExportIoOperation {
     }
 }
 
-impl fmt::Display for BookExportError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidOutputRoot {
-                output_root,
-                reason,
-            } => write!(
-                f,
-                "invalid book export output root '{}': {reason}",
-                output_root.display()
-            ),
-            Self::UnsupportedCombination { format, hierarchy } => write!(
-                f,
-                "unsupported book export combination: format={format}, hierarchy={hierarchy}"
-            ),
-            Self::UnsafeStoragePath { entry_name, reason } => write!(
-                f,
-                "unsafe FileStorage path '{entry_name}' cannot be exported: {reason}"
-            ),
-            Self::DuplicateStoragePath {
-                entry_name,
-                normalized_path,
-            } => write!(
-                f,
-                "FileStorage path '{entry_name}' maps to duplicate export path '{}'",
-                normalized_path.display()
-            ),
-            Self::StoragePathCollision {
-                entry_name,
-                normalized_path,
-                existing_path,
-            } => write!(
-                f,
-                "FileStorage path '{entry_name}' maps to '{}' which collides with '{}'",
-                normalized_path.display(),
-                existing_path.display()
-            ),
-            Self::TocPageNotFound { html_path } => {
-                write!(
-                    f,
-                    "TOC page '{html_path}' is not present in the opened HBK book"
-                )
-            }
-            Self::SourcePathMismatch {
-                request_source_path,
-                book_path,
-            } => write!(
-                f,
-                "book export request source '{}' does not match opened book '{}'",
-                request_source_path.display(),
-                book_path.display()
-            ),
-            Self::Book(source) => write!(f, "failed to read HBK book for export: {source}"),
-            Self::Documentation(source) => {
-                write!(f, "failed to read documentation page for export: {source}")
-            }
-            Self::Io {
-                path,
-                operation,
-                source,
-            } => write!(f, "failed to {operation} '{}': {source}", path.display()),
-        }
-    }
-}
-
-impl std::error::Error for BookExportError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Book(source) => Some(source),
-            Self::Documentation(source) => Some(source),
-            Self::Io { source, .. } => Some(source),
-            Self::InvalidOutputRoot { .. }
-            | Self::UnsupportedCombination { .. }
-            | Self::UnsafeStoragePath { .. }
-            | Self::DuplicateStoragePath { .. }
-            | Self::StoragePathCollision { .. }
-            | Self::TocPageNotFound { .. }
-            | Self::SourcePathMismatch { .. } => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum OutputRootError {
+    #[error("path must contain at least one directory name")]
     MissingDirectoryName,
+    #[error("path must not contain '..' segments")]
     ParentSegment,
 }
 
-impl fmt::Display for OutputRootError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MissingDirectoryName => {
-                f.write_str("path must contain at least one directory name")
-            }
-            Self::ParentSegment => f.write_str("path must not contain '..' segments"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum StoragePathError {
+    #[error("path must contain at least one file name")]
     Empty,
+    #[error("path must not contain '..' segments")]
     ParentSegment,
+    #[error("path must be relative")]
     Absolute,
+    #[error("path must not contain a Windows drive prefix")]
     WindowsPrefix,
+    #[error("path must use '/' separators")]
     BackslashSeparator,
-}
-
-impl fmt::Display for StoragePathError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => f.write_str("path must contain at least one file name"),
-            Self::ParentSegment => f.write_str("path must not contain '..' segments"),
-            Self::Absolute => f.write_str("path must be relative"),
-            Self::WindowsPrefix => f.write_str("path must not contain a Windows drive prefix"),
-            Self::BackslashSeparator => f.write_str("path must use '/' separators"),
-        }
-    }
 }

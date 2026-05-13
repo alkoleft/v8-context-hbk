@@ -11,3 +11,4 @@ use hbk_docs::{DocumentationError, DocumentationPageLoader, DocumentationReader,
 use quick_html2md::{MarkdownOptions, html_to_markdown_with_options};
 use scraper::node::Node;
 use scraper::{ElementRef, Html, Selector};
+use thiserror::Error;

@@ -10,6 +10,7 @@ hbk-book-export.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 slug.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 hbk-book = { workspace = true, features = ["test-utils"] }

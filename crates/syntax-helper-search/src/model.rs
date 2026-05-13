@@ -285,16 +285,9 @@ impl fmt::Display for SearchDocumentKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("unknown search document kind '{0}'")]
 struct UnknownSearchDocumentKind(String);
-
-impl fmt::Display for UnknownSearchDocumentKind {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "unknown search document kind '{}'", self.0)
-    }
-}
-
-impl std::error::Error for UnknownSearchDocumentKind {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchDocument {

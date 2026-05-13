@@ -1,45 +1,20 @@
-use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 pub enum ExportError {
+    #[error("failed to write JSON export '{}': {source}", path.display())]
     Io {
         path: PathBuf,
+        #[source]
         source: io::Error,
     },
+    #[error("failed to serialize JSON export '{}': {source}", path.display())]
     Json {
         path: PathBuf,
+        #[source]
         source: serde_json::Error,
     },
-}
-
-impl fmt::Display for ExportError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io { path, source } => {
-                write!(
-                    f,
-                    "failed to write JSON export '{}': {source}",
-                    path.display()
-                )
-            }
-            Self::Json { path, source } => {
-                write!(
-                    f,
-                    "failed to serialize JSON export '{}': {source}",
-                    path.display()
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for ExportError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Io { source, .. } => Some(source),
-            Self::Json { source, .. } => Some(source),
-        }
-    }
 }

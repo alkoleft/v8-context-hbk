@@ -1,140 +1,60 @@
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum SearchError {
+    #[error("failed to access search index '{}': {source}", path.display())]
     Io {
         path: PathBuf,
+        #[source]
         source: io::Error,
     },
+    #[error("failed to use search index '{}': {source}", path.display())]
     Sqlite {
         path: PathBuf,
+        #[source]
         source: rusqlite::Error,
     },
+    #[error("timed out waiting for search index writer lock '{}'", path.display())]
     WriterLockTimeout {
         path: PathBuf,
     },
+    #[error("search index does not exist: {}", path.display())]
     MissingIndex {
         path: PathBuf,
     },
+    #[error("unsupported search index schema version in '{}': expected {expected}, got {actual}; rebuild the index", path.display())]
     UnsupportedSchemaVersion {
         path: PathBuf,
         expected: u32,
         actual: String,
     },
+    #[error("duplicate Syntax Assistant search document id '{id}': {count} documents")]
     DuplicateDocumentId {
         id: String,
         count: usize,
     },
+    #[error("missing Syntax Assistant parent identity for {kind} '{name}' owned by '{owner}'")]
     MissingParentIdentity {
         kind: String,
         name: String,
         owner: String,
     },
+    #[error("ambiguous Syntax Assistant lookup for '{name}': {matches} matches")]
     AmbiguousLookup {
         name: String,
         matches: usize,
     },
+    #[error("invalid search index metadata in '{}': key '{key}' has value '{value}'", path.display())]
     InvalidMetadata {
         path: PathBuf,
         key: &'static str,
         value: String,
+        #[source]
         source: std::num::ParseIntError,
     },
+    #[error("missing search index metadata in '{}': key '{key}'", path.display())]
     MissingMetadata {
         path: PathBuf,
         key: &'static str,
     },
-}
-
-impl fmt::Display for SearchError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io { path, source } => {
-                write!(
-                    f,
-                    "failed to access search index '{}': {source}",
-                    path.display()
-                )
-            }
-            Self::Sqlite { path, source } => {
-                write!(
-                    f,
-                    "failed to use search index '{}': {source}",
-                    path.display()
-                )
-            }
-            Self::WriterLockTimeout { path } => {
-                write!(
-                    f,
-                    "timed out waiting for search index writer lock '{}'",
-                    path.display()
-                )
-            }
-            Self::MissingIndex { path } => {
-                write!(f, "search index does not exist: {}", path.display())
-            }
-            Self::UnsupportedSchemaVersion {
-                path,
-                expected,
-                actual,
-            } => {
-                write!(
-                    f,
-                    "unsupported search index schema version in '{}': expected {expected}, got {actual}; rebuild the index",
-                    path.display()
-                )
-            }
-            Self::DuplicateDocumentId { id, count } => {
-                write!(
-                    f,
-                    "duplicate Syntax Assistant search document id '{id}': {count} documents"
-                )
-            }
-            Self::MissingParentIdentity { kind, name, owner } => {
-                write!(
-                    f,
-                    "missing Syntax Assistant parent identity for {kind} '{name}' owned by '{owner}'"
-                )
-            }
-            Self::AmbiguousLookup { name, matches } => {
-                write!(
-                    f,
-                    "ambiguous Syntax Assistant lookup for '{name}': {matches} matches"
-                )
-            }
-            Self::InvalidMetadata {
-                path, key, value, ..
-            } => {
-                write!(
-                    f,
-                    "invalid search index metadata in '{}': key '{key}' has value '{value}'",
-                    path.display()
-                )
-            }
-            Self::MissingMetadata { path, key } => {
-                write!(
-                    f,
-                    "missing search index metadata in '{}': key '{key}'",
-                    path.display()
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for SearchError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Io { source, .. } => Some(source),
-            Self::Sqlite { source, .. } => Some(source),
-            Self::InvalidMetadata { source, .. } => Some(source),
-            Self::WriterLockTimeout { .. }
-            | Self::MissingIndex { .. }
-            | Self::UnsupportedSchemaVersion { .. }
-            | Self::DuplicateDocumentId { .. }
-            | Self::MissingParentIdentity { .. }
-            | Self::AmbiguousLookup { .. }
-            | Self::MissingMetadata { .. } => None,
-        }
-    }
 }
 
 impl SearchError {

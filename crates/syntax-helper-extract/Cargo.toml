@@ -8,3 +8,4 @@ hbk-book.workspace = true
 hbk-docs.workspace = true
 scraper.workspace = true
 syntax-helper-model.workspace = true
+thiserror.workspace = true

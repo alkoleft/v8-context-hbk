@@ -30,7 +30,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T159.
+Current first unchecked task: T160.
 
 ## Loop Rule
 
@@ -98,7 +98,7 @@ Current first unchecked task: T159.
     roughly unchanged average wall time because both old and new runs had outliers; process max RSS
     was higher.
 
-- [ ] T159: Replace repeated manual error trait implementations with `thiserror`.
+- [x] T159: Replace repeated manual error trait implementations with `thiserror`.
   - Scope: convert hand-written `fmt::Display`, `std::error::Error` and simple `From` boilerplate
     for library error enums to `thiserror` derives where this preserves the current public enum
     variants and user-visible messages.
@@ -108,6 +108,12 @@ Current first unchecked task: T159.
   - Spec refs: `NFR-DIAG-001`, `NFR-TEST-001`, `implementation/components.md`.
   - Verification: focused tests for touched crates; `cargo fmt --all --check`; `cargo test
     --workspace`.
+  - Result: workspace `thiserror` dependency is shared by library crates that own typed error
+    values. Manual `Display`, `Error` and simple tuple-variant `From` implementations were replaced
+    with derives for HBK container/book/docs/export/site, Syntax Assistant export/extract/search
+    and document-kind parse errors while preserving public variants, user-visible messages,
+    source-chain behavior and custom `BookExportError` equality semantics. Remaining manual `From`
+    implementations encode non-trivial message wrapping or boxing behavior.
 
 - [ ] T160: Replace narrow hand-written HTML escaping and Syntax Assistant HTML scans with existing
   parser/escaping utilities where behavior is preserved.

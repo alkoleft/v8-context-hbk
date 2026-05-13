@@ -43,5 +43,6 @@ syntax-helper-extract = { path = "crates/syntax-helper-extract" }
 syntax-helper-language = { path = "crates/syntax-helper-language" }
 syntax-helper-model = { path = "crates/syntax-helper-model" }
 syntax-helper-search = { path = "crates/syntax-helper-search" }
+thiserror = "2.0.17"
 winnow = "1.0.2"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

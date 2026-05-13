@@ -1,5 +1,7 @@
 use std::fmt;
 
+use thiserror::Error;
+
 use crate::normalize_storage_path_owned;
 
 use super::tokens::{TokenError, TokenParser};
@@ -141,7 +143,8 @@ fn flatten_page<'a>(page: &'a TocPage, index_path: TocPath, output: &mut Vec<Fla
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid HBK TOC: {message}")]
 pub struct TocError {
     message: String,
 }
@@ -153,14 +156,6 @@ impl TocError {
         }
     }
 }
-
-impl fmt::Display for TocError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid HBK TOC: {}", self.message)
-    }
-}
-
-impl std::error::Error for TocError {}
 
 impl From<TokenError> for TocError {
     fn from(value: TokenError) -> Self {

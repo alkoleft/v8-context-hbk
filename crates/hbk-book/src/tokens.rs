@@ -1,9 +1,10 @@
-use std::fmt;
+use thiserror::Error;
 use winnow::Parser;
 use winnow::error::EmptyError;
 use winnow::token::{literal, take_while};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{message}")]
 pub(crate) struct TokenError {
     message: String,
 }
@@ -15,14 +16,6 @@ impl TokenError {
         }
     }
 }
-
-impl fmt::Display for TokenError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for TokenError {}
 
 const BOM: char = '\u{feff}';
 
