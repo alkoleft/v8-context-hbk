@@ -789,6 +789,12 @@ Implemented first slice:
   targets for normalized `type_refs`. Enum targets keep their existing `enum:system:*` or
   `enum:metadata_property:*` identities; they are not converted to `platform_type:*`, and duplicate
   enum matches remain explicit `ambiguous` rows.
+- T163 keeps schema version `15` and narrows search-index build optimization to non-observable
+  allocation/data-structure choices: newline-joined storage fields and searchable text avoid
+  intermediate vectors, per-document name-key dedup uses a tiny vector instead of a `BTreeSet`, and
+  relation-build membership/dedup uses hash sets where output order is still driven by document
+  traversal. Stable document sorting is deliberately preserved because duplicate-id recovery keeps
+  the last source document.
 
 T87 classifies the remaining duplicate-looking query/provider mechanisms as boundary decisions
 rather than immediate cleanup work:

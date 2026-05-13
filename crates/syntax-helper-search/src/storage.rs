@@ -400,21 +400,21 @@ fn insert_documents(
 
     for (index, document) in documents.iter().enumerate() {
         let rowid = (index + 1) as i64;
-        let signatures = document.signature_text_lines().join("\n");
-        let parameters = document.parameter_terms.join("\n");
-        let type_names = document.type_refs.join("\n");
-        let return_names = document
-            .return_types
-            .iter()
-            .chain(
-                document
-                    .signatures
-                    .iter()
-                    .flat_map(|signature| signature.return_types.iter()),
-            )
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n");
+        let signatures = signature_text(document);
+        let parameters = join_lines(document.parameter_terms.iter().map(String::as_str));
+        let type_names = join_lines(document.type_refs.iter().map(String::as_str));
+        let return_names = join_lines(
+            document
+                .return_types
+                .iter()
+                .map(String::as_str)
+                .chain(
+                    document
+                        .signatures
+                        .iter()
+                        .flat_map(|signature| signature.return_types.iter().map(String::as_str)),
+                ),
+        );
         let owner_primary = document.owner.as_ref().map(|owner| owner.primary.as_str());
         let owner_alias = document
             .owner
@@ -1157,29 +1157,29 @@ fn insert_name_keys(
     path: &Path,
     document: &SearchDocument,
 ) -> Result<(), SearchError> {
-    let mut keys = BTreeSet::new();
-    keys.insert((normalize_lookup_key(&document.name.primary), "primary"));
+    let mut keys = Vec::with_capacity(6);
+    keys.push((normalize_lookup_key(&document.name.primary), "primary"));
     if let Some(alias) = &document.name.alias {
-        keys.insert((normalize_lookup_key(alias), "alias"));
+        keys.push((normalize_lookup_key(alias), "alias"));
     }
     if let Some(owner) = &document.owner {
-        keys.insert((
+        keys.push((
             owner_member_key(&owner.primary, &document.name.primary),
             "owner_member_primary",
         ));
         if let Some(owner_alias) = &owner.alias {
-            keys.insert((
+            keys.push((
                 owner_member_key(owner_alias, &document.name.primary),
                 "owner_member_alias",
             ));
         }
         if let Some(name_alias) = &document.name.alias {
-            keys.insert((
+            keys.push((
                 owner_member_key(&owner.primary, name_alias),
                 "owner_member_alias",
             ));
             if let Some(owner_alias) = &owner.alias {
-                keys.insert((
+                keys.push((
                     owner_member_key(owner_alias, name_alias),
                     "owner_member_alias",
                 ));
@@ -1191,8 +1191,10 @@ fn insert_name_keys(
         .iter()
         .filter(|key| key.starts_with("module_context:"))
     {
-        keys.insert((key.clone(), "module_context"));
+        keys.push((key.clone(), "module_context"));
     }
+    keys.sort_unstable();
+    keys.dedup();
     for (key, kind) in keys {
         statement
             .execute(params![key, kind, document.id])
@@ -1202,4 +1204,26 @@ fn insert_name_keys(
             })?;
     }
     Ok(())
+}
+
+fn signature_text(document: &SearchDocument) -> String {
+    join_lines(
+        document
+            .signatures
+            .iter()
+            .map(|signature| signature.text.as_str())
+            .filter(|text| !text.is_empty()),
+    )
+}
+
+fn join_lines<'a>(mut values: impl Iterator<Item = &'a str>) -> String {
+    let Some(first) = values.next() else {
+        return String::new();
+    };
+    let mut output = String::from(first);
+    for value in values {
+        output.push('\n');
+        output.push_str(value);
+    }
+    output
 }

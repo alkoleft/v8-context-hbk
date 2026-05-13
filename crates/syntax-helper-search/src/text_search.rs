@@ -37,11 +37,18 @@ fn searchable_name(value: &str) -> String {
 }
 
 fn searchable_text(value: &str) -> String {
-    value
-        .split_whitespace()
-        .map(searchable_name)
-        .collect::<Vec<_>>()
-        .join(" ")
+    let mut output = String::new();
+    for token in value.split_whitespace() {
+        let searchable = searchable_name(token);
+        if searchable.is_empty() {
+            continue;
+        }
+        if !output.is_empty() {
+            output.push(' ');
+        }
+        output.push_str(&searchable);
+    }
+    output
 }
 
 fn fts_query(value: &str) -> String {

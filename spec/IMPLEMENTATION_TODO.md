@@ -49,6 +49,30 @@ Current first unchecked task: none.
 
 ## Active Tasks
 
+- [x] T163: Reduce Syntax Assistant search-index build CPU/allocation overhead without schema change.
+  - Scope: analyze current release-profile `syntax index` performance on `shcntx_ru.hbk`, identify
+    narrow build-path overhead that does not change query behavior, and optimize safe
+    `syntax-helper-search` allocation/data-structure choices.
+  - Boundaries: no SQLite schema change; no FTS content-model change; no extractor page-cache or
+    concurrency refactor; preserve duplicate-document winner semantics and deterministic query
+    output; do not add tuning knobs.
+  - Spec refs: `NFR-PERF-001`, `NFR-QUERY-001`, `implementation/components.md`,
+    `acceptance/baseline.md`.
+  - Verification: release baseline and post-change release measurements on `shcntx_ru.hbk`; row-count
+    inventory for `documents`, `document_names`, `relations` and `type_refs`; `syntax type-ref-gaps`
+    totals; representative `syntax get` and `syntax search`; `cargo fmt --all --check`; `cargo test
+    -p syntax-helper-search`.
+  - Result: `insert_documents` now avoids intermediate vectors for newline-joined fields and
+    whitespace-searchable text; `insert_name_keys` uses a tiny vector sort/dedup instead of a
+    per-document `BTreeSet`; relation build uses hash membership/dedup sets where ordering is not
+    observable. A measured `sort_unstable_by` variant was rejected because duplicate-id winner
+    semantics changed type-reference and relation counts.
+  - Verified: baseline release run `17.47s / 287052 KiB / 197M`; safe optimized release runs
+    `14.90s / 286568 KiB / 197M` and `14.56s / 286660 KiB / 197M`; final inventory stayed
+    `25415` documents, `132908` document-name rows, `58128` relations and `47156` type refs.
+    `syntax type-ref-gaps` stayed at `31638` resolved, `15513` unresolved, `5` ambiguous and `379`
+    template-binding rows.
+
 - [x] T162: Resolve provider type references to enum document identities.
   - Scope: make `syntax-helper-search` treat source-backed enum definition documents as provider
     type-like targets for normalized `type_refs`, so exact/alias references resolve to

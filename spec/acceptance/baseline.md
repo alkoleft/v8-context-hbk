@@ -65,6 +65,15 @@ directories are service data unless promoted here.
   `cargo fmt --all --check`, `cargo test -p syntax-helper-search`, `cargo test -p
   context-resolver-search`, `cargo test --workspace` and a fresh `shcntx_ru.hbk` index inventory
   recorded under the T162 baseline note.
+- T163 reduces release-profile `syntax index` CPU/allocation overhead without changing SQLite schema
+  version `15` or query behavior. The accepted safe slice avoids intermediate vectors for stored
+  signature/parameter/type-return strings and searchable text, uses tiny vector sort/dedup for
+  per-document name keys, and uses hash membership/dedup sets for relation build internals where
+  order is not externally observable. The measured `sort_unstable_by` variant was rejected because
+  duplicate document id winner semantics changed type-reference and relation counts. The remaining
+  recommendations are to profile extractor page reuse before adding a page cache, and to revisit
+  FTS/content storage only with a separate schema task because T44 already showed contentless FTS
+  trades a smaller database for extra query-path complexity without a build-time win.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.
@@ -2183,6 +2192,27 @@ as type-like by this task: they are BSL primitive/domain spellings that also app
 `global_method`/`type_property` documents, enum values such as `Дата` / `Null`, query-table members
 or global properties. They remain unresolved until a source/domain-specific provider relation is
 implemented instead of guessing from document names.
+
+T163 analyzed and optimized the current release-profile `syntax index` build path without changing
+schema version `15`. The baseline command was:
+
+```bash
+/usr/bin/time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' \
+  target/release/v8-context-hbk syntax index \
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/perf-index/baseline-shcntx-ru.sqlite
+```
+
+Baseline measured `17.47s`, `287052 KiB` peak RSS, `25415` documents and a `197M` SQLite file.
+Release `syntax export` on the same source measured `11.23s` and `151912 KiB`, so the extra index
+cost was attributed to SQLite/index construction rather than HBK extraction alone. After the safe
+allocation/data-structure pass, two release rebuilds measured `14.90s / 286568 KiB` and
+`14.56s / 286660 KiB`, both with a `197M` SQLite file. Final SQL inventory stayed equal to the
+baseline: `25415` `documents`, `132908` `document_names`, `58128` `relations` and `47156`
+`type_refs`. `syntax type-ref-gaps --format json` stayed at `47156` total, `31638` resolved,
+`15513` unresolved, `5` ambiguous and `379` template-binding rows. Representative `syntax get`
+for `ОтборКомпоновкиДанных` and keyword `syntax search` for `отбор скд` both completed
+successfully against the optimized index.
 
 T149 confirmed the query-table read-phase reuse path selected by ADR-0011/T127. Focused
 instrumentation over the full `extract_with_loader_into` reader flow now proves that a query-table

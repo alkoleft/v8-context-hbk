@@ -38,9 +38,9 @@ fn visit_relations_from_documents<E>(
     let type_ref_targets_by_key = type_ref_target_lookup(documents);
     let document_ids = documents
         .iter()
-        .map(|document| document.id.clone())
-        .collect::<BTreeSet<_>>();
-    let mut emitted = BTreeSet::new();
+        .map(|document| document.id.as_str())
+        .collect::<HashSet<_>>();
+    let mut emitted = HashSet::new();
     for document in documents {
         visit_document_relations(
             document,
@@ -66,7 +66,7 @@ fn visit_document_relations<E>(
     document: &SearchDocument,
     by_name: &BTreeMap<String, (&SearchDocument, String)>,
     type_ref_targets_by_key: &BTreeMap<String, BTreeSet<String>>,
-    document_ids: &BTreeSet<String>,
+    document_ids: &HashSet<&str>,
     mut visit: impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
     visit_owner_relations(document, by_name, &mut visit)?;
@@ -140,7 +140,7 @@ fn visit_constructor_relation<E>(
 fn visit_type_reference_relations<E>(
     document: &SearchDocument,
     type_ref_targets_by_key: &BTreeMap<String, BTreeSet<String>>,
-    document_ids: &BTreeSet<String>,
+    document_ids: &HashSet<&str>,
     visit: &mut impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
     for (ordinal, type_name) in document.type_refs.iter().enumerate() {
@@ -193,7 +193,7 @@ fn visit_type_reference_relations<E>(
                 continue;
             }
             let target_id = target_ids.iter().next().cloned().unwrap_or_default();
-            if !document_ids.contains(&target_id) {
+            if !document_ids.contains(target_id.as_str()) {
                 continue;
             }
             visit(Relation {
@@ -215,10 +215,10 @@ fn explicit_or_unique_type_ref_target_id(
     ordinal: usize,
     type_name: &str,
     type_ref_targets_by_key: &BTreeMap<String, BTreeSet<String>>,
-    document_ids: &BTreeSet<String>,
+    document_ids: &HashSet<&str>,
 ) -> Option<String> {
     if let Some(Some(id)) = explicit_ids.get(ordinal) {
-        return document_ids.contains(id).then(|| id.clone());
+        return document_ids.contains(id.as_str()).then(|| id.clone());
     }
     if document.kind.is_language() {
         return None;
