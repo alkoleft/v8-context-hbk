@@ -67,7 +67,7 @@ fn materialize_markdown_heading_anchors(
                 continue;
             }
             output.push_str("<a id=\"");
-            output.push_str(&escape_html_attribute(&targets[next_target].id));
+            output.push_str(&encode_double_quoted_attribute(&targets[next_target].id));
             output.push_str("\"></a>\n");
             next_target += 1;
         }

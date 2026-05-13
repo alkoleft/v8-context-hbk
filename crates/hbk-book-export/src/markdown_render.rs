@@ -79,35 +79,18 @@ fn raw_html_page_title(raw_html: &str, fallback: &str) -> String {
 }
 
 fn first_html_element_text(raw_html: &str, tag_name: &str) -> Option<String> {
-    let open_pattern = format!("<{tag_name}");
-    let close_pattern = format!("</{tag_name}");
-    let mut cursor = 0;
-    while let Some(open_start) = find_ascii_case_insensitive(raw_html, cursor, &open_pattern) {
-        let open_end = raw_html[open_start..]
-            .find('>')
-            .map(|offset| open_start + offset + 1)?;
-        let close_start = find_ascii_case_insensitive(raw_html, open_end, &close_pattern)?;
-        let text = normalize_html_text(&raw_html[open_end..close_start]);
-        if !text.is_empty() {
-            return Some(text);
-        }
-        cursor = close_start + close_pattern.len();
-    }
-    None
+    let fragment = Html::parse_fragment(raw_html);
+    let selector = Selector::parse(tag_name).expect("static selector must be valid");
+    fragment
+        .select(&selector)
+        .find_map(|element| {
+            let text = normalize_html_text(&element.text().collect::<String>());
+            (!text.is_empty()).then_some(text)
+        })
 }
 
 fn normalize_html_text(html: &str) -> String {
-    let mut text = String::with_capacity(html.len());
-    let mut in_tag = false;
-    for character in html.chars() {
-        match character {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => text.push(character),
-            _ => {}
-        }
-    }
-    decode_basic_html_entities(&text)
+    decode_basic_html_entities(html)
         .replace('\u{a0}', " ")
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -115,12 +98,5 @@ fn normalize_html_text(html: &str) -> String {
 }
 
 fn decode_basic_html_entities(text: &str) -> String {
-    text.replace("&nbsp;", " ")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#34;", "\"")
-        .replace("&apos;", "'")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&")
+    decode_html_entities(text).into_owned()
 }

@@ -319,6 +319,47 @@ mod tests {
     }
 
     #[test]
+    fn markdown_page_loader_preserves_decoded_title_placeholders() {
+        let workspace = TempWorkspace::new("markdown-loader-title-placeholders");
+        let source_path = workspace.path().join("shlang_ru.hbk");
+        let toc = r#"{
+            1
+            {1,0,0,{0,0,{0,0,{"ru","Функция"}},"/docs/function.html"}}
+        }"#;
+        write_book_fixture_with_toc(
+            &source_path,
+            toc,
+            vec![(
+                "docs/function.html",
+                r#"<html><head><title>Функция &lt;Имя_функции&gt;</title></head><body>
+                    <p>Функция &lt;Имя_функции&gt;</p>
+                </body></html>"#
+                    .as_bytes(),
+            )],
+        );
+        let book = HbkBook::open(&source_path).expect("book must open");
+        let mut loader = BookExporter::new(&book)
+            .markdown_page_loader()
+            .expect("markdown page loader must open");
+
+        let page = loader
+            .linked_markdown_toc_page(
+                "docs/function.html",
+                "Функция",
+                Path::new("function.md"),
+                &HashMap::new(),
+                &source_book_link_ids(&book),
+            )
+            .expect("loader must convert page Markdown");
+
+        assert!(
+            page.markdown().starts_with("# Функция <Имя_функции>\n"),
+            "{}",
+            page.markdown()
+        );
+    }
+
+    #[test]
     fn markdown_page_loader_keeps_missing_toc_page_as_heading_only() {
         let workspace = TempWorkspace::new("markdown-loader-missing");
         let source_path = workspace.path().join("fmtdui_ru.hbk");

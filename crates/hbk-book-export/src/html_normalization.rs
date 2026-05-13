@@ -49,7 +49,7 @@ fn code_example_table_to_pre(table_html: &str) -> Option<String> {
     (!code.is_empty()).then(|| {
         format!(
             "<pre><code class=\"language-bsl\">{}</code></pre>",
-            escape_html_text(&code)
+            encode_text(&code)
         )
     })
 }
@@ -123,7 +123,7 @@ fn layout_blockquote_tables_to_html(blockquote_html: &str) -> Option<String> {
     let mut output = String::from("<blockquote>");
     for line in lines {
         output.push_str("<p>");
-        output.push_str(&escape_html_text(&line));
+        output.push_str(&encode_text(&line));
         output.push_str("</p>");
     }
     output.push_str("</blockquote>");
@@ -180,7 +180,7 @@ fn query_code_blockquote_to_pre(blockquote_html: &str) -> Option<String> {
     (!code.is_empty()).then(|| {
         format!(
             "<pre><code class=\"language-sdbl\">{}</code></pre>",
-            escape_html_text(&code)
+            encode_text(&code)
         )
     })
 }
@@ -214,33 +214,6 @@ fn normalize_code_example_text(code: &str) -> String {
     let mut output = lines.join("\n");
     if !output.is_empty() {
         output.push('\n');
-    }
-    output
-}
-
-fn escape_html_text(text: &str) -> String {
-    let mut output = String::with_capacity(text.len());
-    for character in text.chars() {
-        match character {
-            '&' => output.push_str("&amp;"),
-            '<' => output.push_str("&lt;"),
-            '>' => output.push_str("&gt;"),
-            _ => output.push(character),
-        }
-    }
-    output
-}
-
-fn escape_html_attribute(text: &str) -> String {
-    let mut output = String::with_capacity(text.len());
-    for character in text.chars() {
-        match character {
-            '&' => output.push_str("&amp;"),
-            '"' => output.push_str("&quot;"),
-            '<' => output.push_str("&lt;"),
-            '>' => output.push_str("&gt;"),
-            _ => output.push(character),
-        }
     }
     output
 }

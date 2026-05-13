@@ -1,5 +1,6 @@
 use hbk_book::normalize_storage_path_owned;
 use hbk_docs::PageContent;
+use html_escape::decode_html_entities;
 use scraper::{Html, Selector};
 use syntax_helper_model::{LocalizedName, MemberLink};
 
@@ -49,12 +50,6 @@ fn split_parenthesized_alias(value: &str) -> Option<(String, String)> {
 }
 
 pub(crate) fn select_first_html_text(raw_html: &str, selector: &str) -> Option<String> {
-    if let Some(class_name) = selector.strip_prefix('.') {
-        return select_first_class_text(raw_html, class_name);
-    }
-    if selector == "title" {
-        return select_first_tag_text(raw_html, "title");
-    }
     let document = Html::parse_document(raw_html);
     let selector = Selector::parse(selector).expect("static selector must be valid");
     document
@@ -75,40 +70,6 @@ pub(crate) fn body_text(raw_html: &str) -> String {
     text_from_html_fragment(body)
 }
 
-fn select_first_class_text(raw_html: &str, class_name: &str) -> Option<String> {
-    let class_marker = format!("class=\"{class_name}\"");
-    let start = raw_html.find(&class_marker)?;
-    let tag_start = raw_html[..start].rfind('<')?;
-    let content_start = raw_html[start..]
-        .find('>')
-        .map(|offset| start + offset + 1)?;
-    let tag_name = raw_html[tag_start + 1..]
-        .split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .trim_start_matches('/');
-    let end_tag = format!("</{tag_name}>");
-    let content_end = raw_html[content_start..]
-        .find(&end_tag)
-        .map(|offset| content_start + offset)?;
-    let text = text_from_html_fragment(&raw_html[content_start..content_end]);
-    (!text.is_empty()).then_some(text)
-}
-
-fn select_first_tag_text(raw_html: &str, tag_name: &str) -> Option<String> {
-    let start_tag = format!("<{tag_name}");
-    let start = raw_html.find(&start_tag)?;
-    let content_start = raw_html[start..]
-        .find('>')
-        .map(|offset| start + offset + 1)?;
-    let end_tag = format!("</{tag_name}>");
-    let content_end = raw_html[content_start..]
-        .find(&end_tag)
-        .map(|offset| content_start + offset)?;
-    let text = text_from_html_fragment(&raw_html[content_start..content_end]);
-    (!text.is_empty()).then_some(text)
-}
-
 fn text_from_html_fragment(fragment: &str) -> String {
     let mut output = String::new();
     let mut in_tag = false;
@@ -125,7 +86,7 @@ fn text_from_html_fragment(fragment: &str) -> String {
         }
         if in_entity {
             if ch == ';' {
-                output.push_str(decode_entity(&entity));
+                output.push_str(&decode_entity(&entity));
                 entity.clear();
                 in_entity = false;
             } else {
@@ -169,39 +130,19 @@ pub(crate) fn text_lines_from_html_fragment(fragment: &str) -> String {
 }
 
 pub(crate) fn anchor_links(section_html: &str, current_html_path: &str) -> Vec<MemberLink> {
-    let mut links = Vec::new();
-    let mut rest = section_html;
-    while let Some(anchor_start) = rest.find("<a ") {
-        rest = &rest[anchor_start..];
-        let Some(tag_end) = rest.find('>') else {
-            break;
-        };
-        let tag = &rest[..tag_end + 1];
-        let Some(raw_href) = attr_value(tag, "href") else {
-            rest = &rest[tag_end + 1..];
-            continue;
-        };
-        let Some(anchor_end) = rest[tag_end + 1..].find("</a>") else {
-            break;
-        };
-        let inner = &rest[tag_end + 1..tag_end + 1 + anchor_end];
-        let text = text_from_html_fragment(inner);
-        if !text.is_empty() {
-            links.push(MemberLink {
+    let fragment = Html::parse_fragment(section_html);
+    let selector = Selector::parse("a[href]").expect("static selector must be valid");
+    fragment
+        .select(&selector)
+        .filter_map(|anchor| {
+            let raw_href = anchor.value().attr("href")?;
+            let text = non_empty_text(anchor.text())?;
+            Some(MemberLink {
                 name: name_from_text(&text),
                 html_path: normalize_member_href(current_html_path, &raw_href),
-            });
-        }
-        rest = &rest[tag_end + 1 + anchor_end + 4..];
-    }
-    links
-}
-
-fn attr_value(tag: &str, attr_name: &str) -> Option<String> {
-    let attr = format!("{attr_name}=\"");
-    let start = tag.find(&attr)? + attr.len();
-    let end = tag[start..].find('"')?;
-    Some(tag[start..start + end].to_string())
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn bracketed_name_ranges(section: &str) -> Vec<(usize, usize, String)> {
@@ -217,14 +158,16 @@ pub(crate) fn bracketed_name_ranges(section: &str) -> Vec<(usize, usize, String)
     ranges
 }
 
-fn decode_entity(entity: &str) -> &str {
-    match entity {
-        "lt" => "<",
-        "gt" => ">",
-        "amp" => "&",
-        "quot" => "\"",
-        "nbsp" => " ",
-        _ => "",
+fn decode_entity(entity: &str) -> String {
+    if !matches!(entity, "lt" | "gt" | "amp" | "quot" | "nbsp") {
+        return String::new();
+    }
+    let encoded = format!("&{entity};");
+    let decoded = decode_html_entities(&encoded);
+    if decoded == encoded {
+        String::new()
+    } else {
+        decoded.into_owned()
     }
 }
 

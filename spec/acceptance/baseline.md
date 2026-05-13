@@ -36,6 +36,16 @@ directories are service data unless promoted here.
   contracts were preserved; `BookExportError` keeps its custom comparison semantics, and the only
   remaining manual `From` conversions handle non-trivial message wrapping or boxing. Verification
   passed with focused touched-crate tests, `cargo fmt --all --check` and `cargo test --workspace`.
+- T160 replaced narrow hand-written HTML utility code where real output parity was proven.
+  `hbk-book-export` now delegates generated HTML text/attribute escaping and title entity decoding
+  to `html-escape`; `syntax-helper-extract` delegates first-element text selection and anchor/href
+  enumeration to `scraper` and uses `html-escape` for the existing allow-listed entity decoding
+  inside the retained fragment scanner. Canonical behavior was preserved: representative
+  `shlang_ru.hbk` Markdown export was byte-identical to the pre-change `HEAD` output, and
+  `shcntx_ru.hbk` `syntax export` was byte-identical to pre-change `HEAD` output with the same 13
+  files, record counts and 5 parser warnings. A broader `body_text` DOM replacement and broader
+  Syntax Assistant entity decoding were rejected because comparison/review showed canonical export
+  behavior changes, so those parser-quality changes remain separate future work.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.

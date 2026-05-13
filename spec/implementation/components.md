@@ -37,9 +37,10 @@ Solution-context Rust resolution is described in
 - `hbk-container` must not depend on book, docs, extraction or export concerns.
 - `hbk-book` must not depend on Syntax Assistant extraction.
 - `hbk-docs` may depend on book-level page/TOC abstractions but must not know export schema details.
-- `hbk-book-export` may depend on `hbk-book`, `hbk-docs` and the approved narrow
-  HTML-to-Markdown conversion utility, owns ordinary book-content export layout/Markdown adapters
-  and must not depend on Syntax Assistant extraction, `hbk-syntax-export` or CLI presentation code.
+- `hbk-book-export` may depend on `hbk-book`, `hbk-docs`, the approved narrow
+  HTML-to-Markdown conversion utility and narrow HTML escaping/entity utilities, owns ordinary
+  book-content export layout/Markdown adapters and must not depend on Syntax Assistant extraction,
+  `hbk-syntax-export` or CLI presentation code.
 - `hbk-doc-site` may depend on `hbk-book`, `hbk-docs`, `hbk-book-export` and narrow serialization
   utilities needed for generated documentation-site data artifacts. It owns multi-book corpus
   discovery, global TOC merge, stable site ids, manifest/page artifact layout and web-app data
@@ -53,7 +54,9 @@ Solution-context Rust resolution is described in
 - `syntax-helper-model` owns shared Syntax Assistant semantic identity helpers selected by
   ADR-0011. It may define identity construction over typed names, semantic context and source
   family evidence, but it must not read HBK files, parse HTML or depend on search/export crates.
-- `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages.
+- `syntax-helper-extract` owns traversal and parser behavior for Syntax Assistant pages. It may use
+  narrow HTML parser/entity helpers for element text, anchors and entity decoding, but Syntax
+  Assistant section-label boundaries and page-shape rules remain extractor-owned domain logic.
 - `syntax-helper-language` owns the first shared language-fact model and source-family parsers for
   non-platform HBK language pages. It must not add language facts to `PlatformContext` or
   `syntax export` consumer JSON. Language callable fact assembly may be shared after

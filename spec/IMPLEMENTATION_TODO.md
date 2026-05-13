@@ -30,7 +30,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T160.
+Current first unchecked task: T161.
 
 ## Loop Rule
 
@@ -115,7 +115,7 @@ Current first unchecked task: T160.
     source-chain behavior and custom `BookExportError` equality semantics. Remaining manual `From`
     implementations encode non-trivial message wrapping or boxing behavior.
 
-- [ ] T160: Replace narrow hand-written HTML escaping and Syntax Assistant HTML scans with existing
+- [x] T160: Replace narrow hand-written HTML escaping and Syntax Assistant HTML scans with existing
   parser/escaping utilities where behavior is preserved.
   - Scope: evaluate and replace local HTML entity escaping/decoding and raw string scans in
     `hbk-book-export` and `syntax-helper-extract` with existing crates or already-used `scraper`
@@ -129,6 +129,14 @@ Current first unchecked task: T160.
   - Verification: focused `hbk-book-export` and `syntax-helper-extract` fixture tests;
     representative real-HBK export/extraction comparison; `cargo fmt --all --check`; `cargo test
     --workspace`.
+  - Result: `hbk-book-export` now uses the `html-escape` crate for generated HTML text and
+    attribute escaping and for narrow title entity decoding, while keeping Markdown output
+    byte-identical on representative real HBK export. `syntax-helper-extract` now uses `scraper`
+    for first-element text selection and anchor/href enumeration and uses `html-escape` for the
+    existing allow-listed entity decoding inside the retained fragment scanner. The attempted
+    whole-body DOM text replacement and broader Syntax Assistant entity decoding were rejected
+    because real comparison or review showed canonical export behavior changes; those parser-quality
+    changes remain separate future work.
 
 - [ ] T161: Spike library-backed link/path rewriting before replacing current HBK-specific rules.
   - Scope: test whether `lol_html`, `url`, `path-clean` or similarly narrow crates can reduce
