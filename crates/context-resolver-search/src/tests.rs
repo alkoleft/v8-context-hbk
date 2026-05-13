@@ -954,6 +954,43 @@ mod tests {
         assert!(!capabilities.type_lookup);
         assert!(!capabilities.callables);
         assert!(!capabilities.global_context);
+        let type_lookup = adapter
+            .resolve_type(
+                TypeLookup::ExactName {
+                    source: Some(&query_source),
+                    domain: Some(LanguageDomain::QueryLanguage),
+                    name: "Дата",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("query table type lookup refusal must not fail");
+        assert_eq!(type_lookup.status, ResolveStatus::Unsupported);
+        let callable_lookup = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: None,
+                    name: "Есть",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("query table callable lookup refusal must not fail");
+        assert_eq!(callable_lookup.status, ResolveStatus::Unsupported);
+        let member_lookup = adapter
+            .members(
+                &TypeId(FactId::new(
+                    query_source.clone(),
+                    LanguageDomain::QueryLanguage,
+                    FactKind::Type,
+                    "unused",
+                )),
+                MemberQuery {
+                    name: Some("Период"),
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("query table member lookup refusal must not fail");
+        assert_eq!(member_lookup.status, ResolveStatus::Unsupported);
         let global_context = adapter
             .global_context(
                 GlobalContextQuery::Language {

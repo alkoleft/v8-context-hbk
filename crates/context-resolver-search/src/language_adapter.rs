@@ -531,6 +531,11 @@ impl ContextSource for LanguageSearchSource {
         if !context.is_source_active(&self.source_id) {
             return Ok(ResolveResponse::not_found("language source is not active"));
         }
+        if self.query_table_templates {
+            return Ok(ResolveResponse::unsupported(
+                "query table source does not expose type lookup",
+            ));
+        }
         let facts = match query {
             TypeLookup::Id(id) => {
                 if id.0.source != self.source_id || id.0.domain != self.domain {
@@ -606,6 +611,11 @@ impl ContextSource for LanguageSearchSource {
     ) -> Result<ResolveResponse<ResolvedCallable>, ResolveError> {
         if !context.is_source_active(&self.source_id) {
             return Ok(ResolveResponse::not_found("language source is not active"));
+        }
+        if self.query_table_templates {
+            return Ok(ResolveResponse::unsupported(
+                "query table source does not expose callable lookup",
+            ));
         }
         let facts = match query {
             CallableLookup::Id(id) => {
