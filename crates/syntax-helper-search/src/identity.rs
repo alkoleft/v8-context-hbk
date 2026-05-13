@@ -1,5 +1,5 @@
-fn relation_lookup(documents: &[SearchDocument]) -> BTreeMap<String, (&SearchDocument, String)> {
-    let mut by_name = BTreeMap::<String, (&SearchDocument, String)>::new();
+fn relation_lookup(documents: &[SearchDocument]) -> HashMap<String, (&SearchDocument, String)> {
+    let mut by_name = HashMap::<String, (&SearchDocument, String)>::new();
     for document in documents {
         for key in document_lookup_keys(document) {
             match by_name.get(&key) {
@@ -14,8 +14,8 @@ fn relation_lookup(documents: &[SearchDocument]) -> BTreeMap<String, (&SearchDoc
     by_name
 }
 
-fn type_ref_target_lookup(documents: &[SearchDocument]) -> BTreeMap<String, BTreeSet<String>> {
-    let mut by_key = BTreeMap::<String, BTreeSet<String>>::new();
+fn type_ref_target_lookup(documents: &[SearchDocument]) -> HashMap<String, BTreeSet<String>> {
+    let mut by_key = HashMap::<String, BTreeSet<String>>::new();
     for document in documents
         .iter()
         .filter(|document| document.kind.is_type_ref_target())

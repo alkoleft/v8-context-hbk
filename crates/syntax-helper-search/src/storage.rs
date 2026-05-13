@@ -469,11 +469,11 @@ fn insert_normalized_facts(
     documents: &[SearchDocument],
 ) -> Result<(), SearchError> {
     let by_name = relation_lookup(documents);
-    let mut type_ids_by_key = BTreeMap::new();
-    let mut type_ids_by_exact_key = BTreeMap::new();
-    let mut type_id_by_normalized_id = BTreeMap::new();
-    let mut type_ids_by_metadata_kind = BTreeMap::new();
-    let mut type_template_by_type_id = BTreeMap::new();
+    let mut type_ids_by_key = HashMap::new();
+    let mut type_ids_by_exact_key = HashMap::new();
+    let mut type_id_by_normalized_id = HashMap::new();
+    let mut type_ids_by_metadata_kind = HashMap::new();
+    let mut type_template_by_type_id = HashMap::new();
     for document in documents
         .iter()
         .filter(|document| document.kind.is_type_ref_target())
@@ -835,10 +835,10 @@ struct TypeRefRow<'a> {
 fn insert_type_ref(
     statement: &mut Statement<'_>,
     path: &Path,
-    type_ids_by_key: &BTreeMap<String, BTreeSet<String>>,
-    type_ids_by_exact_key: &BTreeMap<String, BTreeSet<String>>,
-    type_ids_by_metadata_kind: &BTreeMap<String, BTreeSet<String>>,
-    type_template_by_type_id: &BTreeMap<String, TypeTemplateFact>,
+    type_ids_by_key: &HashMap<String, BTreeSet<String>>,
+    type_ids_by_exact_key: &HashMap<String, BTreeSet<String>>,
+    type_ids_by_metadata_kind: &HashMap<String, BTreeSet<String>>,
+    type_template_by_type_id: &HashMap<String, TypeTemplateFact>,
     row: TypeRefRow<'_>,
 ) -> Result<(), SearchError> {
     let target = resolve_type_ref_target(
@@ -899,7 +899,7 @@ struct OwnerParameterBindingArgument {
 fn type_template_binding(
     owner_type_id: Option<&str>,
     target_type_id: Option<&str>,
-    type_template_by_type_id: &BTreeMap<String, TypeTemplateFact>,
+    type_template_by_type_id: &HashMap<String, TypeTemplateFact>,
 ) -> Option<OwnerParameterBinding> {
     let owner = type_template_by_type_id.get(owner_type_id?)?;
     let target = type_template_by_type_id.get(target_type_id?)?;
@@ -938,7 +938,7 @@ fn binding_arguments_to_storage(binding: &OwnerParameterBinding) -> String {
 }
 
 fn insert_type_lookup_key(
-    type_ids_by_key: &mut BTreeMap<String, BTreeSet<String>>,
+    type_ids_by_key: &mut HashMap<String, BTreeSet<String>>,
     key: String,
     type_id: &str,
 ) {
@@ -950,9 +950,9 @@ fn insert_type_lookup_key(
 
 fn resolve_type_ref_target(
     target_type_name: &str,
-    type_ids_by_key: &BTreeMap<String, BTreeSet<String>>,
-    type_ids_by_exact_key: &BTreeMap<String, BTreeSet<String>>,
-    type_ids_by_metadata_kind: &BTreeMap<String, BTreeSet<String>>,
+    type_ids_by_key: &HashMap<String, BTreeSet<String>>,
+    type_ids_by_exact_key: &HashMap<String, BTreeSet<String>>,
+    type_ids_by_metadata_kind: &HashMap<String, BTreeSet<String>>,
 ) -> SearchTypeRefTarget {
     let key = normalize_lookup_key(target_type_name);
     let mut candidates = BTreeSet::new();
@@ -981,7 +981,7 @@ fn resolve_type_ref_target(
 
 fn exact_type_ref_candidates(
     target_type_name: &str,
-    type_ids_by_exact_key: &BTreeMap<String, BTreeSet<String>>,
+    type_ids_by_exact_key: &HashMap<String, BTreeSet<String>>,
     normalized_candidates: &[String],
 ) -> Option<SearchTypeRefTarget> {
     let exact = type_ids_by_exact_key.get(&exact_type_ref_lookup_key(target_type_name))?;
@@ -1007,8 +1007,8 @@ fn target_resolution_status(target: &SearchTypeRefTarget) -> &'static str {
 
 fn owner_type_id(
     document: &SearchDocument,
-    by_name: &BTreeMap<String, (&SearchDocument, String)>,
-    type_id_by_normalized_id: &BTreeMap<String, String>,
+    by_name: &HashMap<String, (&SearchDocument, String)>,
+    type_id_by_normalized_id: &HashMap<String, String>,
 ) -> Option<String> {
     document
         .owner_relation_key

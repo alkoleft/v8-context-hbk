@@ -123,7 +123,7 @@ fn classify_platform_type_templates(
         .iter()
         .filter(|document| document.kind == SearchDocumentKind::PlatformType)
         .map(|document| (normalize_lookup_key(&document.id), document.id.clone()))
-        .collect::<BTreeMap<_, _>>();
+        .collect::<HashMap<_, _>>();
     let template_infos = documents
         .iter()
         .filter(|document| {
@@ -317,8 +317,8 @@ fn type_template_variant(family: &str, base: &str) -> String {
 
 fn unique_lookup(
     items: impl Iterator<Item = (String, String)>,
-) -> BTreeMap<String, Option<String>> {
-    let mut lookup = BTreeMap::<String, Option<String>>::new();
+) -> HashMap<String, Option<String>> {
+    let mut lookup = HashMap::<String, Option<String>>::new();
     for (key, value) in items {
         match lookup.get_mut(&key) {
             Some(existing) if existing.as_deref() == Some(value.as_str()) => {}

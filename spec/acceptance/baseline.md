@@ -74,6 +74,14 @@ directories are service data unless promoted here.
   recommendations are to profile extractor page reuse before adding a page cache, and to revisit
   FTS/content storage only with a separate schema task because T44 already showed contentless FTS
   trades a smaller database for extra query-path complexity without a build-time win.
+- T164 reduces bounded HBK read and search-index lookup overhead without changing SQLite schema
+  version `15` or query behavior. `hbk-book` pre-sizes `FileStorageReader` page-read and PackBlock
+  TOC buffers from ZIP entry metadata with a 64 MiB cap; `syntax-helper-search` uses `HashMap` for
+  order-insensitive build lookups while preserving ordered candidate sets where deterministic output
+  depends on ordering. Release `syntax index shcntx_ru.hbk` post-change runs measured `17.41s /
+  285696 KiB / 197M` and `16.86s / 285764 KiB / 197M`; row inventory stayed `25415` documents,
+  `132908` document-name rows, `58128` relations and `47156` type refs. `syntax type-ref-gaps`
+  stayed at `31638` resolved, `15513` unresolved, `5` ambiguous and `379` template-binding rows.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.

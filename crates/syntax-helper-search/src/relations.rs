@@ -64,8 +64,8 @@ fn visit_relations_from_documents<E>(
 
 fn visit_document_relations<E>(
     document: &SearchDocument,
-    by_name: &BTreeMap<String, (&SearchDocument, String)>,
-    type_ref_targets_by_key: &BTreeMap<String, BTreeSet<String>>,
+    by_name: &HashMap<String, (&SearchDocument, String)>,
+    type_ref_targets_by_key: &HashMap<String, BTreeSet<String>>,
     document_ids: &HashSet<&str>,
     mut visit: impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
@@ -76,7 +76,7 @@ fn visit_document_relations<E>(
 
 fn visit_owner_relations<E>(
     document: &SearchDocument,
-    by_name: &BTreeMap<String, (&SearchDocument, String)>,
+    by_name: &HashMap<String, (&SearchDocument, String)>,
     visit: &mut impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
     let Some(owner) = &document.owner else {
@@ -114,7 +114,7 @@ fn visit_owner_relations<E>(
 
 fn visit_constructor_relation<E>(
     document: &SearchDocument,
-    by_name: &BTreeMap<String, (&SearchDocument, String)>,
+    by_name: &HashMap<String, (&SearchDocument, String)>,
     visit: &mut impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
     if document.kind != SearchDocumentKind::Constructor {
@@ -139,7 +139,7 @@ fn visit_constructor_relation<E>(
 
 fn visit_type_reference_relations<E>(
     document: &SearchDocument,
-    type_ref_targets_by_key: &BTreeMap<String, BTreeSet<String>>,
+    type_ref_targets_by_key: &HashMap<String, BTreeSet<String>>,
     document_ids: &HashSet<&str>,
     visit: &mut impl FnMut(Relation) -> Result<(), E>,
 ) -> Result<(), E> {
@@ -214,7 +214,7 @@ fn explicit_or_unique_type_ref_target_id(
     explicit_ids: &[Option<String>],
     ordinal: usize,
     type_name: &str,
-    type_ref_targets_by_key: &BTreeMap<String, BTreeSet<String>>,
+    type_ref_targets_by_key: &HashMap<String, BTreeSet<String>>,
     document_ids: &HashSet<&str>,
 ) -> Option<String> {
     if let Some(Some(id)) = explicit_ids.get(ordinal) {

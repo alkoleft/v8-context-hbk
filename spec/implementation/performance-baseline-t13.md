@@ -709,6 +709,44 @@ T24 implementation conclusions:
 - A single-pass HTML text-normalization rewrite was measured and rejected because it did not improve
   the final memory class.
 
+## Post-T164 Update
+
+T164 rechecked the `syntax index` path with the current `schema_version: 15` search index, focusing
+on HBK reading and order-insensitive index-build lookup structures. Raw command outputs and
+generated indexes were written under `target/t164-performance-audit/`; that directory is service
+data and is not a durable source of truth.
+
+The pass used the built release CLI under GNU `time`:
+
+```bash
+cargo build --release -p v8-context-hbk-cli --bin v8-context-hbk
+/usr/bin/time -o target/t164-performance-audit/baseline/logs/index-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/release/v8-context-hbk syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t164-performance-audit/baseline/index-ru/index.sqlite
+/usr/bin/time -o target/t164-performance-audit/post/logs/index-ru.time -f 'elapsed_seconds=%e\npeak_rss_kb=%M\nexit_status=%x' target/release/v8-context-hbk syntax index /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk --output target/t164-performance-audit/post/index-ru/index.sqlite
+```
+
+Release `syntax index shcntx_ru.hbk` results:
+
+| Phase | Exit | Elapsed, s | Peak RSS, KiB | DB size | Row inventory |
+| --- | ---: | ---: | ---: | ---: | --- |
+| baseline | 0 | 21.27 | 282048 | 197M | 25415 documents, 132908 names, 58128 relations, 47156 type refs |
+| baseline repeat | 0 | 17.79 | 282176 | 197M | same |
+| post-change | 0 | 17.41 | 285696 | 197M | same |
+| post-change repeat | 0 | 16.86 | 285764 | 197M | same |
+
+T164 implementation conclusions:
+
+- HBK page and PackBlock ZIP-entry reads now pre-size output buffers from ZIP uncompressed-size
+  metadata with a 64 MiB cap, preserving typed errors and avoiding unbounded trust in malformed
+  entry size metadata.
+- Order-insensitive search-index build maps now use `HashMap` for relation lookup, type-ref target
+  lookup, normalized fact insertion and type-template helper maps. Ordered sets remain in place for
+  candidate id ordering where output determinism is observable.
+- The accepted changes do not alter SQLite schema version, row counts, provider query behavior,
+  duplicate-document winner semantics or type-reference gap totals.
+- The measured time delta is modest and overlaps normal run-to-run variance; treat this as a narrow
+  allocation/lookup cleanup, not as justification for page caches, parallel parsing, storage
+  redesign or FTS schema changes.
+
 ## Variant Evaluation
 
 Variant A, lean consumer export and streaming JSON writer, remains the first slice.

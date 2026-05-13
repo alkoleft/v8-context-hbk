@@ -43,6 +43,9 @@ Current status:
   micro-optimization. Release-profile `schema_version: 5` exports stayed in the T28/T30 class, so
   the candidate parser-helper rewrites remain unimplemented until a new measurement shows a concrete
   bottleneck.
+- T164 completed a narrow current-index cleanup: bounded ZIP-entry buffer pre-sizing in HBK reads
+  and hash maps for order-insensitive search-index build lookups. The measured win is modest and
+  does not justify page caches, parallel parsing, broader storage redesign or FTS schema changes.
 
 ## Selection Rules
 
