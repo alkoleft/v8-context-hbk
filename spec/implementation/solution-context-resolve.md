@@ -65,6 +65,9 @@ Analyzer lookup hot path:
 Provider setup or index-refresh phase:
 
 - may use `hbk-book` and `syntax-helper-extract::SyntaxHelperReader` to read `shcntx_*` books;
+- may use `hbk-book`, `syntax-helper-language::extract_language_facts` and
+  `syntax-helper-search::SearchIndexBuilder::add_language_fact` for selected `shlang_*`,
+  `shquery_*` and `dcsui_*` language pages;
 - may stream extracted facts into `syntax-helper-search::SearchIndexBuilder` and write a local
   provider index;
 - may rebuild source artifacts when platform HBK files or extractor versions change;
@@ -83,6 +86,27 @@ let response = resolver.resolve_type(
         source: None,
         domain: None,
         name: "HTTPСоединение",
+    },
+    &ResolveContext::all(),
+)?;
+```
+
+Minimal BSL-language primitive lookup:
+
+```rust
+use context_resolver_core::{
+    CompositeResolver, ContextResolver, LanguageDomain, ResolveContext, SourceId, TypeLookup,
+};
+use context_resolver_search::LanguageSearchSource;
+
+let shlang = SourceId::new("shlang");
+let language = LanguageSearchSource::open_shlang_read_only("target/language.sqlite")?;
+let resolver = CompositeResolver::new(vec![Box::new(language)]);
+let response = resolver.resolve_type(
+    TypeLookup::ExactName {
+        source: Some(&shlang),
+        domain: Some(LanguageDomain::BslLanguage),
+        name: "Число",
     },
     &ResolveContext::all(),
 )?;
@@ -751,6 +775,10 @@ the T89 language-fact index shape.
 Mapping:
 
 - `shlang` source facts map to `LanguageDomain::BslLanguage`;
+- direct `shlang_*` primitive type pages map to `language_type` facts for `Null`,
+  `Неопределено` / `Undefined`, `Число` / `Number`, `Строка` / `String`, `Дата` / `Date`,
+  `Булево` / `Boolean` and `Тип` / `Type`; nested primitive literal pages such as
+  `def_BooleanTrue` and `def_BooleanFalse` are not type facts;
 - `shquery` and `dcsui` source facts map to `LanguageDomain::QueryLanguage`, with distinct source
   ids so SKD expression/query-extension facts do not overwrite base query-language facts;
 - `language_type` and the current `language_literal` facts back `resolve_type`;

@@ -3,7 +3,8 @@ fn extract_shlang(input: LanguagePageInput<'_>, document: &Html, title: &str) ->
         return Vec::new();
     };
     let (family, name) = match page_key {
-        "def_String" => (LanguageFactFamily::Type, split_name_alias(title)),
+        "def_Null" | "def_Undefined" | "def_Number" | "def_String" | "def_Date"
+        | "def_Boolean" | "def_Type" => (LanguageFactFamily::Type, split_name_alias(title)),
         "def_Func" => (LanguageFactFamily::Construct, split_name_alias(title)),
         _ => return Vec::new(),
     };

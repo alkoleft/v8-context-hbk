@@ -82,6 +82,16 @@ directories are service data unless promoted here.
   285696 KiB / 197M` and `16.86s / 285764 KiB / 197M`; row inventory stayed `25415` documents,
   `132908` document-name rows, `58128` relations and `47156` type refs. `syntax type-ref-gaps`
   stayed at `31638` resolved, `15513` unresolved, `5` ambiguous and `379` template-binding rows.
+- T165 extends the Rust dependency-facing BSL language type surface without changing platform
+  export JSON, provider CLI JSON or SQLite schema version. `syntax-helper-language` now extracts
+  direct `shlang_*` primitive type pages as `language_type` facts for `Null`, `Неопределено` /
+  `Undefined`, `Число` / `Number`, `Строка` / `String`, `Дата` / `Date`, `Булево` / `Boolean` and
+  `Тип` / `Type`, while nested primitive literal pages such as `def_BooleanTrue` remain outside the
+  type surface. `syntax-helper-search` indexes these as source-qualified `shlang:*` language facts,
+  and `context-resolver-search` exposes them through `LanguageSearchSource` as
+  `LanguageDomain::BslLanguage`, not `PlatformApi`. Verification passed with
+  `cargo test -p syntax-helper-language`, `cargo test -p syntax-helper-search`,
+  `cargo test -p context-resolver-search` and `cargo test --workspace`.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.

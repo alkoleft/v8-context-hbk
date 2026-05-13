@@ -1085,6 +1085,29 @@ mod tests {
         assert_eq!(bsl_string.facts[0].id.0.domain, LanguageDomain::BslLanguage);
         assert!(started.elapsed().as_millis() < 100);
 
+        for (name, local_id) in [
+            ("Null", "def_Null"),
+            ("Неопределено", "def_Undefined"),
+            ("Число", "def_Number"),
+            ("Дата", "def_Date"),
+            ("Булево", "def_Boolean"),
+            ("Тип", "def_Type"),
+        ] {
+            let primitive = resolver
+                .resolve_type(
+                    TypeLookup::ExactName {
+                        source: Some(&shlang),
+                        domain: Some(LanguageDomain::BslLanguage),
+                        name,
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("constrained BSL primitive lookup must not fail");
+            assert_eq!(primitive.status, ResolveStatus::Ok);
+            assert_eq!(primitive.facts[0].id.0.local_id, local_id);
+            assert_eq!(primitive.facts[0].id.0.domain, LanguageDomain::BslLanguage);
+        }
+
         let query_string = CallableId(FactId::new(
             shquery.clone(),
             LanguageDomain::QueryLanguage,
@@ -1148,6 +1171,12 @@ mod tests {
         assert_eq!(bsl_scope.status, ResolveStatus::Ok);
         assert!(bsl_scope.facts[0].facts.iter().any(|fact| {
             fact.id.domain == LanguageDomain::BslLanguage && fact.id.local_id == "def_String"
+        }));
+        assert!(bsl_scope.facts[0].facts.iter().any(|fact| {
+            fact.id.domain == LanguageDomain::BslLanguage && fact.id.local_id == "def_Number"
+        }));
+        assert!(bsl_scope.facts[0].facts.iter().any(|fact| {
+            fact.id.domain == LanguageDomain::BslLanguage && fact.id.local_id == "def_Boolean"
         }));
         assert!(
             bsl_scope.facts[0]
@@ -1759,8 +1788,43 @@ mod tests {
         [
             (
                 LanguageSourceFamily::Shlang,
+                "def_Null",
+                "shlang_def_null_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Shlang,
+                "def_Undefined",
+                "shlang_def_undefined_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Shlang,
+                "def_Number",
+                "shlang_def_number_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Shlang,
                 "def_String",
                 "shlang_def_string_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Shlang,
+                "def_Date",
+                "shlang_def_date_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Shlang,
+                "def_Boolean",
+                "shlang_def_boolean_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Shlang,
+                "def_Type",
+                "shlang_def_type_ru.html",
+            ),
+            (
+                LanguageSourceFamily::Shlang,
+                "def_BooleanTrue",
+                "shlang_def_boolean_true_ru.html",
             ),
             (
                 LanguageSourceFamily::Shquery,

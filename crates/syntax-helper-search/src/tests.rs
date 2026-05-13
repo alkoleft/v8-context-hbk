@@ -98,6 +98,29 @@ mod tests {
         assert_eq!(bsl.document.kind, SearchDocumentKind::LanguageType);
         assert_eq!(bsl.document.name.primary, "Строка");
 
+        for (id, primary, alias) in [
+            ("shlang:def_Null", "Null", None),
+            ("shlang:def_Undefined", "Неопределено", Some("Undefined")),
+            ("shlang:def_Number", "Число", Some("Number")),
+            ("shlang:def_Date", "Дата", Some("Date")),
+            ("shlang:def_Boolean", "Булево", Some("Boolean")),
+            ("shlang:def_Type", "Тип", Some("Type")),
+        ] {
+            let hit = index
+                .get_by_id(id)
+                .expect("primitive id lookup must work")
+                .expect("primitive type must be indexed");
+            assert_eq!(hit.document.kind, SearchDocumentKind::LanguageType);
+            assert_eq!(hit.document.name.primary, primary);
+            assert_eq!(hit.document.name.alias.as_deref(), alias);
+        }
+        assert!(
+            index
+                .get_by_id("shlang:def_BooleanTrue")
+                .expect("literal id lookup must work")
+                .is_none()
+        );
+
         let function_construct = index
             .get_by_id("shlang:def_Func")
             .expect("id lookup must work")
@@ -2959,6 +2982,43 @@ mod tests {
             ),
         ];
         if locale == "ru" {
+            fixtures.extend([
+                (
+                    LanguageSourceFamily::Shlang,
+                    "def_Null",
+                    "shlang_def_null_ru.html".to_string(),
+                ),
+                (
+                    LanguageSourceFamily::Shlang,
+                    "def_Undefined",
+                    "shlang_def_undefined_ru.html".to_string(),
+                ),
+                (
+                    LanguageSourceFamily::Shlang,
+                    "def_Number",
+                    "shlang_def_number_ru.html".to_string(),
+                ),
+                (
+                    LanguageSourceFamily::Shlang,
+                    "def_Date",
+                    "shlang_def_date_ru.html".to_string(),
+                ),
+                (
+                    LanguageSourceFamily::Shlang,
+                    "def_Boolean",
+                    "shlang_def_boolean_ru.html".to_string(),
+                ),
+                (
+                    LanguageSourceFamily::Shlang,
+                    "def_Type",
+                    "shlang_def_type_ru.html".to_string(),
+                ),
+                (
+                    LanguageSourceFamily::Shlang,
+                    "def_BooleanTrue",
+                    "shlang_def_boolean_true_ru.html".to_string(),
+                ),
+            ]);
             fixtures.push((
                 LanguageSourceFamily::Shquery,
                 "LitString",

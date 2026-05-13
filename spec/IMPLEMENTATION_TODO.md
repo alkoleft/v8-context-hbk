@@ -51,4 +51,36 @@ Current first unchecked task: none.
 
 ## Active Tasks
 
-No active tasks.
+### [x] T165. Expose core BSL primitive language types through Rust resolver adapters
+
+References: FR-CTX-RESOLVE-001, UC-CTX-001, UC-CTX-002,
+`implementation/solution-context-resolve.md`.
+
+Scope:
+
+- Extend the `shlang_*` language-fact slice so direct BSL primitive type pages are indexed as
+  `language_type` facts, including `Null`, `Неопределено` / `Undefined`, `Число` / `Number`,
+  `Строка` / `String`, `Дата` / `Date`, `Булево` / `Boolean` and `Тип` / `Type`.
+- Keep nested primitive literal pages such as `def_BooleanTrue` and `def_BooleanFalse` out of the
+  type surface.
+- Preserve source/domain identity through `context-resolver-core` and `context-resolver-search`:
+  these facts are `BslLanguage` facts from `shlang`, not `PlatformApi` types.
+- Cover dependency-facing behavior with focused `syntax-helper-language`,
+  `syntax-helper-search` and `context-resolver-search` tests.
+
+Verification:
+
+- `cargo test -p syntax-helper-language`
+- `cargo test -p syntax-helper-search`
+- `cargo test -p context-resolver-search`
+- `cargo test --workspace`
+
+Result:
+
+- `syntax-helper-language` extracts direct `shlang_*` primitive type pages as `language_type`
+  facts for `Null`, `Неопределено` / `Undefined`, `Число` / `Number`, `Строка` / `String`,
+  `Дата` / `Date`, `Булево` / `Boolean` and `Тип` / `Type`.
+- Nested primitive literal pages such as `def_BooleanTrue` remain ignored by this type surface.
+- `syntax-helper-search` indexes these facts with source-qualified `shlang:*` ids.
+- `context-resolver-search` resolves them through `LanguageSearchSource` as
+  `LanguageDomain::BslLanguage` for Rust dependency consumers.

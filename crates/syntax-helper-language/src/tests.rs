@@ -34,6 +34,69 @@ mod tests {
     }
 
     #[test]
+    fn extracts_direct_bsl_primitive_type_pages() {
+        let expected = [
+            ("def_Null", "shlang_def_null_ru.html", "Null", None),
+            (
+                "def_Undefined",
+                "shlang_def_undefined_ru.html",
+                "Неопределено",
+                Some("Undefined"),
+            ),
+            (
+                "def_Number",
+                "shlang_def_number_ru.html",
+                "Число",
+                Some("Number"),
+            ),
+            (
+                "def_String",
+                "shlang_def_string_ru.html",
+                "Строка",
+                Some("String"),
+            ),
+            (
+                "def_Date",
+                "shlang_def_date_ru.html",
+                "Дата",
+                Some("Date"),
+            ),
+            (
+                "def_Boolean",
+                "shlang_def_boolean_ru.html",
+                "Булево",
+                Some("Boolean"),
+            ),
+            ("def_Type", "shlang_def_type_ru.html", "Тип", Some("Type")),
+        ];
+
+        for (html_path, fixture_name, primary, alias) in expected {
+            let fact = fixture_fact(LanguageSourceFamily::Shlang, "ru", html_path, fixture_name);
+            assert_eq!(fact.id, format!("shlang:{html_path}"));
+            assert_eq!(fact.domain, LanguageDomain::BslLanguage);
+            assert_eq!(fact.family, LanguageFactFamily::Type);
+            assert_eq!(fact.name.primary, primary);
+            assert_eq!(fact.name.alias.as_deref(), alias);
+            assert!(
+                fact.description.is_some(),
+                "{html_path} must preserve source-backed description"
+            );
+        }
+    }
+
+    #[test]
+    fn ignores_nested_bsl_primitive_literal_pages() {
+        let facts = fixture_facts(
+            LanguageSourceFamily::Shlang,
+            "ru",
+            "def_BooleanTrue",
+            "shlang_def_boolean_true_ru.html",
+        );
+
+        assert!(facts.is_empty());
+    }
+
+    #[test]
     fn extracts_query_construct_function_and_literal() {
         let select = fixture_fact(
             LanguageSourceFamily::Shquery,

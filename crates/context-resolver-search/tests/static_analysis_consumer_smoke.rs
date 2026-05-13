@@ -187,7 +187,7 @@ mod provider_setup {
             })
             .expect("enum-backed global method must sink");
 
-        for fact in shlang_string_facts() {
+        for fact in shlang_primitive_facts() {
             builder.add_language_fact(fact);
         }
 
@@ -195,20 +195,34 @@ mod provider_setup {
         path
     }
 
-    fn shlang_string_facts() -> Vec<syntax_helper_language::LanguageFact> {
-        let html = std::fs::read_to_string(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../tests/fixtures/syntax-helper-language/shlang_def_string_ru.html"),
-        )
-        .expect("language fixture must be readable");
+    fn shlang_primitive_facts() -> Vec<syntax_helper_language::LanguageFact> {
+        [
+            ("def_Null", "shlang_def_null_ru.html"),
+            ("def_Undefined", "shlang_def_undefined_ru.html"),
+            ("def_Number", "shlang_def_number_ru.html"),
+            ("def_String", "shlang_def_string_ru.html"),
+            ("def_Date", "shlang_def_date_ru.html"),
+            ("def_Boolean", "shlang_def_boolean_ru.html"),
+            ("def_Type", "shlang_def_type_ru.html"),
+        ]
+        .into_iter()
+        .flat_map(|(html_path, fixture_name)| {
+            let html = std::fs::read_to_string(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/syntax-helper-language")
+                    .join(fixture_name),
+            )
+            .expect("language fixture must be readable");
 
-        extract_language_facts(LanguagePageInput {
-            source_hbk: "fixture-shlang.hbk",
-            source_family: LanguageSourceFamily::Shlang,
-            locale: "ru",
-            html_path: "def_String",
-            html: &html,
+            extract_language_facts(LanguagePageInput {
+                source_hbk: "fixture-shlang.hbk",
+                source_family: LanguageSourceFamily::Shlang,
+                locale: "ru",
+                html_path,
+                html: &html,
+            })
         })
+        .collect()
     }
 
     fn platform_type(primary: &str) -> model::PlatformType {
@@ -610,5 +624,20 @@ mod analyzer_lookup {
         assert_eq!(bsl_string.facts[0].id.0.source, shlang_source);
         assert_eq!(bsl_string.facts[0].id.0.domain, LanguageDomain::BslLanguage);
         assert_eq!(bsl_string.facts[0].id.0.local_id, "def_String");
+
+        let bsl_number = resolver
+            .resolve_type(
+                TypeLookup::ExactName {
+                    source: Some(&shlang_source),
+                    domain: Some(LanguageDomain::BslLanguage),
+                    name: "Число",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("BSL primitive language fact lookup must not fail");
+        assert_eq!(bsl_number.status, ResolveStatus::Ok);
+        assert_eq!(bsl_number.facts[0].id.0.source, shlang_source);
+        assert_eq!(bsl_number.facts[0].id.0.domain, LanguageDomain::BslLanguage);
+        assert_eq!(bsl_number.facts[0].id.0.local_id, "def_Number");
     }
 }
