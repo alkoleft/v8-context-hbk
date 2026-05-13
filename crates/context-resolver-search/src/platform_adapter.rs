@@ -152,6 +152,9 @@ impl PlatformSearchSource {
             SearchDocumentKind::TypeEvent | SearchDocumentKind::ModuleEvent => {
                 Ok(self.map_callable(hit)?.map(|callable| callable.fact))
             }
+            SearchDocumentKind::Enum if requested == Some(FactKind::Type) => {
+                Ok(Some(self.map_type(hit).fact))
+            }
             SearchDocumentKind::Enum => Ok(Some(ContextFact {
                 id: self.fact_id(FactKind::Enum, hit.document.id.clone()),
                 name: map_name(&hit.document),
@@ -222,6 +225,8 @@ impl PlatformSearchSource {
         fact_kind_for_document(document).is_some_and(|actual| actual == requested)
             || matches!(
                 (requested, document.kind),
+                (FactKind::Type, SearchDocumentKind::Enum)
+                    |
                 (
                     FactKind::Member,
                     SearchDocumentKind::TypeEvent | SearchDocumentKind::ModuleEvent
@@ -369,7 +374,11 @@ impl PlatformSearchSource {
         if !is_platform_document_kind(hit.document.kind) {
             return None;
         }
-        let kind = fact_kind_for_document(&hit.document)?;
+        let kind = if hit.document.kind.is_type_ref_target() {
+            FactKind::Type
+        } else {
+            fact_kind_for_document(&hit.document)?
+        };
         Some(ContextFact {
             id: self.fact_id(kind, hit.document.id.clone()),
             name: map_name(&hit.document),

@@ -18,7 +18,7 @@ fn type_ref_target_lookup(documents: &[SearchDocument]) -> BTreeMap<String, BTre
     let mut by_key = BTreeMap::<String, BTreeSet<String>>::new();
     for document in documents
         .iter()
-        .filter(|document| document.kind == SearchDocumentKind::PlatformType)
+        .filter(|document| document.kind.is_type_ref_target())
     {
         by_key
             .entry(normalize_lookup_key(&document.name.primary))
@@ -30,7 +30,9 @@ fn type_ref_target_lookup(documents: &[SearchDocument]) -> BTreeMap<String, BTre
                 .or_default()
                 .insert(document.id.clone());
         }
-        if let Some(metadata_kind) = &document.metadata_kind {
+        if document.kind == SearchDocumentKind::PlatformType
+            && let Some(metadata_kind) = &document.metadata_kind
+        {
             by_key
                 .entry(normalize_lookup_key(metadata_kind))
                 .or_default()

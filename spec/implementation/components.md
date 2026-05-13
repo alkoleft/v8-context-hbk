@@ -731,7 +731,7 @@ than building from consumer JSON export directories.
 
 Implemented first slice:
 
-- `syntax-helper-search` owns `index.sqlite` schema version `14`, read-only query opens, FTS5 keyword
+- `syntax-helper-search` owns `index.sqlite` schema version `15`, read-only query opens, FTS5 keyword
   search, prefix-bounded fuzzy candidate selection, exact name/alias and owner/member lookup, and
   directed owner/type-reference relationship traversal.
 - `SearchHit`, `SearchDocument`, `RelatedHit` and `RelationStep` are Rust query result structs for
@@ -784,6 +784,11 @@ Implemented first slice:
   resolver DTOs expose target resolution as data instead of `Option<TypeId>`.
 - T152 raises the private rebuildable search-index schema to version `14` so module-event documents
   preserve provider-neutral module context relation keys for resolver module-context lookup.
+- T162 raises the private rebuildable search-index schema to version `15` so source-backed enum
+  definition documents are stored in `type_identities` and participate as provider-owned type-like
+  targets for normalized `type_refs`. Enum targets keep their existing `enum:system:*` or
+  `enum:metadata_property:*` identities; they are not converted to `platform_type:*`, and duplicate
+  enum matches remain explicit `ambiguous` rows.
 
 T87 classifies the remaining duplicate-looking query/provider mechanisms as boundary decisions
 rather than immediate cleanup work:

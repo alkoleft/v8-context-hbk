@@ -476,7 +476,7 @@ fn insert_normalized_facts(
     let mut type_template_by_type_id = BTreeMap::new();
     for document in documents
         .iter()
-        .filter(|document| document.kind == SearchDocumentKind::PlatformType)
+        .filter(|document| document.kind.is_type_ref_target())
     {
         insert_type_lookup_key(
             &mut type_ids_by_key,
@@ -501,14 +501,18 @@ fn insert_normalized_facts(
             );
         }
         type_id_by_normalized_id.insert(normalize_lookup_key(&document.id), document.id.clone());
-        if let Some(metadata_kind) = &document.metadata_kind {
+        if document.kind == SearchDocumentKind::PlatformType
+            && let Some(metadata_kind) = &document.metadata_kind
+        {
             insert_type_lookup_key(
                 &mut type_ids_by_metadata_kind,
                 normalize_lookup_key(metadata_kind),
                 &document.id,
             );
         }
-        if let Some(kind) = &document.type_template_key {
+        if document.kind == SearchDocumentKind::PlatformType
+            && let Some(kind) = &document.type_template_key
+        {
             type_template_by_type_id.insert(
                 document.id.clone(),
                 TypeTemplateFact {
@@ -593,7 +597,7 @@ fn insert_normalized_facts(
 
     for document in documents
         .iter()
-        .filter(|document| document.kind == SearchDocumentKind::PlatformType)
+        .filter(|document| document.kind.is_type_ref_target())
     {
         type_statement
             .execute(params![
@@ -606,7 +610,9 @@ fn insert_normalized_facts(
                 path: path.to_path_buf(),
                 source,
             })?;
-        if let Some(metadata_kind) = &document.metadata_kind {
+        if document.kind == SearchDocumentKind::PlatformType
+            && let Some(metadata_kind) = &document.metadata_kind
+        {
             let type_template_key = document.type_template_key.as_ref();
             type_template_statement
                 .execute(params![

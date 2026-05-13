@@ -56,6 +56,15 @@ directories are service data unless promoted here.
   a possible future implementation helper only for HTML-aware `href` attribute rewriting, and any
   such replacement requires a separate fixture-backed and real-HBK parity task before it becomes a
   runtime dependency.
+- T162 makes enum definition documents provider-owned type-like targets for normalized type
+  references. The private search-index schema version is `15`: `type_identities` now includes enum
+  documents with their existing `enum:system:*` / `enum:metadata_property:*` identities, and
+  `type_refs.target_type_id` can point to those ids when a target name or alias uniquely matches an
+  enum document. Enum identities are not converted to `platform_type:*`; duplicate enum names remain
+  `ambiguous`, and analyzer-side hardcode/fallbacks remain out of scope. Verification passed with
+  `cargo fmt --all --check`, `cargo test -p syntax-helper-search`, `cargo test -p
+  context-resolver-search`, `cargo test --workspace` and a fresh `shcntx_ru.hbk` index inventory
+  recorded under the T162 baseline note.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.
@@ -2031,7 +2040,7 @@ Current gate values:
 
 | Source | Unresolved type references | Ambiguous type references | Classified metadata/type templates | Unclassified type-template diagnostics | Type-template bindings | Expression-chain provider scenario |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `shcntx_ru.hbk` | 17367 | 5 | 121 | 0 | 353 | UAT-SH-018 passed on the accepted provider workflow |
+| `shcntx_ru.hbk` | 15513 | 5 | 121 | 0 | 379 | UAT-SH-018 passed on the accepted provider workflow |
 | `shcntx_root.hbk` | 17211 | 0 | 121 | 0 | 335 | UAT-SH-018 is language-neutral provider coverage; RU remains the representative real-index run |
 
 Strict regression gates:
@@ -2159,6 +2168,21 @@ The remaining 5 ambiguous rows are all `ЭлементыФормы` `property_ty
 distinct `Controls` and `FormItems` platform identities. Resolving them safely requires preserving
 type-reference link targets or an equivalent source-owned target identity during parsing/indexing;
 T144 keeps them explicit rather than choosing a hidden winner from owner names or availability.
+
+T162 makes enum definition documents type-like provider targets for type-reference resolution. A
+representative debug run on 2026-05-13 rebuilt `target/uat/t162-enum-type-ref-ru.sqlite` from
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` with 25415 documents, schema version `15`, CLI
+`elapsed_ms: 113307` and `/usr/bin/time` `elapsed=114.87`, `rss_kb=352836`, `exit=0`.
+`syntax type-ref-gaps --format json` was run twice with byte-identical output and updated RU totals
+to: `47156` total, `31638` resolved, `15513` unresolved, `5` ambiguous and `379`
+template-binding rows. All 15 `ОбновлениеПредопределенныхДанных` references now resolve to
+`enum:system:ОбновлениеПредопределенныхДанных`: 5 `property_type`, 5 `parameter_type` and 5
+`return_type` rows. An inventory SQL check found `0` unresolved rows whose target spelling exactly
+matches one unique enum document. Remaining unresolved exact document-name matches are not treated
+as type-like by this task: they are BSL primitive/domain spellings that also appear as
+`global_method`/`type_property` documents, enum values such as `Дата` / `Null`, query-table members
+or global properties. They remain unresolved until a source/domain-specific provider relation is
+implemented instead of guessing from document names.
 
 T149 confirmed the query-table read-phase reuse path selected by ADR-0011/T127. Focused
 instrumentation over the full `extract_with_loader_into` reader flow now proves that a query-table

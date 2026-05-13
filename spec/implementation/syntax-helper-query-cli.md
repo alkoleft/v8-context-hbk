@@ -249,6 +249,12 @@ documents as private rebuildable provider state. The Rust resolver adapter uses 
 provider-backed module contexts without adding a public SQLite table or changing provider JSON,
 canonical `syntax export` JSON or query-time HBK access.
 
+T162 implementation note: schema version 15 stores enum definition documents in the private
+`type_identities` table so normalized `type_refs` can resolve to provider-owned enum identities
+such as `enum:system:*` when the target name or alias is unique. Enum type-reference targets keep
+their enum ids instead of being reclassified as `platform_type:*`; duplicate enum target matches
+remain explicit `ambiguous` rows.
+
 T135 implementation note: `syntax type-ref-gaps` is a report command over an existing prebuilt
 SQLite index. It counts `type_refs` rows by source role and resolution status, reports template
 bindings as an additional subset counter, and lists top unresolved/ambiguous target names with

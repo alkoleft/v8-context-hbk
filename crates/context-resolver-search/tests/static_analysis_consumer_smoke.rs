@@ -42,6 +42,12 @@ mod provider_setup {
                 .expect("platform type must sink");
         }
         builder
+            .enum_definition(enum_definition(
+                "ОбновлениеПредопределенныхДанных",
+                "PredefinedDataUpdate",
+            ))
+            .expect("enum definition must sink");
+        builder
             .type_property(model::PlatformProperty {
                 owner: name("НастройкиКомпоновкиДанных"),
                 owner_identity: Some("platform_type:НастройкиКомпоновкиДанных".to_string()),
@@ -59,6 +65,24 @@ mod provider_setup {
                 source: source_ref("settings-filter"),
             })
             .expect("platform property must sink");
+        builder
+            .type_property(model::PlatformProperty {
+                owner: name("НастройкиКомпоновкиДанных"),
+                owner_identity: Some("platform_type:НастройкиКомпоновкиДанных".to_string()),
+                name: name("Обновление"),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::PlatformObjects,
+                    model::RecordFamily::TypeProperty,
+                ),
+                usage: None,
+                type_refs: vec![model::TypeRef {
+                    name: "ОбновлениеПредопределенныхДанных".to_string(),
+                }],
+                description: Some("Режим обновления предопределенных данных.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("settings-predefined-data-update"),
+            })
+            .expect("enum-backed property must sink");
         builder
             .type_method(model::PlatformMethod {
                 owner: name("ОтборКомпоновкиДанных"),
@@ -137,6 +161,31 @@ mod provider_setup {
                 source: source_ref("global-message"),
             })
             .expect("global method must sink");
+        builder
+            .global_method(model::GlobalMethod {
+                name: name("ПолучитьОбновлениеПредопределенныхДанныхИнформационнойБазы"),
+                signatures: vec![model::Signature {
+                    text: "ПолучитьОбновлениеПредопределенныхДанныхИнформационнойБазы(<Режим>)"
+                        .to_string(),
+                    parameters: vec![model::Parameter {
+                        name: "Режим".to_string(),
+                        required: false,
+                        type_refs: vec![model::TypeRef {
+                            name: "ОбновлениеПредопределенныхДанных".to_string(),
+                        }],
+                        description: Some("Режим обновления.".to_string()),
+                    }],
+                    return_types: Vec::new(),
+                    variant: None,
+                }],
+                return_types: vec![model::TypeRef {
+                    name: "ОбновлениеПредопределенныхДанных".to_string(),
+                }],
+                description: Some("Возвращает режим обновления.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("global-predefined-data-update"),
+            })
+            .expect("enum-backed global method must sink");
 
         for fact in shlang_string_facts() {
             builder.add_language_fact(fact);
@@ -210,6 +259,23 @@ mod provider_setup {
         record
     }
 
+    fn enum_definition(primary: &str, alias: &str) -> model::EnumDefinition {
+        model::EnumDefinition {
+            identity: None,
+            name: name_with_alias(primary, alias),
+            value_links: Vec::new(),
+            description: Some(format!("{primary} enum description.")),
+            facts: model::SectionFacts::default(),
+            source: model::SyntaxHelperSource {
+                hbk_path: PathBuf::from("/fixtures/shcntx_ru.hbk"),
+                locale: "ru".to_string(),
+                toc_path: Some(primary.to_string()),
+                html_path: format!("objects/catalog2/{primary}.html"),
+                page_title: primary.to_string(),
+            },
+        }
+    }
+
     fn name(primary: &str) -> model::LocalizedName {
         model::LocalizedName {
             primary: primary.to_string(),
@@ -262,10 +328,10 @@ mod analyzer_lookup {
     use std::path::Path;
 
     use context_resolver_core::{
-        AvailabilityContext, CallableLookup, CompositeResolver, ContextResolver,
-        GlobalContextLanguage, GlobalContextQuery, LanguageDomain, MemberQuery,
-        PlatformTypeTemplateKey, ResolveContext, ResolveStatus, SourceId, TemplateParameterBinding,
-        TypeLookup,
+        AvailabilityContext, CallableLookup, CompositeResolver, ContextResolver, FactDetails,
+        FactKind, GlobalContextLanguage, GlobalContextQuery, LanguageDomain, MemberQuery,
+        PlatformTypeTemplateKey, RelationKind, ResolveContext, ResolveQuery, ResolveStatus,
+        SourceId, TemplateParameterBinding, TypeLookup,
     };
     use context_resolver_search::{LanguageSearchSource, PlatformSearchSource};
 
@@ -357,6 +423,52 @@ mod analyzer_lookup {
                 .local_id,
             "platform_type:ОтборКомпоновкиДанных"
         );
+        let predefined_update = resolver
+            .members(
+                &settings,
+                MemberQuery {
+                    name: Some("Обновление"),
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("enum-backed member lookup must not fail");
+        assert_eq!(predefined_update.status, ResolveStatus::Ok);
+        assert_eq!(
+            predefined_update.facts[0].info.types[0]
+                .resolved_id()
+                .expect("property enum type id must be resolved")
+                .0
+                .local_id,
+            "enum:system:ОбновлениеПредопределенныхДанных"
+        );
+        let enum_type_id = predefined_update.facts[0].info.types[0]
+            .resolved_id()
+            .expect("property enum type id must be resolved")
+            .clone();
+        let enum_fact = resolver
+            .resolve(ResolveQuery::Id(&enum_type_id.0), &ResolveContext::all())
+            .expect("enum-backed type id lookup must not fail");
+        assert_eq!(enum_fact.status, ResolveStatus::Ok);
+        assert_eq!(enum_fact.facts[0].id.kind, FactKind::Type);
+        assert!(matches!(enum_fact.facts[0].details, FactDetails::Type(_)));
+        let related_enum = resolver
+            .related(
+                &predefined_update.facts[0].id.0,
+                RelationKind::HasType,
+                &ResolveContext::all(),
+            )
+            .expect("enum-backed type relation traversal must not fail");
+        assert_eq!(related_enum.status, ResolveStatus::Ok);
+        assert_eq!(related_enum.facts[0].id.kind, FactKind::Type);
+        assert_eq!(
+            related_enum.facts[0].id.local_id,
+            "enum:system:ОбновлениеПредопределенныхДанных"
+        );
+        assert!(matches!(
+            related_enum.facts[0].details,
+            FactDetails::Type(_)
+        ));
         let filter_type = filter_member
             .info
             .types
@@ -397,6 +509,37 @@ mod analyzer_lookup {
                 .0
                 .local_id,
             "platform_type:ЭлементОтбораКомпоновкиДанных"
+        );
+
+        let update_callable = resolver
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: None,
+                    name: "ПолучитьОбновлениеПредопределенныхДанныхИнформационнойБазы",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("enum-backed global callable lookup must not fail");
+        assert_eq!(update_callable.status, ResolveStatus::Ok);
+        let update_callable = update_callable
+            .facts
+            .first()
+            .expect("enum-backed global callable must resolve");
+        assert_eq!(
+            update_callable.info.return_types[0]
+                .resolved_id()
+                .expect("callable enum return type id must be resolved")
+                .0
+                .local_id,
+            "enum:system:ОбновлениеПредопределенныхДанных"
+        );
+        assert_eq!(
+            update_callable.info.signatures[0].parameters[0].types[0]
+                .resolved_id()
+                .expect("callable enum parameter type id must be resolved")
+                .0
+                .local_id,
+            "enum:system:ОбновлениеПредопределенныхДанных"
         );
 
         let document_object = resolver

@@ -49,6 +49,32 @@ Current first unchecked task: none.
 
 ## Active Tasks
 
+- [x] T162: Resolve provider type references to enum document identities.
+  - Scope: make `syntax-helper-search` treat source-backed enum definition documents as provider
+    type-like targets for normalized `type_refs`, so exact/alias references resolve to
+    `enum:system:*` identities instead of remaining unresolved when the enum document is unique.
+  - Boundaries: start with confirmed enum documents only; do not guess other document categories;
+    do not convert enum identities into `platform_type:*`; do not add analyzer-side fallbacks,
+    localized-name hardcode or method-name hardcode; preserve explicit ambiguity when multiple
+    type-like targets match.
+  - Spec refs: `FR-SH-PROVIDER-001`, `FR-CTX-RESOLVE-001`, `implementation/components.md`,
+    `implementation/solution-context-resolve.md`, `acceptance/baseline.md`.
+  - Verification: focused `syntax-helper-search` regression for enum type-ref targets;
+    `context-resolver-search` static-analysis smoke for property/callable return/parameter enum
+    type refs; inventory assertion for unresolved rows whose target exactly matches a unique enum
+    document; `cargo test -p syntax-helper-search`; `cargo test -p context-resolver-search`; run
+    workspace tests when practical.
+  - Result: `syntax-helper-search` now treats enum definition documents as provider-owned type-like
+    targets alongside platform types. `type_identities` stores enum documents under their existing
+    `enum:system:*` / `enum:metadata_property:*` ids, normalized `type_refs` can resolve to those
+    ids, relation traversal can follow enum type-reference targets, and duplicate enum-name matches
+    remain `ambiguous`. `context-resolver-search` keeps enum-backed type references resolvable as
+    `TypeId` facts through direct id lookup and `has_type` traversal. The private rebuildable
+    search-index schema is version `15`.
+  - Verified: `cargo fmt --all --check`; `cargo test -p syntax-helper-search`; `cargo test -p
+    context-resolver-search`; `cargo test --workspace`; fresh `shcntx_ru.hbk` index plus
+    deterministic `syntax type-ref-gaps` and SQL inventory recorded in `acceptance/baseline.md`.
+
 - [x] T152: Add public resolver module-context boundary for HBK-owned platform module facts.
   - Scope: extend `context-resolver-core` with provider-neutral module context DTOs/query and
     extend `context-resolver-search` so HBK-backed indexes expose platform global

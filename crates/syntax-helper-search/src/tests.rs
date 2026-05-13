@@ -2452,6 +2452,152 @@ mod tests {
     }
 
     #[test]
+    fn enum_document_becomes_type_ref_target_without_platform_type_identity() {
+        let path = temp_path("enum-type-ref-target.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![platform_type("Владелец", None, "owner")],
+            enums: vec![enum_definition_with_alias(
+                "ОбновлениеПредопределенныхДанных",
+                "PredefinedDataUpdate",
+                "objects/catalog2/predefined-data-update.html",
+            )],
+            type_properties: vec![type_property(
+                "Владелец",
+                "Обновление",
+                "ОбновлениеПредопределенныхДанных",
+            )],
+            ..model::PlatformContext::default()
+        };
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let (target_type_id, status, candidates): (Option<String>, String, Option<String>) = index
+            .connection
+            .query_row(
+                "SELECT target_type_id, target_resolution_status, target_candidate_type_ids
+                 FROM type_refs
+                 WHERE source_document_id = 'type_property:platform_type:Владелец:Обновление'
+                   AND ref_kind = 'property_type'
+                   AND target_type_name = 'ОбновлениеПредопределенныхДанных'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("enum type ref row must exist");
+
+        assert_eq!(
+            target_type_id,
+            Some("enum:system:ОбновлениеПредопределенныхДанных".to_string())
+        );
+        assert_eq!(status, "ok");
+        assert_eq!(candidates, None);
+
+        let identities = index
+            .type_identities_by_name("ОбновлениеПредопределенныхДанных")
+            .expect("enum type identity lookup must work");
+        assert_eq!(identities.len(), 1);
+        assert_eq!(
+            identities[0].document.id,
+            "enum:system:ОбновлениеПредопределенныхДанных"
+        );
+        assert_eq!(identities[0].document.kind, SearchDocumentKind::Enum);
+
+        let platform_like_count: i64 = index
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM type_identities WHERE type_id = 'platform_type:ОбновлениеПредопределенныхДанных'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("type identity count must be readable");
+        assert_eq!(platform_like_count, 0);
+
+        let related_type_refs = index
+            .related_by_id_and_edge(
+                "type_property:platform_type:Владелец:Обновление",
+                "has_type",
+                20,
+            )
+            .expect("edge-filtered enum type ref must query normalized rows");
+        assert_eq!(related_type_refs.len(), 1);
+        assert_eq!(
+            related_type_refs[0].document.id,
+            "enum:system:ОбновлениеПредопределенныхДанных"
+        );
+
+        let unresolved_unique_enum_matches: i64 = index
+            .connection
+            .query_row(
+                "SELECT COUNT(*)
+                 FROM type_refs r
+                 WHERE r.target_resolution_status = 'unresolved'
+                   AND (
+                     SELECT COUNT(*)
+                     FROM documents d
+                     WHERE d.kind = 'enum'
+                       AND (d.name_primary = r.target_type_name OR d.name_alias = r.target_type_name)
+                   ) = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("unique enum unresolved inventory must be readable");
+        assert_eq!(unresolved_unique_enum_matches, 0);
+    }
+
+    #[test]
+    fn duplicate_enum_type_ref_targets_remain_ambiguous() {
+        let path = temp_path("duplicate-enum-type-ref-target.sqlite");
+        let context = model::PlatformContext {
+            platform_types: vec![platform_type("Владелец", None, "owner")],
+            enums: vec![
+                enum_definition_with_alias(
+                    "ИспользованиеТекущейСтроки",
+                    "SelectedRowsUse",
+                    "objects/catalog2/selected-rows-use.html",
+                ),
+                enum_definition_with_alias(
+                    "ИспользованиеТекущейСтроки",
+                    "CurrentRowUse",
+                    "objects/catalog2/current-row-use.html",
+                ),
+            ],
+            type_properties: vec![type_property(
+                "Владелец",
+                "Использование",
+                "ИспользованиеТекущейСтроки",
+            )],
+            ..model::PlatformContext::default()
+        };
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open read-only");
+        let (target_type_id, status, candidates): (Option<String>, String, Option<String>) = index
+            .connection
+            .query_row(
+                "SELECT target_type_id, target_resolution_status, target_candidate_type_ids
+                 FROM type_refs
+                 WHERE source_document_id = 'type_property:platform_type:Владелец:Использование'
+                   AND ref_kind = 'property_type'
+                   AND target_type_name = 'ИспользованиеТекущейСтроки'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("duplicate enum type ref row must exist");
+
+        assert_eq!(target_type_id, None);
+        assert_eq!(status, "ambiguous");
+        assert_eq!(
+            candidates
+                .expect("ambiguous enum candidates must be stored")
+                .lines()
+                .collect::<Vec<_>>(),
+            vec![
+                "enum:system:ИспользованиеТекущейСтроки:CurrentRowUse",
+                "enum:system:ИспользованиеТекущейСтроки:SelectedRowsUse",
+            ]
+        );
+    }
+
+    #[test]
     fn type_reference_gap_report_classifies_rows_without_hidden_winners() {
         let path = temp_path("type-reference-gap-report.sqlite");
         let context = model::PlatformContext {

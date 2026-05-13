@@ -228,6 +228,10 @@ impl SearchDocumentKind {
         )
     }
 
+    pub fn is_type_ref_target(self) -> bool {
+        matches!(self, Self::PlatformType | Self::Enum)
+    }
+
     pub fn type_ref_kind(self) -> &'static str {
         match self {
             Self::PlatformType => "extends",
