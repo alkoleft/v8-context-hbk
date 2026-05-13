@@ -92,6 +92,19 @@ directories are service data unless promoted here.
   `LanguageDomain::BslLanguage`, not `PlatformApi`. Verification passed with
   `cargo test -p syntax-helper-language`, `cargo test -p syntax-helper-search`,
   `cargo test -p context-resolver-search` and `cargo test --workspace`.
+- T166 changes the Rust dependency-facing query-table boundary. Existing `shcntx_*`
+  `query_table`, `query_table_field` and `query_table_parameter` provider documents remain hidden
+  from the platform adapter, but are exposed through a distinct `LanguageDomain::QueryLanguage`
+  query-table source. The source returns template/family-level query table facts with stable ids,
+  syntax/identifier/table-role data, owner semantic path, source-derived template parameter slots,
+  owned field/parameter facts, type references and source-neutral evidence/provenance by resolver
+  source id, evidence id and locale. It does not expose raw HBK paths, TOC paths, HTML paths or page
+  titles through `context-resolver-core`, and it does not synthesize concrete metadata query tables
+  or analyzer fallback tables. The query-table source advertises exact lookup and relation
+  capabilities only. The private search-index schema version is `16`, adding persisted query-table
+  metadata without making SQLite a dependency-facing contract. Verification passed with focused
+  query-table resolver/search tests, `cargo check --workspace`, `cargo fmt --all --check` and
+  `cargo test --workspace`.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.
@@ -222,9 +235,10 @@ directories are service data unless promoted here.
   `shlang:def_Func` for BSL language types/constructs, `shquery:SELECTStatement`,
   `shquery:SUM`, `shquery:STRING` and `shquery:LitString` for query clauses/functions/literals,
   and `dcsui:SKD_Functions_Strings`, `dcsui:SKD_ExtQueryLangv` and `dcsui:SKD_Lang` for data
-  composition expression/query-extension syntax. Existing `shcntx_*` `query_table`,
-  `query_table_field` and `query_table_parameter` index facts remain CLI/provider facts for now;
-  they are not selected as the first `QueryLanguage` resolver source.
+  composition expression/query-extension syntax. T166 supersedes the earlier temporary decision for
+  existing `shcntx_*` `query_table`, `query_table_field` and `query_table_parameter` index facts:
+  they now have an explicit QueryLanguage query-table resolver source while remaining hidden from
+  the platform adapter.
 - T89 implemented the first shared language-fact extraction/index fixture slice. The new
   `syntax-helper-language` crate extracts `language_type`, `language_construct`,
   `language_function`, `language_keyword` and `language_literal` facts from committed real-source

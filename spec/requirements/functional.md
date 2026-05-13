@@ -895,9 +895,21 @@ expression functions, must remain source-qualified and domain-qualified until ex
 connect them.
 
 The existing `query_table`, `query_table_field` and `query_table_parameter` facts extracted from
-`shcntx_*` remain CLI/provider facts until a language-domain extraction/index task defines how they
-map into the source-neutral resolver. They must not be silently exposed as platform adapter facts or
-as the first query-language resolver provider.
+`shcntx_*` are query-language/SDBL template facts, not platform API members. They must be exposed
+through an explicit `LanguageDomain::QueryLanguage` resolver source for query-table templates and
+owned field/parameter facts. The platform adapter must continue to hide these provider documents as
+`PlatformApi` facts.
+
+The query-table resolver source exposes template/family-level facts only. HBK owns the source-backed
+table family/template shape, including stable template identity, syntax and identifier forms,
+primary/additional/unknown table role, owner semantic context/path, template parameter slots derived
+from source syntax when present, owned fields, owned parameters, field/parameter type references and
+source-neutral evidence/provenance. Public resolver DTOs identify source evidence by resolver source
+and evidence id, not by raw HBK path, TOC path, HTML path, page title or Syntax Assistant storage
+details. Downstream metadata providers own concrete configuration objects and their
+members; downstream analyzers may instantiate an HBK table template with a metadata object, but this
+repository must not synthesize concrete query tables such as `Catalog.Products`, read downstream
+metadata, or add analyzer fallback tables.
 
 Domain separation is explicit for all type-bearing facts:
 
@@ -905,8 +917,9 @@ Domain separation is explicit for all type-bearing facts:
   `LanguageDomain::PlatformApi`;
 - BSL language facts come from `shlang_*` or another explicit BSL-language provider and keep
   `LanguageDomain::BslLanguage`;
-- query-language facts come from `shquery_*` and data-composition language sources such as
-  `dcsui_*`, with distinct source identities inside `LanguageDomain::QueryLanguage`;
+- query-language facts come from explicit query-language providers: `shquery_*` and
+  data-composition language sources such as `dcsui_*`, plus `shcntx_*` query-table template facts
+  exposed through a distinct source identity inside `LanguageDomain::QueryLanguage`;
 - configuration metadata types come from a downstream metadata provider and keep
   `LanguageDomain::Configuration`;
 - source-code declarations come from a downstream source-code provider and keep
@@ -945,8 +958,11 @@ Acceptance:
 - The platform adapter can be implemented without exposing SQLite tables, FTS fields, HBK paths,
   TOC paths, HTML paths or page titles as public resolver facts.
 - Existing `query_table`, `query_table_field` and `query_table_parameter` provider facts are not
-  exposed through the platform adapter. T66 selected them to remain CLI/provider facts until a later
-  language-domain task defines an explicit resolver mapping or relation shape.
+  exposed through the platform adapter. They are exposed only through the explicit QueryLanguage
+  query-table resolver source.
+- Query table template lookup by id/name/domain preserves stable ids, table role, syntax/identifier
+  data, owner path, template parameter slots when available, owned field/parameter identity and
+  type-reference evidence.
 - HBK-owned module context facts stay in `LanguageDomain::PlatformApi` and must not include
   metadata-owned facts such as concrete form attributes, form elements, module ownership or
   generated configuration types. If a module-context fact such as `ЭтотОбъект` / `ThisObject` is not

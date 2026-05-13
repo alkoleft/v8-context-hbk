@@ -165,6 +165,49 @@ pub struct MetadataTemplateInfo {
     pub parameters: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueryTableRole {
+    Primary,
+    Additional,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FactProvenance {
+    pub source: SourceId,
+    pub evidence_id: String,
+    pub locale: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryTableInfo {
+    pub syntax: Option<Name>,
+    pub identifier: Option<String>,
+    pub table_role: QueryTableRole,
+    pub owner_path: Vec<Name>,
+    pub template_parameters: Vec<String>,
+    pub description: Option<String>,
+    pub source: Option<FactProvenance>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryFieldInfo {
+    pub owner: FactId,
+    pub types: Vec<TypeRef>,
+    pub description: Option<String>,
+    pub note: Option<String>,
+    pub source: Option<FactProvenance>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryParameterInfo {
+    pub owner: FactId,
+    pub types: Vec<TypeRef>,
+    pub description: Option<String>,
+    pub default_value: Option<String>,
+    pub source: Option<FactProvenance>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PlatformTypeTemplateKey {
     pub family: String,
@@ -234,7 +277,9 @@ pub enum FactDetails {
     Enum,
     EnumValue,
     Language,
-    QueryTable,
+    QueryTable(QueryTableInfo),
+    QueryField(QueryFieldInfo),
+    QueryParameter(QueryParameterInfo),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

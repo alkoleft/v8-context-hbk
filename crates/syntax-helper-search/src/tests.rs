@@ -2096,6 +2096,96 @@ mod tests {
     }
 
     #[test]
+    fn query_table_metadata_round_trips_through_public_search_document() {
+        let mut table = query_table("Справочник", "Таблицы справочников", "Таблица справочника");
+        table.syntax = Some(name(
+            "Справочник.<Имя справочника>",
+            Some("Catalog.<Catalog name>"),
+        ));
+        table.source = source_with_html_path("Таблица справочника", "tables/catalog.html");
+        let mut field = query_table_field("Таблица справочника", "Таблицы справочников", "Ссылка");
+        field.type_refs = vec![model::TypeRef {
+            name: "ОтборКомпоновкиДанных".to_string(),
+        }];
+        field.note = Some("Field note.".to_string());
+        let mut parameter =
+            query_table_parameter("Таблица справочника", "Таблицы справочников", "Дата");
+        parameter.type_refs = vec![model::TypeRef {
+            name: "ОтборКомпоновкиДанных".to_string(),
+        }];
+        parameter.default_value = Some("НачалоПериода".to_string());
+        let context = model::PlatformContext {
+            platform_types: vec![platform_type(
+                "ОтборКомпоновкиДанных",
+                None,
+                "Type description.",
+            )],
+            query_tables: vec![table],
+            table_fields: vec![field],
+            table_parameters: vec![parameter],
+            ..model::PlatformContext::default()
+        };
+        let path = temp_path("query-table-metadata.sqlite");
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+        let index = SearchIndex::open_read_only(&path).expect("index must open");
+
+        let table = index
+            .get_by_id("query_table:Справочник")
+            .expect("table lookup must not fail")
+            .expect("query table must exist")
+            .document;
+        assert_eq!(
+            table.query_syntax.expect("query syntax must persist").primary,
+            "Справочник.<Имя справочника>"
+        );
+        assert_eq!(table.query_identifier.as_deref(), Some("Справочник"));
+        assert_eq!(
+            table.query_table_role,
+            Some(model::QueryTableRole::Primary)
+        );
+        assert_eq!(
+            table.template_parameters,
+            vec!["Имя справочника".to_string(), "Catalog name".to_string()]
+        );
+        assert_eq!(table.owner_path[0].primary, "Таблицы справочников");
+        assert_eq!(
+            table.source.expect("source must persist").html_path,
+            "tables/catalog.html"
+        );
+        assert_eq!(
+            index
+                .get_by_name("Справочник.<Имя справочника>")
+                .expect("syntax lookup must not fail")[0]
+                .document
+                .id,
+            "query_table:Справочник"
+        );
+
+        let field = index
+            .get_by_id("query_table_field:query_table:Справочник:Ссылка")
+            .expect("field lookup must not fail")
+            .expect("query field must exist")
+            .document;
+        assert_eq!(field.note.as_deref(), Some("Field note."));
+        assert_eq!(field.type_ref_facts.len(), 1);
+        assert_eq!(
+            field.type_ref_facts[0].target,
+            SearchTypeRefTarget::Ok("platform_type:ОтборКомпоновкиДанных".to_string())
+        );
+
+        let parameter = index
+            .get_by_id("query_table_parameter:query_table:Справочник:Дата")
+            .expect("parameter lookup must not fail")
+            .expect("query parameter must exist")
+            .document;
+        assert_eq!(parameter.default_value.as_deref(), Some("НачалоПериода"));
+        assert_eq!(
+            parameter.type_ref_facts[0].target,
+            SearchTypeRefTarget::Ok("platform_type:ОтборКомпоновкиДанных".to_string())
+        );
+    }
+
+    #[test]
     fn missing_query_table_parent_identity_rejects_member_indexing() {
         let mut builder = SearchIndexBuilder::new();
         let mut table = query_table("Задача", "Таблицы задач", "Основная таблица");

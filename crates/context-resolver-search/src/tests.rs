@@ -939,6 +939,203 @@ mod tests {
     }
 
     #[test]
+    fn query_table_source_exposes_templates_fields_parameters_and_type_refs() {
+        let query_source = SourceId::new("shcntx-query");
+        let platform_source = fixture_source();
+        let index = fixture_index("query-table-source.sqlite");
+        let adapter = LanguageSearchSource::new_query_tables(
+            query_source.as_str(),
+            platform_source.clone(),
+            index,
+        );
+        let capabilities = adapter.capabilities();
+        assert!(capabilities.exact_lookup);
+        assert!(capabilities.relations);
+        assert!(!capabilities.type_lookup);
+        assert!(!capabilities.callables);
+        assert!(!capabilities.global_context);
+        let global_context = adapter
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Sdbl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("query table global context refusal must not fail");
+        assert_eq!(global_context.status, ResolveStatus::Unsupported);
+
+        let table_id = FactId::new(
+            query_source.clone(),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryTable,
+            "query_table:ОсновнаяТаблица",
+        );
+        let table = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&table_id),
+                &ResolveContext::all(),
+            )
+            .expect("query table id lookup must not fail");
+        assert_eq!(table.status, ResolveStatus::Ok);
+        assert_eq!(table.facts[0].id, table_id);
+        let FactDetails::QueryTable(info) = &table.facts[0].details else {
+            panic!("query table must expose query table details");
+        };
+        assert_eq!(info.identifier.as_deref(), Some("ОсновнаяТаблица"));
+        assert_eq!(info.table_role, QueryTableRole::Primary);
+        assert_eq!(
+            info.syntax.as_ref().map(|syntax| syntax.primary.as_str()),
+            Some("ОсновнаяТаблица.<Имя таблицы>")
+        );
+        assert_eq!(
+            info.template_parameters,
+            vec!["Имя таблицы".to_string(), "Table name".to_string()]
+        );
+        assert_eq!(info.owner_path[0].primary, "Таблицы запросов");
+        let source = info.source.as_ref().expect("query table source evidence");
+        assert_eq!(source.source, query_source);
+        assert_eq!(source.evidence_id, "query_table:ОсновнаяТаблица");
+        assert_eq!(source.locale.as_deref(), Some("ru"));
+
+        let by_name = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::ExactName {
+                    source: Some(&query_source),
+                    domain: Some(LanguageDomain::QueryLanguage),
+                    kind: Some(FactKind::QueryTable),
+                    name: "Основная таблица",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("query table exact-name lookup must not fail");
+        assert_eq!(by_name.status, ResolveStatus::Ok);
+        assert_eq!(by_name.facts[0].id, table_id);
+
+        let by_identifier = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::ExactName {
+                    source: Some(&query_source),
+                    domain: Some(LanguageDomain::QueryLanguage),
+                    kind: Some(FactKind::QueryTable),
+                    name: "ОсновнаяТаблица",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("query table identifier lookup must not fail");
+        assert_eq!(by_identifier.status, ResolveStatus::Ok);
+        assert_eq!(by_identifier.facts[0].id, table_id);
+
+        let by_syntax = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::ExactName {
+                    source: Some(&query_source),
+                    domain: Some(LanguageDomain::QueryLanguage),
+                    kind: Some(FactKind::QueryTable),
+                    name: "ОсновнаяТаблица.<Имя таблицы>",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("query table syntax lookup must not fail");
+        assert_eq!(by_syntax.status, ResolveStatus::Ok);
+        assert_eq!(by_syntax.facts[0].id, table_id);
+
+        let field_id = FactId::new(
+            query_source.clone(),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryField,
+            "query_table_field:query_table:ОсновнаяТаблица:Период",
+        );
+        let field = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&field_id),
+                &ResolveContext::all(),
+            )
+            .expect("query field id lookup must not fail");
+        assert_eq!(field.status, ResolveStatus::Ok);
+        assert_eq!(field.facts[0].owner.as_ref(), Some(&table_id));
+        let FactDetails::QueryField(field_info) = &field.facts[0].details else {
+            panic!("query field must expose query field details");
+        };
+        assert_eq!(field_info.owner, table_id);
+        assert_eq!(field_info.note.as_deref(), Some("Field note."));
+        assert_eq!(
+            field_info.types[0].target,
+            TypeRefTarget::Ok(TypeId(FactId::new(
+                platform_source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:Дата",
+            )))
+        );
+
+        let member_of = adapter
+            .related(&field_id, RelationKind::MemberOf, &ResolveContext::all())
+            .expect("query field member_of traversal must not fail");
+        assert_eq!(member_of.status, ResolveStatus::Ok);
+        assert_eq!(member_of.facts[0].id, table_id);
+
+        let has_type = adapter
+            .related(&field_id, RelationKind::HasType, &ResolveContext::all())
+            .expect("query field has_type traversal must not fail");
+        assert_eq!(has_type.status, ResolveStatus::Ok);
+        assert_eq!(
+            has_type.facts[0].id,
+            FactId::new(
+                platform_source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:Дата",
+            )
+        );
+
+        let forged_platform_id = FactId::new(
+            query_source.clone(),
+            LanguageDomain::QueryLanguage,
+            FactKind::Type,
+            "platform_type:Дата",
+        );
+        let forged_related = adapter
+            .related(
+                &forged_platform_id,
+                RelationKind::HasType,
+                &ResolveContext::all(),
+            )
+            .expect("forged query-table relation request must not fail");
+        assert_eq!(forged_related.status, ResolveStatus::NotFound);
+
+        let parameter_id = FactId::new(
+            query_source,
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryParameter,
+            "query_table_parameter:query_table:ОсновнаяТаблица:Дата",
+        );
+        let parameter = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&parameter_id),
+                &ResolveContext::all(),
+            )
+            .expect("query parameter id lookup must not fail");
+        assert_eq!(parameter.status, ResolveStatus::Ok);
+        let FactDetails::QueryParameter(parameter_info) = &parameter.facts[0].details else {
+            panic!("query parameter must expose query parameter details");
+        };
+        assert_eq!(
+            parameter_info.default_value.as_deref(),
+            Some("НачалоПериода")
+        );
+        assert_eq!(
+            parameter_info.types[0].target,
+            TypeRefTarget::Ok(TypeId(FactId::new(
+                platform_source,
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:Дата",
+            )))
+        );
+    }
+
+    #[test]
     fn platform_adapter_does_not_synthesize_constructor_return_from_owner() {
         let source = fixture_source();
         let filter = TypeId(FactId::new(
@@ -1353,6 +1550,7 @@ mod tests {
             ),
             platform_type("КоллекцияЭлементовОтбораКомпоновкиДанных", None),
             platform_type("ЭлементОтбораКомпоновкиДанных", None),
+            platform_type("Дата", Some("Date")),
         ] {
             builder
                 .platform_type(record)
@@ -1551,12 +1749,16 @@ mod tests {
             .query_table(model::QueryTable {
                 identity: Some("query_table:ОсновнаяТаблица".to_string()),
                 name: "Основная таблица".to_string(),
-                syntax: Some(name("ОсновнаяТаблица", None)),
+                syntax: Some(name(
+                    "ОсновнаяТаблица.<Имя таблицы>",
+                    Some("MainTable.<Table name>"),
+                )),
                 identifier: Some("ОсновнаяТаблица".to_string()),
                 semantic: model::SemanticContext::new(
                     model::BranchKind::QueryTables,
                     model::RecordFamily::QueryTable,
-                ),
+                )
+                .with_owner_path(vec![name("Таблицы запросов", Some("Query tables"))]),
                 table_role: model::QueryTableRole::Primary,
                 description: Some("Query provider fact.".to_string()),
                 source: source_ref("query-table"),
@@ -1570,12 +1772,16 @@ mod tests {
                 semantic: model::SemanticContext::new(
                     model::BranchKind::QueryTables,
                     model::RecordFamily::QueryTableField,
-                ),
+                )
+                .with_owner_path(vec![
+                    name("Таблицы запросов", Some("Query tables")),
+                    name("Основная таблица", None),
+                ]),
                 type_refs: vec![model::TypeRef {
                     name: "Дата".to_string(),
                 }],
                 description: Some("Query field provider fact.".to_string()),
-                note: None,
+                note: Some("Field note.".to_string()),
                 source: source_ref("query-table-field"),
             })
             .expect("query table field must sink");
@@ -1587,12 +1793,16 @@ mod tests {
                 semantic: model::SemanticContext::new(
                     model::BranchKind::QueryTables,
                     model::RecordFamily::QueryTableParameter,
-                ),
+                )
+                .with_owner_path(vec![
+                    name("Таблицы запросов", Some("Query tables")),
+                    name("Основная таблица", None),
+                ]),
                 type_refs: vec![model::TypeRef {
                     name: "Дата".to_string(),
                 }],
                 description: Some("Query parameter provider fact.".to_string()),
-                default_value: None,
+                default_value: Some("НачалоПериода".to_string()),
                 source: source_ref("query-table-parameter"),
             })
             .expect("query table parameter must sink");

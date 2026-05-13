@@ -185,6 +185,31 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 .as_ref()
                 .and_then(|syntax| syntax.alias.clone()),
         };
+        let mut document = document(
+            SearchDocumentKind::QueryTable,
+            None,
+            &name,
+            &[],
+            &[],
+            &[],
+            record.description.as_deref(),
+            String::new(),
+        );
+        document.owner_path = record.semantic.owner_path.clone();
+        document.template_parameters = query_template_parameters(record.syntax.as_ref());
+        document.query_syntax = record.syntax.clone();
+        document.query_identifier = record.identifier.clone();
+        document.query_table_role = Some(record.table_role);
+        document.source = Some(record.source.clone());
+        if let Some(identifier) = &record.identifier {
+            document.relation_keys.push(normalize_lookup_key(identifier));
+        }
+        if let Some(syntax) = &record.syntax {
+            document.relation_keys.push(normalize_lookup_key(&syntax.primary));
+            if let Some(alias) = &syntax.alias {
+                document.relation_keys.push(normalize_lookup_key(alias));
+            }
+        }
         self.query_tables.push(QueryTableIdentityInput {
             identity: record.identity.clone(),
             name_primary: record.name.clone(),
@@ -192,16 +217,7 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
             semantic: record.semantic.clone(),
         });
         self.drafts.push(DocumentDraft::new(
-            document(
-                SearchDocumentKind::QueryTable,
-                None,
-                &name,
-                &[],
-                &[],
-                &[],
-                record.description.as_deref(),
-                String::new(),
-            ),
+            document,
             DraftIdentity::QueryTable {
                 name_primary: record.name,
                 identifier: record.identifier,
@@ -253,20 +269,24 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
 
     fn table_field(&mut self, record: model::QueryTableField) -> Result<(), Self::Error> {
         let name = model::LocalizedName {
-            primary: record.name,
+            primary: record.name.clone(),
             alias: None,
         };
+        let mut document = document(
+            SearchDocumentKind::QueryTableField,
+            Some(&record.owner),
+            &name,
+            &[],
+            &[],
+            &record.type_refs,
+            record.description.as_deref(),
+            String::new(),
+        );
+        document.owner_path = record.semantic.owner_path.clone();
+        document.note = record.note.clone();
+        document.source = Some(record.source.clone());
         self.drafts.push(DocumentDraft::new(
-            document(
-                SearchDocumentKind::QueryTableField,
-                Some(&record.owner),
-                &name,
-                &[],
-                &[],
-                &record.type_refs,
-                record.description.as_deref(),
-                String::new(),
-            ),
+            document,
             DraftIdentity::QueryMember {
                 owner_identity: record.owner_identity,
             },
@@ -276,20 +296,24 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
 
     fn table_parameter(&mut self, record: model::QueryTableParameter) -> Result<(), Self::Error> {
         let name = model::LocalizedName {
-            primary: record.name,
+            primary: record.name.clone(),
             alias: None,
         };
+        let mut document = document(
+            SearchDocumentKind::QueryTableParameter,
+            Some(&record.owner),
+            &name,
+            &[],
+            &[],
+            &record.type_refs,
+            record.description.as_deref(),
+            String::new(),
+        );
+        document.owner_path = record.semantic.owner_path.clone();
+        document.default_value = record.default_value.clone();
+        document.source = Some(record.source.clone());
         self.drafts.push(DocumentDraft::new(
-            document(
-                SearchDocumentKind::QueryTableParameter,
-                Some(&record.owner),
-                &name,
-                &[],
-                &[],
-                &record.type_refs,
-                record.description.as_deref(),
-                String::new(),
-            ),
+            document,
             DraftIdentity::QueryMember {
                 owner_identity: record.owner_identity,
             },

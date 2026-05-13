@@ -51,6 +51,51 @@ Current first unchecked task: none.
 
 ## Active Tasks
 
+### [x] T166. Expose shcntx query table templates through the QueryLanguage resolver source
+
+References: FR-CTX-RESOLVE-001, UC-CTX-001, UC-CTX-002,
+`implementation/solution-context-resolve.md`, `implementation/components.md`.
+
+Scope:
+
+- Expose existing `query_table`, `query_table_field` and `query_table_parameter` search documents
+  through a distinct `LanguageDomain::QueryLanguage` Rust resolver source.
+- Return template/family-level facts only: stable ids, syntax/identifier/table-role data, owner
+  semantic path, source-derived template parameter slots, owned field/parameter identities, type
+  references and source-neutral evidence/provenance.
+- Preserve domain separation: query-table facts are not `PlatformApi` facts, do not become platform
+  members, do not instantiate concrete metadata tables and do not add analyzer fallback tables.
+- Cover exact lookup and relation traversal with focused `syntax-helper-search` and
+  `context-resolver-search` tests, including the existing platform-adapter hiding behavior.
+
+Verification:
+
+- `cargo test -p syntax-helper-search query_table`
+- `cargo test -p context-resolver-search query_table`
+- `cargo test -p context-resolver-core`
+- `cargo test -p context-resolver-search`
+- `cargo test --workspace`
+
+Result:
+
+- `context-resolver-core` exposes dependency-facing query-table DTOs:
+  `QueryTableInfo`, `QueryFieldInfo`, `QueryParameterInfo`, `QueryTableRole` and
+  source-neutral `FactProvenance`.
+- `syntax-helper-search` persists query-table metadata in private schema version `16`, including
+  syntax, identifier, table role, owner path, template parameter slots, field/parameter notes and
+  defaults, source provenance and type references.
+- `context-resolver-search` exposes `query_table`, `query_table_field` and
+  `query_table_parameter` through `LanguageSearchSource::query_tables` /
+  `open_query_tables_read_only*` as `LanguageDomain::QueryLanguage` facts with exact lookup and
+  relation capabilities only.
+- Exact lookup by display name, identifier and syntax, `member_of` relation traversal and
+  `has_type` traversal preserve stable ids and type references. The platform adapter continues to
+  hide query-table provider documents from `PlatformApi`.
+- Verification passed with `cargo test -p syntax-helper-search query_table`,
+  `cargo test -p context-resolver-search query_table`, `cargo test -p context-resolver-core`,
+  `cargo test -p context-resolver-search`, `cargo check --workspace`,
+  `cargo fmt --all --check` and `cargo test --workspace`.
+
 ### [x] T165. Expose core BSL primitive language types through Rust resolver adapters
 
 References: FR-CTX-RESOLVE-001, UC-CTX-001, UC-CTX-002,

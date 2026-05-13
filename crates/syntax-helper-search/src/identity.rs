@@ -69,6 +69,7 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
             alias: row.get(3)?,
         },
         owner: optional_localized_name(row.get(4)?, row.get(5)?),
+        owner_path: Vec::new(),
         signatures: split_lines(row.get(6)?)
             .into_iter()
             .map(|text| SearchSignature {
@@ -90,6 +91,8 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
             .map(|value| value.chars().take(180).collect())
             .unwrap_or_default(),
         description,
+        note: None,
+        default_value: None,
         relation_keys: Vec::new(),
         owner_relation_key: None,
         explicit_type_ref_ids: Vec::new(),
@@ -100,6 +103,10 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchDocument
         template_parameters: Vec::new(),
         type_template_key: None,
         type_template_classification_diagnostic: None,
+        query_syntax: None,
+        query_identifier: None,
+        query_table_role: None,
+        source: None,
     })
 }
 
@@ -209,6 +216,54 @@ fn split_lines(value: String) -> Vec<String> {
         .lines()
         .filter(|line| !line.is_empty())
         .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn query_table_role_code(role: model::QueryTableRole) -> &'static str {
+    match role {
+        model::QueryTableRole::Primary => "primary",
+        model::QueryTableRole::Additional => "additional",
+        model::QueryTableRole::Unknown => "unknown",
+    }
+}
+
+fn query_table_role_from_code(value: &str) -> Option<model::QueryTableRole> {
+    match value {
+        "primary" => Some(model::QueryTableRole::Primary),
+        "additional" => Some(model::QueryTableRole::Additional),
+        "unknown" => Some(model::QueryTableRole::Unknown),
+        _ => None,
+    }
+}
+
+fn join_localized_names(names: &[model::LocalizedName]) -> String {
+    names
+        .iter()
+        .map(|name| {
+            format!(
+                "{}\t{}",
+                name.primary.replace(['\t', '\n'], " "),
+                name.alias
+                    .as_deref()
+                    .unwrap_or_default()
+                    .replace(['\t', '\n'], " ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn split_localized_names(value: String) -> Vec<model::LocalizedName> {
+    value
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let (primary, alias) = line.split_once('\t').unwrap_or((line, ""));
+            model::LocalizedName {
+                primary: primary.to_string(),
+                alias: (!alias.is_empty()).then(|| alias.to_string()),
+            }
+        })
         .collect()
 }
 

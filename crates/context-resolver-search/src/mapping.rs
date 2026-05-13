@@ -99,6 +99,9 @@ fn language_fact_kind_for_document(document: &SearchDocument) -> Option<FactKind
         SearchDocumentKind::LanguageKeyword => Some(FactKind::Keyword),
         SearchDocumentKind::LanguageOperator => Some(FactKind::Operator),
         SearchDocumentKind::LanguageConstruct => Some(FactKind::Global),
+        SearchDocumentKind::QueryTable => Some(FactKind::QueryTable),
+        SearchDocumentKind::QueryTableField => Some(FactKind::QueryField),
+        SearchDocumentKind::QueryTableParameter => Some(FactKind::QueryParameter),
         SearchDocumentKind::PlatformType
         | SearchDocumentKind::TypeProperty
         | SearchDocumentKind::TypeMethod
@@ -108,35 +111,45 @@ fn language_fact_kind_for_document(document: &SearchDocument) -> Option<FactKind
         | SearchDocumentKind::ModuleEvent
         | SearchDocumentKind::TypeEvent
         | SearchDocumentKind::UnknownEvent
-        | SearchDocumentKind::QueryTable
-        | SearchDocumentKind::QueryTableField
-        | SearchDocumentKind::QueryTableParameter
         | SearchDocumentKind::Enum
         | SearchDocumentKind::EnumValue => None,
     }
 }
 
-fn language_fact_id_for_document(document: &SearchDocument) -> Option<FactId> {
-    let kind = language_fact_kind_for_document(document)?;
-    let (source, domain, local_id) = language_source_domain_and_local_id(&document.id)?;
-    Some(FactId::new(source, domain, kind, local_id))
-}
-
-fn language_fact_id_from_storage_id(storage_id: &str) -> Option<FactId> {
-    let (source, domain, local_id) = language_source_domain_and_local_id(storage_id)?;
-    Some(FactId::new(source, domain, FactKind::Type, local_id))
-}
-
-fn language_source_domain_and_local_id(
+fn language_source_domain_kind_and_local_id(
     storage_id: &str,
-) -> Option<(SourceId, LanguageDomain, &str)> {
+) -> Option<(SourceId, LanguageDomain, FactKind, &str)> {
     let (source, local_id) = storage_id.split_once(':')?;
-    let domain = match source {
-        "shlang" => LanguageDomain::BslLanguage,
-        "shquery" | "dcsui" => LanguageDomain::QueryLanguage,
+    let (domain, kind) = match source {
+        "shlang" => (LanguageDomain::BslLanguage, FactKind::Type),
+        "shquery" | "dcsui" => (LanguageDomain::QueryLanguage, FactKind::Type),
         _ => return None,
     };
-    Some((SourceId::new(source), domain, local_id))
+    Some((SourceId::new(source), domain, kind, local_id))
+}
+
+fn map_model_name(name: &syntax_helper_search::model::LocalizedName) -> Name {
+    Name::new(name.primary.clone(), name.alias.clone())
+}
+
+fn query_table_role(role: Option<syntax_helper_search::model::QueryTableRole>) -> QueryTableRole {
+    match role.unwrap_or(syntax_helper_search::model::QueryTableRole::Unknown) {
+        syntax_helper_search::model::QueryTableRole::Primary => QueryTableRole::Primary,
+        syntax_helper_search::model::QueryTableRole::Additional => QueryTableRole::Additional,
+        syntax_helper_search::model::QueryTableRole::Unknown => QueryTableRole::Unknown,
+    }
+}
+
+fn fact_provenance(
+    source_id: &SourceId,
+    document_id: &str,
+    source: &syntax_helper_search::model::SyntaxHelperSource,
+) -> FactProvenance {
+    FactProvenance {
+        source: source_id.clone(),
+        evidence_id: document_id.to_string(),
+        locale: Some(source.locale.clone()),
+    }
 }
 
 fn member_query_matches(query: MemberQueryKind, kind: MemberKind) -> bool {

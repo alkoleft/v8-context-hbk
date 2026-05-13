@@ -293,18 +293,33 @@ impl fmt::Display for SearchDocumentKind {
 #[error("unknown search document kind '{0}'")]
 struct UnknownSearchDocumentKind(String);
 
+#[derive(Debug, Clone)]
+struct DocumentMetadataRow {
+    owner_path: Vec<model::LocalizedName>,
+    note: Option<String>,
+    default_value: Option<String>,
+    query_syntax: Option<model::LocalizedName>,
+    query_identifier: Option<String>,
+    query_table_role: Option<model::QueryTableRole>,
+    template_parameters: Vec<String>,
+    source: Option<model::SyntaxHelperSource>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchDocument {
     pub id: String,
     pub kind: SearchDocumentKind,
     pub name: model::LocalizedName,
     pub owner: Option<model::LocalizedName>,
+    pub owner_path: Vec<model::LocalizedName>,
     pub signatures: Vec<SearchSignature>,
     pub type_refs: Vec<String>,
     pub return_types: Vec<String>,
     pub type_ref_facts: Vec<SearchTypeRef>,
     pub return_type_facts: Vec<SearchTypeRef>,
     pub description: Option<String>,
+    pub note: Option<String>,
+    pub default_value: Option<String>,
     pub preview: String,
     pub parameter_terms: Vec<String>,
     pub relation_keys: Vec<String>,
@@ -317,6 +332,10 @@ pub struct SearchDocument {
     pub template_parameters: Vec<String>,
     pub type_template_key: Option<model::PlatformTypeTemplateKey>,
     pub type_template_classification_diagnostic: Option<String>,
+    pub query_syntax: Option<model::LocalizedName>,
+    pub query_identifier: Option<String>,
+    pub query_table_role: Option<model::QueryTableRole>,
+    pub source: Option<model::SyntaxHelperSource>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

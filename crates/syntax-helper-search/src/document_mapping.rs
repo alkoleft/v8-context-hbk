@@ -38,12 +38,15 @@ fn document(
         kind,
         name: name.clone(),
         owner: owner.cloned(),
+        owner_path: Vec::new(),
         signatures,
         type_refs,
         return_types,
         type_ref_facts: Vec::new(),
         return_type_facts: Vec::new(),
         description: description.map(ToOwned::to_owned),
+        note: None,
+        default_value: None,
         preview: description
             .map(|value| value.chars().take(180).collect())
             .unwrap_or_default(),
@@ -58,6 +61,10 @@ fn document(
         template_parameters: Vec::new(),
         type_template_key: None,
         type_template_classification_diagnostic: None,
+        query_syntax: None,
+        query_identifier: None,
+        query_table_role: None,
+        source: None,
     }
 }
 
@@ -169,12 +176,15 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         kind: language_document_kind(fact.family),
         name: fact.name.clone(),
         owner: None,
+        owner_path: Vec::new(),
         signatures,
         type_refs,
         return_types: fact.return_types.clone(),
         type_ref_facts: Vec::new(),
         return_type_facts: Vec::new(),
         description: fact.description.clone(),
+        note: None,
+        default_value: None,
         preview: fact
             .description
             .as_deref()
@@ -191,6 +201,10 @@ fn language_document(fact: &language::LanguageFact) -> SearchDocument {
         template_parameters: Vec::new(),
         type_template_key: None,
         type_template_classification_diagnostic: None,
+        query_syntax: None,
+        query_identifier: None,
+        query_table_role: None,
+        source: None,
     }
 }
 
@@ -280,4 +294,30 @@ fn semantic_relation_key(semantic: &model::SemanticContext, fallback: &str) -> S
         parts.push(fallback);
     }
     normalize_lookup_key(&parts.join("."))
+}
+
+fn query_template_parameters(syntax: Option<&model::LocalizedName>) -> Vec<String> {
+    let mut parameters = Vec::new();
+    if let Some(syntax) = syntax {
+        collect_template_parameters(&syntax.primary, &mut parameters);
+        if let Some(alias) = &syntax.alias {
+            collect_template_parameters(alias, &mut parameters);
+        }
+    }
+    parameters
+}
+
+fn collect_template_parameters(text: &str, parameters: &mut Vec<String>) {
+    let mut rest = text;
+    while let Some(start) = rest.find('<') {
+        let after_start = &rest[start + 1..];
+        let Some(end) = after_start.find('>') else {
+            break;
+        };
+        let slot = after_start[..end].trim();
+        if !slot.is_empty() && !parameters.iter().any(|existing| existing == slot) {
+            parameters.push(slot.to_string());
+        }
+        rest = &after_start[end + 1..];
+    }
 }

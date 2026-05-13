@@ -312,7 +312,12 @@ impl SearchIndex {
             if !hits.is_empty() {
                 return Ok(hits);
             }
-            if !source_document.kind.is_language() {
+            if !source_document.kind.is_language()
+                && !matches!(
+                    source_document.kind,
+                    SearchDocumentKind::QueryTableField | SearchDocumentKind::QueryTableParameter
+                )
+            {
                 return Ok(Vec::new());
             }
         }
@@ -931,7 +936,65 @@ impl SearchIndex {
             document.type_template_classification_diagnostic =
                 type_template_classification_diagnostic;
         }
+        if let Some(metadata) = self.document_metadata_for(&document.id)? {
+            document.owner_path = metadata.owner_path;
+            document.note = metadata.note;
+            document.default_value = metadata.default_value;
+            document.query_syntax = metadata.query_syntax;
+            document.query_identifier = metadata.query_identifier;
+            document.query_table_role = metadata.query_table_role;
+            if !metadata.template_parameters.is_empty() {
+                document.template_parameters = metadata.template_parameters;
+            }
+            document.source = metadata.source;
+        }
         Ok(document)
+    }
+
+    fn document_metadata_for(
+        &self,
+        document_id: &str,
+    ) -> Result<Option<DocumentMetadataRow>, SearchError> {
+        self.connection
+            .query_row(
+                "SELECT owner_path, note, default_value, query_syntax_primary, query_syntax_alias,
+                        query_identifier, query_table_role, template_parameters, source_hbk_path,
+                        source_locale, source_toc_path, source_html_path, source_page_title
+                 FROM document_metadata WHERE document_id = ?1",
+                [document_id],
+                |row| {
+                    let source_hbk_path: Option<String> = row.get(8)?;
+                    let source_locale: Option<String> = row.get(9)?;
+                    let source_html_path: Option<String> = row.get(11)?;
+                    let source_page_title: Option<String> = row.get(12)?;
+                    Ok(DocumentMetadataRow {
+                        owner_path: split_localized_names(row.get::<_, String>(0)?),
+                        note: row.get(1)?,
+                        default_value: row.get(2)?,
+                        query_syntax: optional_localized_name(row.get(3)?, row.get(4)?),
+                        query_identifier: row.get(5)?,
+                        query_table_role: row
+                            .get::<_, Option<String>>(6)?
+                            .as_deref()
+                            .and_then(query_table_role_from_code),
+                        template_parameters: split_lines(row.get::<_, String>(7)?),
+                        source: match (source_hbk_path, source_locale, source_html_path, source_page_title) {
+                            (Some(hbk_path), Some(locale), Some(html_path), Some(page_title)) => {
+                                Some(model::SyntaxHelperSource {
+                                    hbk_path: PathBuf::from(hbk_path),
+                                    locale,
+                                    toc_path: row.get(10)?,
+                                    html_path,
+                                    page_title,
+                                })
+                            }
+                            _ => None,
+                        },
+                    })
+                },
+            )
+            .optional()
+            .map_err(|source| self.sqlite(source))
     }
 
     fn type_template_for(&self, document_id: &str) -> Result<Option<TypeTemplateRow>, SearchError> {

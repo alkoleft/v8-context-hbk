@@ -290,6 +290,7 @@ mod tests {
             kind: SearchDocumentKind::TypeMethod,
             name: name("Выполнить"),
             owner: Some(name("Тест")),
+            owner_path: Vec::new(),
             signatures: vec![syntax_helper_search::SearchSignature {
                 text: "Выполнить(Параметр)".to_string(),
                 parameters: Vec::new(),
@@ -303,6 +304,8 @@ mod tests {
             type_ref_facts: Vec::new(),
             return_type_facts: Vec::new(),
             description: Some("Detailed description".to_string()),
+            note: None,
+            default_value: None,
             preview: "Detailed description".to_string(),
             parameter_terms: Vec::new(),
             relation_keys: Vec::new(),
@@ -315,6 +318,10 @@ mod tests {
             template_parameters: Vec::new(),
             type_template_key: None,
             type_template_classification_diagnostic: None,
+            query_syntax: None,
+            query_identifier: None,
+            query_table_role: None,
+            source: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Compact);
@@ -335,6 +342,7 @@ mod tests {
             kind: SearchDocumentKind::TypeMethod,
             name: name("Выполнить"),
             owner: Some(name("Тест")),
+            owner_path: Vec::new(),
             signatures: vec![syntax_helper_search::SearchSignature {
                 text: "Выполнить(Параметр)".to_string(),
                 parameters: vec![syntax_helper_search::SearchParameter {
@@ -354,6 +362,8 @@ mod tests {
             type_ref_facts: Vec::new(),
             return_type_facts: Vec::new(),
             description: Some("Detailed description".to_string()),
+            note: None,
+            default_value: None,
             preview: "Detailed description".to_string(),
             parameter_terms: Vec::new(),
             relation_keys: Vec::new(),
@@ -366,6 +376,10 @@ mod tests {
             template_parameters: Vec::new(),
             type_template_key: None,
             type_template_classification_diagnostic: None,
+            query_syntax: None,
+            query_identifier: None,
+            query_table_role: None,
+            source: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Full);
@@ -399,6 +413,7 @@ mod tests {
             kind: SearchDocumentKind::TypeMethod,
             name: name("Выполнить"),
             owner: Some(name("Тест")),
+            owner_path: Vec::new(),
             signatures: vec![syntax_helper_search::SearchSignature {
                 text: "Выполнить(Параметр)".to_string(),
                 parameters: vec![syntax_helper_search::SearchParameter {
@@ -442,6 +457,8 @@ mod tests {
                 }),
             }],
             description: Some("Detailed description".to_string()),
+            note: None,
+            default_value: None,
             preview: "Detailed description".to_string(),
             parameter_terms: Vec::new(),
             relation_keys: Vec::new(),
@@ -454,6 +471,10 @@ mod tests {
             template_parameters: Vec::new(),
             type_template_key: None,
             type_template_classification_diagnostic: None,
+            query_syntax: None,
+            query_identifier: None,
+            query_table_role: None,
+            source: None,
         };
 
         let fact = document_fact(&document, ProviderFactDetail::Full);

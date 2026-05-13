@@ -80,11 +80,14 @@ Solution-context Rust resolution is described in
 - `context-resolver-core` owns the generic in-process resolver model. It must not depend on HBK,
   SQLite, CLI, parser or Syntax Assistant storage crates.
 - `context-resolver-search` owns translation between `syntax-helper-search::SearchIndex` platform
-  and language facts and the source-neutral resolver model. It must not expose SQLite tables, FTS
-  fields, query-table provider facts or Syntax Assistant provenance as generic resolver facts.
-  Module-context lookup may consume private search-index module-context state, but the public
-  contract is the resolver DTO shape: provider-neutral module context kind, source-qualified facts,
-  signatures, availability diagnostics and exact-id lookup for resolved module context handles.
+  and language facts and the source-neutral resolver model. It must not expose SQLite tables or FTS
+  fields, and it must not expose query-table provider facts as `PlatformApi` facts. Query-table
+  provider facts are exposed only through the explicit `QueryLanguage` query-table source with
+  resolver DTOs for templates, fields, parameters, type references and source-neutral evidence.
+  Module-context
+  lookup may consume private search-index module-context state, but the public contract is the
+  resolver DTO shape: provider-neutral module context kind, source-qualified facts, signatures,
+  availability diagnostics and exact-id lookup for resolved module context handles.
 - `v8-context-hbk-cli` wires commands and error presentation only.
 - `v8-context-hbk-cli` owns the current CLI provider JSON assembly boundary for `syntax get`,
   `syntax constructors`, `syntax search`, `syntax related`, `syntax related --graph` and
@@ -870,12 +873,10 @@ different source/domain identities even when they share a display name. The comp
 use deterministic source order for candidate ordering only; omitted source, domain, kind or owner
 constraints that leave multiple candidates must produce ambiguity rather than a hidden winner.
 
-The platform adapter over `syntax-helper-search` initially exposes platform API type, member and
-callable facts, global context and provider-backed module context facts only. Existing query-table
-documents in the search index remain outside that adapter.
-T66 selected current `shcntx_*` query-table documents to remain CLI/provider facts for now, not the
-first `QueryLanguage` resolver source. A later language-domain task must define an explicit mapping
-or relation shape before exposing them through the source-neutral resolver.
+The platform adapter over `syntax-helper-search` exposes platform API type, member and callable
+facts, global context and provider-backed module context facts only. Existing query-table documents
+in the search index remain outside that adapter and are exposed through a distinct QueryLanguage
+query-table source.
 
 For module context, HBK owns platform facts that come from Syntax Assistant evidence: platform
 global methods/properties, module events, event signatures and availability. Downstream
@@ -893,6 +894,14 @@ facts are exposed as callable facts with ordered signatures and parameters; `lan
 current `language_literal` facts are exposed through type lookup. Relation traversal uses only
 explicit index edges derived from extracted language type references, for example
 `dcsui:SKD_Functions_Strings#StringLength` parameter type `Строка` to `shlang:def_String`.
+
+The QueryLanguage query-table source exposes `shcntx_*` query table template/family documents as
+`QueryTable`, `QueryField` and `QueryParameter` facts. It preserves template identity, syntax,
+identifier, table role, owner semantic path, source-derived template parameter slots, owned
+field/parameter identities, field/parameter type references and source-neutral evidence. It does not
+instantiate concrete metadata query tables and does not make query tables platform API members.
+The source-neutral resolver DTOs identify evidence by resolver source id, evidence id and locale;
+raw HBK, TOC and HTML parser provenance stays inside the search adapter/index layer.
 
 ## Implementation Dependencies
 

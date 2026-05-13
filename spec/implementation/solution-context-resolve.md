@@ -278,8 +278,6 @@ Facts that must wait for another provider or explicit mapping task:
 - data-composition expression/query-extension language facts from `dcsui_*`;
 - configuration metadata-generated object/manager/reference/value types;
 - source-code declarations from common modules, object modules, forms and other project files;
-- `shcntx_*` `query_table`, `query_table_field` and `query_table_parameter` provider documents
-  until a language-domain task defines their resolver mapping or relation shape.
 
 Current source evidence for non-platform HBK syntax domains lives in
 [`source-evidence.md`](../source-evidence.md). The `shlang_*`, `shquery_*` and `dcsui_*` books must
@@ -680,9 +678,9 @@ Resolver identity rules for this slice:
 - Display names are never identities. `Строка` from `shlang:def_String`, `Строка`/`STRING` from
   query conversion and string-literal pages, and `Строка` parameter/return facts in SKD expression
   functions remain separate facts unless explicit relations connect them.
-- Existing `shcntx_*` `query_table`, `query_table_field` and `query_table_parameter` index
-  documents stay outside the first platform adapter and outside the first language resolver source.
-  They may be related to future language facts only through explicit follow-up work.
+- `shcntx_*` `query_table`, `query_table_field` and `query_table_parameter` index documents stay
+  outside the platform adapter, but are exposed through a distinct QueryLanguage resolver source for
+  query-table template/family facts.
 
 ## First Platform Adapter
 
@@ -710,11 +708,10 @@ The adapter must not expose SQLite table names, rowids, FTS tokens, HBK paths, T
 or page titles through generic facts.
 
 Current `SearchIndex` also contains `query_table`, `query_table_field` and `query_table_parameter`
-documents extracted from `shcntx_*`. T67 must not expose them through the first platform adapter as
-generic platform facts. T66 selected the current decision: those facts remain CLI/provider facts for
-now and are not the first `QueryLanguage` resolver provider. A later language-domain task must
-define an explicit mapping or relation shape before exposing them through the source-neutral
-resolver.
+documents extracted from `shcntx_*`. The platform adapter must not expose them as generic platform
+facts. They are exposed through a separate QueryLanguage source, so analyzer code can consume
+template/family-level query-table evidence without reading export JSON, generated files, SQLite
+tables or Syntax Assistant internals.
 
 T67 implementation notes:
 
@@ -726,7 +723,8 @@ T67 implementation notes:
   `callable_by_owner_type_id`, `constructors_by_type_id` and `related_by_id_and_edge`.
 - Exact-name generic resolver lookup is intentionally limited to platform type identity lookup in
   this first adapter slice; broader name search remains the CLI/search-provider concern.
-- Query-table provider documents stay hidden from the platform adapter.
+- Query-table provider documents stay hidden from the platform adapter and are mapped only by the
+  QueryLanguage query-table source.
 
 T146 implementation notes:
 
@@ -788,8 +786,25 @@ Mapping:
 - relation traversal is backed by explicit extracted type-reference edges in the prebuilt index,
   not by same-name merging during resolver lookup.
 
-The language adapter does not parse HBK pages in lookup calls, does not expose query-table provider
-documents and does not add a public language export JSON contract.
+The language adapter does not parse HBK pages in lookup calls and does not add a public language
+export JSON contract.
+
+## Query Table Template Source
+
+`context-resolver-search` exposes `shcntx_*` query-table documents through a distinct
+`LanguageDomain::QueryLanguage` source. This source maps provider documents as:
+
+- `query_table` -> `FactKind::QueryTable` with `QueryTableInfo`;
+- `query_table_field` -> `FactKind::QueryField` with `QueryFieldInfo`;
+- `query_table_parameter` -> `FactKind::QueryParameter` with `QueryParameterInfo`.
+
+The source is template/family-level. It exposes HBK-owned query table syntax, identifier,
+`primary`/`additional`/`unknown` role, owner semantic path, source-derived template parameter slots,
+owned field/parameter identity, type references and source-neutral evidence/provenance. Resolver
+DTOs expose resolver source id, evidence id and locale only; raw HBK paths, TOC paths, HTML paths,
+page titles and Syntax Assistant storage details remain adapter/index internals. It does not
+instantiate metadata objects, does not create `Configuration` facts and does not provide analyzer
+fallback tables.
 
 ## Verification Plan
 

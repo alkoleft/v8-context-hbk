@@ -194,6 +194,22 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
                  availability_contexts TEXT NOT NULL,
                  available_since TEXT
              );
+             CREATE TABLE document_metadata (
+                 document_id TEXT PRIMARY KEY REFERENCES documents(id),
+                 owner_path TEXT NOT NULL,
+                 note TEXT,
+                 default_value TEXT,
+                 query_syntax_primary TEXT,
+                 query_syntax_alias TEXT,
+                 query_identifier TEXT,
+                 query_table_role TEXT,
+                 template_parameters TEXT NOT NULL,
+                 source_hbk_path TEXT,
+                 source_locale TEXT,
+                 source_toc_path TEXT,
+                 source_html_path TEXT,
+                 source_page_title TEXT
+             );
              CREATE TABLE type_identities (
                  type_id TEXT PRIMARY KEY,
                  document_id TEXT NOT NULL REFERENCES documents(id),
@@ -304,7 +320,8 @@ fn create_schema(connection: &Connection, path: &Path) -> Result<(), SearchError
 fn create_lookup_indexes(connection: &Connection, path: &Path) -> Result<(), SearchError> {
     connection
         .execute_batch(
-            "CREATE INDEX document_names_key_idx ON document_names(key, key_kind, document_id);
+            "CREATE INDEX document_metadata_document_idx ON document_metadata(document_id);
+             CREATE INDEX document_names_key_idx ON document_names(key, key_kind, document_id);
              CREATE INDEX documents_owner_member_idx ON documents(owner_primary, name_primary);
              CREATE INDEX type_identities_name_idx ON type_identities(name_primary, name_alias, type_id);
              CREATE INDEX type_identities_document_idx ON type_identities(document_id);
@@ -397,6 +414,18 @@ fn insert_documents(
             path: path.to_path_buf(),
             source,
         })?;
+    let mut metadata_statement = connection
+        .prepare(
+            "INSERT INTO document_metadata(
+                document_id, owner_path, note, default_value, query_syntax_primary,
+                query_syntax_alias, query_identifier, query_table_role, template_parameters,
+                source_hbk_path, source_locale, source_toc_path, source_html_path, source_page_title
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        )
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
 
     for (index, document) in documents.iter().enumerate() {
         let rowid = (index + 1) as i64;
@@ -459,7 +488,54 @@ fn insert_documents(
                 path: path.to_path_buf(),
                 source,
             })?;
+        if document_has_metadata(document) {
+            insert_document_metadata(&mut metadata_statement, path, document)?;
+        }
     }
+    Ok(())
+}
+
+fn document_has_metadata(document: &SearchDocument) -> bool {
+    !document.owner_path.is_empty()
+        || document.note.is_some()
+        || document.default_value.is_some()
+        || document.query_syntax.is_some()
+        || document.query_identifier.is_some()
+        || document.query_table_role.is_some()
+        || !document.template_parameters.is_empty()
+        || document.source.is_some()
+}
+
+fn insert_document_metadata(
+    statement: &mut Statement<'_>,
+    path: &Path,
+    document: &SearchDocument,
+) -> Result<(), SearchError> {
+    let source = document.source.as_ref();
+    statement
+        .execute(params![
+            document.id,
+            join_localized_names(&document.owner_path),
+            document.note.as_deref(),
+            document.default_value.as_deref(),
+            document.query_syntax.as_ref().map(|name| name.primary.as_str()),
+            document
+                .query_syntax
+                .as_ref()
+                .and_then(|name| name.alias.as_deref()),
+            document.query_identifier.as_deref(),
+            document.query_table_role.map(query_table_role_code),
+            document.template_parameters.join("\n"),
+            source.map(|source| source.hbk_path.display().to_string()),
+            source.map(|source| source.locale.as_str()),
+            source.and_then(|source| source.toc_path.as_deref()),
+            source.map(|source| source.html_path.as_str()),
+            source.map(|source| source.page_title.as_str()),
+        ])
+        .map_err(|source| SearchError::Sqlite {
+            path: path.to_path_buf(),
+            source,
+        })?;
     Ok(())
 }
 
@@ -1161,6 +1237,17 @@ fn insert_name_keys(
     keys.push((normalize_lookup_key(&document.name.primary), "primary"));
     if let Some(alias) = &document.name.alias {
         keys.push((normalize_lookup_key(alias), "alias"));
+    }
+    if document.kind == SearchDocumentKind::QueryTable {
+        if let Some(identifier) = &document.query_identifier {
+            keys.push((normalize_lookup_key(identifier), "query_identifier"));
+        }
+        if let Some(syntax) = &document.query_syntax {
+            keys.push((normalize_lookup_key(&syntax.primary), "query_syntax"));
+            if let Some(alias) = &syntax.alias {
+                keys.push((normalize_lookup_key(alias), "query_syntax_alias"));
+            }
+        }
     }
     if let Some(owner) = &document.owner {
         keys.push((
