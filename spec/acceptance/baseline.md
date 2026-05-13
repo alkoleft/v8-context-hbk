@@ -46,6 +46,16 @@ directories are service data unless promoted here.
   files, record counts and 5 parser warnings. A broader `body_text` DOM replacement and broader
   Syntax Assistant entity decoding were rejected because comparison/review showed canonical export
   behavior changes, so those parser-quality changes remain separate future work.
+- T161 completed a spike for library-backed link/path rewriting without changing runtime behavior
+  or adding product dependencies. The accepted boundary remains HBK-specific: `hbk-book` owns
+  virtual storage path normalization, `hbk-docs` owns documentation link extraction and diagnostics,
+  `hbk-book-export` owns single-book Markdown link rewriting and fragment preservation, and
+  `hbk-doc-site` owns generated page-id aliases and same-page fragment collapse. `url` and
+  `path-clean` were rejected for this boundary because their URL/filesystem semantics do not own
+  HBK `v8help://`, virtual storage-path, fragment-only or unresolved-link rules. `lol_html` remains
+  a possible future implementation helper only for HTML-aware `href` attribute rewriting, and any
+  such replacement requires a separate fixture-backed and real-HBK parity task before it becomes a
+  runtime dependency.
 - T15 Syntax Assistant performance pass reduced debug-binary peak RSS without wall-clock regression:
   `shcntx_ru.hbk` measured `19.26s / 590988 KiB`, and `shcntx_root.hbk` measured
   `14.62s / 324476 KiB`.

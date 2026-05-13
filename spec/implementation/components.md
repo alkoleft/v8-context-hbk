@@ -898,3 +898,29 @@ Current dependency choices may use:
 - `tracing` for diagnostics when diagnostics outgrow direct error values
 
 Do not introduce new broad frameworks or knobs without a requirement, ADR or measured bottleneck.
+
+T161 evaluated library-backed link/path rewriting for the ordinary documentation reader, single-book
+Markdown export and generated documentation-site data. The current ownership remains split by
+domain boundary:
+
+- `hbk-book` owns HBK virtual storage path normalization.
+- `hbk-docs` owns documentation-page link extraction and unresolved-link diagnostics.
+- `hbk-book-export` owns single-book Markdown link rewriting, fragment preservation and relative
+  Markdown targets.
+- `hbk-doc-site` owns generated page-id targets, source-book aliases, placeholder aliases and
+  same-page generated-fragment collapse.
+
+`url` is not selected for HBK link/path rewriting because the project must treat `v8help://`
+targets as HBK book-id plus virtual storage path evidence, not as ordinary network URLs. It also
+does not own fragment-only same-page semantics or unresolved HBK page diagnostics.
+
+`path-clean` is not selected for `normalize_storage_path*` because the current storage path rules
+are HBK virtual-entry rules, not filesystem path rules. Empty/root results, fragment-looking local
+targets and unsafe parent traversal remain explicit project behavior.
+
+`lol_html` remains the only candidate with a plausible future use: replacing the narrow
+`href`-attribute scanner in `hbk-book-export` with an HTML-aware rewriter. That future change must
+be a separate implementation task with fixture and real-HBK parity evidence for quoted attributes,
+case-insensitive `href`, removed unresolved links, preserved external links, same-book
+`v8help://` links, cross-book/generated aliases and `#fragment` targets. T161 does not add
+`lol_html` as a product dependency because no behavior-preserving replacement was implemented.

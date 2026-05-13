@@ -30,7 +30,7 @@ type-reference conclusions live in
 `implementation/syntax-bsl-provider-plan.md`, `implementation/solution-context-resolve.md` and
 `decisions/`.
 
-Current first unchecked task: T161.
+Current first unchecked task: none.
 
 ## Loop Rule
 
@@ -138,7 +138,7 @@ Current first unchecked task: T161.
     because real comparison or review showed canonical export behavior changes; those parser-quality
     changes remain separate future work.
 
-- [ ] T161: Spike library-backed link/path rewriting before replacing current HBK-specific rules.
+- [x] T161: Spike library-backed link/path rewriting before replacing current HBK-specific rules.
   - Scope: test whether `lol_html`, `url`, `path-clean` or similarly narrow crates can reduce
     custom `href`, fragment and virtual storage-path handling in documentation parsing and Markdown
     export without losing HBK-specific `v8help://`, same-book and cross-book semantics.
@@ -150,3 +150,14 @@ Current first unchecked task: T161.
     `implementation/components.md`.
   - Verification: short written conclusion in the task result; fixture coverage for accepted
     deltas if implementation proceeds; `cargo fmt --all --check`; relevant focused crate tests.
+  - Result: no runtime behavior or product dependency was changed. `url` and `path-clean` are not
+    selected for HBK link/path rewriting because HBK `v8help://`, virtual storage paths,
+    fragment-only same-page links and unresolved-link diagnostics are project/domain semantics
+    rather than URL or filesystem semantics. `lol_html` remains a plausible future helper only for
+    the narrow HTML `href` attribute rewriting surface in `hbk-book-export`; any adoption must be a
+    separate task with fixture and real-HBK parity evidence for current same-book, cross-book,
+    generated-alias and fragment behavior. The spike conclusion is recorded in
+    `implementation/components.md` and `acceptance/baseline.md`. Verification passed with
+    `cargo fmt --all --check`, `cargo test -p hbk-docs`, `cargo test -p hbk-book-export` and
+    `cargo test -p hbk-doc-site`; `hbk-book-export` included existing real-HBK checks for
+    representative pages, shared content-node headings and `shclang_ru.hbk` fragment preservation.
