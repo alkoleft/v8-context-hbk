@@ -455,7 +455,7 @@ impl ContextSource for LanguageSearchSource {
                 members: false,
                 callables: false,
                 relations: true,
-                global_context: false,
+                global_context: true,
                 module_context: false,
             };
         }
@@ -661,9 +661,39 @@ impl ContextSource for LanguageSearchSource {
             return Ok(ResolveResponse::not_found("language source is not active"));
         }
         if self.query_table_templates {
-            return Ok(ResolveResponse::unsupported(
-                "query table source does not expose global context",
-            ));
+            let GlobalContextQuery::Language { language, sources } = query;
+            if language != GlobalContextLanguage::Sdbl
+                || (!sources.is_empty() && !sources.iter().any(|source| source == &self.source_id))
+            {
+                return Ok(ResolveResponse::not_found(
+                    "query table source does not expose requested global context",
+                ));
+            }
+
+            let mut facts = Vec::new();
+            for kind in [
+                SearchDocumentKind::QueryTable,
+                SearchDocumentKind::QueryTableField,
+                SearchDocumentKind::QueryTableParameter,
+            ] {
+                facts.extend(
+                    self.index
+                        .documents_by_kind(kind)
+                        .map_err(|source| self.source_failure(source))?
+                        .into_iter()
+                        .filter(|hit| self.document_belongs_to_source(&hit.document))
+                        .filter_map(|hit| self.map_context_fact(hit)),
+                );
+            }
+
+            return Ok(ResolveResponse::ok(vec![ResolvedGlobalContext {
+                id: self.fact_id(FactKind::Global, "global_context:sdbl:query_tables"),
+                language,
+                sources: vec![self.source_id.clone()],
+                methods: Vec::new(),
+                properties: Vec::new(),
+                facts,
+            }]));
         }
         let GlobalContextQuery::Language { language, sources } = query;
         let expected_domain = match language {

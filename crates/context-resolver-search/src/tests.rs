@@ -953,7 +953,7 @@ mod tests {
         assert!(capabilities.relations);
         assert!(!capabilities.type_lookup);
         assert!(!capabilities.callables);
-        assert!(!capabilities.global_context);
+        assert!(capabilities.global_context);
         let type_lookup = adapter
             .resolve_type(
                 TypeLookup::ExactName {
@@ -999,8 +999,18 @@ mod tests {
                 },
                 &ResolveContext::all(),
             )
-            .expect("query table global context refusal must not fail");
-        assert_eq!(global_context.status, ResolveStatus::Unsupported);
+            .expect("query table global context lookup must not fail");
+        assert_eq!(global_context.status, ResolveStatus::Ok);
+        let global_facts = &global_context.facts[0].facts;
+        assert!(global_facts
+            .iter()
+            .any(|fact| fact.id.kind == FactKind::QueryTable));
+        assert!(global_facts
+            .iter()
+            .any(|fact| fact.id.kind == FactKind::QueryField));
+        assert!(global_facts
+            .iter()
+            .any(|fact| fact.id.kind == FactKind::QueryParameter));
 
         let table_id = FactId::new(
             query_source.clone(),
