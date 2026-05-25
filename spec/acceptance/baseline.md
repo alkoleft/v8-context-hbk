@@ -2324,6 +2324,23 @@ public snapshot DTO layout, but it is now contract-shaped rather than a wide cop
 search/export/index-maintenance payloads and raw storage paths are excluded from the snapshot
 baseline. The temporary harness is service code and is not kept as a public crate example.
 
+T168 implemented the first `HbkFactSnapshot` / `HbkFactReadHandle` in-memory snapshot API and
+measured it against the same release schema-16 `shcntx_ru` index. A temporary release harness over
+`HbkFactSnapshot::from_path` produced these stable warm readings after excluding first-run/cache
+warm-up observations from the baseline:
+
+| Run | Snapshot Build | Process Elapsed | Peak RSS | Estimated Snapshot Heap |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | `511 ms` | `0.52s` | `105708 KiB` | `18197557 bytes` |
+| 2 | `601 ms` | `0.62s` | `105844 KiB` | `18197557 bytes` |
+| 3 | `507 ms` | `0.52s` | `105844 KiB` | `18197557 bytes` |
+
+The implemented snapshot loaded `59771` strings, `1754` platform types, `18167` type members,
+`8337` callables, `601` globals, `53` query tables, `498` query fields, `56` query parameters and
+`0` language facts from the `shcntx_ru` provider index. Estimated heap is snapshot-owned storage
+only; peak RSS is process-level and includes SQLite/materialization transients. The warm build
+baseline is `507-601 ms`, median `511 ms`, with process peak RSS `105708-105844 KiB`.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

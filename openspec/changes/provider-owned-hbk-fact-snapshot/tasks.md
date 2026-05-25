@@ -7,15 +7,15 @@
 
 ## 2. Narrow Snapshot Contract
 
-- [ ] 2.1 Add compact provider-owned snapshot DTOs/node ids for platform type/member/callable/global/module/query/language facts.
-- [ ] 2.2 Add `Send + Sync` compile-time coverage for the immutable snapshot.
-- [ ] 2.3 Add worker-local handle construction from shared immutable snapshot.
+- [x] 2.1 Add compact provider-owned snapshot DTOs/node ids for platform type/member/callable/global/module/query/language facts.
+- [x] 2.2 Add `Send + Sync` compile-time coverage for the immutable snapshot.
+- [x] 2.3 Add worker-local handle construction from shared immutable snapshot.
 
 ## 3. Lookup Surface
 
-- [ ] 3.1 Implement representative snapshot lookups for type, members, callable, global context, module context, query table and language facts.
-- [ ] 3.2 Add concurrent deterministic read tests across multiple threads.
-- [ ] 3.3 Add adapter/projection tests for existing resolver DTO compatibility where needed.
+- [x] 3.1 Implement representative snapshot lookups for type, members, callable, global context, module context, query table and language facts.
+- [x] 3.2 Add concurrent deterministic read tests across multiple threads.
+- [x] 3.3 Add adapter/projection tests for existing resolver DTO compatibility where needed.
 
 ## 4. Spec Reconciliation
 

@@ -1390,6 +1390,150 @@ mod tests {
     }
 
     #[test]
+    fn hbk_fact_snapshot_materializes_worker_safe_representative_lookups() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<HbkFactSnapshot>();
+        assert_send_sync::<HbkFactReadHandle<'static>>();
+
+        let path = temp_path("hbk-fact-snapshot.sqlite");
+        let mut context = fixture_context();
+        context.global_methods.push(model::GlobalMethod {
+            name: name("Сообщить", Some("Message")),
+            signatures: vec![model::Signature {
+                text: "Сообщить(<ТекстСообщения>)".to_string(),
+                parameters: vec![model::Parameter {
+                    name: "ТекстСообщения".to_string(),
+                    required: true,
+                    type_refs: vec![model::TypeRef {
+                        name: "Строка".to_string(),
+                    }],
+                    description: None,
+                }],
+                return_types: Vec::new(),
+                variant: None,
+            }],
+            return_types: Vec::new(),
+            description: Some("Global method description must stay out of snapshot.".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source("Сообщить"),
+        });
+        context.global_properties.push(model::GlobalProperty {
+            name: name("Каталоги", Some("Catalogs")),
+            usage: None,
+            type_refs: vec![model::TypeRef {
+                name: "ОтборКомпоновкиДанных".to_string(),
+            }],
+            description: Some("Global property description must stay out of snapshot.".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source("Каталоги"),
+        });
+        context.global_context_events.push(module_event(
+            model::ModuleKind::Form,
+            &["Форма", "Form"],
+            "ПриОткрытии",
+        ));
+        let mut table = query_table("Справочник", "Таблицы справочников", "Таблица справочника");
+        table.syntax = Some(name(
+            "Справочник.<Имя справочника>",
+            Some("Catalog.<Catalog name>"),
+        ));
+        let mut field = query_table_field("Таблица справочника", "Таблицы справочников", "Ссылка");
+        field.type_refs = vec![model::TypeRef {
+            name: "ОтборКомпоновкиДанных".to_string(),
+        }];
+        let mut parameter =
+            query_table_parameter("Таблица справочника", "Таблицы справочников", "Дата");
+        parameter.type_refs = vec![model::TypeRef {
+            name: "Строка".to_string(),
+        }];
+        parameter.default_value = Some("НачалоПериода".to_string());
+        context.query_tables.push(table);
+        context.table_fields.push(field);
+        context.table_parameters.push(parameter);
+
+        let mut builder = builder_from_context(&context);
+        for fact in language_fixture_facts("ru") {
+            builder.add_language_fact(fact);
+        }
+        build_index_from_builder(&path, &metadata(), builder).expect("index must build");
+
+        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        assert!(snapshot.estimated_heap_bytes() > 0);
+        let handle = snapshot.worker_handle();
+        let filter = handle
+            .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
+            .expect("platform type id lookup must work");
+        assert_eq!(
+            snapshot.string(snapshot.platform_type(filter).name.primary),
+            "ОтборКомпоновкиДанных"
+        );
+        assert!(
+            handle
+                .members_of_type(filter)
+                .iter()
+                .map(|member| snapshot.type_member(*member))
+                .any(|member| snapshot.string(member.name.primary) == "Элементы")
+        );
+        assert!(
+            handle
+                .callable_by_owner_name(filter, "ПолучитьОбъектПоИдентификатору")
+                .iter()
+                .map(|callable| snapshot.callable(*callable))
+                .any(|callable| {
+                    snapshot.string(callable.name.primary) == "ПолучитьОбъектПоИдентификатору"
+                })
+        );
+
+        let globals = handle.globals_by_name("Сообщить");
+        assert_eq!(globals.len(), 1);
+        assert!(
+            snapshot
+                .global_fact(globals[0])
+                .callable
+                .map(|callable| !snapshot.callable(callable).signatures.is_empty())
+                .unwrap_or(false)
+        );
+        assert_eq!(handle.module_events("module_context:form").len(), 1);
+
+        let tables = handle.query_tables_by_name("Справочник.<Имя справочника>");
+        assert_eq!(tables.len(), 1);
+        let fields = handle.query_fields(tables[0]);
+        let parameters = handle.query_parameters(tables[0]);
+        assert_eq!(fields.len(), 1);
+        assert_eq!(parameters.len(), 1);
+        assert_eq!(
+            snapshot.string(snapshot.query_field(fields[0]).name.primary),
+            "Ссылка"
+        );
+        assert_eq!(
+            snapshot.string(snapshot.query_parameter(parameters[0]).name.primary),
+            "Дата"
+        );
+
+        let bsl_string = handle.language_fact_by_id("shlang:def_String");
+        assert!(bsl_string.is_some());
+        let string_facts = handle.language_facts_by_name("Строка");
+        assert!(
+            string_facts
+                .iter()
+                .map(|fact| snapshot.language_fact(*fact))
+                .any(|fact| fact.domain == HbkLanguageDomain::Bsl)
+        );
+
+        let shared = std::sync::Arc::new(snapshot);
+        let expected = lookup_summary(shared.as_ref());
+        let workers = (0..4)
+            .map(|_| {
+                let shared = std::sync::Arc::clone(&shared);
+                std::thread::spawn(move || lookup_summary(shared.as_ref()))
+            })
+            .collect::<Vec<_>>();
+        for worker in workers {
+            assert_eq!(worker.join().expect("worker must finish"), expected);
+        }
+    }
+
+    #[test]
     fn keyword_search_prefers_exact_identity_for_simple_symbol() {
         let path = temp_path("simple-symbol-ranking.sqlite");
         let context = model::PlatformContext {
@@ -3032,6 +3176,24 @@ mod tests {
             source_hbk: "fixture.hbk".to_string(),
             source_extraction_schema_version: 11,
         }
+    }
+
+    fn lookup_summary(snapshot: &HbkFactSnapshot) -> Vec<usize> {
+        let handle = snapshot.worker_handle();
+        let Some(filter) = handle.platform_type_by_id("platform_type:ОтборКомпоновкиДанных") else {
+            return Vec::new();
+        };
+        let table_count = handle.query_tables_by_name("Справочник").len();
+        vec![
+            handle.members_of_type(filter).len(),
+            handle
+                .callable_by_owner_name(filter, "ПолучитьОбъектПоИдентификатору")
+                .len(),
+            handle.globals_by_name("Сообщить").len(),
+            handle.module_events("module_context:form").len(),
+            table_count,
+            handle.language_facts_by_name("Строка").len(),
+        ]
     }
 
     fn language_fixture_facts(locale: &str) -> Vec<language::LanguageFact> {

@@ -862,3 +862,19 @@ bytes for `25415` documents, `18609` members, `8337` callables, `47156` type ref
 relations. This accepts SQLite-first bulk materialization as the next implementation direction, with
 one important constraint: the real snapshot must be contract-shaped and must not copy search/export
 or index-maintenance data that workers do not need.
+
+The first worker-safe snapshot implementation should use owned arenas and derived contiguous
+indexes before adding specialized indexing crates. Exact id/name/owner lookup can start as sorted
+vectors over compact ids; owner/member, callable, query-table and relation traversals can start as
+compressed-sparse-row style offset arrays. This favors deterministic `Send + Sync` sharing,
+cache-local reads and simple measurement over premature dependency choices. If the first slice shows
+that name lookup, persisted reload or set intersection is the actual bottleneck, evaluate `fst`,
+`rkyv`/`zerovec` or `roaring` in separate measured follow-ups.
+
+T168 implemented that first arena/read-handle slice in `syntax-helper-search`. Release
+materialization from `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite` measured
+`507-601 ms` stable warm builds, median `511 ms`, with `18197557` estimated snapshot-owned heap
+bytes and about `105708-105844 KiB` process peak RSS. First-run/cache warm-up observations are
+excluded from the baseline. These measurements keep the first implementation within the
+SQLite-first direction while showing that process RSS still includes SQLite/transient materialization
+overhead beyond the final immutable snapshot arenas.

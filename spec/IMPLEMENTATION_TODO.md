@@ -32,7 +32,7 @@ type-reference conclusions live in
 `implementation/performance-baseline-t13.md`, `implementation/performance-variants.md` and
 `decisions/`.
 
-Current first unchecked task: T168.
+Current first unchecked task: none.
 
 ## Loop Rule
 
@@ -51,7 +51,7 @@ Current first unchecked task: T168.
 
 ## Active Tasks
 
-### [ ] T168. Implement the first provider-owned worker-safe HBK fact snapshot slice
+### [x] T168. Implement the first provider-owned worker-safe HBK fact snapshot slice
 
 References: FR-CTX-RESOLVE-001, NFR-PERF-001, NFR-QUERY-001, UC-CTX-001,
 UC-CTX-002, `implementation/solution-context-resolve.md`,
@@ -69,9 +69,14 @@ Scope:
 - Implement worker-local read handles with representative lookups for platform type members,
   callables, global context, module events, query table fields/parameters and language facts where
   the indexed source provides them.
+- Use owned `Vec` arenas, compact node/string ids, sorted lookup vectors and compressed-sparse-row
+  style adjacency arrays as the first index shape.
 - Keep existing resolver DTOs as adapter projections rather than the physical snapshot storage.
 - Do not add analyzer fallback readers, raw SQLite readers in `v8-context`, direct HBK parsing in
   worker lookup, or broad `Arc<Mutex<_>>` around resolver/search state.
+- Do not add Tantivy, persisted zero-copy snapshot formats, minimal-perfect hashing or compressed
+  bitmap dependencies in the first slice. Treat `fst`, `rkyv`/`zerovec` and `roaring` as measured
+  follow-up experiments only if the arena snapshot exposes a concrete bottleneck.
 
 Verification:
 
@@ -86,7 +91,23 @@ Verification:
 
 Result:
 
-- Pending.
+- `syntax-helper-search` now exposes provider-owned `HbkFactSnapshot` / `HbkFactReadHandle`
+  storage APIs over immutable owned arenas, compact node/string ids, derived lookup vectors and
+  compressed-sparse-row owner adjacency arrays.
+- The snapshot materializes from an existing provider SQLite index through provider-owned bulk table
+  reads and does not store or share `rusqlite::Connection`, raw SQLite tables or mutable resolver
+  state after construction.
+- Representative read-handle lookups cover platform type ids/names, owner members/callables,
+  platform global facts, module events, query tables with fields/parameters and language facts.
+- Release measurement on `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite`
+  produced stable warm snapshot build readings of `507-601 ms`, median `511 ms`; first-run/cache
+  warm-up observations are excluded from the baseline. Estimated snapshot-owned heap was
+  `18197557` bytes and process peak RSS stayed around `105708-105844 KiB`.
+- Existing resolver DTO adapters were not rewritten in this slice; they remain adapter projections
+  over the current search-index path while the snapshot read model stabilizes.
+- Verification passed with `cargo test -p syntax-helper-search snapshot`,
+  `openspec validate provider-owned-hbk-fact-snapshot --strict`, `cargo fmt --all --check` and
+  `cargo check -p syntax-helper-search`.
 
 ### [x] T167. Measure SQLite-first HBK fact snapshot materialization
 

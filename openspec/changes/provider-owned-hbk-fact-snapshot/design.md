@@ -67,6 +67,40 @@ Secondary indexes are derived:
 
 Indexes must point into owned arenas and must not become duplicate sources of truth.
 
+## Compact Index Strategy
+
+The first implementation should use simple immutable Rust data layouts before adding a specialized
+indexing dependency:
+
+- store facts in typed `Vec` arenas with compact `u32` node ids;
+- store strings through a snapshot-owned `StringId` pool or equivalent compact owned string storage;
+- represent one-to-many edges as compressed-sparse-row style arrays: owner/source offsets plus
+  contiguous target id slices;
+- represent exact lookup indexes as sorted `Vec<(Key, NodeId)>` or `Vec<(Key, Range)>` and use
+  binary search/range scans;
+- pre-size arenas and index vectors from SQLite row counts where practical.
+
+This keeps T168 focused on the measured SQLite bulk materialization path and avoids replacing one
+private provider artifact with another unmeasured framework. `HashMap` may still be used during
+construction, but the immutable snapshot should prefer contiguous arrays when lookup keys and
+candidate sets are known at build time.
+
+Specialized crates are follow-up experiments, not first-slice requirements:
+
+- `fst` is the strongest candidate if normalized name/id/alias lookup dominates memory or latency;
+  it can encode sorted byte-string maps compactly and optionally be memory-mapped, but it forces
+  `u64` values and lexicographically ordered unique keys.
+- `rkyv` or `zerovec` should be considered only after the in-memory snapshot contract is stable and
+  a persisted or memory-mapped snapshot artifact is needed.
+- `lasso` can help prototype string interning, but a provider-owned `StringId` pool is preferred
+  for the final snapshot contract.
+- `roaring` is useful only if measured lookup needs large set intersections; owner/member and
+  relation adjacency lists should start as sorted `u32` slices.
+- `boomphf` or another minimal-perfect-hash crate is deferred until exact-key maps are proven to be
+  the bottleneck, because unknown-key detection requires an auxiliary validation scheme.
+- `tantivy` remains a search/ranking tool for Syntax Assistant search, not a worker fact-snapshot
+  storage dependency.
+
 ## DTO Boundary
 
 Do not use existing `ContextFact`, `ResolvedType`, `ResolvedCallable` and related DTOs as the physical storage model. They are resolver response DTOs and are intentionally broad.
@@ -204,6 +238,40 @@ current release HBK -> SQLite index build. The compact probe replaced the earlie
 probe and confirms the implementation direction: snapshot materialization must be contract-shaped
 and should not preserve data that is only useful to search/export/index maintenance. The measurement
 harness is service code and is not retained as a public crate example.
+
+## T168 Implementation Measurement: 2026-05-26
+
+A temporary release harness over the implemented `HbkFactSnapshot::from_path` API materialized the
+same `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite` index after warm-up. The
+table records the stable local warm readings and excludes first-run/cache-warm-up observations from
+the baseline.
+
+| Run | Snapshot Build | Process Elapsed | Peak RSS | Estimated Snapshot Heap |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | `511 ms` | `0.52s` | `105708 KiB` | `18197557 bytes` |
+| 2 | `601 ms` | `0.62s` | `105844 KiB` | `18197557 bytes` |
+| 3 | `507 ms` | `0.52s` | `105844 KiB` | `18197557 bytes` |
+
+Warm baseline summary: `507-601 ms`, median `511 ms`, with process peak RSS
+`105708-105844 KiB`.
+
+Implemented snapshot counts:
+
+| Category | Count |
+| --- | ---: |
+| strings | `59771` |
+| platform types | `1754` |
+| type members | `18167` |
+| callables | `8337` |
+| globals | `601` |
+| query tables | `53` |
+| query fields | `498` |
+| query parameters | `56` |
+| language facts | `0` |
+
+The estimated heap is computed from the snapshot-owned string pool, typed arenas and derived
+indexes. Peak RSS is process-level and includes SQLite/materialization transient memory, allocator
+behavior and executable overhead.
 
 ## Non-Goals
 

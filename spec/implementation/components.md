@@ -923,6 +923,25 @@ release compact SQLite -> snapshot probe materialization at `474 ms` / `49112 Ki
 SQLite bulk materialization the accepted first implementation path. Direct HBK extraction remains
 setup/index-refresh input and a comparison baseline.
 
+T168 implemented the first `HbkFactSnapshot` arena/read-handle slice. On the same release
+`shcntx_ru` SQLite index, stable warm in-memory snapshot builds measured `507-601 ms`, median
+`511 ms`, after excluding first-run/cache warm-up observations from the baseline. The snapshot-owned
+heap estimate was `18197557` bytes, while process-level peak RSS was about `105708-105844 KiB`.
+
+The first snapshot index shape should be boring and measurable:
+
+- typed `Vec` arenas for provider facts, addressed by compact `u32` node ids;
+- snapshot-owned string ids instead of repeated `String` fields where strings participate in hot
+  lookup or repeated facts;
+- sorted lookup vectors for exact id/name/owner keys;
+- compressed-sparse-row style adjacency arrays for members, callables, query-table fields and
+  relation source/kind traversals.
+
+Do not introduce Tantivy, a graph database, a new persisted snapshot format, minimal-perfect hashing
+or compressed bitmap indexes in the first slice. Evaluate `fst` for name/id maps, `rkyv` or
+`zerovec` for persisted zero-copy snapshots, and `roaring` for large set intersections only after
+the owned arena snapshot has concrete memory/latency measurements.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

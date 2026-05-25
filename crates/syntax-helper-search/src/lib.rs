@@ -6,6 +6,7 @@ include!("builder.rs");
 include!("error.rs");
 include!("index_build.rs");
 include!("index.rs");
+include!("snapshot.rs");
 include!("storage.rs");
 include!("relations.rs");
 include!("document_mapping.rs");
