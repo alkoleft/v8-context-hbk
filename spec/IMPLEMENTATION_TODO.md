@@ -32,7 +32,7 @@ type-reference conclusions live in
 `implementation/performance-baseline-t13.md`, `implementation/performance-variants.md` and
 `decisions/`.
 
-Current first unchecked task: none.
+Current first unchecked task: T168.
 
 ## Loop Rule
 
@@ -50,6 +50,93 @@ Current first unchecked task: none.
 - Do not create empty commits.
 
 ## Active Tasks
+
+### [ ] T168. Implement the first provider-owned worker-safe HBK fact snapshot slice
+
+References: FR-CTX-RESOLVE-001, NFR-PERF-001, NFR-QUERY-001, UC-CTX-001,
+UC-CTX-002, `implementation/solution-context-resolve.md`,
+`implementation/components.md`, `acceptance/baseline.md`,
+OpenSpec change `provider-owned-hbk-fact-snapshot`.
+
+Scope:
+
+- Add compact provider-owned snapshot DTOs/node ids for the measured SQLite-first materialization
+  path.
+- Keep the snapshot contract-shaped: include only fields required by worker fact lookup and exclude
+  search/export/index-maintenance payloads such as FTS rows, preview text, raw descriptions, raw
+  storage paths, relation weights and parser diagnostics.
+- Implement a narrow immutable snapshot type that is `Send + Sync` and can be shared as `Arc<_>`.
+- Implement worker-local read handles with representative lookups for platform type members,
+  callables, global context, module events, query table fields/parameters and language facts where
+  the indexed source provides them.
+- Keep existing resolver DTOs as adapter projections rather than the physical snapshot storage.
+- Do not add analyzer fallback readers, raw SQLite readers in `v8-context`, direct HBK parsing in
+  worker lookup, or broad `Arc<Mutex<_>>` around resolver/search state.
+
+Verification:
+
+- `openspec validate provider-owned-hbk-fact-snapshot --strict`
+- focused snapshot unit/integration tests, including compile-time `Send + Sync` assertion
+- concurrent deterministic read test across multiple threads
+- representative lookup test coverage for platform type -> members/callables, platform global
+  context, module context events, query table -> fields/parameters and documented language/query
+  facts available in indexed sources
+- `cargo fmt --all --check`
+- focused package tests/checks for touched crates
+
+Result:
+
+- Pending.
+
+### [x] T167. Measure SQLite-first HBK fact snapshot materialization
+
+References: FR-CTX-RESOLVE-001, NFR-PERF-001, NFR-QUERY-001, UC-CTX-001,
+UC-CTX-002, `implementation/solution-context-resolve.md`,
+`implementation/components.md`,
+OpenSpec change `provider-owned-hbk-fact-snapshot`.
+
+Scope:
+
+- Treat the existing `syntax-helper-search` SQLite provider index as the first candidate source for
+  an immutable worker-safe HBK fact snapshot.
+- Add a measurement-only bulk materialization harness that reads provider-owned SQLite tables in
+  coarse passes instead of using public N+1 lookup APIs.
+- Measure build time, RSS delta or peak RSS, estimated heap when practical, node counts by category
+  and representative lookup/index coverage on a real `shcntx_ru` provider index.
+- Compare the SQLite-first materialization path with existing HBK/index build measurements and the
+  downstream N+1 lookup spike before accepting the broader snapshot implementation direction.
+
+Verification:
+
+- `openspec validate provider-owned-hbk-fact-snapshot --strict`
+- measurement command on a representative local `shcntx_ru` SQLite provider index
+- `cargo fmt --all --check`
+- focused package check for the temporary measurement harness before it was removed
+
+Result:
+
+- OpenSpec change `provider-owned-hbk-fact-snapshot` records SQLite-first materialization as a
+  measured design gate.
+- Used a temporary `syntax-helper-search` measurement harness to bulk-read provider-owned SQLite
+  tables without public `SearchIndex` lookup APIs. The harness was removed after the measurements
+  were promoted into the durable specs.
+- The measurement probe was narrowed to contract-shaped snapshot fields only; it does not copy
+  search/export/index-maintenance payloads or raw storage paths.
+- Current release CLI rebuilt schema-16 `shcntx_ru` provider index from
+  `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` in `14.50s`, with `284360 KiB` peak RSS and
+  `25415` documents.
+- Release compact SQLite -> snapshot probe materialized the same index in `474 ms` (`0.55s`
+  process elapsed), with `49112 KiB` peak RSS, `46540 KiB` RSS delta and `34935365` estimated heap
+  bytes.
+- Probe counts: `25415` documents, `2465` type identities, `121` type templates, `18609` members,
+  `8337` callables, `8675` signatures, `9793` parameters, `47156` type refs, `58128` relations and
+  `728` document metadata rows.
+- Review/fix pass verification after harness removal: `openspec validate
+  provider-owned-hbk-fact-snapshot --strict`, `cargo fmt --all --check`,
+  `cargo check -p syntax-helper-search` and `git diff --check` passed.
+- Conclusion: SQLite bulk materialization is accepted as the first implementation source for the
+  worker-safe snapshot. Direct HBK reading remains setup/index-refresh input and comparison
+  baseline.
 
 ### [x] T166. Expose shcntx query table templates through the QueryLanguage resolver source
 

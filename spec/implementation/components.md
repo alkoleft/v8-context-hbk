@@ -903,6 +903,26 @@ instantiate concrete metadata query tables and does not make query tables platfo
 The source-neutral resolver DTOs identify evidence by resolver source id, evidence id and locale;
 raw HBK, TOC and HTML parser provenance stays inside the search adapter/index layer.
 
+### Provider-Owned HBK Fact Snapshot
+
+The next resolver implementation layer is a provider-owned immutable HBK fact snapshot. The snapshot
+belongs with the provider/index boundary, not with downstream analyzers:
+
+- `syntax-helper-search` owns SQLite schema knowledge and the first bulk materializer;
+- compact snapshot nodes own platform, language and query facts in arena/id form;
+- materialization selects only columns required by snapshot lookup contracts and excludes
+  search/export/index-maintenance payloads;
+- secondary lookup indexes reference owned nodes and are derived state only;
+- `context-resolver-search` may adapt snapshot nodes into `context-resolver-core` DTOs;
+- downstream `v8-context` consumes the snapshot/read handle and must not query raw SQLite tables or
+  keep analyzer-side mirror ownership for documented HBK facts.
+
+The first measured source is the existing SQLite provider index, not direct HBK book parsing.
+T167 measured release schema-16 `shcntx_ru` index build at `14.50s` / `284360 KiB` peak RSS and
+release compact SQLite -> snapshot probe materialization at `474 ms` / `49112 KiB` peak RSS. This makes
+SQLite bulk materialization the accepted first implementation path. Direct HBK extraction remains
+setup/index-refresh input and a comparison baseline.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

@@ -836,3 +836,29 @@ The first implementation task should prove the API with behavior tests:
 
 Full real-index UAT should be added only when the platform adapter is implemented. Configuration,
 BSL parser and query parser UAT belongs to the future provider that owns those sources.
+
+## Worker-Safe Snapshot Direction
+
+OpenSpec change `provider-owned-hbk-fact-snapshot` extends this resolver direction with a
+provider-owned immutable read model for worker-safe analyzer lookup. The snapshot is not a
+replacement for source-neutral resolver DTOs. Instead, it is a compact HBK-owned storage/read model
+that can be projected into `context-resolver-core` DTOs at adapter boundaries.
+
+The accepted first materialization source is the existing `syntax-helper-search` SQLite provider
+index, read through provider-owned bulk table passes. SQLite is a build input only: a read-only
+connection may be opened while constructing the snapshot, but the resulting `HbkFactSnapshot` must
+not store or share `rusqlite::Connection` and must be shareable as `Arc<_>` across workers.
+
+Direct HBK book reading remains setup/index-refresh work. It is not the first worker-safe snapshot
+source because the current SQLite index already normalizes identities, ownership, type references,
+relations, availability and provenance. Building the snapshot from public `SearchIndex` lookup APIs
+is also rejected for the production path because the downstream spike showed acceptable memory but
+too much N+1 lookup construction cost.
+
+T167 measured the first SQLite-first probe on local `shcntx_ru.hbk` data. Current release
+HBK -> schema16 SQLite index build took `14.50s` and `284360 KiB` peak RSS. Release SQLite ->
+compact snapshot probe materialization took `474 ms`, `49112 KiB` peak RSS and `34935365` estimated heap
+bytes for `25415` documents, `18609` members, `8337` callables, `47156` type refs and `58128`
+relations. This accepts SQLite-first bulk materialization as the next implementation direction, with
+one important constraint: the real snapshot must be contract-shaped and must not copy search/export
+or index-maintenance data that workers do not need.

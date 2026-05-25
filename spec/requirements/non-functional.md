@@ -96,6 +96,9 @@ Requirements:
 
 - Resolver calls must use prebuilt provider indexes or in-memory provider snapshots. They must not
   parse HBK files, configuration source files, BSL source or query text in the lookup hot path.
+- Worker-safe HBK provider facts should be shared as immutable provider-owned snapshots. Snapshot
+  construction may read a provider SQLite index, but worker lookup must not share
+  `rusqlite::Connection`, raw SQLite tables or mutable resolver state across analysis threads.
 - Static-analysis integration must use direct Rust library calls in the lookup hot path. HTTP,
   daemon, MCP, CLI-spawn and JSON-over-process transports are out of scope for the first resolver
   surface.

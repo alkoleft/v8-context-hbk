@@ -239,3 +239,30 @@ Do not make `v8-context-hbk-cli`, the SQLite schema, Syntax Assistant HTML parsi
 ordinary book export, documentation-site generation or web-app code part of the static-analysis
 library contract. A future facade crate is allowed only if real downstream wiring shows that the
 current `core + adapter + index` dependency set is too leaky.
+
+### 2026-05-26: Worker-Safe Provider Snapshot
+
+The downstream `v8-context` module-analysis worker model needs HBK-backed platform and language
+facts to be shared across Rust worker threads. Sharing `syntax-helper-search::SearchIndex` directly
+is not the selected contract because it owns a `rusqlite::Connection` and keeps lookup state tied to
+the rebuildable SQLite provider artifact.
+
+The selected follow-up direction is a provider-owned immutable `HbkFactSnapshot` materialized by
+`v8-context-hbk` from existing `syntax-helper-search` SQLite provider indexes through coarse
+provider-owned bulk reads. SQLite remains a private build/materialization input: the snapshot may
+open a read-only connection while constructing owned nodes and indexes, but worker lookup must use
+`Arc<HbkFactSnapshot>` plus worker-local handles and must not share SQLite connections, raw table
+readers, broad resolver locks or analyzer-owned mirror tables.
+
+The snapshot is a provider read model, not the source-neutral resolver DTO model. It owns compact
+platform, BSL language and query-language facts with provider identities, ownership edges,
+availability, type references and provenance required for lookup. `context-resolver-search` may
+project snapshot nodes into `context-resolver-core` DTOs at adapter boundaries. Downstream analyzer
+code must not depend on SQLite table names or re-own documented HBK facts as analyzer storage.
+
+T167 measured this direction on a schema-16 `shcntx_ru` provider index. The release HBK-to-SQLite
+index build took `14.50s` with `284360 KiB` peak RSS for `25415` documents. A temporary compact
+SQLite-to-snapshot probe materialized the same index in `474 ms`, with `49112 KiB` peak RSS and
+`34935365` estimated heap bytes. This accepts SQLite bulk materialization as the first
+implementation source for the worker-safe snapshot. Direct HBK reading remains setup/index-refresh
+input and comparison baseline, not the worker hot path.

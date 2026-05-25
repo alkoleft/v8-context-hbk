@@ -2288,6 +2288,42 @@ accepted result is better parser maintainability and lower non-outlier `shcntx_r
 readings, with average wall time roughly unchanged by outliers and higher process max RSS in this
 end-to-end path.
 
+T167 measured the first SQLite-first HBK fact snapshot materialization hypothesis for OpenSpec
+change `provider-owned-hbk-fact-snapshot`. The current release CLI first rebuilt a schema-16
+provider index:
+
+```bash
+/usr/bin/time -f 'index_elapsed_seconds=%e\nindex_peak_rss_kib=%M\nindex_exit_status=%x' \
+  target/release/v8-context-hbk syntax index \
+  /opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk \
+  --output target/snapshot-materialization/shcntx_ru.schema16.release.sqlite
+```
+
+This produced `25415` documents in `14.50s` with `284360 KiB` peak RSS. A temporary release
+snapshot measurement harness then bulk-read provider-owned SQLite tables without using public lookup
+APIs:
+
+```bash
+/usr/bin/time -f 'time_elapsed_seconds=%e\ntime_peak_rss_kib=%M\ntime_exit_status=%x' \
+  target/release/examples/measure_snapshot_materialization \
+  target/snapshot-materialization/shcntx_ru.schema16.release.sqlite
+```
+
+The compact SQLite -> snapshot probe materialized in `474 ms` (`0.55s` process elapsed), with
+`49112 KiB` peak RSS, `46540 KiB` RSS delta and `34935365` estimated heap bytes. It loaded `25415`
+documents, `2465` type identities, `121` type templates, `18609` members, `8337` callables,
+`8675` signatures, `9793` parameters, `47156` type refs, `58128` relations and `728` document
+metadata rows. Derived indexes contained `102655` name keys, `18607` member owner/name keys,
+`8329` callable owner/name keys and `32555` relation source/kind keys. A deterministic
+representative lookup loop of `20000` iterations measured `8922159 ns` total and `446 ns` average.
+
+Conclusion: provider-owned SQLite bulk materialization is accepted as the first implementation
+source for the worker-safe HBK fact snapshot. Direct HBK book reading remains an index refresh/setup
+path and comparison baseline, not the worker hot path. The measured probe is not yet the final
+public snapshot DTO layout, but it is now contract-shaped rather than a wide copy of SQLite tables:
+search/export/index-maintenance payloads and raw storage paths are excluded from the snapshot
+baseline. The temporary harness is service code and is not kept as a public crate example.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,
