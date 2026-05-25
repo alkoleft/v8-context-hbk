@@ -846,6 +846,9 @@ The resolver API must be source-neutral and fact-oriented:
 - retrieve callable overloads with ordered parameters and return or constructor result types;
 - expose explicit relation edges such as ownership, type reference, return type, construction,
   generated-from, augments or maps-to when a provider has source-backed evidence;
+- support direct analyzer lookup capabilities for known-owner member/callable access, constructor
+  lookup, module-context lookup and static query-table field/parameter lookup without requiring
+  consumers to scan broad result sets;
 - expose platform type template facts through open family/variant keys owned by the HBK
   provider, so consumers can request generated metadata-object template variants without matching
   platform localized names or English aliases or depending on a closed metadata-kind enum;

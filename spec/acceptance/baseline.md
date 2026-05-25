@@ -2341,6 +2341,21 @@ The implemented snapshot loaded `59771` strings, `1754` platform types, `18167` 
 only; peak RSS is process-level and includes SQLite/materialization transients. The warm build
 baseline is `507-601 ms`, median `511 ms`, with process peak RSS `105708-105844 KiB`.
 
+Follow-up design conclusion: the first arena/read-handle slice is accepted as the measurement
+baseline, but the next physical snapshot shape should be analyzer-query-shaped rather than
+public DTO-family-shaped. Hot-path indexes must prioritize known-owner member/callable lookup,
+constructor lookup, module-context lookup, static query-table field/parameter lookup, exact fact
+lookup, template-key lookup, compact availability and relation traversal by supported relation kind.
+Fields used only for descriptions, previews, long documentation, raw provenance or arbitrary fuzzy
+search remain DTO/search-index concerns unless a later measurement proves they belong in worker
+lookup.
+
+T169 and later snapshot-layout changes must compare against this T168 baseline with release warm
+runs. The comparison must report at least snapshot build time, process peak RSS, estimated
+snapshot-owned heap, node/string/index heap breakdown, per-index counts/bytes and batched lookup
+timings after source open. A larger index set is acceptable only when the measured hot-path lookup
+benefit and memory cost are both recorded.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

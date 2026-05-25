@@ -32,7 +32,7 @@ type-reference conclusions live in
 `implementation/performance-baseline-t13.md`, `implementation/performance-variants.md` and
 `decisions/`.
 
-Current first unchecked task: none.
+Current first unchecked task: T169.
 
 ## Loop Rule
 
@@ -50,6 +50,93 @@ Current first unchecked task: none.
 - Do not create empty commits.
 
 ## Active Tasks
+
+### [ ] T169. Reshape `HbkFactSnapshot` physical indexes around analyzer hot paths
+
+References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001, NFR-QUERY-001, UC-CTX-001,
+UC-CTX-002, `implementation/solution-context-resolve.md`,
+`implementation/components.md`, `acceptance/baseline.md`,
+OpenSpec change `provider-owned-hbk-fact-snapshot`.
+
+Scope:
+
+- Start with a before-change release measurement of the current T168 snapshot on the representative
+  `shcntx_ru` provider index. Record snapshot build time, process peak RSS, estimated
+  snapshot-owned heap and batched lookup timings for the hot paths below before changing layout.
+- Refactor the snapshot read model so physical indexes are organized by analyzer queries rather
+  than public DTO result families.
+- Keep snapshot-owned nodes/arenas as the single source of provider fact payloads. Secondary
+  indexes store only compact keys and `NodeRef`/range values.
+- Implement physical indexes inside `syntax-helper-search::HbkFactSnapshot` and read-handle APIs.
+  `context-resolver-search` may call read handles and project results into resolver DTOs, but must
+  not build duplicate provider-fact maps, query raw SQLite, or own analyzer-side mirrors of HBK
+  facts.
+- Keep index payloads compact: keys plus node refs/ranges only. Do not store cloned names,
+  signatures, descriptions, type-ref vectors or DTO structs inside secondary indexes.
+- Add or reshape first-slice physical indexes for:
+  - exact fact id lookup;
+  - normalized type name and type template-key lookup;
+  - owner member listing;
+  - `(owner type, normalized name, optional kind)` member lookup;
+  - `(owner type, normalized name)` callable lookup;
+  - constructors by type;
+  - language/domain global method/property lookup;
+  - module context by language/domain/module kind;
+  - query table by name/syntax/identifier;
+  - query field and query parameter by table/name;
+  - compact availability by fact;
+  - relation traversal by source fact and relation kind.
+- Prefer contiguous arenas plus owner ranges when they reduce allocation count and keep lookup
+  cache-local. Nested logical ownership must remain explicit even if the physical storage uses
+  ranges instead of nested `Vec` fields.
+- Add memory accounting for string store, node arenas and each secondary-index family. The task is
+  not complete if total snapshot-owned heap grows without identifying the index family responsible.
+- Keep descriptions, previews, notes, full signature text, raw HBK/HTML provenance, long
+  documentation text, arbitrary fuzzy search data and unbounded relation paths out of first-slice
+  physical indexes.
+- Keep existing resolver DTOs as adapter projections over snapshot nodes. Do not expose raw SQLite
+  tables or make downstream analyzers depend on provider storage details.
+- Do not add Tantivy, persisted snapshot formats, minimal-perfect hashing, compressed bitmap
+  dependencies, global caches, async runtimes or tuning knobs in this slice.
+- Add no new runtime dependency in this task. If a dependency appears necessary, leave T169
+  unchecked until the task records the measured bottleneck, why `std` and existing workspace
+  dependencies are insufficient, and the ADR/spec update that owns the dependency decision.
+
+Verification:
+
+- focused snapshot tests for each hot-path index listed above;
+- concurrent deterministic read test across multiple threads;
+- release before/after measurement against the current representative `shcntx_ru` provider index,
+  recording warm snapshot build time, process peak RSS, estimated snapshot-owned heap, node/string
+  heap, per-index counts/bytes and representative lookup timings after source open;
+- compare release warm measurements with the T168 baseline (`507-601 ms` build, median `511 ms`,
+  `18197557` estimated snapshot-owned bytes, `105708-105844 KiB` process peak RSS). If median build
+  time or peak RSS increases by more than 15%, or estimated snapshot-owned heap increases by more
+  than 25%, identify the responsible index family and justify the tradeoff with measured hot-path
+  lookup benefit; otherwise leave T169 unchecked with a follow-up;
+- batched release lookup measurements for at least:
+  - exact fact id;
+  - `(owner type, normalized name, optional kind)` member lookup;
+  - `(owner type, normalized name)` callable lookup;
+  - constructors by type;
+  - module context by language/domain/module kind;
+  - query table by name/syntax/identifier;
+  - query field and query parameter by table/name;
+  - relation traversal by source fact and relation kind.
+- each measured lookup must stay under the NFR-RESOLVE-001 provisional `100 ms` resolver/API ceiling
+  on the representative source after `HbkFactReadHandle` creation. If not, leave T169 unchecked and
+  record measured timings, source size and the limiting component;
+- a physical index counts as complete only when it has a read-handle method and either a migrated
+  adapter test or a documented analyzer lookup scenario using it. Do not add placeholder physical
+  indexes for listed families that are not exercised in this slice; document them as deferred;
+- focused `context-resolver-search` adapter tests showing migrated known-owner member/callable
+  lookup, module-context lookup and query-table field/parameter lookup use the snapshot/read-handle
+  path;
+- if any adapter path remains transitional in this slice, document the exact non-migrated method,
+  the reason it remains on the old path and the follow-up task that will migrate it;
+- `openspec validate provider-owned-hbk-fact-snapshot --strict`;
+- `cargo fmt --all --check`;
+- focused package tests/checks for touched crates.
 
 ### [x] T168. Implement the first provider-owned worker-safe HBK fact snapshot slice
 

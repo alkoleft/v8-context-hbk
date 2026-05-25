@@ -928,14 +928,61 @@ T168 implemented the first `HbkFactSnapshot` arena/read-handle slice. On the sam
 `511 ms`, after excluding first-run/cache warm-up observations from the baseline. The snapshot-owned
 heap estimate was `18197557` bytes, while process-level peak RSS was about `105708-105844 KiB`.
 
-The first snapshot index shape should be boring and measurable:
+The next snapshot index shape should be analyzer-query-shaped, not shaped around public
+resolver/provider DTO result families. The physical model has two layers:
 
-- typed `Vec` arenas for provider facts, addressed by compact `u32` node ids;
-- snapshot-owned string ids instead of repeated `String` fields where strings participate in hot
-  lookup or repeated facts;
-- sorted lookup vectors for exact id/name/owner keys;
-- compressed-sparse-row style adjacency arrays for members, callables, query-table fields and
-  relation source/kind traversals.
+- owned nodes/arenas are the single source of provider facts and preserve natural nesting for
+  platform types, constructors, members, callables, globals, module contexts and query-language
+  facts;
+- secondary physical indexes store only compact keys and `NodeRef`/range values into those arenas.
+
+The first hot-path indexes are:
+
+| Index | Key | Value | Consumer path |
+| --- | --- | --- | --- |
+| `by_fact_id` | source-qualified fact/local id | `NodeRef` | exact lookup, provenance and resolver cache references |
+| `type_by_name` | normalized primary or alias | type refs | `Тип("...")`, constructor lookup and template evidence lookup for downstream composition |
+| `type_by_template_key` | `(family, variant)` | type refs | provider-backed template evidence for downstream metadata composition |
+| `members_by_owner` | resolved type ref | member refs/range | complete context/type member scan |
+| `member_by_owner_name_kind` | `(resolved type ref, normalized name, optional kind)` | member refs | property/method/event lookup from access expressions |
+| `callable_by_owner_name` | `(resolved type ref, normalized name)` | callable refs | overload and return-type lookup for method calls |
+| `constructors_by_type` | resolved type ref | callable refs/range | `Новый Тип(...)` constructor lookup |
+| `global_by_language_name_kind` | `(language/domain, normalized name, optional kind)` | global refs | BSL/SDBL global method and property lookup |
+| `module_context_by_kind` | `(language, domain, module kind)` | module-context ref | module globals and events |
+| `query_table_by_name` | normalized query table id/name/syntax/identifier | query-table refs | static query `FROM` resolution |
+| `query_field_by_table_name` | `(query-table ref, normalized field)` | query-field refs | query field resolution |
+| `query_param_by_table_name` | `(query-table ref, normalized parameter)` | query-parameter refs | virtual-table parameter lookup |
+| `availability_by_fact` | fact id/ref | compact availability | context applicability checks |
+| `relations_by_source_kind` | `(fact id/ref, relation kind)` | node refs/range | bounded related/type/module traversals |
+
+The first implementation may keep nodes in contiguous arenas with owner ranges instead of nested
+`Vec` fields when that improves cache locality and reduces allocation count. Logical nesting remains
+provider-owned: type nodes own ranges for their members, constructors and callables, while indexes
+only point at those owned nodes.
+
+Performance and memory accounting is part of the snapshot contract. A reshaped snapshot must report:
+
+- immutable node/arena bytes, string-store bytes and secondary-index bytes separately;
+- per-index counts and estimated bytes for the hot-path indexes above;
+- materialization wall-clock time, process peak RSS and estimated snapshot-owned heap across warm
+  release runs comparable to the T168 baseline;
+- batched release lookup timings for representative analyzer paths after source open.
+
+If a new index materially increases snapshot-owned heap or process peak RSS, the implementation must
+identify the responsible index and either justify it with a measured lookup benefit or split that
+index into a separate follow-up. Do not trade a small point-lookup improvement for broad duplicated
+payload storage.
+
+Physical indexes remain a `syntax-helper-search` provider concern. `context-resolver-search` may
+adapt read-handle results into source-neutral DTOs, but it must not build a second provider-fact
+index, keep analyzer-owned mirrors of HBK facts, or bypass the snapshot with raw SQLite table reads.
+The first query-shaped snapshot slice should use `std` and existing workspace dependencies only;
+new runtime dependencies require a measured bottleneck and a separate ADR/spec decision.
+
+Snapshot fields that are not analyzer hot-path keys or compact node payloads remain DTO/provenance
+projection data. Descriptions, previews, notes, full signature text, raw HTML paths, page titles,
+long documentation text, arbitrary fuzzy search data and all unbounded relation paths must not
+become first-slice physical indexes.
 
 Do not introduce Tantivy, a graph database, a new persisted snapshot format, minimal-perfect hashing
 or compressed bitmap indexes in the first slice. Evaluate `fst` for name/id maps, `rkyv` or

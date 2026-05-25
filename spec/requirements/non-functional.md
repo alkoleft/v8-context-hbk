@@ -99,6 +99,27 @@ Requirements:
 - Worker-safe HBK provider facts should be shared as immutable provider-owned snapshots. Snapshot
   construction may read a provider SQLite index, but worker lookup must not share
   `rusqlite::Connection`, raw SQLite tables or mutable resolver state across analysis threads.
+- Snapshot physical indexes must be shaped by analyzer lookup workflows, not by public DTO family
+  names. The first hot paths are:
+  - resolving a known owner type and then looking up a property, method or event by normalized name
+    and kind;
+  - resolving callable overloads or constructors for the already resolved owner/type;
+  - resolving module-context globals and events by language/domain/module kind;
+  - resolving query-table templates by query name or identifier and then resolving fields or
+    virtual-table parameters by table and normalized name;
+  - traversing explicitly supported relation kinds from a known fact id.
+- Snapshot-owned nodes are the single source of provider facts. Secondary indexes store only compact
+  keys and node references or ranges into the owned arenas; they must not duplicate DTO payloads.
+- Snapshot performance work must measure before and after changing storage layout. Measurements must
+  separate immutable snapshot-owned heap from process-level RSS and transient SQLite/materialization
+  memory. Index memory must be reported by index family so a new hot-path index cannot hide a broad
+  duplicated payload behind the total heap number.
+- Analyzer hot-path lookup measurements must use release builds and batched warm lookups after
+  source open. One-shot command elapsed time is not sufficient evidence for member/callable/query
+  lookup latency.
+- Provider-owned snapshot indexes must stay inside the provider crate/read-handle boundary.
+  Downstream adapters may project read-handle results into resolver DTOs, but must not maintain
+  duplicate provider-fact maps or raw SQLite readers for analyzer hot paths.
 - Static-analysis integration must use direct Rust library calls in the lookup hot path. HTTP,
   daemon, MCP, CLI-spawn and JSON-over-process transports are out of scope for the first resolver
   surface.
@@ -116,6 +137,14 @@ Provisional first-slice targets on the target developer workstation:
 - member listing for a resolved owner returns in under 100 ms after the resolver source is opened;
 - callable lookup for a resolved owner or callable id returns in under 100 ms after the resolver
   source is opened.
+- query-shaped snapshot follow-ups should treat those `100 ms` targets as the outer resolver/API
+  ceiling, not as an acceptable in-memory index lookup budget. Known-owner snapshot lookups should be
+  measured with batched release benchmarks and must record per-operation timings for at least
+  member-by-owner/name/kind, callable-by-owner/name, constructor-by-type, module-context-by-kind,
+  query-field-by-table/name and relation-by-source/kind.
+- snapshot-layout changes must compare warm build time, snapshot-owned heap and process peak RSS
+  with the previous accepted baseline. Increases above the task's documented tolerance require an
+  index-family breakdown and measured lookup benefit before the task can be accepted.
 
 If these targets cannot be met, the implementation task must record measured timings, source size
 and the limiting storage or translation component before adding broader optimization.

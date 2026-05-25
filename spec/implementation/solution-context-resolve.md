@@ -878,3 +878,26 @@ bytes and about `105708-105844 KiB` process peak RSS. First-run/cache warm-up ob
 excluded from the baseline. These measurements keep the first implementation within the
 SQLite-first direction while showing that process RSS still includes SQLite/transient materialization
 overhead beyond the final immutable snapshot arenas.
+
+The next snapshot step should reshape physical indexes around resolver/source workflows used by
+analyzer queries, not around public DTO result families such as type/member/callable result structs.
+The primary module-analysis path is:
+
+1. resolve or receive the owner type;
+2. resolve member by `(owner type, normalized name, optional kind)`;
+3. resolve callable overloads by `(owner type, normalized name)` when the member is callable;
+4. read parsed parameter and return type refs from the owned node payload.
+
+The other first-slice hot paths are module-context lookup by `(language, domain, module kind)` and
+static query lookup by query table name/identifier followed by table-owned field or parameter name.
+Exact id lookup, template-key lookup, compact availability lookup and relation traversal by
+`(source fact, relation kind)` are supporting indexes for those workflows. The snapshot must keep
+owned nodes as the single source of fact payloads; secondary indexes point to node refs or contiguous
+ranges and must not duplicate DTO payloads.
+
+This step must be measured as a memory-layout change, not only as an API reshuffle. Implementation
+work should capture a before/after release profile that reports snapshot build time, process peak
+RSS, estimated snapshot-owned heap, per-index heap contribution and batched lookup timings for the
+module-analysis, module-context and static-query paths. If an index raises memory usage without a
+matching hot-path lookup benefit, keep it out of the first slice or record it as a separate measured
+follow-up.
