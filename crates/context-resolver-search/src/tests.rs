@@ -1623,6 +1623,48 @@ mod tests {
             )
         );
 
+        let document_field_id = FactId::new(
+            SourceId::new("shcntx-query"),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryField,
+            "query_table_field:query_table:ОсновнаяТаблица:Документ",
+        );
+        let document_has_type = adapter
+            .related(
+                &document_field_id,
+                RelationKind::HasType,
+                &ResolveContext::all(),
+            )
+            .expect("query field template has_type traversal must not fail");
+        assert_eq!(document_has_type.status, ResolveStatus::Ok);
+        let document_type = document_has_type
+            .facts
+            .first()
+            .expect("template query field type must be returned");
+        assert_eq!(
+            document_type.id.local_id,
+            "platform_type:ДокументСсылка.<Имя документа>"
+        );
+        let FactDetails::Type(type_info) = &document_type.details else {
+            panic!("query field has_type target must expose type details");
+        };
+        assert_eq!(
+            type_info
+                .metadata_template
+                .as_ref()
+                .expect("template relation target must preserve metadata template")
+                .metadata_kind,
+            "ДокументСсылка"
+        );
+        assert_eq!(
+            type_info.metadata_template.as_ref().unwrap().parameters,
+            vec!["Имя документа".to_string()]
+        );
+        assert_eq!(
+            type_info.type_template_key,
+            Some(PlatformTypeTemplateKey::new("Document", "Ref"))
+        );
+
         let parameter_id = FactId::new(
             SourceId::new("shcntx-query"),
             LanguageDomain::QueryLanguage,
@@ -2300,6 +2342,27 @@ mod tests {
                 source: source_ref("query-table-field"),
             })
             .expect("query table field must sink");
+        builder
+            .table_field(model::QueryTableField {
+                owner: name("ОсновнаяТаблица", None),
+                owner_identity: Some("query_table:ОсновнаяТаблица".to_string()),
+                name: "Документ".to_string(),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTableField,
+                )
+                .with_owner_path(vec![
+                    name("Таблицы запросов", Some("Query tables")),
+                    name("Основная таблица", None),
+                ]),
+                type_refs: vec![model::TypeRef {
+                    name: "ДокументСсылка.<Имя документа>".to_string(),
+                }],
+                description: Some("Document query field provider fact.".to_string()),
+                note: None,
+                source: source_ref("query-table-field-document"),
+            })
+            .expect("template query table field must sink");
         builder
             .table_parameter(model::QueryTableParameter {
                 owner: name("ОсновнаяТаблица", None),

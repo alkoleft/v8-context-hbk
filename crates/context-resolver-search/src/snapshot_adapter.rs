@@ -1114,20 +1114,7 @@ impl QueryTableSnapshotSource {
             HbkFactRef::QueryTable(id) => Some(self.map_query_table(id)),
             HbkFactRef::QueryField(id) => Some(self.map_query_field(id)),
             HbkFactRef::QueryParameter(id) => Some(self.map_query_parameter(id)),
-            HbkFactRef::PlatformType(id) => {
-                let fact = self.snapshot.platform_type(id);
-                Some(ContextFact {
-                    id: self.platform_type_id(self.snapshot.string(fact.id)).0,
-                    name: self.map_name(&fact.name),
-                    owner: None,
-                    details: FactDetails::Type(TypeInfo {
-                        description: None,
-                        metadata_template: None,
-                        type_template_key: None,
-                    }),
-                    relations: Vec::new(),
-                })
-            }
+            HbkFactRef::PlatformType(id) => Some(self.map_platform_type_for_relation(id)),
             HbkFactRef::Enum(id) => {
                 let fact = self.snapshot.enum_fact(id);
                 Some(ContextFact {
@@ -1146,11 +1133,47 @@ impl QueryTableSnapshotSource {
         }
     }
 
+    fn map_platform_type_for_relation(&self, id: HbkPlatformTypeId) -> ContextFact {
+        let fact = self.snapshot.platform_type(id);
+        ContextFact {
+            id: self.platform_type_id(self.snapshot.string(fact.id)).0,
+            name: self.map_name(&fact.name),
+            owner: None,
+            details: FactDetails::Type(TypeInfo {
+                description: None,
+                metadata_template: fact.metadata_template.as_ref().map(|template| {
+                    MetadataTemplateInfo {
+                        metadata_kind: self.snapshot.string(template.metadata_kind).to_string(),
+                        parameters: template
+                            .template_parameters
+                            .iter()
+                            .map(|parameter| self.snapshot.string(*parameter).to_string())
+                            .collect(),
+                    }
+                }),
+                type_template_key: fact
+                    .type_template_key
+                    .map(|key| self.map_type_template_key(key)),
+            }),
+            relations: Vec::new(),
+        }
+    }
+
     fn map_name(&self, name: &HbkName) -> Name {
         Name::new(
             self.snapshot.string(name.primary).to_string(),
             name.alias
                 .map(|alias| self.snapshot.string(alias).to_string()),
+        )
+    }
+
+    fn map_type_template_key(
+        &self,
+        key: syntax_helper_search::HbkPlatformTypeTemplateKey,
+    ) -> PlatformTypeTemplateKey {
+        PlatformTypeTemplateKey::new(
+            self.snapshot.string(key.family).to_string(),
+            self.snapshot.string(key.variant).to_string(),
         )
     }
 
@@ -1177,14 +1200,7 @@ impl QueryTableSnapshotSource {
             },
             template_binding: type_ref.template_binding.as_ref().map(|binding| {
                 TypeTemplateBinding {
-                    template_key: PlatformTypeTemplateKey::new(
-                        self.snapshot
-                            .string(binding.template_key.family)
-                            .to_string(),
-                        self.snapshot
-                            .string(binding.template_key.variant)
-                            .to_string(),
-                    ),
+                    template_key: self.map_type_template_key(binding.template_key),
                     arguments: binding
                         .arguments
                         .iter()
