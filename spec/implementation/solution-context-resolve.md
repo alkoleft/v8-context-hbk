@@ -980,4 +980,9 @@ materialization at `788-943 ms` and warmed binary-cache reads at `29-30 ms`, wit
 equality. The cache artifact grew to `11364011` bytes. This keeps the preferred next design path as
 provider-owned derived cache over SQLite. Because cache reads allocate exact vector capacities,
 future memory comparisons must report both capacity-based heap bytes and logical payload bytes.
-Cache invalidation and final format selection remain owned by the T170 follow-up.
+Cache invalidation and final format selection remain owned by the T170 follow-up. After T169
+stabilization, that follow-up is no longer broad exploration: OpenSpec change
+`stabilize-hbk-fact-snapshot-cache` owns turning the measurement-only cache into a provider-owned
+derived cache decision with explicit metadata, invalidation, corruption handling and final
+measurement. It must preserve the completed T171 resolver backend split; a future non-query-table
+`LanguageSnapshotSource` would be separate scope.

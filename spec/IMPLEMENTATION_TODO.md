@@ -177,45 +177,51 @@ Completion notes:
   reported `binary_cache.roundtrip_equal=true`. This strengthens T170 prototype evidence only; it
   does not accept a persisted format or invalidation policy.
 
-### [ ] T170. Explore persisted binary cache for `HbkFactSnapshot` startup latency
+### [ ] T170. Stabilize provider-owned derived cache for `HbkFactSnapshot` startup latency
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001, NFR-QUERY-001, UC-CTX-001,
 UC-CTX-002, `implementation/solution-context-resolve.md`,
 `acceptance/baseline.md`, T169, OpenSpec change
-`provider-owned-hbk-fact-snapshot`.
+`stabilize-hbk-fact-snapshot-cache`.
 
 Scope:
 
 - Treat the existing SQLite provider index as the canonical rebuildable provider artifact. The
   persisted snapshot cache is a derived startup/read-model artifact, not a replacement source of
   truth and not a public contract for downstream analyzers.
-- Start with stage-timing of the current `HbkFactSnapshot::from_path` materializer, separating at
-  least SQLite open/read, row decoding, string interning, grouping/nesting, secondary-index build
-  and final snapshot assembly. Do not select a disk format before this timing identifies the
-  materialization stages that dominate the current `500-700 ms` class.
-- Define cache invalidation metadata before any binary format experiment: snapshot cache format
-  version, provider SQLite schema version, source index identity/hash, platform version/locale and
-  snapshot layout/version flags. On mismatch, rebuild from the SQLite provider index.
-- Compare a simple versioned Rust DTO serialization path first against the current SQLite
-  materializer. Only consider zero-copy or memory-mapped layouts such as `rkyv`/`zerocopy` after
-  the snapshot physical model is stable enough that disk layout coupling is acceptable.
+- Start from the post-T169 evidence rather than reopening open-ended cache exploration: warmed
+  SQLite materialization measured `788-943 ms`, warmed binary-cache reads measured `29-30 ms`, the
+  cache file was `11364011` bytes and every measured run reported
+  `binary_cache.roundtrip_equal=true`.
+- Stabilize the cache/invalidation contract before accepting a runtime cache path: cache format
+  version, provider SQLite schema version, source index identity/hash, platform version/locale when
+  available, snapshot layout/version flags and an integrity guard. On mismatch, unsupported version
+  or corruption, rebuild from the SQLite provider index.
+- Decide whether the current no-dependency little-endian DTO path is accepted as the first stable
+  provider-owned cache format or remains experimental behind explicit naming. Only consider
+  zero-copy or memory-mapped layouts such as `rkyv`/`zerocopy` after a stable-cache measurement shows
+  that deserialization/allocation, not SQLite materialization, is still the limiting component.
 - Keep `fst` scoped to measured name/id lookup index compression if lookup indexes, not startup
   deserialization, are the limiting component. Do not use Tantivy, search/export payloads or fuzzy
   search data for the worker fact snapshot cache.
 - Keep the persisted artifact provider-owned. Resolver adapters may load or receive
   `Arc<HbkFactSnapshot>`, but must not depend on SQLite tables, binary layout details or
   analyzer-owned mirror indexes.
+- Do not reopen T171 in this task. `PlatformSnapshotSource` and `QueryTableSnapshotSource` remain
+  the completed snapshot-backed resolver slice. A non-query-table `LanguageSnapshotSource` is a
+  separate future task/change, not part of cache stabilization.
 
 Verification:
 
-- release stage-timing measurement for the current SQLite materializer on the representative
-  `shcntx_ru` provider index;
-- documented comparison of at least two startup paths: SQLite materialization baseline and one
-  derived binary-cache prototype;
-- report warm build/load time, process peak RSS, estimated snapshot-owned heap, cache file size,
-  validation/invalidation cost and representative read-handle lookup timings;
-- keep lookup correctness covered by existing focused snapshot tests plus any cache round-trip
-  tests needed for the chosen prototype;
+- cache metadata/invalidation tests for version/schema/source/layout mismatch and corrupted or
+  truncated cache data;
+- release comparison of at least two startup paths on the post-T169 representative `shcntx_ru`
+  provider index: SQLite materialization baseline and derived cache validation/load;
+- report warm build/load time, cache validation cost, process peak RSS, capacity-based
+  snapshot-owned heap, logical payload bytes, cache file size and representative read-handle lookup
+  timings;
+- keep lookup correctness covered by existing focused snapshot tests plus cache round-trip and
+  cache-loaded snapshot-backed resolver tests needed for the chosen stable path;
 - update `acceptance/baseline.md` and `implementation/solution-context-resolve.md` with the
   measured conclusion before accepting a persisted format decision.
 
@@ -247,9 +253,13 @@ Initial stage-timing result:
   addition to capacity-based heap bytes, so future cache comparisons must use both metrics before
   treating the heap delta as structural memory savings.
 - Current conclusion: the simple binary cache prototype is strong enough to keep T170 as a real
-  follow-up after T169 stabilizes the physical read model and resolver adapter migration. The
+  follow-up now that T169 stabilized the physical read model and resolver adapter migration. The
   prototype does not yet accept a final persisted format decision or cache invalidation policy
   beyond the minimal version/schema guard.
+- Post-T169 T170 adaptation: the next implementation slice is cache stabilization, not broad
+  exploration. The new OpenSpec change `stabilize-hbk-fact-snapshot-cache` owns cache metadata,
+  invalidation, final format decision and acceptance measurements. T171 remains complete and is not
+  reopened by cache work.
 
 ### [x] T171. Add explicit snapshot-backed resolver adapters for worker-safe analyzer lookup
 
