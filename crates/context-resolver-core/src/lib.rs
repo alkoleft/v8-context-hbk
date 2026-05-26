@@ -608,6 +608,11 @@ impl<'a> ResolveContext<'a> {
 
 pub trait ContextSource {
     fn descriptor(&self) -> SourceDescriptor;
+
+    fn source_id(&self) -> Option<&SourceId> {
+        None
+    }
+
     fn capabilities(&self) -> SourceCapabilities;
 
     fn resolve(
@@ -747,27 +752,87 @@ impl WorkerSafeCompositeResolver {
 }
 
 trait ActiveContextSources {
-    fn active_sources<'a>(&'a self, context: &ResolveContext<'_>) -> Vec<&'a dyn ContextSource>;
+    fn find_active_source<'a>(
+        &'a self,
+        context: &ResolveContext<'_>,
+        source_id: &SourceId,
+    ) -> Option<&'a dyn ContextSource>;
+
+    fn for_each_active_source<'a, E>(
+        &'a self,
+        context: &ResolveContext<'_>,
+        visit: impl FnMut(&'a dyn ContextSource) -> Result<(), E>,
+    ) -> Result<(), E>;
 }
 
 impl ActiveContextSources for CompositeResolver {
-    fn active_sources<'a>(&'a self, context: &ResolveContext<'_>) -> Vec<&'a dyn ContextSource> {
-        self.sources
-            .iter()
-            .map(Box::as_ref)
-            .filter(|source| context.is_source_active(&source.descriptor().id))
-            .collect()
+    fn find_active_source<'a>(
+        &'a self,
+        context: &ResolveContext<'_>,
+        source_id: &SourceId,
+    ) -> Option<&'a dyn ContextSource> {
+        self.sources.iter().map(Box::as_ref).find(|source| {
+            source_is_active(*source, context) && source_id_matches(*source, source_id)
+        })
+    }
+
+    fn for_each_active_source<'a, E>(
+        &'a self,
+        context: &ResolveContext<'_>,
+        mut visit: impl FnMut(&'a dyn ContextSource) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for source in &self.sources {
+            let source = source.as_ref();
+            if source_is_active(source, context) {
+                visit(source)?;
+            }
+        }
+        Ok(())
     }
 }
 
 impl ActiveContextSources for WorkerSafeCompositeResolver {
-    fn active_sources<'a>(&'a self, context: &ResolveContext<'_>) -> Vec<&'a dyn ContextSource> {
+    fn find_active_source<'a>(
+        &'a self,
+        context: &ResolveContext<'_>,
+        source_id: &SourceId,
+    ) -> Option<&'a dyn ContextSource> {
         self.sources
             .iter()
             .map(Box::as_ref)
             .map(|source| source as &dyn ContextSource)
-            .filter(|source| context.is_source_active(&source.descriptor().id))
-            .collect()
+            .find(|source| {
+                source_is_active(*source, context) && source_id_matches(*source, source_id)
+            })
+    }
+
+    fn for_each_active_source<'a, E>(
+        &'a self,
+        context: &ResolveContext<'_>,
+        mut visit: impl FnMut(&'a dyn ContextSource) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for source in &self.sources {
+            let source = source.as_ref() as &dyn ContextSource;
+            if source_is_active(source, context) {
+                visit(source)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn source_is_active(source: &dyn ContextSource, context: &ResolveContext<'_>) -> bool {
+    context.active_sources.is_empty()
+        || context
+            .active_sources
+            .iter()
+            .any(|active| source_id_matches(source, active))
+}
+
+fn source_id_matches(source: &dyn ContextSource, expected: &SourceId) -> bool {
+    match source.source_id() {
+        Some(source_id) => source_id == expected,
+        None => source.descriptor().id == *expected,
     }
 }
 
@@ -778,11 +843,7 @@ impl<T: ActiveContextSources> ContextResolver for T {
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
         if let ResolveQuery::Id(id) = query {
-            let Some(source) = self
-                .active_sources(context)
-                .into_iter()
-                .find(|source| source.descriptor().id == id.source)
-            else {
+            let Some(source) = self.find_active_source(context, &id.source) else {
                 return Ok(ResolveResponse::not_found(format!(
                     "source `{}` is not active",
                     id.source
@@ -794,14 +855,14 @@ impl<T: ActiveContextSources> ContextResolver for T {
         let mut facts = Vec::new();
         let mut candidates = Vec::new();
         let mut unsupported = Vec::new();
-        for source in self.active_sources(context) {
+        self.for_each_active_source(context, |source| {
             if let ResolveQuery::ExactName {
                 source: Some(query_source),
                 ..
             } = query
-                && source.descriptor().id != *query_source
+                && !source_id_matches(source, query_source)
             {
-                continue;
+                return Ok(());
             }
             let response = source.resolve(query, context)?;
             match response.status {
@@ -810,7 +871,8 @@ impl<T: ActiveContextSources> ContextResolver for T {
                 ResolveStatus::Unsupported => unsupported.extend(response.diagnostics),
                 ResolveStatus::NotFound => {}
             }
-        }
+            Ok(())
+        })?;
         if !candidates.is_empty() {
             candidates.extend(facts.iter().map(CandidateView::candidate));
             return Ok(ResolveResponse::ambiguous(candidates));
@@ -832,11 +894,7 @@ impl<T: ActiveContextSources> ContextResolver for T {
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedType>, ResolveError> {
         if let TypeLookup::Id(id) = query {
-            let Some(source) = self
-                .active_sources(context)
-                .into_iter()
-                .find(|source| source.descriptor().id == id.0.source)
-            else {
+            let Some(source) = self.find_active_source(context, &id.0.source) else {
                 return Ok(ResolveResponse::not_found(format!(
                     "source `{}` is not active",
                     id.0.source
@@ -848,7 +906,7 @@ impl<T: ActiveContextSources> ContextResolver for T {
         let mut facts = Vec::new();
         let mut candidates = Vec::new();
         let mut unsupported = Vec::new();
-        for source in self.active_sources(context) {
+        self.for_each_active_source(context, |source| {
             if let TypeLookup::ExactName {
                 source: Some(query_source),
                 ..
@@ -861,9 +919,9 @@ impl<T: ActiveContextSources> ContextResolver for T {
                 source: Some(query_source),
                 ..
             } = query
-                && source.descriptor().id != *query_source
+                && !source_id_matches(source, query_source)
             {
-                continue;
+                return Ok(());
             }
             let response = source.resolve_type(query, context)?;
             match response.status {
@@ -872,7 +930,8 @@ impl<T: ActiveContextSources> ContextResolver for T {
                 ResolveStatus::Unsupported => unsupported.extend(response.diagnostics),
                 ResolveStatus::NotFound => {}
             }
-        }
+            Ok(())
+        })?;
         if !candidates.is_empty() {
             candidates.extend(facts.iter().map(CandidateView::candidate));
             return Ok(ResolveResponse::ambiguous(candidates));
@@ -894,11 +953,7 @@ impl<T: ActiveContextSources> ContextResolver for T {
         query: MemberQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedMember>, ResolveError> {
-        let Some(source) = self
-            .active_sources(context)
-            .into_iter()
-            .find(|source| source.descriptor().id == owner.0.source)
-        else {
+        let Some(source) = self.find_active_source(context, &owner.0.source) else {
             return Ok(ResolveResponse::not_found(format!(
                 "source `{}` is not active",
                 owner.0.source
@@ -914,11 +969,7 @@ impl<T: ActiveContextSources> ContextResolver for T {
     ) -> Result<ResolveResponse<ResolvedCallable>, ResolveError> {
         match query {
             CallableLookup::Id(id) => {
-                let Some(source) = self
-                    .active_sources(context)
-                    .into_iter()
-                    .find(|source| source.descriptor().id == id.0.source)
-                else {
+                let Some(source) = self.find_active_source(context, &id.0.source) else {
                     return Ok(ResolveResponse::not_found(format!(
                         "source `{}` is not active",
                         id.0.source
@@ -929,11 +980,7 @@ impl<T: ActiveContextSources> ContextResolver for T {
             CallableLookup::OwnerName {
                 owner: Some(owner), ..
             } => {
-                let Some(source) = self
-                    .active_sources(context)
-                    .into_iter()
-                    .find(|source| source.descriptor().id == owner.0.source)
-                else {
+                let Some(source) = self.find_active_source(context, &owner.0.source) else {
                     return Ok(ResolveResponse::not_found(format!(
                         "source `{}` is not active",
                         owner.0.source
@@ -945,7 +992,7 @@ impl<T: ActiveContextSources> ContextResolver for T {
                 let mut facts = Vec::new();
                 let mut candidates = Vec::new();
                 let mut unsupported = Vec::new();
-                for source in self.active_sources(context) {
+                self.for_each_active_source(context, |source| {
                     let response = source.callable(query, context)?;
                     match response.status {
                         ResolveStatus::Ok => facts.extend(response.facts),
@@ -953,7 +1000,8 @@ impl<T: ActiveContextSources> ContextResolver for T {
                         ResolveStatus::Unsupported => unsupported.extend(response.diagnostics),
                         ResolveStatus::NotFound => {}
                     }
-                }
+                    Ok(())
+                })?;
                 if !candidates.is_empty() {
                     candidates.extend(facts.iter().map(CandidateView::candidate));
                     return Ok(ResolveResponse::ambiguous(candidates));
@@ -999,10 +1047,9 @@ impl<T: ActiveContextSources> ContextResolver for T {
         let mut unsupported = Vec::new();
         let mut candidates = Vec::new();
 
-        for source in self.active_sources(context) {
-            let source_id = source.descriptor().id;
-            if !sources.is_empty() && !sources.iter().any(|id| id == &source_id) {
-                continue;
+        self.for_each_active_source(context, |source| {
+            if !sources.is_empty() && !sources.iter().any(|id| source_id_matches(source, id)) {
+                return Ok(());
             }
             let response = source.global_context(query, context)?;
             match response.status {
@@ -1022,7 +1069,8 @@ impl<T: ActiveContextSources> ContextResolver for T {
                 ResolveStatus::Unsupported => unsupported.extend(response.diagnostics),
                 ResolveStatus::NotFound => {}
             }
-        }
+            Ok(())
+        })?;
 
         let has_facts = !merged.methods.is_empty()
             || !merged.properties.is_empty()
@@ -1074,10 +1122,11 @@ impl<T: ActiveContextSources> ContextResolver for T {
         let mut candidates = Vec::new();
         let mut has_source_owned_id = false;
 
-        for source in self.active_sources(context) {
-            let source_id = source.descriptor().id;
-            if !query.sources.is_empty() && !query.sources.iter().any(|id| id == &source_id) {
-                continue;
+        self.for_each_active_source(context, |source| {
+            if !query.sources.is_empty()
+                && !query.sources.iter().any(|id| source_id_matches(source, id))
+            {
+                return Ok(());
             }
             let response = source.module_context(query, context)?;
             match response.status {
@@ -1107,7 +1156,8 @@ impl<T: ActiveContextSources> ContextResolver for T {
                 ResolveStatus::Unsupported => unsupported.extend(response.diagnostics),
                 ResolveStatus::NotFound => {}
             }
-        }
+            Ok(())
+        })?;
 
         let has_facts = merged.self_member.is_some()
             || !merged.properties.is_empty()
@@ -1141,11 +1191,7 @@ impl<T: ActiveContextSources> ContextResolver for T {
         kind: RelationKind,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
-        let Some(source) = self
-            .active_sources(context)
-            .into_iter()
-            .find(|source| source.descriptor().id == source_id.source)
-        else {
+        let Some(source) = self.find_active_source(context, &source_id.source) else {
             return Ok(ResolveResponse::not_found(format!(
                 "source `{}` is not active",
                 source_id.source
@@ -1159,11 +1205,7 @@ impl<T: ActiveContextSources> ContextResolver for T {
         source_id: &FactId,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<AvailabilityFact>, ResolveError> {
-        let Some(source) = self
-            .active_sources(context)
-            .into_iter()
-            .find(|source| source.descriptor().id == source_id.source)
-        else {
+        let Some(source) = self.find_active_source(context, &source_id.source) else {
             return Ok(ResolveResponse::not_found(format!(
                 "source `{}` is not active",
                 source_id.source
@@ -1411,6 +1453,10 @@ mod tests {
                 domain: self.domain,
                 label: self.source.to_string(),
             }
+        }
+
+        fn source_id(&self) -> Option<&SourceId> {
+            Some(&self.source)
         }
 
         fn capabilities(&self) -> SourceCapabilities {

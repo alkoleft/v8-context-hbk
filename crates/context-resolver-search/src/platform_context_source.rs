@@ -7,6 +7,10 @@ impl ContextSource for PlatformSearchSource {
         }
     }
 
+    fn source_id(&self) -> Option<&SourceId> {
+        Some(&self.source_id)
+    }
+
     fn capabilities(&self) -> SourceCapabilities {
         SourceCapabilities {
             exact_lookup: true,

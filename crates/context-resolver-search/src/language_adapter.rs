@@ -447,6 +447,10 @@ impl ContextSource for LanguageSearchSource {
         }
     }
 
+    fn source_id(&self) -> Option<&SourceId> {
+        Some(&self.source_id)
+    }
+
     fn capabilities(&self) -> SourceCapabilities {
         if self.query_table_templates {
             return SourceCapabilities {

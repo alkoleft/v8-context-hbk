@@ -83,27 +83,11 @@ impl PlatformSnapshotSource {
     fn map_platform_type(&self, id: HbkPlatformTypeId) -> ContextFact {
         let fact = self.snapshot.platform_type(id);
         let local_id = self.snapshot.string(fact.id).to_string();
-        let info = TypeInfo {
-            description: None,
-            metadata_template: fact.metadata_template.as_ref().map(|template| {
-                MetadataTemplateInfo {
-                    metadata_kind: self.snapshot.string(template.metadata_kind).to_string(),
-                    parameters: template
-                        .template_parameters
-                        .iter()
-                        .map(|parameter| self.snapshot.string(*parameter).to_string())
-                        .collect(),
-                }
-            }),
-            type_template_key: fact
-                .type_template_key
-                .map(|key| self.map_type_template_key(key)),
-        };
         ContextFact {
             id: self.fact_id(FactKind::Type, local_id),
             name: self.map_name(&fact.name),
             owner: None,
-            details: FactDetails::Type(info),
+            details: FactDetails::Type(snapshot_platform_type_info(&self.snapshot, id)),
             relations: Vec::new(),
         }
     }
@@ -362,10 +346,7 @@ impl PlatformSnapshotSource {
         &self,
         key: syntax_helper_search::HbkPlatformTypeTemplateKey,
     ) -> PlatformTypeTemplateKey {
-        PlatformTypeTemplateKey::new(
-            self.snapshot.string(key.family).to_string(),
-            self.snapshot.string(key.variant).to_string(),
-        )
+        snapshot_type_template_key(&self.snapshot, key)
     }
 
     fn map_signatures(&self, signatures: &[syntax_helper_search::HbkSignature]) -> Vec<Signature> {
@@ -412,6 +393,39 @@ impl PlatformSnapshotSource {
     }
 }
 
+fn snapshot_platform_type_info(
+    snapshot: &HbkFactSnapshot,
+    id: HbkPlatformTypeId,
+) -> TypeInfo {
+    let fact = snapshot.platform_type(id);
+    TypeInfo {
+        description: None,
+        metadata_template: fact.metadata_template.as_ref().map(|template| {
+            MetadataTemplateInfo {
+                metadata_kind: snapshot.string(template.metadata_kind).to_string(),
+                parameters: template
+                    .template_parameters
+                    .iter()
+                    .map(|parameter| snapshot.string(*parameter).to_string())
+                    .collect(),
+            }
+        }),
+        type_template_key: fact
+            .type_template_key
+            .map(|key| snapshot_type_template_key(snapshot, key)),
+    }
+}
+
+fn snapshot_type_template_key(
+    snapshot: &HbkFactSnapshot,
+    key: syntax_helper_search::HbkPlatformTypeTemplateKey,
+) -> PlatformTypeTemplateKey {
+    PlatformTypeTemplateKey::new(
+        snapshot.string(key.family).to_string(),
+        snapshot.string(key.variant).to_string(),
+    )
+}
+
 impl ContextSource for PlatformSnapshotSource {
     fn descriptor(&self) -> SourceDescriptor {
         SourceDescriptor {
@@ -419,6 +433,10 @@ impl ContextSource for PlatformSnapshotSource {
             domain: LanguageDomain::PlatformApi,
             label: "Syntax Assistant platform fact snapshot".to_string(),
         }
+    }
+
+    fn source_id(&self) -> Option<&SourceId> {
+        Some(&self.source_id)
     }
 
     fn capabilities(&self) -> SourceCapabilities {
@@ -1139,22 +1157,7 @@ impl QueryTableSnapshotSource {
             id: self.platform_type_id(self.snapshot.string(fact.id)).0,
             name: self.map_name(&fact.name),
             owner: None,
-            details: FactDetails::Type(TypeInfo {
-                description: None,
-                metadata_template: fact.metadata_template.as_ref().map(|template| {
-                    MetadataTemplateInfo {
-                        metadata_kind: self.snapshot.string(template.metadata_kind).to_string(),
-                        parameters: template
-                            .template_parameters
-                            .iter()
-                            .map(|parameter| self.snapshot.string(*parameter).to_string())
-                            .collect(),
-                    }
-                }),
-                type_template_key: fact
-                    .type_template_key
-                    .map(|key| self.map_type_template_key(key)),
-            }),
+            details: FactDetails::Type(snapshot_platform_type_info(&self.snapshot, id)),
             relations: Vec::new(),
         }
     }
@@ -1171,10 +1174,7 @@ impl QueryTableSnapshotSource {
         &self,
         key: syntax_helper_search::HbkPlatformTypeTemplateKey,
     ) -> PlatformTypeTemplateKey {
-        PlatformTypeTemplateKey::new(
-            self.snapshot.string(key.family).to_string(),
-            self.snapshot.string(key.variant).to_string(),
-        )
+        snapshot_type_template_key(&self.snapshot, key)
     }
 
     fn map_type_refs(&self, refs: &[HbkTypeRef]) -> Vec<TypeRef> {
@@ -1229,6 +1229,10 @@ impl ContextSource for QueryTableSnapshotSource {
             domain: LanguageDomain::QueryLanguage,
             label: format!("Syntax Assistant query table snapshot {}", self.source_id),
         }
+    }
+
+    fn source_id(&self) -> Option<&SourceId> {
+        Some(&self.source_id)
     }
 
     fn capabilities(&self) -> SourceCapabilities {
