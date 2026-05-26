@@ -52,6 +52,13 @@ struct SnapshotMetadataRow {
 }
 
 #[derive(Debug, Clone)]
+struct TypeTemplateRowSnapshot {
+    metadata_kind: String,
+    template_parameters: Vec<String>,
+    key: Option<model::PlatformTypeTemplateKey>,
+}
+
+#[derive(Debug, Clone)]
 struct MemberRow {
     owner_type_id: String,
     member_kind: String,
@@ -194,17 +201,22 @@ impl<'a> SnapshotMaterializer<'a> {
                 continue;
             };
             let id = HbkPlatformTypeId(platform_types.len() as u32);
-            let type_template_key =
-                type_template_by_document
-                    .get(document.id.as_str())
-                    .map(|key| HbkPlatformTypeTemplateKey {
-                        family: self.builder.intern(&key.family),
-                        variant: self.builder.intern(&key.variant),
-                    });
+            let template = type_template_by_document.get(document.id.as_str()).copied();
+            let metadata_template = template.map(|template| HbkMetadataTemplate {
+                metadata_kind: self.builder.intern(&template.metadata_kind),
+                template_parameters: self.builder.intern_many(&template.template_parameters),
+            });
+            let type_template_key = template.and_then(|template| {
+                template.key.as_ref().map(|key| HbkPlatformTypeTemplateKey {
+                    family: self.builder.intern(&key.family),
+                    variant: self.builder.intern(&key.variant),
+                })
+            });
             platform_type_by_type_id.insert((*type_id).to_string(), id);
             platform_types.push(HbkPlatformType {
                 id: self.builder.intern(type_id),
                 name: self.builder.intern_name(&document.name),
+                metadata_template,
                 type_template_key,
                 availability_contexts: self.builder.intern_many(&document.availability_contexts),
             });
@@ -815,26 +827,26 @@ impl<'a> SnapshotMaterializer<'a> {
         )
     }
 
-    fn type_templates(&self) -> Result<Vec<(String, model::PlatformTypeTemplateKey)>, SearchError> {
+    fn type_templates(&self) -> Result<Vec<(String, TypeTemplateRowSnapshot)>, SearchError> {
         let mut statement = self
             .index
             .connection
             .prepare(
-                "SELECT document_id, template_family, template_variant
+                "SELECT document_id, metadata_kind, template_parameters,
+                        template_family, template_variant
                  FROM type_templates
-                 WHERE template_family IS NOT NULL
-                   AND template_variant IS NOT NULL
-                 ORDER BY template_family, template_variant, document_id",
+                 ORDER BY document_id",
             )
             .map_err(|source| self.index.sqlite(source))?;
         let rows = statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    model::PlatformTypeTemplateKey::new(
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ),
+                    TypeTemplateRowSnapshot {
+                        metadata_kind: row.get(1)?,
+                        template_parameters: split_lines(row.get(2)?),
+                        key: optional_type_template_key(row.get(3)?, row.get(4)?),
+                    },
                 ))
             })
             .map_err(|source| self.index.sqlite(source))?;
@@ -1588,4 +1600,11 @@ fn language_domain_from_document_id(id: &str) -> HbkLanguageDomain {
     } else {
         HbkLanguageDomain::Unknown
     }
+}
+
+fn optional_type_template_key(
+    family: Option<String>,
+    variant: Option<String>,
+) -> Option<model::PlatformTypeTemplateKey> {
+    Some(model::PlatformTypeTemplateKey::new(family?, variant?))
 }

@@ -74,8 +74,15 @@ pub enum HbkLanguageDomain {
 pub struct HbkPlatformType {
     pub id: StringId,
     pub name: HbkName,
+    pub metadata_template: Option<HbkMetadataTemplate>,
     pub type_template_key: Option<HbkPlatformTypeTemplateKey>,
     pub availability_contexts: Vec<StringId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HbkMetadataTemplate {
+    pub metadata_kind: StringId,
+    pub template_parameters: Vec<StringId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

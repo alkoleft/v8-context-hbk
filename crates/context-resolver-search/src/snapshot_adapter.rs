@@ -85,7 +85,16 @@ impl PlatformSnapshotSource {
         let local_id = self.snapshot.string(fact.id).to_string();
         let info = TypeInfo {
             description: None,
-            metadata_template: None,
+            metadata_template: fact.metadata_template.as_ref().map(|template| {
+                MetadataTemplateInfo {
+                    metadata_kind: self.snapshot.string(template.metadata_kind).to_string(),
+                    parameters: template
+                        .template_parameters
+                        .iter()
+                        .map(|parameter| self.snapshot.string(*parameter).to_string())
+                        .collect(),
+                }
+            }),
             type_template_key: fact
                 .type_template_key
                 .map(|key| self.map_type_template_key(key)),

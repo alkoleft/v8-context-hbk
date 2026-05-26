@@ -478,6 +478,38 @@ mod tests {
             type_response.facts[0].fact.name.primary,
             "ОтборКомпоновкиДанных"
         );
+        let template_response = adapter
+            .resolve_type(
+                TypeLookup::PlatformTypeTemplate {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    key: &PlatformTypeTemplateKey::new("Catalog", "Manager"),
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot type-template lookup must not fail");
+        assert_eq!(template_response.status, ResolveStatus::Ok);
+        let template = template_response
+            .facts
+            .first()
+            .expect("template type must resolve");
+        assert_eq!(
+            template
+                .info
+                .metadata_template
+                .as_ref()
+                .expect("snapshot template metadata must be exposed")
+                .metadata_kind,
+            "СправочникМенеджер"
+        );
+        assert_eq!(
+            template.info.metadata_template.as_ref().unwrap().parameters,
+            vec!["Имя справочника".to_string()]
+        );
+        assert_eq!(
+            template.info.type_template_key,
+            Some(PlatformTypeTemplateKey::new("Catalog", "Manager"))
+        );
 
         let filter_member = adapter
             .members(

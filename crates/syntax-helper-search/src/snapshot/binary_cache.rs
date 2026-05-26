@@ -5,7 +5,7 @@ use super::*;
 
 const MAGIC: &[u8; 8] = b"HBKFSN1\0";
 const CACHE_FORMAT_VERSION: u32 = 3;
-const SNAPSHOT_LAYOUT_VERSION: u32 = 1;
+const SNAPSHOT_LAYOUT_VERSION: u32 = 2;
 const SNAPSHOT_LAYOUT_FLAGS: u64 = 0;
 const MAX_CACHE_PAYLOAD_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_CACHE_STRING_BYTES: usize = 16 * 1024 * 1024;
@@ -624,6 +624,7 @@ impl BinaryValue for HbkPlatformType {
     fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
         self.id.write_to(writer)?;
         self.name.write_to(writer)?;
+        self.metadata_template.write_to(writer)?;
         self.type_template_key.write_to(writer)?;
         self.availability_contexts.write_to(writer)
     }
@@ -632,8 +633,23 @@ impl BinaryValue for HbkPlatformType {
         Ok(Self {
             id: StringId::read_from(reader)?,
             name: HbkName::read_from(reader)?,
+            metadata_template: Option::<HbkMetadataTemplate>::read_from(reader)?,
             type_template_key: Option::<HbkPlatformTypeTemplateKey>::read_from(reader)?,
             availability_contexts: Vec::<StringId>::read_from(reader)?,
+        })
+    }
+}
+
+impl BinaryValue for HbkMetadataTemplate {
+    fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
+        self.metadata_kind.write_to(writer)?;
+        self.template_parameters.write_to(writer)
+    }
+
+    fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self> {
+        Ok(Self {
+            metadata_kind: StringId::read_from(reader)?,
+            template_parameters: Vec::<StringId>::read_from(reader)?,
         })
     }
 }

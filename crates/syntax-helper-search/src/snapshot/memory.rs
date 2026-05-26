@@ -261,6 +261,28 @@ impl HbkFactSnapshot {
             })
             .sum::<usize>();
         node_arenas_bytes += self
+            .platform_types
+            .iter()
+            .map(|platform_type| {
+                platform_type
+                    .metadata_template
+                    .as_ref()
+                    .map(|template| vec_heap_bytes(&template.template_parameters))
+                    .unwrap_or_default()
+            })
+            .sum::<usize>();
+        node_arenas_payload_bytes += self
+            .platform_types
+            .iter()
+            .map(|platform_type| {
+                platform_type
+                    .metadata_template
+                    .as_ref()
+                    .map(|template| vec_payload_bytes(&template.template_parameters))
+                    .unwrap_or_default()
+            })
+            .sum::<usize>();
+        node_arenas_bytes += self
             .query_tables
             .iter()
             .map(|table| {
