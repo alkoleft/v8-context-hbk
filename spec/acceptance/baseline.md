@@ -2489,8 +2489,54 @@ coverage, the same effect remains visible at the new physical shape: SQLite-mate
 heap was `23324034` bytes, while cache-loaded snapshot heap matched the exact-capacity payload at
 `17950274` bytes. Follow-up measurement must use the harness payload counters
 (`snapshot_payload_bytes` and per-entry `payload_bytes`) alongside capacity-based heap counters
-before drawing structural memory conclusions. This remains useful evidence for a future derived
-cache, but it does not yet decide the final persisted format or invalidation policy.
+before drawing structural memory conclusions.
+
+T170 stabilizes that path as the first provider-owned derived snapshot cache format. The accepted
+format remains a no-dependency little-endian Rust DTO cache internal to `syntax-helper-search`.
+The artifact carries cache format version, provider SQLite schema version, source-index identity
+fingerprint from provider metadata, persisted source-index identity when available and file
+size/mtime, locale/source-locale/source-HBK metadata, source extraction schema version, snapshot
+layout version/flags, payload length and FNV-1a payload checksum. Payload length is capped before
+allocation. Missing, unsupported, stale, truncated or corrupted caches are invalidated and rebuilt
+from the canonical SQLite provider index by `HbkFactSnapshot::from_path_with_binary_cache`; resolver
+adapters still receive only loaded `Arc<HbkFactSnapshot>` state or read handles. Cache writing is
+available from an `HbkFactSnapshotBuildReport` produced by the same provider index, not from an
+arbitrary snapshot/index pair.
+
+The final T170 release comparison used the existing
+`target/snapshot-materialization/shcntx_ru.schema16.release.sqlite` provider index and the stable
+cache path:
+
+```bash
+cargo build --release -p syntax-helper-search --example measure_hbk_fact_snapshot
+/usr/bin/time -f 'time_elapsed_seconds=%e\ntime_peak_rss_kib=%M\ntime_exit_status=%x' \
+  target/release/examples/measure_hbk_fact_snapshot \
+  target/snapshot-materialization/shcntx_ru.schema16.release.sqlite \
+  20000 \
+  target/snapshot-materialization/t170-stable-cache-final-run-1.bin
+```
+
+The first run remained cache-warm-up evidence: SQLite materialization was `1761 ms`, cache
+validation/load was `42 ms`, cache write was `43 ms`, peak RSS was `106024 KiB` and the process
+exited successfully. The next two warm runs measured SQLite materialization at `665 ms` and
+`658 ms`; cache validation/load at `34 ms` and `35 ms`; cache writes at `32 ms` and `32 ms`; and
+peak RSS at `106296 KiB` and `106300 KiB`. The stable cache file was `11318100` bytes, and every
+run reported `binary_cache.status=loaded` and `binary_cache.roundtrip_equal=true`.
+
+The SQLite-materialized snapshot reported `23184770` capacity-based heap bytes and `17846774`
+logical payload bytes. The cache-loaded snapshot reported `17846774` heap bytes and `17846774`
+payload bytes because the binary reader allocates exact vector capacities; this remains an
+allocation-capacity effect, not a structural model shrink. Representative read-handle lookup
+timings stayed in the analyzer hot-path class on warm runs: exact fact id `92-100 ns`, type by name
+`248-253 ns`, type-template key `119-122 ns`, owner member scan `26-28 ns`, owner/name/kind member
+lookup `252-258 ns`, callable owner/name lookup `336-356 ns`, query table name lookup
+`569-1221 ns`, query field lookup `240-801 ns`, query parameter lookup `364-385 ns`, availability
+lookup `117-127 ns` and relation traversal `54132-54448 ns`.
+
+T170 therefore accepts the simple provider-owned little-endian cache as stable enough for the first
+runtime startup path. A new serialization, zero-copy or memory-mapped dependency is not justified
+by the current measurement; it would require a later task to show that cache deserialization or
+allocation, rather than SQLite materialization, is again the limiting startup component.
 
 Baseline update rule:
 

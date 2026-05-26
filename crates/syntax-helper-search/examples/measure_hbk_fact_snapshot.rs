@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use std::{env, fs};
 
 use syntax_helper_search::{
-    HbkFactRef, HbkFactSnapshot, HbkFactSnapshotMemoryEntry, HbkGlobalFactKind, HbkLanguageDomain,
-    HbkTypeMemberKind,
+    HbkFactRef, HbkFactSnapshot, HbkFactSnapshotCacheStatus, HbkFactSnapshotMemoryEntry,
+    HbkGlobalFactKind, HbkLanguageDomain, HbkTypeMemberKind,
 };
 
 const DEFAULT_ITERATIONS: usize = 20_000;
@@ -23,9 +23,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(DEFAULT_ITERATIONS);
     let cache_path = args.next().map(PathBuf::from);
 
-    let report = HbkFactSnapshot::from_path_with_stage_timings(PathBuf::from(path))?;
-    let snapshot = report.snapshot;
+    let index_path = PathBuf::from(path);
+    let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path)?;
     let timings = report.timings;
+    let snapshot = &report.snapshot;
 
     println!("snapshot_build_ms={}", timings.total.as_millis());
     print_duration("stage.open_index", timings.open_index);
@@ -47,21 +48,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(cache_path) = cache_path {
         let write_start = Instant::now();
-        snapshot.write_experimental_binary_cache(&cache_path)?;
+        report.write_binary_cache(&cache_path)?;
         let write_elapsed = write_start.elapsed();
         let cache_bytes = fs::metadata(&cache_path)?.len();
 
         let read_start = Instant::now();
-        let cached_snapshot = HbkFactSnapshot::from_experimental_binary_cache(&cache_path)?;
+        let cached_report = HbkFactSnapshot::from_path_with_binary_cache(&index_path, &cache_path)?;
         let read_elapsed = read_start.elapsed();
-        let roundtrip_equal = cached_snapshot == snapshot;
+        let cached_snapshot = cached_report.snapshot;
+        let roundtrip_equal = &cached_snapshot == snapshot;
 
         println!("binary_cache.bytes={cache_bytes}");
         print_duration("binary_cache.write", write_elapsed);
-        print_duration("binary_cache.read", read_elapsed);
+        print_duration("binary_cache.validate_and_read", read_elapsed);
+        println!(
+            "binary_cache.status={}",
+            match cached_report.status {
+                HbkFactSnapshotCacheStatus::Loaded => "loaded",
+                HbkFactSnapshotCacheStatus::Rebuilt { .. } => "rebuilt",
+            }
+        );
         println!(
             "binary_cache.snapshot_heap_bytes={}",
             cached_snapshot.estimated_heap_bytes()
+        );
+        println!(
+            "binary_cache.snapshot_payload_bytes={}",
+            cached_snapshot.memory_accounting().total_payload_bytes()
         );
         println!("binary_cache.roundtrip_equal={roundtrip_equal}");
     }

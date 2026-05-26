@@ -1512,7 +1512,9 @@ mod tests {
         }
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
 
-        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        let snapshot_report =
+            HbkFactSnapshot::from_path_with_stage_timings(&path).expect("snapshot must materialize");
+        let snapshot = snapshot_report.snapshot.clone();
         assert!(snapshot.estimated_heap_bytes() > 0);
         let memory = snapshot.memory_accounting();
         assert_eq!(memory.total_bytes(), snapshot.estimated_heap_bytes());
@@ -1769,11 +1771,13 @@ mod tests {
         );
 
         let cache_path = temp_path("hbk-fact-snapshot.bin");
-        snapshot
-            .write_experimental_binary_cache(&cache_path)
+        snapshot_report
+            .write_binary_cache(&cache_path)
             .expect("snapshot cache must write");
-        let cached_snapshot = HbkFactSnapshot::from_experimental_binary_cache(&cache_path)
+        let cached_report = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
             .expect("snapshot cache must read");
+        assert_eq!(cached_report.status, HbkFactSnapshotCacheStatus::Loaded);
+        let cached_snapshot = cached_report.snapshot;
         assert_eq!(cached_snapshot, snapshot);
         assert_eq!(lookup_summary(&cached_snapshot), lookup_summary(&snapshot));
 
@@ -1788,6 +1792,117 @@ mod tests {
         for worker in workers {
             assert_eq!(worker.join().expect("worker must finish"), expected);
         }
+    }
+
+    #[test]
+    fn hbk_fact_snapshot_binary_cache_rebuilds_when_missing_or_invalid() {
+        let path = temp_path("hbk-fact-snapshot-cache-invalidation.sqlite");
+        let cache_path = temp_path("hbk-fact-snapshot-cache-invalidation.bin");
+        build_test_index_from_context(&path, &metadata(), &fixture_context())
+            .expect("index must build");
+
+        let first = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
+            .expect("missing cache must rebuild from SQLite");
+        assert!(matches!(
+            &first.status,
+            HbkFactSnapshotCacheStatus::Rebuilt { .. }
+        ));
+        assert!(cache_path.exists());
+
+        match HbkFactSnapshot::from_path_with_binary_cache(&path, &path) {
+            Err(SearchError::Io { source, .. }) => {
+                assert_eq!(source.kind(), std::io::ErrorKind::InvalidInput);
+            }
+            other => panic!("cache path must not be allowed to overwrite index path: {other:?}"),
+        }
+        match first.snapshot.estimated_heap_bytes() {
+            bytes if bytes > 0 => {}
+            other => panic!("snapshot must stay materialized, got heap estimate {other}"),
+        }
+        match HbkFactSnapshot::from_path_with_stage_timings(&path)
+            .expect("snapshot report must rebuild")
+            .write_binary_cache(&path)
+        {
+            Err(SearchError::Io { source, .. }) => {
+                assert_eq!(source.kind(), std::io::ErrorKind::InvalidInput);
+            }
+            other => panic!("direct cache writer must reject index path: {other:?}"),
+        }
+        SearchIndex::open_read_only(&path).expect("same-path rejection must preserve index");
+
+        let loaded = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
+            .expect("fresh cache must load");
+        assert_eq!(loaded.status, HbkFactSnapshotCacheStatus::Loaded);
+        assert_eq!(loaded.snapshot, first.snapshot);
+
+        {
+            let connection = Connection::open(&path).expect("index must open for identity mutation");
+            connection
+                .execute(
+                    "UPDATE meta SET value = 'changed-source-identity' \
+                     WHERE key = 'source_index_identity'",
+                    [],
+                )
+                .expect("source identity mutation must work");
+        }
+        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
+            .expect("source identity mismatch must rebuild");
+        match rebuilt.status {
+            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
+                assert!(reason.contains("metadata mismatch"));
+            }
+            HbkFactSnapshotCacheStatus::Loaded => panic!("source identity mismatch must not load"),
+        }
+
+        let mut bytes = fs::read(&cache_path).expect("cache bytes must read");
+        bytes[8] = 0xff;
+        fs::write(&cache_path, bytes).expect("unsupported version cache must write");
+        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
+            .expect("unsupported cache version must rebuild");
+        match rebuilt.status {
+            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
+                assert!(reason.contains("unsupported HBK fact snapshot cache version"));
+            }
+            HbkFactSnapshotCacheStatus::Loaded => panic!("unsupported cache must not load"),
+        }
+
+        let mut bytes = fs::read(&cache_path).expect("cache bytes must read");
+        let last = bytes.last_mut().expect("cache must not be empty");
+        *last ^= 0xff;
+        fs::write(&cache_path, bytes).expect("corrupted cache must write");
+        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
+            .expect("corrupted cache must rebuild");
+        match rebuilt.status {
+            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
+                assert!(reason.contains("checksum mismatch"));
+            }
+            HbkFactSnapshotCacheStatus::Loaded => panic!("corrupted cache must not load"),
+        }
+
+        let bytes = fs::read(&cache_path).expect("cache bytes must read");
+        fs::write(&cache_path, &bytes[..bytes.len() / 2]).expect("truncated cache must write");
+        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
+            .expect("truncated cache must rebuild");
+        assert!(matches!(
+            rebuilt.status,
+            HbkFactSnapshotCacheStatus::Rebuilt { .. }
+        ));
+
+        let changed_metadata = IndexMetadata {
+            source_hbk: "changed.hbk".to_string(),
+            ..metadata()
+        };
+        build_test_index_from_context(&path, &changed_metadata, &fixture_context())
+            .expect("changed source index must rebuild");
+        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
+            .expect("stale source cache must rebuild");
+        match rebuilt.status {
+            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
+                assert!(reason.contains("metadata mismatch"));
+            }
+            HbkFactSnapshotCacheStatus::Loaded => panic!("stale source cache must not load"),
+        }
+        assert_eq!(lookup_summary(&rebuilt.snapshot), lookup_summary(&first.snapshot));
     }
 
     #[test]

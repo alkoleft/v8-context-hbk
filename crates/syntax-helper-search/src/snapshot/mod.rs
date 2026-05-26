@@ -12,6 +12,7 @@ use indexes::{
     ModuleContextLookup, NameLookup, OwnerNameLookup, RelationLookupKey, TypeTemplateLookup,
 };
 
+pub use binary_cache::{HbkFactSnapshotCacheLoadReport, HbkFactSnapshotCacheStatus};
 pub use memory::{HbkFactSnapshotIndexMemory, HbkFactSnapshotMemory, HbkFactSnapshotMemoryEntry};
 pub use read::HbkFactSnapshotCounts;
 pub use types::*;
@@ -70,6 +71,8 @@ pub struct HbkFactSnapshot {
 pub struct HbkFactSnapshotBuildReport {
     pub snapshot: HbkFactSnapshot,
     pub timings: HbkFactSnapshotStageTimings,
+    cache_index_path: PathBuf,
+    cache_metadata: binary_cache::CacheMetadata,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

@@ -350,6 +350,7 @@ fn write_metadata(
     connection: &Connection,
     path: &Path,
     metadata: &IndexMetadata,
+    source_index_identity: &str,
 ) -> Result<(), SearchError> {
     let built_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -366,6 +367,7 @@ fn write_metadata(
         ),
         ("built_at", built_at),
         ("builder_version", env!("CARGO_PKG_VERSION").to_string()),
+        ("source_index_identity", source_index_identity.to_string()),
     ] {
         connection
             .execute(

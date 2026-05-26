@@ -61,7 +61,8 @@ fn build_index_file(
         source,
     })?;
     create_schema(&connection, path)?;
-    write_metadata(&connection, path, metadata)?;
+    let source_index_identity = source_index_identity(metadata, &documents);
+    write_metadata(&connection, path, metadata, &source_index_identity)?;
     let transaction = connection
         .transaction()
         .map_err(|source| SearchError::Sqlite {
@@ -78,6 +79,32 @@ fn build_index_file(
         source,
     })?;
     validate_index(&connection, path)
+}
+
+const SOURCE_IDENTITY_FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+const SOURCE_IDENTITY_FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+fn source_index_identity(metadata: &IndexMetadata, documents: &[SearchDocument]) -> String {
+    let mut hash = SOURCE_IDENTITY_FNV_OFFSET_BASIS;
+    hash = update_source_identity_hash(hash, metadata.locale.as_bytes());
+    hash = update_source_identity_hash(hash, metadata.source_locale.as_bytes());
+    hash = update_source_identity_hash(hash, metadata.source_hbk.as_bytes());
+    hash = update_source_identity_hash(
+        hash,
+        metadata.source_extraction_schema_version.to_string().as_bytes(),
+    );
+    for document in documents {
+        hash = update_source_identity_hash(hash, format!("{document:?}").as_bytes());
+    }
+    format!("{hash:016x}")
+}
+
+fn update_source_identity_hash(mut hash: u64, bytes: &[u8]) -> u64 {
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(SOURCE_IDENTITY_FNV_PRIME);
+    }
+    hash
 }
 
 fn deduplicate_documents(documents: &mut Vec<SearchDocument>) -> Vec<IndexBuildWarning> {

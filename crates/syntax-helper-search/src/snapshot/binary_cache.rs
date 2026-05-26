@@ -1,49 +1,249 @@
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 
 use super::indexes::*;
 use super::*;
 
 const MAGIC: &[u8; 8] = b"HBKFSN1\0";
-const CACHE_VERSION: u32 = 2;
+const CACHE_FORMAT_VERSION: u32 = 3;
+const SNAPSHOT_LAYOUT_VERSION: u32 = 1;
+const SNAPSHOT_LAYOUT_FLAGS: u64 = 0;
+const MAX_CACHE_PAYLOAD_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_CACHE_STRING_BYTES: usize = 16 * 1024 * 1024;
+const MAX_CACHE_VEC_LEN: usize = 1_000_000;
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HbkFactSnapshotCacheLoadReport {
+    pub snapshot: HbkFactSnapshot,
+    pub status: HbkFactSnapshotCacheStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HbkFactSnapshotCacheStatus {
+    Loaded,
+    Rebuilt { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CacheMetadata {
+    provider_schema_version: u32,
+    source_index_bytes: u64,
+    source_index_identity_hash: u64,
+    locale: String,
+    source_locale: String,
+    source_hbk: String,
+    source_extraction_schema_version: u32,
+    snapshot_layout_version: u32,
+    snapshot_layout_flags: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CacheHeader {
+    metadata: CacheMetadata,
+    payload_len: u64,
+    payload_checksum: u64,
+}
 
 impl HbkFactSnapshot {
-    /// Writes a provider-owned binary snapshot cache for measurement.
-    ///
-    /// The cache is a derived artifact over the SQLite provider index. It is
-    /// intentionally not a downstream storage contract.
-    pub fn write_experimental_binary_cache(&self, path: impl AsRef<Path>) -> io::Result<()> {
-        let mut writer = BinaryWriter::new(BufWriter::new(File::create(path)?));
-        writer.write_bytes(MAGIC)?;
-        writer.write_u32(CACHE_VERSION)?;
-        writer.write_u32(INDEX_SCHEMA_VERSION)?;
-        self.write_to(&mut writer)?;
-        writer.finish()
+    /// Loads a provider-owned snapshot cache or rebuilds it from the canonical
+    /// SQLite provider index when the cache is missing, stale or invalid.
+    pub fn from_path_with_binary_cache(
+        index_path: impl AsRef<Path>,
+        cache_path: impl AsRef<Path>,
+    ) -> Result<HbkFactSnapshotCacheLoadReport, SearchError> {
+        let index_path = index_path.as_ref();
+        let cache_path = cache_path.as_ref();
+        ensure_cache_path_is_not_index_path(index_path, cache_path)?;
+        let index = SearchIndex::open_read_only(index_path)?;
+        let expected = CacheMetadata::from_index(index_path, &index)?;
+        match read_binary_cache(cache_path, &expected) {
+            Ok(snapshot) => Ok(HbkFactSnapshotCacheLoadReport {
+                snapshot,
+                status: HbkFactSnapshotCacheStatus::Loaded,
+            }),
+            Err(reason) => {
+                let report = Self::from_index_with_stage_timings(&index)?;
+                report.write_binary_cache(cache_path)?;
+                Ok(HbkFactSnapshotCacheLoadReport {
+                    snapshot: report.snapshot,
+                    status: HbkFactSnapshotCacheStatus::Rebuilt { reason },
+                })
+            }
+        }
     }
+}
 
-    /// Reads a provider-owned binary snapshot cache produced by
-    /// `write_experimental_binary_cache`.
-    ///
-    /// This is a startup-latency measurement path, not a replacement source of
-    /// truth for the SQLite provider index.
-    pub fn from_experimental_binary_cache(path: impl AsRef<Path>) -> io::Result<Self> {
-        let mut reader = BinaryReader::new(BufReader::new(File::open(path)?));
-        let mut magic = [0u8; 8];
-        reader.read_exact(&mut magic)?;
-        if &magic != MAGIC {
-            return Err(invalid_data("invalid HBK fact snapshot cache magic"));
-        }
-        let version = reader.read_u32()?;
-        if version != CACHE_VERSION {
-            return Err(invalid_data("unsupported HBK fact snapshot cache version"));
-        }
-        let schema = reader.read_u32()?;
-        if schema != INDEX_SCHEMA_VERSION {
-            return Err(invalid_data(
-                "unsupported provider index schema version in snapshot cache",
-            ));
-        }
-        Self::read_from(&mut reader)
+impl CacheMetadata {
+    pub(super) fn from_index(path: &Path, index: &SearchIndex) -> Result<Self, SearchError> {
+        let metadata = index.metadata()?;
+        let file_metadata = fs::metadata(path).map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let source_index_bytes = file_metadata.len();
+        let source_index_identity_hash = source_index_identity_hash(&metadata, &file_metadata);
+        Ok(Self {
+            provider_schema_version: INDEX_SCHEMA_VERSION,
+            source_index_bytes,
+            source_index_identity_hash,
+            locale: metadata.locale,
+            source_locale: metadata.source_locale,
+            source_hbk: metadata.source_hbk,
+            source_extraction_schema_version: metadata.source_extraction_schema_version,
+            snapshot_layout_version: SNAPSHOT_LAYOUT_VERSION,
+            snapshot_layout_flags: SNAPSHOT_LAYOUT_FLAGS,
+        })
     }
+}
+
+impl HbkFactSnapshotBuildReport {
+    /// Writes the provider-owned derived cache for the same SQLite index that
+    /// produced this build report.
+    pub fn write_binary_cache(&self, cache_path: impl AsRef<Path>) -> Result<(), SearchError> {
+        let cache_path = cache_path.as_ref();
+        ensure_cache_path_is_not_index_path(&self.cache_index_path, cache_path)?;
+        write_binary_cache(cache_path, &self.cache_metadata, &self.snapshot).map_err(|source| {
+            SearchError::Io {
+                path: cache_path.to_path_buf(),
+                source,
+            }
+        })
+    }
+}
+
+fn write_binary_cache(
+    path: &Path,
+    metadata: &CacheMetadata,
+    snapshot: &HbkFactSnapshot,
+) -> io::Result<()> {
+    let mut payload_writer = BinaryWriter::new(Vec::new());
+    snapshot.write_to(&mut payload_writer)?;
+    let payload = payload_writer.into_inner();
+    if payload.len() as u64 > MAX_CACHE_PAYLOAD_BYTES {
+        return Err(invalid_data(
+            "HBK fact snapshot cache payload exceeds maximum size",
+        ));
+    }
+    let header = CacheHeader {
+        metadata: metadata.clone(),
+        payload_len: payload.len() as u64,
+        payload_checksum: fnv1a_bytes(&payload),
+    };
+
+    let mut writer = BinaryWriter::new(BufWriter::new(File::create(path)?));
+    writer.write_bytes(MAGIC)?;
+    writer.write_u32(CACHE_FORMAT_VERSION)?;
+    header.write_to(&mut writer)?;
+    writer.write_bytes(&payload)?;
+    writer.finish()
+}
+
+fn read_binary_cache(path: &Path, expected: &CacheMetadata) -> Result<HbkFactSnapshot, String> {
+    let mut reader = BinaryReader::new(BufReader::new(
+        File::open(path).map_err(|source| source.to_string())?,
+    ));
+    let mut magic = [0u8; 8];
+    reader
+        .read_exact(&mut magic)
+        .map_err(|source| source.to_string())?;
+    if &magic != MAGIC {
+        return Err("invalid HBK fact snapshot cache magic".to_string());
+    }
+    let version = reader.read_u32().map_err(|source| source.to_string())?;
+    if version != CACHE_FORMAT_VERSION {
+        return Err(format!(
+            "unsupported HBK fact snapshot cache version: expected {CACHE_FORMAT_VERSION}, got {version}"
+        ));
+    }
+    let header = CacheHeader::read_from(&mut reader).map_err(|source| source.to_string())?;
+    if header.metadata != *expected {
+        return Err("HBK fact snapshot cache metadata mismatch".to_string());
+    }
+    let cache_file_len = fs::metadata(path)
+        .map_err(|source| source.to_string())?
+        .len();
+    if header.payload_len > MAX_CACHE_PAYLOAD_BYTES {
+        return Err("HBK fact snapshot cache payload exceeds maximum size".to_string());
+    }
+    if header.payload_len > cache_file_len {
+        return Err("HBK fact snapshot cache payload length exceeds file size".to_string());
+    }
+    let payload_len = usize::try_from(header.payload_len)
+        .map_err(|_| "HBK fact snapshot cache payload is too large".to_string())?;
+    let mut payload = vec![0u8; payload_len];
+    reader
+        .read_exact(&mut payload)
+        .map_err(|source| source.to_string())?;
+    if fnv1a_bytes(&payload) != header.payload_checksum {
+        return Err("HBK fact snapshot cache checksum mismatch".to_string());
+    }
+    let mut trailing = [0u8; 1];
+    match reader.inner.read(&mut trailing) {
+        Ok(0) => {}
+        Ok(_) => return Err("HBK fact snapshot cache has trailing bytes".to_string()),
+        Err(source) => return Err(source.to_string()),
+    }
+    let mut payload_reader = BinaryReader::new(Cursor::new(payload));
+    HbkFactSnapshot::read_from(&mut payload_reader).map_err(|source| source.to_string())
+}
+
+fn ensure_cache_path_is_not_index_path(
+    index_path: &Path,
+    cache_path: &Path,
+) -> Result<(), SearchError> {
+    if cache_path.exists() {
+        let index_canonical = fs::canonicalize(index_path).map_err(|source| SearchError::Io {
+            path: index_path.to_path_buf(),
+            source,
+        })?;
+        let cache_canonical = fs::canonicalize(cache_path).map_err(|source| SearchError::Io {
+            path: cache_path.to_path_buf(),
+            source,
+        })?;
+        if index_canonical == cache_canonical {
+            return Err(SearchError::Io {
+                path: cache_path.to_path_buf(),
+                source: invalid_input("snapshot cache path must differ from provider index path"),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn source_index_identity_hash(metadata: &StoredIndexMetadata, file_metadata: &fs::Metadata) -> u64 {
+    let modified = file_metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let stored_identity = metadata.source_index_identity.as_deref().unwrap_or("");
+    let identity = format!(
+        "{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
+        metadata.locale,
+        metadata.source_locale,
+        metadata.source_hbk,
+        metadata.source_extraction_schema_version,
+        metadata.built_at,
+        metadata.builder_version,
+        stored_identity,
+        file_metadata.len(),
+        modified
+    );
+    fnv1a_bytes(identity.as_bytes())
+}
+
+fn fnv1a_bytes(bytes: &[u8]) -> u64 {
+    fnv1a_update(FNV_OFFSET_BASIS, bytes)
+}
+
+fn fnv1a_update(mut hash: u64, bytes: &[u8]) -> u64 {
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
 }
 
 trait BinaryValue: Sized {
@@ -102,6 +302,12 @@ impl<W: Write> BinaryWriter<W> {
     }
 }
 
+impl<W> BinaryWriter<W> {
+    fn into_inner(self) -> W {
+        self.inner
+    }
+}
+
 struct BinaryReader<R> {
     inner: R,
 }
@@ -147,6 +353,9 @@ impl<R: Read> BinaryReader<R> {
 
     fn read_string(&mut self) -> io::Result<String> {
         let len = self.read_usize()?;
+        if len > MAX_CACHE_STRING_BYTES {
+            return Err(invalid_data("string length exceeds snapshot cache limit"));
+        }
         let mut bytes = vec![0u8; len];
         self.inner.read_exact(&mut bytes)?;
         String::from_utf8(bytes).map_err(|_| invalid_data("invalid UTF-8 string"))
@@ -154,6 +363,9 @@ impl<R: Read> BinaryReader<R> {
 
     fn read_vec<T: BinaryValue>(&mut self) -> io::Result<Vec<T>> {
         let len = self.read_usize()?;
+        if len > MAX_CACHE_VEC_LEN {
+            return Err(invalid_data("vector length exceeds snapshot cache limit"));
+        }
         let mut values = Vec::with_capacity(len);
         for _ in 0..len {
             values.push(T::read_from(self)?);
@@ -179,6 +391,50 @@ impl<T: BinaryValue> BinaryValue for Option<T> {
         } else {
             Ok(None)
         }
+    }
+}
+
+impl BinaryValue for CacheHeader {
+    fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
+        self.metadata.write_to(writer)?;
+        writer.write_u64(self.payload_len)?;
+        writer.write_u64(self.payload_checksum)
+    }
+
+    fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self> {
+        Ok(Self {
+            metadata: CacheMetadata::read_from(reader)?,
+            payload_len: reader.read_u64()?,
+            payload_checksum: reader.read_u64()?,
+        })
+    }
+}
+
+impl BinaryValue for CacheMetadata {
+    fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
+        writer.write_u32(self.provider_schema_version)?;
+        writer.write_u64(self.source_index_bytes)?;
+        writer.write_u64(self.source_index_identity_hash)?;
+        self.locale.write_to(writer)?;
+        self.source_locale.write_to(writer)?;
+        self.source_hbk.write_to(writer)?;
+        writer.write_u32(self.source_extraction_schema_version)?;
+        writer.write_u32(self.snapshot_layout_version)?;
+        writer.write_u64(self.snapshot_layout_flags)
+    }
+
+    fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self> {
+        Ok(Self {
+            provider_schema_version: reader.read_u32()?,
+            source_index_bytes: reader.read_u64()?,
+            source_index_identity_hash: reader.read_u64()?,
+            locale: String::read_from(reader)?,
+            source_locale: String::read_from(reader)?,
+            source_hbk: String::read_from(reader)?,
+            source_extraction_schema_version: reader.read_u32()?,
+            snapshot_layout_version: reader.read_u32()?,
+            snapshot_layout_flags: reader.read_u64()?,
+        })
     }
 }
 
@@ -1054,4 +1310,8 @@ fn write_tagged_id<W: Write, T: BinaryValue>(
 
 fn invalid_data(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+fn invalid_input(message: &'static str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, message)
 }

@@ -32,7 +32,7 @@ type-reference conclusions live in
 `implementation/performance-baseline-t13.md`, `implementation/performance-variants.md` and
 `decisions/`.
 
-Current first unchecked task: T170.
+Current first unchecked task: none. Add a new task before implementing new scope.
 
 ## Loop Rule
 
@@ -177,7 +177,7 @@ Completion notes:
   reported `binary_cache.roundtrip_equal=true`. This strengthens T170 prototype evidence only; it
   does not accept a persisted format or invalidation policy.
 
-### [ ] T170. Stabilize provider-owned derived cache for `HbkFactSnapshot` startup latency
+### [x] T170. Stabilize provider-owned derived cache for `HbkFactSnapshot` startup latency
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001, NFR-QUERY-001, UC-CTX-001,
 UC-CTX-002, `implementation/solution-context-resolve.md`,
@@ -260,6 +260,32 @@ Initial stage-timing result:
   exploration. The new OpenSpec change `stabilize-hbk-fact-snapshot-cache` owns cache metadata,
   invalidation, final format decision and acceptance measurements. T171 remains complete and is not
   reopened by cache work.
+- Completed with a stable provider-owned no-dependency little-endian cache format internal to
+  `syntax-helper-search`. The runtime entrypoint is
+  `HbkFactSnapshot::from_path_with_binary_cache`: it validates cache format version, provider
+  schema version, source-index identity fingerprint from metadata, persisted source-index identity
+  when available and file size/mtime, locale/source metadata, source extraction schema version,
+  snapshot layout version/flags, payload length and FNV-1a checksum. Payload length is capped
+  before allocation. Missing, stale, unsupported, truncated or corrupted caches rebuild from the
+  canonical SQLite provider index and rewrite the derived artifact. Cache writing is available from
+  an `HbkFactSnapshotBuildReport` produced by the same provider index, not from an arbitrary
+  snapshot/index pair. Resolver adapters remain independent from cache files and consume only
+  loaded `Arc<HbkFactSnapshot>` state/read handles.
+- The existing no-dependency DTO path is accepted as the first stable format. No `rkyv`, `zerocopy`,
+  mmap or new serialization dependency is justified by the final measurement; such work needs a
+  later measured bottleneck.
+- Final release measurement on `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite`
+  reported warm SQLite materialization at `658-665 ms`, cache validation/load at `34-35 ms`, cache
+  writes at `32 ms`, cache file size `11318100` bytes and peak RSS around `106 MiB`. The
+  SQLite-materialized snapshot reported `23184770` capacity-based heap bytes and `17846774` payload
+  bytes; the cache-loaded snapshot reported exact-capacity heap bytes equal to payload bytes
+  (`17846774`). Each measured cache load reported `binary_cache.status=loaded` and
+  `binary_cache.roundtrip_equal=true`.
+- Verification passed with `cargo test -p syntax-helper-search`, `cargo test -p
+  context-resolver-search`, `cargo check -p syntax-helper-search --example
+  measure_hbk_fact_snapshot`, `cargo build --release -p syntax-helper-search --example
+  measure_hbk_fact_snapshot` and the final release harness above. Final strict OpenSpec/fmt gates
+  are run after this spec update.
 
 ### [x] T171. Add explicit snapshot-backed resolver adapters for worker-safe analyzer lookup
 

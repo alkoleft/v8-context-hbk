@@ -13,7 +13,8 @@ mod tests {
     use syntax_helper_model as model;
     use syntax_helper_model::SyntaxHelperSink;
     use syntax_helper_search::{
-        HbkFactSnapshot, IndexMetadata, SearchIndexBuilder, build_index_from_builder,
+        HbkFactSnapshot, HbkFactSnapshotCacheStatus, IndexMetadata, SearchIndexBuilder,
+        build_index_from_builder,
     };
 
     use super::*;
@@ -428,9 +429,16 @@ mod tests {
 
         let source = fixture_source();
         let index_path = fixture_index_path("platform-snapshot-source.sqlite");
-        let index = open_index(&index_path);
-        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
-        drop(index);
+        let cache_path = temp_path("platform-snapshot-source.bin");
+        let source_report = HbkFactSnapshot::from_path_with_stage_timings(&index_path)
+            .expect("snapshot must build");
+        source_report
+            .write_binary_cache(&cache_path)
+            .expect("snapshot cache must write");
+        let cached_report = HbkFactSnapshot::from_path_with_binary_cache(&index_path, &cache_path)
+            .expect("snapshot cache must load");
+        assert_eq!(cached_report.status, HbkFactSnapshotCacheStatus::Loaded);
+        let snapshot = Arc::new(cached_report.snapshot);
         std::fs::remove_file(&index_path).expect("snapshot adapter must not need SQLite file");
         let adapter = PlatformSnapshotSource::with_source_id(snapshot.clone(), source.clone());
         let query_source = SourceId::new("shcntx-query");

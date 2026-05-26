@@ -9,6 +9,9 @@ pub struct StoredIndexMetadata {
     pub source_locale: String,
     pub source_hbk: String,
     pub source_extraction_schema_version: u32,
+    pub built_at: String,
+    pub builder_version: String,
+    pub source_index_identity: Option<String>,
 }
 
 impl SearchIndex {
@@ -51,7 +54,14 @@ impl SearchIndex {
                     )
                 },
             )?,
+            built_at: self.metadata_value("built_at")?,
+            builder_version: self.metadata_value("builder_version")?,
+            source_index_identity: self.metadata_optional_value("source_index_identity")?,
         })
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
     }
 
     pub fn get_by_name(&self, name: &str) -> Result<Vec<SearchHit>, SearchError> {
@@ -1236,6 +1246,17 @@ impl SearchIndex {
                 },
                 source => self.sqlite(source),
             })
+    }
+
+    fn metadata_optional_value(&self, key: &'static str) -> Result<Option<String>, SearchError> {
+        self.connection
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|source| self.sqlite(source))
     }
 }
 

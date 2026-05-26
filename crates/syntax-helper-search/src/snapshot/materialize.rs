@@ -116,9 +116,17 @@ impl<'a> SnapshotMaterializer<'a> {
     fn materialize_with_stage_timings(self) -> Result<HbkFactSnapshotBuildReport, SearchError> {
         let total_start = Instant::now();
         let mut timings = HbkFactSnapshotStageTimings::default();
+        let cache_metadata =
+            super::binary_cache::CacheMetadata::from_index(self.index.path(), self.index)?;
+        let cache_index_path = self.index.path().to_path_buf();
         let snapshot = self.materialize_inner(Some(&mut timings))?;
         timings.total = total_start.elapsed();
-        Ok(HbkFactSnapshotBuildReport { snapshot, timings })
+        Ok(HbkFactSnapshotBuildReport {
+            snapshot,
+            timings,
+            cache_index_path,
+            cache_metadata,
+        })
     }
 
     fn materialize_inner(

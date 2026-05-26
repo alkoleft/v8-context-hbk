@@ -972,17 +972,37 @@ construction (`89 ms`). This makes a binary-cache prototype a reasonable follow-
 physical model and resolver adapter migration settle, because the experiment can target both SQL
 row decoding and repeated arena/index construction instead of speculating about a format first.
 
-The first prototype confirms the direction but does not accept a final persisted format. Before T169
-stabilization, a measurement-only little-endian cache over the snapshot loaded in a `25 ms` median
-across five warm runs, while the same SQLite materialization path measured a `643 ms` median in
-that run set. After T169 enum/enum-value coverage, three release runs measured warmed SQLite
+The first prototype confirmed the direction but did not accept a final persisted format. Before
+T169 stabilization, a measurement-only little-endian cache over the snapshot loaded in a `25 ms`
+median across five warm runs, while the same SQLite materialization path measured a `643 ms` median
+in that run set. After T169 enum/enum-value coverage, three release runs measured warmed SQLite
 materialization at `788-943 ms` and warmed binary-cache reads at `29-30 ms`, with exact round-trip
-equality. The cache artifact grew to `11364011` bytes. This keeps the preferred next design path as
-provider-owned derived cache over SQLite. Because cache reads allocate exact vector capacities,
-future memory comparisons must report both capacity-based heap bytes and logical payload bytes.
-Cache invalidation and final format selection remain owned by the T170 follow-up. After T169
-stabilization, that follow-up is no longer broad exploration: OpenSpec change
-`stabilize-hbk-fact-snapshot-cache` owns turning the measurement-only cache into a provider-owned
-derived cache decision with explicit metadata, invalidation, corruption handling and final
-measurement. It must preserve the completed T171 resolver backend split; a future non-query-table
-`LanguageSnapshotSource` would be separate scope.
+equality. The cache artifact grew to `11364011` bytes. This kept the preferred next design path as
+provider-owned derived cache over SQLite.
+
+T170 accepts the no-dependency little-endian DTO path as the first stable provider-owned snapshot
+cache format. It remains internal to `syntax-helper-search`: `HbkFactSnapshot::from_path_with_binary_cache`
+opens the canonical SQLite provider index, validates the cache metadata and payload integrity, loads
+the cached snapshot on a hit, or rebuilds and rewrites the cache from SQLite on a missing, stale,
+unsupported or corrupted artifact. The cache header carries the cache format version, provider
+SQLite schema version, source-index identity fingerprint from provider metadata, persisted
+source-index identity when available and file size/mtime, locale/source-locale/source-HBK metadata,
+source extraction schema version, snapshot layout version/flags, payload length and FNV-1a payload
+checksum. Payload length is capped before allocation. Cache writing is available from an
+`HbkFactSnapshotBuildReport` produced by the same provider index, not from an arbitrary
+snapshot/index pair. Resolver adapters do not receive cache paths and do not know the binary
+layout; they continue to compose over loaded `Arc<HbkFactSnapshot>` state.
+
+The stable release comparison on the post-T169 `shcntx_ru` provider index measured warmed SQLite
+materialization at `658-665 ms`, cache validation/load at `34-35 ms`, cache writes at `32 ms`,
+cache size at `11318100` bytes and peak RSS around `106 MiB`. The cache-loaded snapshot reports
+exact-capacity heap bytes equal to logical payload bytes (`17846774`), while the
+SQLite-materialized snapshot reports `23184770` capacity-based heap bytes for the same
+`17846774` logical payload bytes. This is an allocation-capacity effect, not a different logical
+snapshot model.
+
+No new serialization, zero-copy or mmap dependency is justified for this startup path now. Such a
+dependency remains a future task only if later measurements show that cache deserialization or
+allocation, not SQLite materialization, is again the limiting component. T170 preserves the
+completed T171 resolver backend split; a future non-query-table `LanguageSnapshotSource` remains
+separate scope.
