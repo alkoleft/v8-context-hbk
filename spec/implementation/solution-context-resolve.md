@@ -901,3 +901,11 @@ RSS, estimated snapshot-owned heap, per-index heap contribution and batched look
 module-analysis, module-context and static-query paths. If an index raises memory usage without a
 matching hot-path lookup benefit, keep it out of the first slice or record it as a separate measured
 follow-up.
+
+T169's first snapshot batch reshaped the provider-owned read model and added per-index accounting,
+but it is not the final resolver path yet. `context-resolver-search` still needs a separate adapter
+migration batch for known-owner member/callable lookup, module-context lookup and query-table
+field/parameter lookup. That migration must project snapshot nodes into `context-resolver-core`
+DTOs and must not query raw SQLite tables on migrated analyzer hot paths.
+It must also include enum and enum-value fact refs if those facts participate in exact-id or
+relation traversal for the migrated adapter slice.

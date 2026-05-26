@@ -973,6 +973,22 @@ identify the responsible index and either justify it with a measured lookup bene
 index into a separate follow-up. Do not trade a small point-lookup improvement for broad duplicated
 payload storage.
 
+T169's first snapshot-read-model batch implemented these index families inside
+`syntax-helper-search::HbkFactSnapshot` and exposed them through `HbkFactReadHandle`, with
+per-index memory accounting and a release measurement harness. The snapshot-owned heap and process
+RSS remained within the task tolerance on `shcntx_ru`, but warm build time still exceeded the T168
+median +15% threshold. The largest memory contributors from the new index families were
+`relations_by_source_kind`, `members_by_owner_name_kind`, `availability_by_fact`,
+`members_by_owner_name`, `fact_ids` and `availability_since_by_fact`.
+
+This batch does not complete the resolver-adapter migration. `context-resolver-search` still owns
+the current DTO projection over `SearchIndex` for platform and query-table sources. The next batch
+must move the specified adapter hot paths to snapshot/read-handle calls without adding analyzer-side
+HBK mirrors, raw SQLite reads for migrated paths or broad provenance/description payloads to the
+snapshot node arenas.
+That migration also must close the enum/enum-value fact-ref coverage gap or keep relation/fact-id
+resolver support explicitly scoped to the represented fact families.
+
 Physical indexes remain a `syntax-helper-search` provider concern. `context-resolver-search` may
 adapt read-handle results into source-neutral DTOs, but it must not build a second provider-fact
 index, keep analyzer-owned mirrors of HBK facts, or bypass the snapshot with raw SQLite table reads.

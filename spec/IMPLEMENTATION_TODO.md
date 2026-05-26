@@ -138,6 +138,34 @@ Verification:
 - `cargo fmt --all --check`;
 - focused package tests/checks for touched crates.
 
+Partial result / blocker:
+
+- Snapshot/read-handle physical indexes were reshaped in `syntax-helper-search` for the listed
+  hot paths, including fact id, type name, type template key, owner member/callable, constructors,
+  global lookup, module context, query table/field/parameter, availability and relation traversal
+  indexes. Focused snapshot coverage and the release measurement harness exist.
+- The task remains unchecked because the `context-resolver-search` adapter gate is not migrated:
+  `PlatformSearchSource::{resolve, resolve_type, members, callable, global_context,
+  module_context, related, availability}` and `LanguageSearchSource` query-table paths still use
+  the current `SearchIndex` adapter mapping. Migrating them requires a second batch that projects
+  snapshot nodes into resolver DTOs without reintroducing descriptions/provenance payloads into
+  the snapshot or falling back to raw SQLite for migrated hot paths.
+- The first batch covers platform types, members, callables, globals, module context facts, query
+  tables, query fields, query parameters and generic language facts. Enum and enum-value fact refs
+  are not yet represented in the snapshot relation/fact-id lookup surface, so adapter migration
+  must either add those variants or document a narrower measured resolver slice before completing
+  this task.
+- After-change release measurement on
+  `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite` with three warm runs reported
+  a `664 ms` median snapshot build, `102704-102716 KiB` peak RSS and `20345723` snapshot-owned heap
+  bytes. Heap and RSS remain inside the T169 tolerances versus the T168 baseline, but build time is
+  above the `511 ms` median +15% threshold. The largest added index families are
+  `relations_by_source_kind` (`71977` entries / `1624392` bytes),
+  `members_by_owner_name_kind` (`35912` entries / `1048576` bytes), `availability_by_fact`
+  (`124955` entries / `893036` bytes), `members_by_owner_name`
+  (`35912` entries / `786432` bytes), `fact_ids` (`29466` entries / `393216` bytes) and
+  `availability_since_by_fact` (`28725` entries / `393216` bytes).
+
 ### [x] T168. Implement the first provider-owned worker-safe HBK fact snapshot slice
 
 References: FR-CTX-RESOLVE-001, NFR-PERF-001, NFR-QUERY-001, UC-CTX-001,

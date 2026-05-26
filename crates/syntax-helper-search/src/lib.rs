@@ -1,12 +1,13 @@
-// Internal implementation is split by responsibility; include! keeps the provisional public
-// surface and private helper visibility unchanged for this behavior-preserving T151 pass.
+// Most legacy internals still use include! to preserve their provisional private helper surface.
+// Newer slices use ordinary modules when their boundaries are narrow enough to keep explicit.
 include!("imports.rs");
 include!("model.rs");
 include!("builder.rs");
 include!("error.rs");
 include!("index_build.rs");
 include!("index.rs");
-include!("snapshot.rs");
+mod snapshot;
+pub use snapshot::*;
 include!("storage.rs");
 include!("relations.rs");
 include!("document_mapping.rs");

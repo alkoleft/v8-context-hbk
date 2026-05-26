@@ -2356,6 +2356,45 @@ snapshot-owned heap, node/string/index heap breakdown, per-index counts/bytes an
 timings after source open. A larger index set is acceptable only when the measured hot-path lookup
 benefit and memory cost are both recorded.
 
+T169 partial snapshot-read-model measurement added a dedicated release harness:
+
+```bash
+cargo build --release -p syntax-helper-search --example measure_hbk_fact_snapshot
+/usr/bin/time -f 'time_elapsed_seconds=%e\ntime_peak_rss_kib=%M\ntime_exit_status=%x' \
+  target/release/examples/measure_hbk_fact_snapshot \
+  target/snapshot-materialization/shcntx_ru.schema16.release.sqlite 20000
+```
+
+Three after-change warm runs reported snapshot build times of `664 ms`, `747 ms` and `640 ms`, for
+a `664 ms` median, `102704-102716 KiB` process peak RSS and `20345723` estimated snapshot-owned
+heap bytes. Snapshot-owned heap is about `11.8%` above the T168 `18197557` byte baseline and peak
+RSS is below the T168 `105844 KiB` warm high, both inside the T169 tolerance. Build time remains
+above the T168 `511 ms` median +15% threshold.
+
+The largest new/reshaped index families are:
+
+- `relations_by_source_kind`: `71977` entries / `1624392` bytes;
+- `members_by_owner_name_kind`: `35912` entries / `1048576` bytes;
+- `availability_by_fact`: `124955` entries / `893036` bytes;
+- `members_by_owner_name`: `35912` entries / `786432` bytes;
+- `fact_ids`: `29466` entries / `393216` bytes;
+- `availability_since_by_fact`: `28725` entries / `393216` bytes.
+
+Batched lookup timings for `20000` iterations stayed far below the NFR-RESOLVE-001 `100 ms`
+resolver/API ceiling after source open. Warm-run average timings ranged from exact fact id
+`100-120 ns`, type name `290-383 ns`, type template key `128-142 ns`, member by owner/name/kind
+`294-300 ns`, callable by owner/name `383-441 ns`, constructor by type `21-28 ns`, global by
+domain/name/kind `354-434 ns`, module context by kind `681-945 ns`, query table by name
+`642-789 ns`, query field by table/name `268-319 ns`, query parameter by table/name
+`415-447 ns`, availability by fact `121-126 ns` and relation by source/kind `41880-43686 ns`.
+
+T169 is not accepted as complete from this measurement alone. `context-resolver-search` still uses
+the existing `SearchIndex` adapter paths for resolver DTO projection, and build time requires either
+further reduction or an explicit measured tradeoff before the active ledger item can be checked.
+The first snapshot batch also does not yet represent enum and enum-value fact refs in the
+relation/fact-id lookup surface; completing the adapter migration must close or explicitly scope
+that gap.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

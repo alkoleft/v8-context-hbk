@@ -1397,6 +1397,24 @@ mod tests {
 
         let path = temp_path("hbk-fact-snapshot.sqlite");
         let mut context = fixture_context();
+        context.platform_types[0]
+            .facts
+            .availability
+            .contexts
+            .push(model::AvailabilityContext::Server);
+        context.platform_types[0].facts.available_since = Some(model::VersionFact {
+            version: Some("8.3.1".to_string()),
+            text: "Available since 8.3.1".to_string(),
+        });
+        let mut manager = platform_type(
+            "СправочникМенеджер.<Имя справочника>",
+            Some("CatalogManager.<Catalog name>"),
+            "Catalog manager template.",
+        );
+        manager.type_kind = model::PlatformTypeKind::MetadataTemplate;
+        manager.metadata_kind = Some("СправочникМенеджер".to_string());
+        manager.template_parameters = vec!["Имя справочника".to_string()];
+        context.platform_types.push(manager);
         context.global_methods.push(model::GlobalMethod {
             name: name("Сообщить", Some("Message")),
             signatures: vec![model::Signature {
@@ -1448,6 +1466,16 @@ mod tests {
         }];
         parameter.default_value = Some("НачалоПериода".to_string());
         context.query_tables.push(table);
+        context.query_tables.push(query_table(
+            "ДругойИдентификатор",
+            "Таблицы справочников",
+            "Справочник",
+        ));
+        context.query_tables.push(query_table(
+            "ТретийИдентификатор",
+            "Таблицы справочников",
+            "Catalog.<Catalog name>",
+        ));
         context.table_fields.push(field);
         context.table_parameters.push(parameter);
 
@@ -1459,13 +1487,44 @@ mod tests {
 
         let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
         assert!(snapshot.estimated_heap_bytes() > 0);
+        let memory = snapshot.memory_accounting();
+        assert_eq!(memory.total_bytes(), snapshot.estimated_heap_bytes());
+        assert!(memory.string_store.bytes > 0);
+        assert!(memory.node_arenas.bytes > 0);
+        assert!(memory.indexes.fact_ids.bytes > 0);
+        assert!(memory.indexes.availability_by_fact.count > 0);
         let handle = snapshot.worker_handle();
         let filter = handle
             .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
             .expect("platform type id lookup must work");
         assert_eq!(
+            handle.facts_by_id("platform_type:ОтборКомпоновкиДанных"),
+            vec![HbkFactRef::PlatformType(filter)]
+        );
+        assert_eq!(
             snapshot.string(snapshot.platform_type(filter).name.primary),
             "ОтборКомпоновкиДанных"
+        );
+        assert!(handle.platform_types_by_name("DataCompositionFilter").contains(&filter));
+        let manager_template = handle.platform_types_by_template_key("Catalog", "Manager");
+        assert_eq!(manager_template.len(), 1);
+        assert_eq!(
+            snapshot.string(snapshot.platform_type(manager_template[0]).name.primary),
+            "СправочникМенеджер.<Имя справочника>"
+        );
+        assert_eq!(
+            handle
+                .availability_contexts(HbkFactRef::PlatformType(filter))
+                .iter()
+                .map(|context| snapshot.string(*context))
+                .collect::<Vec<_>>(),
+            vec!["server"]
+        );
+        assert_eq!(
+            handle
+                .available_since(HbkFactRef::PlatformType(filter))
+                .map(|since| snapshot.string(since)),
+            Some("8.3.1")
         );
         assert!(
             handle
@@ -1474,6 +1533,15 @@ mod tests {
                 .map(|member| snapshot.type_member(*member))
                 .any(|member| snapshot.string(member.name.primary) == "Элементы")
         );
+        let elements = handle.member_by_owner_name_kind(
+            filter,
+            "Элементы",
+            Some(HbkTypeMemberKind::Property),
+        );
+        assert_eq!(elements.len(), 1);
+        assert!(handle
+            .member_by_owner_name_kind(filter, "Элементы", Some(HbkTypeMemberKind::Method))
+            .is_empty());
         assert!(
             handle
                 .callable_by_owner_name(filter, "ПолучитьОбъектПоИдентификатору")
@@ -1483,9 +1551,32 @@ mod tests {
                     snapshot.string(callable.name.primary) == "ПолучитьОбъектПоИдентификатору"
                 })
         );
+        let constructors = handle.constructors_of_type(filter);
+        assert_eq!(constructors.len(), 1);
+        assert_eq!(
+            snapshot.string(snapshot.callable(constructors[0]).name.primary),
+            "Новый ОтборКомпоновкиДанных()"
+        );
 
         let globals = handle.globals_by_name("Сообщить");
         assert_eq!(globals.len(), 1);
+        assert_eq!(
+            handle.globals_by_domain_name_kind(
+                HbkLanguageDomain::Bsl,
+                "Message",
+                Some(HbkGlobalFactKind::Method),
+            ),
+            globals
+        );
+        assert_eq!(
+            handle.globals_by_domain_name_kind(HbkLanguageDomain::Bsl, "Message", None),
+            globals
+        );
+        assert!(
+            handle
+                .globals_by_domain_name_kind(HbkLanguageDomain::Query, "Message", None)
+                .is_empty()
+        );
         assert!(
             snapshot
                 .global_fact(globals[0])
@@ -1494,13 +1585,27 @@ mod tests {
                 .unwrap_or(false)
         );
         assert_eq!(handle.module_events("module_context:form").len(), 1);
+        assert_eq!(
+            handle.module_context_events(HbkLanguageDomain::Bsl, "bsl", "form"),
+            handle.module_events("module_context:form")
+        );
 
-        let tables = handle.query_tables_by_name("Справочник.<Имя справочника>");
+        let tables = handle.query_tables_by_syntax("Справочник.<Имя справочника>");
         assert_eq!(tables.len(), 1);
         let fields = handle.query_fields(tables[0]);
         let parameters = handle.query_parameters(tables[0]);
         assert_eq!(fields.len(), 1);
         assert_eq!(parameters.len(), 1);
+        assert_eq!(handle.query_tables_by_identifier("Справочник"), tables);
+        assert_eq!(
+            handle.query_tables_by_syntax("Catalog.<Catalog name>"),
+            tables
+        );
+        assert_eq!(handle.query_fields_by_name(tables[0], "Ссылка"), fields);
+        assert_eq!(handle.query_parameters_by_name(tables[0], "Дата"), parameters);
+        let owned = handle.relations_by_source_kind(HbkFactRef::QueryTable(tables[0]), "owns");
+        assert!(owned.contains(&HbkFactRef::QueryField(fields[0])));
+        assert!(owned.contains(&HbkFactRef::QueryParameter(parameters[0])));
         assert_eq!(
             snapshot.string(snapshot.query_field(fields[0]).name.primary),
             "Ссылка"
