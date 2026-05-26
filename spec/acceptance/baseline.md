@@ -2395,6 +2395,58 @@ The first snapshot batch also does not yet represent enum and enum-value fact re
 relation/fact-id lookup surface; completing the adapter migration must close or explicitly scope
 that gap.
 
+T170 stage-timing instrumentation extends the same release harness with measurement-only
+`HbkFactSnapshot` build buckets. It does not change the canonical SQLite provider index or select a
+persisted snapshot format. Five warm runs against
+`target/snapshot-materialization/shcntx_ru.schema16.release.sqlite` reported snapshot build times
+of `618 ms`, `649 ms`, `618 ms`, `625 ms` and `641 ms`, for a `625 ms` median. Process peak RSS
+stayed in the `102596-102716 KiB` range and estimated snapshot-owned heap stayed at
+`20345723` bytes.
+
+Median stage timing from those runs:
+
+- SQLite index open: `<1 ms`;
+- SQLite row read/decode: `228 ms`;
+- lookup-map construction: `2 ms`;
+- platform-type arena/index construction: `9 ms`;
+- type-reference grouping: `35 ms`;
+- signature/parameter nesting: `21 ms`;
+- fact arena construction: `164 ms`;
+- fact-id, relation and availability construction: `89 ms`;
+- secondary-index sorting: `20 ms`;
+- final snapshot assembly: `11 ms`.
+
+Conclusion: the largest measured startup components are repeated SQLite row reading/decoding,
+fact arena construction and relation/availability/fact-id construction. A persisted snapshot cache
+experiment is therefore worth measuring after T169 stabilizes the physical read model, but the cache
+must remain a derived provider-owned artifact with SQLite as the rebuildable source.
+
+The first T170 binary-cache prototype uses a measurement-only provider-owned little-endian format
+with magic, cache version and provider schema version guards. It adds no new runtime dependency and
+is not accepted as a downstream storage contract; the Rust API is explicitly named
+`write_experimental_binary_cache` / `from_experimental_binary_cache`. The release harness now
+accepts an optional cache path and compares SQLite materialization with binary cache write/read:
+
+```bash
+cargo build --release -p syntax-helper-search --example measure_hbk_fact_snapshot
+/usr/bin/time -f 'time_elapsed_seconds=%e\ntime_peak_rss_kib=%M\ntime_exit_status=%x' \
+  target/release/examples/measure_hbk_fact_snapshot \
+  target/snapshot-materialization/shcntx_ru.schema16.release.sqlite \
+  20000 \
+  target/snapshot-materialization/hbk-fact-snapshot.bin
+```
+
+Five warm runs reported SQLite materialization build times of `645 ms`, `643 ms`, `629 ms`,
+`605 ms` and `683 ms`, for a `643 ms` median. The binary cache file was `10319044` bytes
+(`9.9 MiB`). Binary cache reads were `25 ms`, `25 ms`, `25 ms`, `24 ms` and `26 ms`, for a
+`25 ms` median. Binary cache writes were `11 ms`, `44 ms`, `44 ms`, `31 ms` and `48 ms`, for a
+`44 ms` median. Each run reported `binary_cache.roundtrip_equal=true`.
+
+The SQLite-materialized snapshot still estimated `20345723` bytes of snapshot-owned heap. The
+cache-loaded snapshot estimated `16597927` bytes because the binary reader allocates vectors with
+exact capacities instead of preserving materializer growth capacity. This is useful evidence for a
+future derived cache, but it does not yet decide the final persisted format or invalidation policy.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

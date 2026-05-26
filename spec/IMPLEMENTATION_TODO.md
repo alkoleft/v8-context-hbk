@@ -166,6 +166,78 @@ Partial result / blocker:
   (`35912` entries / `786432` bytes), `fact_ids` (`29466` entries / `393216` bytes) and
   `availability_since_by_fact` (`28725` entries / `393216` bytes).
 
+### [ ] T170. Explore persisted binary cache for `HbkFactSnapshot` startup latency
+
+References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001, NFR-QUERY-001, UC-CTX-001,
+UC-CTX-002, `implementation/solution-context-resolve.md`,
+`acceptance/baseline.md`, T169, OpenSpec change
+`provider-owned-hbk-fact-snapshot`.
+
+Scope:
+
+- Treat the existing SQLite provider index as the canonical rebuildable provider artifact. The
+  persisted snapshot cache is a derived startup/read-model artifact, not a replacement source of
+  truth and not a public contract for downstream analyzers.
+- Start with stage-timing of the current `HbkFactSnapshot::from_path` materializer, separating at
+  least SQLite open/read, row decoding, string interning, grouping/nesting, secondary-index build
+  and final snapshot assembly. Do not select a disk format before this timing identifies the
+  materialization stages that dominate the current `500-700 ms` class.
+- Define cache invalidation metadata before any binary format experiment: snapshot cache format
+  version, provider SQLite schema version, source index identity/hash, platform version/locale and
+  snapshot layout/version flags. On mismatch, rebuild from the SQLite provider index.
+- Compare a simple versioned Rust DTO serialization path first against the current SQLite
+  materializer. Only consider zero-copy or memory-mapped layouts such as `rkyv`/`zerocopy` after
+  the snapshot physical model is stable enough that disk layout coupling is acceptable.
+- Keep `fst` scoped to measured name/id lookup index compression if lookup indexes, not startup
+  deserialization, are the limiting component. Do not use Tantivy, search/export payloads or fuzzy
+  search data for the worker fact snapshot cache.
+- Keep the persisted artifact provider-owned. Resolver adapters may load or receive
+  `Arc<HbkFactSnapshot>`, but must not depend on SQLite tables, binary layout details or
+  analyzer-owned mirror indexes.
+
+Verification:
+
+- release stage-timing measurement for the current SQLite materializer on the representative
+  `shcntx_ru` provider index;
+- documented comparison of at least two startup paths: SQLite materialization baseline and one
+  derived binary-cache prototype;
+- report warm build/load time, process peak RSS, estimated snapshot-owned heap, cache file size,
+  validation/invalidation cost and representative read-handle lookup timings;
+- keep lookup correctness covered by existing focused snapshot tests plus any cache round-trip
+  tests needed for the chosen prototype;
+- update `acceptance/baseline.md` and `implementation/solution-context-resolve.md` with the
+  measured conclusion before accepting a persisted format decision.
+
+Initial stage-timing result:
+
+- Added measurement-only stage timing to the existing release harness. Five warm runs on
+  `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite` reported snapshot build
+  times of `618 ms`, `649 ms`, `618 ms`, `625 ms` and `641 ms`, for a `625 ms` median.
+- Dominant median buckets were SQLite row reading (`228 ms`), fact arena construction (`164 ms`)
+  and fact-id/relation/availability construction (`89 ms`). Together these account for most of the
+  current startup class and justify a persisted binary-cache prototype after the in-memory T169
+  layout/resolver migration is settled.
+- The current timing does not choose a disk format. It narrows the next experiment to bypassing
+  repeated SQL row decoding and repeated arena/index construction from SQLite while keeping SQLite
+  as the canonical rebuildable provider artifact.
+- Added a measurement-only provider-owned binary cache prototype using a small versioned
+  little-endian format with magic, cache version and provider schema version guards. It introduces
+  no new runtime dependency and is not a downstream storage contract. The public methods are named
+  `write_experimental_binary_cache` and `from_experimental_binary_cache` to keep that status
+  explicit.
+- Five warm runs comparing the same source snapshot with the binary cache reported SQLite
+  materialization build times of `645 ms`, `643 ms`, `629 ms`, `605 ms` and `683 ms`, for a
+  `643 ms` median. Binary cache reads were `25 ms`, `25 ms`, `25 ms`, `24 ms` and `26 ms`, for a
+  `25 ms` median. Cache writes were `11-48 ms`, median `44 ms`.
+- The cache file was `10319044` bytes (`9.9 MiB`) and every run reported
+  `binary_cache.roundtrip_equal=true`. The cache-loaded snapshot estimated heap was
+  `16597927` bytes versus `20345723` bytes for the SQLite-materialized snapshot because the binary
+  reader allocates exact vector capacities.
+- Current conclusion: the simple binary cache prototype is strong enough to keep T170 as a real
+  follow-up after T169 stabilizes the physical read model and resolver adapter migration. The
+  prototype does not yet accept a final persisted format decision or cache invalidation policy
+  beyond the minimal version/schema guard.
+
 ### [x] T168. Implement the first provider-owned worker-safe HBK fact snapshot slice
 
 References: FR-CTX-RESOLVE-001, NFR-PERF-001, NFR-QUERY-001, UC-CTX-001,

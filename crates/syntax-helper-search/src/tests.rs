@@ -1625,6 +1625,15 @@ mod tests {
                 .any(|fact| fact.domain == HbkLanguageDomain::Bsl)
         );
 
+        let cache_path = temp_path("hbk-fact-snapshot.bin");
+        snapshot
+            .write_experimental_binary_cache(&cache_path)
+            .expect("snapshot cache must write");
+        let cached_snapshot = HbkFactSnapshot::from_experimental_binary_cache(&cache_path)
+            .expect("snapshot cache must read");
+        assert_eq!(cached_snapshot, snapshot);
+        assert_eq!(lookup_summary(&cached_snapshot), lookup_summary(&snapshot));
+
         let shared = std::sync::Arc::new(snapshot);
         let expected = lookup_summary(shared.as_ref());
         let workers = (0..4)

@@ -1,7 +1,7 @@
-use std::env;
 use std::hint::black_box;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use std::{env, fs};
 
 use syntax_helper_search::{
     HbkFactRef, HbkFactSnapshot, HbkFactSnapshotMemoryEntry, HbkGlobalFactKind, HbkLanguageDomain,
@@ -13,7 +13,7 @@ const DEFAULT_ITERATIONS: usize = 20_000;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);
     let Some(path) = args.next() else {
-        eprintln!("usage: measure_hbk_fact_snapshot <index.sqlite> [iterations]");
+        eprintln!("usage: measure_hbk_fact_snapshot <index.sqlite> [iterations] [cache.bin]");
         std::process::exit(2);
     };
     let iterations = args
@@ -21,15 +21,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|value| value.parse())
         .transpose()?
         .unwrap_or(DEFAULT_ITERATIONS);
+    let cache_path = args.next().map(PathBuf::from);
 
-    let build_start = Instant::now();
-    let snapshot = HbkFactSnapshot::from_path(PathBuf::from(path))?;
-    let build_elapsed = build_start.elapsed();
+    let report = HbkFactSnapshot::from_path_with_stage_timings(PathBuf::from(path))?;
+    let snapshot = report.snapshot;
+    let timings = report.timings;
+
+    println!("snapshot_build_ms={}", timings.total.as_millis());
+    print_duration("stage.open_index", timings.open_index);
+    print_duration("stage.read_sql_rows", timings.read_sql_rows);
+    print_duration("stage.build_lookup_maps", timings.build_lookup_maps);
+    print_duration("stage.build_platform_types", timings.build_platform_types);
+    print_duration("stage.group_type_refs", timings.group_type_refs);
+    print_duration("stage.build_signatures", timings.build_signatures);
+    print_duration("stage.build_fact_arenas", timings.build_fact_arenas);
+    print_duration(
+        "stage.build_fact_ids_relations_availability",
+        timings.build_fact_ids_relations_availability,
+    );
+    print_duration(
+        "stage.sort_secondary_indexes",
+        timings.sort_secondary_indexes,
+    );
+    print_duration("stage.assemble_snapshot", timings.assemble_snapshot);
+
+    if let Some(cache_path) = cache_path {
+        let write_start = Instant::now();
+        snapshot.write_experimental_binary_cache(&cache_path)?;
+        let write_elapsed = write_start.elapsed();
+        let cache_bytes = fs::metadata(&cache_path)?.len();
+
+        let read_start = Instant::now();
+        let cached_snapshot = HbkFactSnapshot::from_experimental_binary_cache(&cache_path)?;
+        let read_elapsed = read_start.elapsed();
+        let roundtrip_equal = cached_snapshot == snapshot;
+
+        println!("binary_cache.bytes={cache_bytes}");
+        print_duration("binary_cache.write", write_elapsed);
+        print_duration("binary_cache.read", read_elapsed);
+        println!(
+            "binary_cache.snapshot_heap_bytes={}",
+            cached_snapshot.estimated_heap_bytes()
+        );
+        println!("binary_cache.roundtrip_equal={roundtrip_equal}");
+    }
+
     let counts = snapshot.counts();
     let memory = snapshot.memory_accounting();
     let handle = snapshot.worker_handle();
-
-    println!("snapshot_build_ms={}", build_elapsed.as_millis());
     println!("snapshot_heap_bytes={}", memory.total_bytes());
     println!("strings={}", counts.strings);
     println!("platform_types={}", counts.platform_types);
@@ -233,6 +272,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn print_entry(name: &str, entry: HbkFactSnapshotMemoryEntry) {
     println!("{name}.count={}", entry.count);
     println!("{name}.bytes={}", entry.bytes);
+}
+
+fn print_duration(name: &str, duration: Duration) {
+    println!("{name}_ms={}", duration.as_millis());
+    println!("{name}_ns={}", duration.as_nanos());
 }
 
 fn measure(name: &str, iterations: usize, mut operation: impl FnMut() -> usize) {

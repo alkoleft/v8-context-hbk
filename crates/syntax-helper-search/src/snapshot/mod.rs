@@ -1,5 +1,6 @@
 use super::*;
 
+mod binary_cache;
 mod indexes;
 mod materialize;
 mod memory;
@@ -55,6 +56,27 @@ pub struct HbkFactSnapshot {
     availability_by_fact: CsrIndex<HbkFactRef, StringId>,
     availability_since_by_fact: Vec<FactStringLookup>,
     relations_by_source_kind: CsrIndex<RelationLookupKey, HbkFactRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HbkFactSnapshotBuildReport {
+    pub snapshot: HbkFactSnapshot,
+    pub timings: HbkFactSnapshotStageTimings,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HbkFactSnapshotStageTimings {
+    pub total: Duration,
+    pub open_index: Duration,
+    pub read_sql_rows: Duration,
+    pub build_lookup_maps: Duration,
+    pub build_platform_types: Duration,
+    pub group_type_refs: Duration,
+    pub build_signatures: Duration,
+    pub build_fact_arenas: Duration,
+    pub build_fact_ids_relations_availability: Duration,
+    pub sort_secondary_indexes: Duration,
+    pub assemble_snapshot: Duration,
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -909,3 +909,19 @@ field/parameter lookup. That migration must project snapshot nodes into `context
 DTOs and must not query raw SQLite tables on migrated analyzer hot paths.
 It must also include enum and enum-value fact refs if those facts participate in exact-id or
 relation traversal for the migrated adapter slice.
+
+T170 adds the next startup-latency investigation without changing the source-of-truth boundary. The
+SQLite provider index remains the canonical rebuildable artifact; a persisted binary snapshot would
+be a derived cache only. Initial release stage timing over the current `HbkFactSnapshot` materializer
+measured a `625 ms` median build across five warm runs. The dominant buckets were SQLite row
+read/decode (`228 ms` median), fact arena construction (`164 ms`) and fact-id/relation/availability
+construction (`89 ms`). This makes a binary-cache prototype a reasonable follow-up after T169's
+physical model and resolver adapter migration settle, because the experiment can target both SQL
+row decoding and repeated arena/index construction instead of speculating about a format first.
+
+The first prototype confirms the direction but does not accept a final persisted format. A
+measurement-only little-endian cache over the current snapshot loaded in a `25 ms` median across
+five warm runs, while the same SQLite materialization path measured a `643 ms` median in that run
+set. The cache artifact was `10319044` bytes and round-tripped exactly. This keeps the preferred
+next design path as provider-owned derived cache over SQLite, with cache invalidation and final
+format selection still owned by the T170 follow-up after the read model stabilizes.

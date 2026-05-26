@@ -7,8 +7,27 @@ impl HbkFactSnapshot {
         Self::from_index(&index)
     }
 
+    pub fn from_path_with_stage_timings(
+        path: impl AsRef<Path>,
+    ) -> Result<HbkFactSnapshotBuildReport, SearchError> {
+        let total_start = Instant::now();
+        let open_start = Instant::now();
+        let index = SearchIndex::open_read_only(path)?;
+        let open_index = open_start.elapsed();
+        let mut report = Self::from_index_with_stage_timings(&index)?;
+        report.timings.open_index = open_index;
+        report.timings.total = total_start.elapsed();
+        Ok(report)
+    }
+
     pub fn from_index(index: &SearchIndex) -> Result<Self, SearchError> {
         SnapshotMaterializer::new(index).materialize()
+    }
+
+    pub fn from_index_with_stage_timings(
+        index: &SearchIndex,
+    ) -> Result<HbkFactSnapshotBuildReport, SearchError> {
+        SnapshotMaterializer::new(index).materialize_with_stage_timings()
     }
 }
 
@@ -90,7 +109,36 @@ impl<'a> SnapshotMaterializer<'a> {
         }
     }
 
-    fn materialize(mut self) -> Result<HbkFactSnapshot, SearchError> {
+    fn materialize(self) -> Result<HbkFactSnapshot, SearchError> {
+        self.materialize_inner(None)
+    }
+
+    fn materialize_with_stage_timings(self) -> Result<HbkFactSnapshotBuildReport, SearchError> {
+        let total_start = Instant::now();
+        let mut timings = HbkFactSnapshotStageTimings::default();
+        let snapshot = self.materialize_inner(Some(&mut timings))?;
+        timings.total = total_start.elapsed();
+        Ok(HbkFactSnapshotBuildReport { snapshot, timings })
+    }
+
+    fn materialize_inner(
+        mut self,
+        mut timings: Option<&mut HbkFactSnapshotStageTimings>,
+    ) -> Result<HbkFactSnapshot, SearchError> {
+        macro_rules! start_stage {
+            () => {
+                timings.as_ref().map(|_| Instant::now())
+            };
+        }
+        macro_rules! finish_stage {
+            ($started_at:expr, $field:ident) => {
+                if let (Some(timings), Some(started_at)) = (&mut timings, $started_at) {
+                    timings.$field = started_at.elapsed();
+                }
+            };
+        }
+
+        let stage_start = start_stage!();
         let documents = self.documents()?;
         let metadata = self.metadata_rows()?;
         let type_identities = self.type_identities()?;
@@ -102,7 +150,9 @@ impl<'a> SnapshotMaterializer<'a> {
         let type_refs = self.type_refs()?;
         let module_context_keys = self.module_context_keys()?;
         let query_owners = self.query_owner_edges()?;
+        finish_stage!(stage_start, read_sql_rows);
 
+        let stage_start = start_stage!();
         let documents_by_id = documents
             .iter()
             .map(|document| (document.id.as_str(), document))
@@ -119,7 +169,9 @@ impl<'a> SnapshotMaterializer<'a> {
             .iter()
             .map(|(document_id, key)| (document_id.as_str(), key))
             .collect::<BTreeMap<_, _>>();
+        finish_stage!(stage_start, build_lookup_maps);
 
+        let stage_start = start_stage!();
         let mut platform_types = Vec::new();
         let mut platform_type_by_type_id = BTreeMap::<String, HbkPlatformTypeId>::new();
         let mut platform_type_ids = Vec::new();
@@ -162,11 +214,16 @@ impl<'a> SnapshotMaterializer<'a> {
                 });
             }
         }
+        finish_stage!(stage_start, build_platform_types);
 
+        let stage_start = start_stage!();
         let type_refs_by_document = group_document_type_refs(&mut self.builder, &type_refs);
         let return_refs_by_document = group_return_type_refs(&mut self.builder, &type_refs);
         let signature_refs = group_signature_return_type_refs(&mut self.builder, &type_refs);
         let parameter_refs = group_parameter_type_refs(&mut self.builder, &type_refs);
+        finish_stage!(stage_start, group_type_refs);
+
+        let stage_start = start_stage!();
         let parameters_by_signature = parameters_by_signature(parameters, parameter_refs);
         let signatures_by_callable = signatures_by_callable(
             &mut self.builder,
@@ -175,7 +232,9 @@ impl<'a> SnapshotMaterializer<'a> {
             parameters_by_signature,
             signature_refs,
         );
+        finish_stage!(stage_start, build_signatures);
 
+        let stage_start = start_stage!();
         let mut type_members = Vec::new();
         let mut member_ids = Vec::new();
         let mut member_owner_pairs = Vec::new();
@@ -507,26 +566,32 @@ impl<'a> SnapshotMaterializer<'a> {
                 value: callable,
             });
         }
+        finish_stage!(stage_start, build_fact_arenas);
 
+        let stage_start = start_stage!();
         let mut fact_ids = Vec::new();
         let mut fact_by_id = BTreeMap::<StringId, Vec<HbkFactRef>>::new();
         collect_fact_ids(
             &mut fact_ids,
             &mut fact_by_id,
             &self.builder,
-            &platform_types,
-            &type_members,
-            &callables_vec,
-            &globals,
-            &query_tables,
-            &query_fields,
-            &query_parameters,
-            &language_facts,
+            FactIdSources {
+                platform_types: &platform_types,
+                type_members: &type_members,
+                callables: &callables_vec,
+                globals: &globals,
+                query_tables: &query_tables,
+                query_fields: &query_fields,
+                query_parameters: &query_parameters,
+                language_facts: &language_facts,
+            },
         );
         let relation_pairs = relation_pairs(self.index, &mut self.builder, &fact_by_id)?;
         let (availability_pairs, availability_since_by_fact) =
             availability_pairs(&mut self.builder, &fact_by_id, &documents);
+        finish_stage!(stage_start, build_fact_ids_relations_availability);
 
+        let stage_start = start_stage!();
         let fact_ids = sorted_id_lookup(fact_ids, &self.builder);
         let platform_type_ids = sorted_id_lookup(platform_type_ids, &self.builder);
         let platform_type_names = sorted_name_lookup(platform_type_names, &self.builder);
@@ -555,7 +620,9 @@ impl<'a> SnapshotMaterializer<'a> {
             sorted_owner_name_lookup(query_parameters_by_table_name, &self.builder);
         let language_ids = sorted_id_lookup(language_ids, &self.builder);
         let language_names = sorted_name_lookup(language_names, &self.builder);
+        finish_stage!(stage_start, sort_secondary_indexes);
 
+        let stage_start = start_stage!();
         let snapshot = HbkFactSnapshot {
             strings: self.builder.strings,
             platform_types,
@@ -596,6 +663,7 @@ impl<'a> SnapshotMaterializer<'a> {
             availability_since_by_fact,
             relations_by_source_kind: CsrIndex::from_pairs(relation_pairs),
         };
+        finish_stage!(stage_start, assemble_snapshot);
         Ok(snapshot)
     }
 
@@ -903,46 +971,59 @@ fn collect_pairs(index: &SearchIndex, query: &str) -> Result<Vec<(String, String
         .map_err(|source| index.sqlite(source))
 }
 
+struct FactIdSources<'a> {
+    platform_types: &'a [HbkPlatformType],
+    type_members: &'a [HbkTypeMember],
+    callables: &'a [HbkCallable],
+    globals: &'a [HbkGlobalFact],
+    query_tables: &'a [HbkQueryTable],
+    query_fields: &'a [HbkQueryField],
+    query_parameters: &'a [HbkQueryParameter],
+    language_facts: &'a [HbkLanguageFact],
+}
+
 fn collect_fact_ids(
     output: &mut Vec<IdLookup<HbkFactRef>>,
     by_id: &mut BTreeMap<StringId, Vec<HbkFactRef>>,
     builder: &SnapshotBuilder,
-    platform_types: &[HbkPlatformType],
-    type_members: &[HbkTypeMember],
-    callables: &[HbkCallable],
-    globals: &[HbkGlobalFact],
-    query_tables: &[HbkQueryTable],
-    query_fields: &[HbkQueryField],
-    query_parameters: &[HbkQueryParameter],
-    language_facts: &[HbkLanguageFact],
+    sources: FactIdSources<'_>,
 ) {
     collect_fact_family_ids(
         output,
         by_id,
         builder,
-        platform_types.iter().enumerate().map(|(index, fact)| {
-            (
-                fact.id,
-                HbkFactRef::PlatformType(HbkPlatformTypeId(index as u32)),
-            )
-        }),
+        sources
+            .platform_types
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| {
+                (
+                    fact.id,
+                    HbkFactRef::PlatformType(HbkPlatformTypeId(index as u32)),
+                )
+            }),
     );
     collect_fact_family_ids(
         output,
         by_id,
         builder,
-        type_members.iter().enumerate().map(|(index, fact)| {
-            (
-                fact.id,
-                HbkFactRef::TypeMember(HbkTypeMemberId(index as u32)),
-            )
-        }),
+        sources
+            .type_members
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| {
+                (
+                    fact.id,
+                    HbkFactRef::TypeMember(HbkTypeMemberId(index as u32)),
+                )
+            }),
     );
     collect_fact_family_ids(
         output,
         by_id,
         builder,
-        callables
+        sources
+            .callables
             .iter()
             .enumerate()
             .map(|(index, fact)| (fact.id, HbkFactRef::Callable(HbkCallableId(index as u32)))),
@@ -951,7 +1032,8 @@ fn collect_fact_ids(
         output,
         by_id,
         builder,
-        globals
+        sources
+            .globals
             .iter()
             .enumerate()
             .map(|(index, fact)| (fact.id, HbkFactRef::Global(HbkGlobalFactId(index as u32)))),
@@ -960,45 +1042,61 @@ fn collect_fact_ids(
         output,
         by_id,
         builder,
-        query_tables.iter().enumerate().map(|(index, fact)| {
-            (
-                fact.id,
-                HbkFactRef::QueryTable(HbkQueryTableId(index as u32)),
-            )
-        }),
+        sources
+            .query_tables
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| {
+                (
+                    fact.id,
+                    HbkFactRef::QueryTable(HbkQueryTableId(index as u32)),
+                )
+            }),
     );
     collect_fact_family_ids(
         output,
         by_id,
         builder,
-        query_fields.iter().enumerate().map(|(index, fact)| {
-            (
-                fact.id,
-                HbkFactRef::QueryField(HbkQueryFieldId(index as u32)),
-            )
-        }),
+        sources
+            .query_fields
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| {
+                (
+                    fact.id,
+                    HbkFactRef::QueryField(HbkQueryFieldId(index as u32)),
+                )
+            }),
     );
     collect_fact_family_ids(
         output,
         by_id,
         builder,
-        query_parameters.iter().enumerate().map(|(index, fact)| {
-            (
-                fact.id,
-                HbkFactRef::QueryParameter(HbkQueryParameterId(index as u32)),
-            )
-        }),
+        sources
+            .query_parameters
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| {
+                (
+                    fact.id,
+                    HbkFactRef::QueryParameter(HbkQueryParameterId(index as u32)),
+                )
+            }),
     );
     collect_fact_family_ids(
         output,
         by_id,
         builder,
-        language_facts.iter().enumerate().map(|(index, fact)| {
-            (
-                fact.id,
-                HbkFactRef::LanguageFact(HbkLanguageFactId(index as u32)),
-            )
-        }),
+        sources
+            .language_facts
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| {
+                (
+                    fact.id,
+                    HbkFactRef::LanguageFact(HbkLanguageFactId(index as u32)),
+                )
+            }),
     );
 }
 
