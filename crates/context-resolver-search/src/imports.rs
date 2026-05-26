@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use context_resolver_core::{
     AvailabilityContext, AvailabilityFact, AvailabilityInfo, CallableId, CallableInfo,
@@ -13,8 +14,11 @@ use context_resolver_core::{
     TypeLookup, TypeRef, TypeRefTarget, TypeTemplateBinding,
 };
 use syntax_helper_search::{
-    RelatedHit, SearchDocument, SearchDocumentKind, SearchError, SearchHit, SearchIndex,
-    SearchTypeRef, SearchTypeRefTarget,
+    HbkCallableId, HbkCallableKind, HbkEnumId, HbkEnumValueId, HbkFactRef, HbkFactSnapshot,
+    HbkGlobalFactId, HbkGlobalFactKind, HbkLanguageDomain, HbkName, HbkPlatformTypeId,
+    HbkQueryFieldId, HbkQueryParameterId, HbkQueryTableId, HbkTypeMemberId, HbkTypeMemberKind,
+    HbkTypeRef, HbkTypeRefTarget, RelatedHit, SearchDocument, SearchDocumentKind, SearchError,
+    SearchHit, SearchIndex, SearchTypeRef, SearchTypeRefTarget,
 };
 
 const DEFAULT_SOURCE_ID: &str = "shcntx-platform";
@@ -30,6 +34,17 @@ pub struct LanguageSearchSource {
     index: SearchIndex,
     query_table_templates: bool,
     platform_source_id: SourceId,
+}
+
+pub struct PlatformSnapshotSource {
+    source_id: SourceId,
+    snapshot: Arc<HbkFactSnapshot>,
+}
+
+pub struct QueryTableSnapshotSource {
+    source_id: SourceId,
+    platform_source_id: SourceId,
+    snapshot: Arc<HbkFactSnapshot>,
 }
 
 fn search_source_failure(source_id: &SourceId, source: SearchError) -> ResolveError {

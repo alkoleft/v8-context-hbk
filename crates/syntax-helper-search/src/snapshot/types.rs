@@ -27,6 +27,12 @@ pub struct HbkQueryParameterId(pub(super) u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HbkLanguageFactId(pub(super) u32);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HbkEnumId(pub(super) u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HbkEnumValueId(pub(super) u32);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkName {
     pub primary: StringId,
@@ -158,6 +164,19 @@ pub struct HbkLanguageFact {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HbkEnum {
+    pub id: StringId,
+    pub name: HbkName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HbkEnumValue {
+    pub id: StringId,
+    pub owner: HbkEnumId,
+    pub name: HbkName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkTypeRef {
     pub name: StringId,
     pub target: HbkTypeRefTarget,
@@ -194,4 +213,6 @@ pub enum HbkFactRef {
     QueryField(HbkQueryFieldId),
     QueryParameter(HbkQueryParameterId),
     LanguageFact(HbkLanguageFactId),
+    Enum(HbkEnumId),
+    EnumValue(HbkEnumValueId),
 }

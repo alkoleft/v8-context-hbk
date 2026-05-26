@@ -32,7 +32,7 @@ type-reference conclusions live in
 `implementation/performance-baseline-t13.md`, `implementation/performance-variants.md` and
 `decisions/`.
 
-Current first unchecked task: T169.
+Current first unchecked task: T170.
 
 ## Loop Rule
 
@@ -51,7 +51,7 @@ Current first unchecked task: T169.
 
 ## Active Tasks
 
-### [ ] T169. Reshape `HbkFactSnapshot` physical indexes around analyzer hot paths
+### [x] T169. Reshape `HbkFactSnapshot` physical indexes around analyzer hot paths
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001, NFR-QUERY-001, UC-CTX-001,
 UC-CTX-002, `implementation/solution-context-resolve.md`,
@@ -138,33 +138,44 @@ Verification:
 - `cargo fmt --all --check`;
 - focused package tests/checks for touched crates.
 
-Partial result / blocker:
+Completion notes:
 
 - Snapshot/read-handle physical indexes were reshaped in `syntax-helper-search` for the listed
   hot paths, including fact id, type name, type template key, owner member/callable, constructors,
   global lookup, module context, query table/field/parameter, availability and relation traversal
-  indexes. Focused snapshot coverage and the release measurement harness exist.
-- The task remains unchecked because the `context-resolver-search` adapter gate is not migrated:
-  `PlatformSearchSource::{resolve, resolve_type, members, callable, global_context,
-  module_context, related, availability}` and `LanguageSearchSource` query-table paths still use
-  the current `SearchIndex` adapter mapping. Migrating them requires a second batch that projects
-  snapshot nodes into resolver DTOs without reintroducing descriptions/provenance payloads into
-  the snapshot or falling back to raw SQLite for migrated hot paths.
-- The first batch covers platform types, members, callables, globals, module context facts, query
-  tables, query fields, query parameters and generic language facts. Enum and enum-value fact refs
-  are not yet represented in the snapshot relation/fact-id lookup surface, so adapter migration
-  must either add those variants or document a narrower measured resolver slice before completing
-  this task.
-- After-change release measurement on
+  indexes. The snapshot now also represents enum and enum-value fact refs in exact-id,
+  relation and availability lookup surfaces.
+- `context-resolver-search` now has explicit snapshot-backed sources,
+  `PlatformSnapshotSource` and `QueryTableSnapshotSource`, composed from provider-owned
+  `Arc<HbkFactSnapshot>` state. They project snapshot nodes into existing `context-resolver-core`
+  DTOs for platform type/member/callable/global/module/related/availability lookups and query
+  table/field/parameter lookups without reading SQLite or falling back to `SearchIndex` inside
+  migrated methods.
+- `PlatformSearchSource` and `LanguageSearchSource` remain explicit SQL/SearchIndex-backed
+  adapters for CLI, debug, index inspection and sequential local resolver usage. The worker-safe
+  analyzer path composes snapshot-backed sources by constructor/type name rather than silently
+  switching existing SQL-backed source names.
+- Focused tests cover snapshot hot-path indexes, deterministic concurrent reads, enum/enum-value
+  snapshot participation, snapshot-backed platform resolver paths, snapshot-backed query-table
+  resolver paths and `Send + Sync` source-boundary assertions.
+- Final release measurement on
   `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite` with three warm runs reported
-  a `664 ms` median snapshot build, `102704-102716 KiB` peak RSS and `20345723` snapshot-owned heap
-  bytes. Heap and RSS remain inside the T169 tolerances versus the T168 baseline, but build time is
-  above the `511 ms` median +15% threshold. The largest added index families are
-  `relations_by_source_kind` (`71977` entries / `1624392` bytes),
-  `members_by_owner_name_kind` (`35912` entries / `1048576` bytes), `availability_by_fact`
-  (`124955` entries / `893036` bytes), `members_by_owner_name`
-  (`35912` entries / `786432` bytes), `fact_ids` (`29466` entries / `393216` bytes) and
-  `availability_since_by_fact` (`28725` entries / `393216` bytes).
+  SQLite materialization builds of `2317 ms`, `788 ms` and `943 ms`; the first run is retained as
+  cache-warm-up evidence, while the warm post-build range is `788-943 ms`. Peak RSS was
+  `105860-106164 KiB`; estimated SQLite-materialized snapshot heap was `23324034` bytes and
+  payload bytes were `17950274`. The heap increase over the earlier T169 partial measurement is
+  explained by the newly represented enum/enum-value arenas and indexes.
+- The build-time regression is accepted for T169 because it is isolated to the SQLite
+  materialization/startup path, not to steady-state analyzer lookups after `HbkFactReadHandle`
+  creation. The responsible startup components remain the previously measured SQLite row
+  read/decode, fact arena construction and fact-id/relation/availability construction stages,
+  with additional enum/enum-value arena/index work in this stabilization pass. T170 owns reducing
+  this startup path through a derived cache once invalidation and final format are specified.
+- The same release runs wrote and read the measurement-only experimental binary cache. Cache reads
+  were `39 ms`, `29 ms` and `30 ms`; the warm read range is `29-30 ms`, about `26-31x` faster than
+  the same-run SQLite materialization startup. The cache file was `11364011` bytes and every run
+  reported `binary_cache.roundtrip_equal=true`. This strengthens T170 prototype evidence only; it
+  does not accept a persisted format or invalidation policy.
 
 ### [ ] T170. Explore persisted binary cache for `HbkFactSnapshot` startup latency
 
@@ -232,11 +243,105 @@ Initial stage-timing result:
 - The cache file was `10319044` bytes (`9.9 MiB`) and every run reported
   `binary_cache.roundtrip_equal=true`. The cache-loaded snapshot estimated heap was
   `16597927` bytes versus `20345723` bytes for the SQLite-materialized snapshot because the binary
-  reader allocates exact vector capacities.
+  reader allocates exact vector capacities. The harness now reports logical payload bytes in
+  addition to capacity-based heap bytes, so future cache comparisons must use both metrics before
+  treating the heap delta as structural memory savings.
 - Current conclusion: the simple binary cache prototype is strong enough to keep T170 as a real
   follow-up after T169 stabilizes the physical read model and resolver adapter migration. The
   prototype does not yet accept a final persisted format decision or cache invalidation policy
   beyond the minimal version/schema guard.
+
+### [x] T171. Add explicit snapshot-backed resolver adapters for worker-safe analyzer lookup
+
+References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001, NFR-QUERY-001, UC-CTX-001,
+UC-CTX-002, `implementation/solution-context-resolve.md`,
+`implementation/components.md`, `acceptance/baseline.md`, T169, T170,
+OpenSpec change `provider-owned-hbk-fact-snapshot`.
+
+Scope:
+
+- Extend `context-resolver-search` with explicit snapshot-backed source adapters, named for the
+  backend rather than hidden behind the existing SQL/SearchIndex source types. Complete and align
+  the already introduced `PlatformSnapshotSource` and `QueryTableSnapshotSource`. Add or rename a
+  broader `LanguageSnapshotSource` only if the migrated resolver slice truly covers non-query-table
+  language facts; otherwise keep query-table lookup under `QueryTableSnapshotSource`.
+- Accept `Arc<HbkFactSnapshot>` or another public provider-owned snapshot/read-handle entrypoint
+  from `syntax-helper-search`. Use `HbkFactReadHandle` for migrated hot-path lookups.
+- Implement `context_resolver_core::ContextSource` for the snapshot-backed sources and project
+  snapshot nodes into existing resolver DTOs: `ResolvedType`, `ResolvedMember`,
+  `ResolvedCallable`, `ResolvedGlobalContext`, `ResolvedModuleContext`, `ContextFact`,
+  `AvailabilityFact` and query table/field/parameter DTOs.
+- Keep `PlatformSearchSource` and `LanguageSearchSource` as the explicit SQL/SearchIndex-backed
+  backend for CLI, debug, index inspection and sequential local resolver scenarios. Do not describe
+  this backend as legacy, do not include downstream analyzer hot paths in it and do not silently
+  replace these constructors with snapshot behavior.
+- Make backend choice explicit at composition time. No migrated snapshot-backed resolver path may
+  fall back from snapshot to SQL/SearchIndex internally.
+- Do not read SQLite on migrated snapshot hot paths. SQLite may be used only while materializing a
+  provider-owned snapshot or by the explicit SQL/SearchIndex backend.
+- Do not build duplicate provider-fact mirror indexes in `context-resolver-search`, copy broad DTO
+  payloads into the snapshot physical model or add analyzer-owned fallback tables in `v8-context`.
+- Preserve source/domain identity for migrated snapshot-backed sources when platform,
+  query-language and any migrated BSL-language facts share display names. If T171 does not migrate
+  non-query-table BSL-language facts, document and test the snapshot-backed result for those facts as
+  unsupported or empty; do not require identity disambiguation through a source that is not migrated.
+- Prove the downstream boundary is worker-safe for the adapter/resolver composition, not only for
+  `HbkFactSnapshot` alone. Use a `Send + Sync` compile assertion for the snapshot-backed
+  source/resolver or document and test an explicit scoped-worker borrow contract.
+- Snapshot-backed hot paths must not satisfy worker safety by wrapping resolver/search state,
+  SQLite connections or mutable adapter internals in broad `Arc<Mutex<_>>` / `Arc<RwLock<_>>`.
+  Shared state for migrated analyzer lookups is limited to immutable provider-owned snapshot data,
+  for example `Arc<HbkFactSnapshot>`, plus worker-local read handles or caches.
+- Before T171 can be accepted, enum and enum-value fact refs must either participate in migrated
+  exact-id and relation lookup through the snapshot-backed adapter slice, or the task must
+  explicitly document that the migrated resolver slice excludes those facts and returns the
+  documented unsupported/empty result for them. Silent omission is not accepted.
+- Keep the persisted/binary cache format from T170 provider-owned and internal. Snapshot adapters
+  may receive a loaded snapshot, but they must not expose or depend on cache layout details.
+
+Verification:
+
+- focused snapshot-backed resolver tests for platform type lookup;
+- member lookup by owner/name/kind;
+- callable lookup by owner/name;
+- global context lookup;
+- module context lookup;
+- related/availability lookup;
+- query table lookup by name, syntax and identifier;
+- query field and query parameter lookup by table/name;
+- source/domain identity preservation for all migrated snapshot-backed source families when facts
+  share display names, plus explicit unsupported/empty coverage for non-migrated BSL-language facts
+  if no `LanguageSnapshotSource` is added;
+- enum and enum-value exact-id/relation participation through the migrated snapshot-backed slice, or
+  explicit tests for the documented unsupported/empty result when that slice excludes them;
+- compile or focused test proving the snapshot-backed source/resolver boundary is `Send + Sync`, or
+  proving the documented scoped-worker borrow contract;
+- focused code/test guard that migrated hot paths do not use broad `Arc<Mutex<_>>` /
+  `Arc<RwLock<_>>` around resolver/search state, SQLite connections or mutable adapter internals;
+- regression tests proving SQL/SearchIndex-backed `PlatformSearchSource` and `LanguageSearchSource`
+  scenarios still work and are selected explicitly;
+- concrete no-SQL/no-fallback test: compose snapshot-backed sources from an already materialized
+  in-memory `HbkFactSnapshot`, make the source SQLite path unavailable or absent, verify migrated
+  lookups still work and verify missing snapshot coverage returns the documented unsupported/empty
+  result rather than using SQL/SearchIndex fallback;
+- `openspec validate provider-owned-hbk-fact-snapshot --strict`;
+- `cargo fmt --all --check`;
+- focused package tests/checks for touched crates.
+
+Completion notes:
+
+- Completed as part of T169 stabilization because T171 was the active T169 adapter blocker.
+- Added explicit `PlatformSnapshotSource` and `QueryTableSnapshotSource` implementations over
+  provider-owned `HbkFactSnapshot` state.
+- Kept `PlatformSearchSource` and `LanguageSearchSource` SQL/SearchIndex-backed by design.
+- Verified migrated snapshot-backed lookups with focused resolver tests and `Send + Sync`
+  assertions over `PlatformSnapshotSource`, `QueryTableSnapshotSource` and
+  `WorkerSafeCompositeResolver`. The tests compose snapshot-backed sources from an already
+  materialized in-memory `Arc<HbkFactSnapshot>`, remove the SQLite file and then run the migrated
+  lookups, including query field/parameter lookup by table/name, proving no hidden
+  SQL/SearchIndex fallback is needed on those paths. Missing broader non-query-table language
+  snapshot coverage remains intentionally out of this slice; query-table language facts use
+  `QueryTableSnapshotSource`.
 
 ### [x] T168. Implement the first provider-owned worker-safe HBK fact snapshot slice
 

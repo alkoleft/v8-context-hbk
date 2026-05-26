@@ -54,13 +54,27 @@ The dependency-facing surface has two phases.
 
 Analyzer lookup hot path:
 
-- depend on `context-resolver-core` for `ContextResolver`, `ContextSource`, `CompositeResolver`,
-  typed ids, fact DTOs and lookup response statuses;
-- depend on concrete source adapters, currently `context-resolver-search`, for HBK-backed platform
-  and language facts;
-- open prebuilt source artifacts read-only and compose sources in process;
-- call resolver methods directly from the analyzer without spawning `v8-context-hbk`, calling HTTP,
-  reading SQLite tables or parsing HBK/HTML pages.
+- depend on `context-resolver-core` for `ContextResolver`, `ContextSource`,
+  `WorkerSafeCompositeResolver`, typed ids, fact DTOs and lookup response statuses;
+- depend on explicit snapshot-backed source adapters from `context-resolver-search` for migrated
+  worker-safe HBK fact lookup;
+- compose sources from a provider-owned `Arc<HbkFactSnapshot>` or equivalent public snapshot
+  read-handle entrypoint;
+- use `PlatformSnapshotSource` for migrated platform facts and `QueryTableSnapshotSource` for
+  migrated query-table facts;
+- add or compose a broader `LanguageSnapshotSource` only if the migrated slice covers
+  non-query-table BSL-language facts;
+- for non-migrated BSL-language facts, return the documented unsupported or empty result through
+  the snapshot-backed path rather than opening SQL/SearchIndex internally;
+- call resolver methods directly from analyzer workers without spawning `v8-context-hbk`, calling
+  HTTP, reading SQLite tables, parsing HBK/HTML pages or falling back to `PlatformSearchSource` /
+  `LanguageSearchSource`.
+
+SQL/SearchIndex local resolver, CLI, debug or index inspection path:
+
+- may use `PlatformSearchSource` and `LanguageSearchSource`;
+- opens existing provider SQLite/SearchIndex artifacts read-only;
+- is explicitly not the downstream analyzer worker-safe hot path.
 
 Provider setup or index-refresh phase:
 
@@ -73,14 +87,25 @@ Provider setup or index-refresh phase:
 - may rebuild source artifacts when platform HBK files or extractor versions change;
 - must keep refresh failures separate from per-source analyzer diagnostics.
 
-Minimal platform-provider wiring:
+Minimal snapshot-backed analyzer wiring:
 
 ```rust
-use context_resolver_core::{CompositeResolver, ContextResolver, ResolveContext, TypeLookup};
-use context_resolver_search::PlatformSearchSource;
+use std::sync::Arc;
 
-let platform = PlatformSearchSource::open_read_only("target/platform.sqlite")?;
-let resolver = CompositeResolver::new(vec![Box::new(platform)]);
+use context_resolver_core::{
+    ContextResolver, ResolveContext, TypeLookup, WorkerSafeCompositeResolver,
+};
+use context_resolver_search::{PlatformSnapshotSource, QueryTableSnapshotSource};
+use syntax_helper_search::HbkFactSnapshot;
+
+let snapshot: Arc<HbkFactSnapshot> = load_provider_snapshot()?;
+let platform = PlatformSnapshotSource::new(Arc::clone(&snapshot));
+let query_tables = QueryTableSnapshotSource::new(Arc::clone(&snapshot));
+
+let resolver = WorkerSafeCompositeResolver::new(vec![
+    Box::new(platform),
+    Box::new(query_tables),
+]);
 let response = resolver.resolve_type(
     TypeLookup::ExactName {
         source: None,
@@ -91,7 +116,7 @@ let response = resolver.resolve_type(
 )?;
 ```
 
-Minimal BSL-language primitive lookup:
+SQL/SearchIndex-backed local resolver example, not analyzer hot-path wiring:
 
 ```rust
 use context_resolver_core::{
@@ -111,6 +136,12 @@ let response = resolver.resolve_type(
     &ResolveContext::all(),
 )?;
 ```
+
+This example is valid for CLI/debug/index inspection and sequential local resolver scenarios only.
+It must not be used as the worker-safe downstream analyzer hot path. If T171 does not migrate
+non-query-table BSL-language facts into a snapshot-backed `LanguageSnapshotSource`,
+snapshot-backed composition must report those facts as unsupported or empty instead of consulting
+`LanguageSearchSource` internally.
 
 Index build may be in-process too, but it is not part of the source-analysis hot path:
 
@@ -902,13 +933,35 @@ module-analysis, module-context and static-query paths. If an index raises memor
 matching hot-path lookup benefit, keep it out of the first slice or record it as a separate measured
 follow-up.
 
-T169's first snapshot batch reshaped the provider-owned read model and added per-index accounting,
-but it is not the final resolver path yet. `context-resolver-search` still needs a separate adapter
-migration batch for known-owner member/callable lookup, module-context lookup and query-table
-field/parameter lookup. That migration must project snapshot nodes into `context-resolver-core`
-DTOs and must not query raw SQLite tables on migrated analyzer hot paths.
-It must also include enum and enum-value fact refs if those facts participate in exact-id or
-relation traversal for the migrated adapter slice.
+T169 reshaped the provider-owned read model and stabilized the explicit resolver backend split.
+`context-resolver-search` exposes separate snapshot-backed adapters, `PlatformSnapshotSource` and
+`QueryTableSnapshotSource`, composed from provider-owned `Arc<HbkFactSnapshot>` state. These adapters
+use `HbkFactReadHandle` for migrated hot-path lookups and project snapshot nodes into the existing
+resolver DTOs: resolved types, members, callables, global context, module context, generic context
+facts, availability facts and query table/field/parameter facts.
+
+`PlatformSearchSource` and `LanguageSearchSource` remain SQL/SearchIndex-backed adapters for CLI,
+debug, index inspection and sequential local resolver usage. They are not silently repointed to the
+snapshot. Worker-safe analyzer composition chooses snapshot-backed source types explicitly; if a
+caller needs SQL/SearchIndex behavior, it composes the SQL backend explicitly.
+
+Snapshot-backed adapters must not read SQLite on migrated hot paths, build duplicate provider-fact
+mirror indexes, copy broad resolver DTO payloads into the snapshot physical model, or hide a
+snapshot-to-SQL fallback inside resolver methods. The current migrated slice covers platform
+type/member/callable/global/module/related/availability lookup and query table/field/parameter
+lookup. A broader `LanguageSnapshotSource` belongs here only if a later task migrates
+non-query-table language facts; query-table facts remain under `QueryTableSnapshotSource`.
+
+The worker-safety proof covers the snapshot-backed source boundary as well as
+`HbkFactSnapshot: Send + Sync`. Snapshot-backed analyzer composition uses
+`WorkerSafeCompositeResolver`, whose source vector accepts only `ContextSource + Send + Sync`
+trait objects. Migrated analyzer lookups share immutable snapshot data through `Arc<HbkFactSnapshot>`
+and create worker-local handles; they do not wrap resolver/search state, SQLite connections or
+mutable adapter internals in broad `Arc<Mutex<_>>` / `Arc<RwLock<_>>`.
+
+Enum and enum-value fact refs now participate in snapshot exact-id, relation and availability
+surfaces. The snapshot-backed platform adapter maps enum facts for exact-id, type-like and relation
+cases covered by the migrated slice.
 
 T170 adds the next startup-latency investigation without changing the source-of-truth boundary. The
 SQLite provider index remains the canonical rebuildable artifact; a persisted binary snapshot would
@@ -919,9 +972,12 @@ construction (`89 ms`). This makes a binary-cache prototype a reasonable follow-
 physical model and resolver adapter migration settle, because the experiment can target both SQL
 row decoding and repeated arena/index construction instead of speculating about a format first.
 
-The first prototype confirms the direction but does not accept a final persisted format. A
-measurement-only little-endian cache over the current snapshot loaded in a `25 ms` median across
-five warm runs, while the same SQLite materialization path measured a `643 ms` median in that run
-set. The cache artifact was `10319044` bytes and round-tripped exactly. This keeps the preferred
-next design path as provider-owned derived cache over SQLite, with cache invalidation and final
-format selection still owned by the T170 follow-up after the read model stabilizes.
+The first prototype confirms the direction but does not accept a final persisted format. Before T169
+stabilization, a measurement-only little-endian cache over the snapshot loaded in a `25 ms` median
+across five warm runs, while the same SQLite materialization path measured a `643 ms` median in
+that run set. After T169 enum/enum-value coverage, three release runs measured warmed SQLite
+materialization at `788-943 ms` and warmed binary-cache reads at `29-30 ms`, with exact round-trip
+equality. The cache artifact grew to `11364011` bytes. This keeps the preferred next design path as
+provider-owned derived cache over SQLite. Because cache reads allocate exact vector capacities,
+future memory comparisons must report both capacity-based heap bytes and logical payload bytes.
+Cache invalidation and final format selection remain owned by the T170 follow-up.

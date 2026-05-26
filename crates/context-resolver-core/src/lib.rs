@@ -734,7 +734,23 @@ impl CompositeResolver {
     pub fn new(sources: Vec<Box<dyn ContextSource>>) -> Self {
         Self { sources }
     }
+}
 
+pub struct WorkerSafeCompositeResolver {
+    sources: Vec<Box<dyn ContextSource + Send + Sync>>,
+}
+
+impl WorkerSafeCompositeResolver {
+    pub fn new(sources: Vec<Box<dyn ContextSource + Send + Sync>>) -> Self {
+        Self { sources }
+    }
+}
+
+trait ActiveContextSources {
+    fn active_sources<'a>(&'a self, context: &ResolveContext<'_>) -> Vec<&'a dyn ContextSource>;
+}
+
+impl ActiveContextSources for CompositeResolver {
     fn active_sources<'a>(&'a self, context: &ResolveContext<'_>) -> Vec<&'a dyn ContextSource> {
         self.sources
             .iter()
@@ -744,7 +760,18 @@ impl CompositeResolver {
     }
 }
 
-impl ContextResolver for CompositeResolver {
+impl ActiveContextSources for WorkerSafeCompositeResolver {
+    fn active_sources<'a>(&'a self, context: &ResolveContext<'_>) -> Vec<&'a dyn ContextSource> {
+        self.sources
+            .iter()
+            .map(Box::as_ref)
+            .map(|source| source as &dyn ContextSource)
+            .filter(|source| context.is_source_active(&source.descriptor().id))
+            .collect()
+    }
+}
+
+impl<T: ActiveContextSources> ContextResolver for T {
     fn resolve(
         &self,
         query: ResolveQuery<'_>,

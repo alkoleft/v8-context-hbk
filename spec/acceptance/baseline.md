@@ -2388,12 +2388,51 @@ domain/name/kind `354-434 ns`, module context by kind `681-945 ns`, query table 
 `642-789 ns`, query field by table/name `268-319 ns`, query parameter by table/name
 `415-447 ns`, availability by fact `121-126 ns` and relation by source/kind `41880-43686 ns`.
 
-T169 is not accepted as complete from this measurement alone. `context-resolver-search` still uses
-the existing `SearchIndex` adapter paths for resolver DTO projection, and build time requires either
-further reduction or an explicit measured tradeoff before the active ledger item can be checked.
-The first snapshot batch also does not yet represent enum and enum-value fact refs in the
-relation/fact-id lookup surface; completing the adapter migration must close or explicitly scope
-that gap.
+T169 stabilization completed the explicit resolver backend split required before the downstream
+`v8-context` analyzer path can treat the snapshot as worker-safe. `context-resolver-search` now
+exposes snapshot-backed `PlatformSnapshotSource` and `QueryTableSnapshotSource` adapters composed
+from provider-owned `Arc<HbkFactSnapshot>` state. They project `HbkFactReadHandle` facts into
+existing `context-resolver-core` DTOs for platform type, member, callable, global context, module
+context, related/availability and query table/field/parameter lookup without reading SQLite or
+falling back to `SearchIndex` inside migrated methods.
+
+`PlatformSearchSource` and `LanguageSearchSource` remain the explicit SQL/SearchIndex-backed
+backend for CLI, debug, index inspection and sequential local resolver scenarios, not downstream
+analyzer hot paths. Backend selection is visible at composition time through separate source types.
+Enum and enum-value facts now participate in snapshot exact-id, relation and availability lookup
+surfaces, and the migrated snapshot-backed platform adapter maps them for exact-id/type/relation
+cases covered by the slice.
+
+Final T169 stabilization measurement used the same release harness and representative
+`target/snapshot-materialization/shcntx_ru.schema16.release.sqlite` index, with the optional
+experimental cache path supplied to preserve the T170 comparison evidence:
+
+```bash
+cargo build --release -p syntax-helper-search --example measure_hbk_fact_snapshot
+/usr/bin/time -f 'time_elapsed_seconds=%e\ntime_peak_rss_kib=%M\ntime_exit_status=%x' \
+  target/release/examples/measure_hbk_fact_snapshot \
+  target/snapshot-materialization/shcntx_ru.schema16.release.sqlite \
+  20000 \
+  target/snapshot-materialization/t169-prototype-cache.bin
+```
+
+Three runs reported SQLite materialization build times of `2317 ms`, `788 ms` and `943 ms`; the
+first run is retained as cache-warm-up evidence, while the post-build warm range is `788-943 ms`.
+Peak RSS was `105860-106164 KiB`. The SQLite-materialized snapshot estimated `23324034` bytes of
+snapshot-owned heap and `17950274` payload bytes after enum/enum-value coverage was added. The same
+runs wrote an `11364011` byte experimental binary cache, read it in `39 ms`, `29 ms` and `30 ms`,
+and reported `binary_cache.roundtrip_equal=true` each time. The warmed cache-load path is therefore
+about `26-31x` faster than the same-run SQLite materialization startup path, but this remains T170
+prototype evidence only.
+
+The warmed SQLite materialization time is above the original T168 median +15% threshold. T169
+accepts that tradeoff because the regression is isolated to the startup/materialization path, while
+the stabilized read handle and snapshot-backed resolver paths keep analyzer hot-path lookups in the
+nanosecond/microsecond class and remove SQL/SearchIndex dependency from migrated worker lookups.
+The responsible startup components remain SQLite row read/decode, fact arena construction and
+fact-id/relation/availability construction, with additional enum/enum-value arena/index work in the
+stabilized shape. T170 owns reducing this startup path through a derived cache after invalidation
+metadata and final format are specified.
 
 T170 stage-timing instrumentation extends the same release harness with measurement-only
 `HbkFactSnapshot` build buckets. It does not change the canonical SQLite provider index or select a
@@ -2436,16 +2475,22 @@ cargo build --release -p syntax-helper-search --example measure_hbk_fact_snapsho
   target/snapshot-materialization/hbk-fact-snapshot.bin
 ```
 
-Five warm runs reported SQLite materialization build times of `645 ms`, `643 ms`, `629 ms`,
-`605 ms` and `683 ms`, for a `643 ms` median. The binary cache file was `10319044` bytes
-(`9.9 MiB`). Binary cache reads were `25 ms`, `25 ms`, `25 ms`, `24 ms` and `26 ms`, for a
-`25 ms` median. Binary cache writes were `11 ms`, `44 ms`, `44 ms`, `31 ms` and `48 ms`, for a
-`44 ms` median. Each run reported `binary_cache.roundtrip_equal=true`.
+The first prototype comparison before T169 stabilization reported SQLite materialization build
+times of `645 ms`, `643 ms`, `629 ms`, `605 ms` and `683 ms`, for a `643 ms` median. The binary
+cache file was `10319044` bytes (`9.9 MiB`). Binary cache reads were `25 ms`, `25 ms`, `25 ms`,
+`24 ms` and `26 ms`, for a `25 ms` median. Binary cache writes were `11 ms`, `44 ms`, `44 ms`,
+`31 ms` and `48 ms`, for a `44 ms` median. Each run reported
+`binary_cache.roundtrip_equal=true`.
 
-The SQLite-materialized snapshot still estimated `20345723` bytes of snapshot-owned heap. The
-cache-loaded snapshot estimated `16597927` bytes because the binary reader allocates vectors with
-exact capacities instead of preserving materializer growth capacity. This is useful evidence for a
-future derived cache, but it does not yet decide the final persisted format or invalidation policy.
+That pre-stabilization prototype estimated `20345723` bytes for the SQLite-materialized snapshot
+and `16597927` bytes for the cache-loaded snapshot because the binary reader allocates vectors with
+exact capacities instead of preserving materializer growth capacity. After T169 enum/enum-value
+coverage, the same effect remains visible at the new physical shape: SQLite-materialized snapshot
+heap was `23324034` bytes, while cache-loaded snapshot heap matched the exact-capacity payload at
+`17950274` bytes. Follow-up measurement must use the harness payload counters
+(`snapshot_payload_bytes` and per-entry `payload_bytes`) alongside capacity-based heap counters
+before drawing structural memory conclusions. This remains useful evidence for a future derived
+cache, but it does not yet decide the final persisted format or invalidation policy.
 
 Baseline update rule:
 

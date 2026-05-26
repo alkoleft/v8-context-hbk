@@ -1,17 +1,20 @@
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::Arc;
     use std::time::Instant;
 
     use context_resolver_core::{
         CallableLookup, CompositeResolver, ContextResolver, ContextSource, GlobalContextLanguage,
         GlobalContextQuery, MemberQuery, PlatformTypeTemplateKey, RelationKind, ResolveContext,
-        ResolveStatus, TemplateParameterBinding, TypeLookup,
+        ResolveStatus, TemplateParameterBinding, TypeLookup, WorkerSafeCompositeResolver,
     };
     use syntax_helper_language::{LanguagePageInput, LanguageSourceFamily, extract_language_facts};
     use syntax_helper_model as model;
     use syntax_helper_model::SyntaxHelperSink;
-    use syntax_helper_search::{IndexMetadata, SearchIndexBuilder, build_index_from_builder};
+    use syntax_helper_search::{
+        HbkFactSnapshot, IndexMetadata, SearchIndexBuilder, build_index_from_builder,
+    };
 
     use super::*;
 
@@ -414,6 +417,250 @@ mod tests {
         assert_eq!(
             enum_member_of.facts[0].relations[0].target.kind,
             FactKind::Enum
+        );
+    }
+
+    #[test]
+    fn platform_snapshot_source_resolves_hot_paths_without_search_index_backend() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<PlatformSnapshotSource>();
+        assert_send_sync::<WorkerSafeCompositeResolver>();
+
+        let source = fixture_source();
+        let index_path = fixture_index_path("platform-snapshot-source.sqlite");
+        let index = open_index(&index_path);
+        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        drop(index);
+        std::fs::remove_file(&index_path).expect("snapshot adapter must not need SQLite file");
+        let adapter = PlatformSnapshotSource::with_source_id(snapshot.clone(), source.clone());
+        let query_source = SourceId::new("shcntx-query");
+        let resolver = WorkerSafeCompositeResolver::new(vec![
+            Box::new(PlatformSnapshotSource::with_source_id(
+                snapshot.clone(),
+                source.clone(),
+            )),
+            Box::new(QueryTableSnapshotSource::with_source_ids(
+                snapshot.clone(),
+                query_source,
+                source.clone(),
+            )),
+        ]);
+        let filter = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:ОтборКомпоновкиДанных",
+        ));
+        let settings = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:НастройкиКомпоновкиДанных",
+        ));
+
+        let type_response = adapter
+            .resolve_type(TypeLookup::Id(&filter), &ResolveContext::all())
+            .expect("snapshot type lookup must not fail");
+        assert_eq!(type_response.status, ResolveStatus::Ok);
+        let resolver_type_response = resolver
+            .resolve_type(TypeLookup::Id(&filter), &ResolveContext::all())
+            .expect("snapshot resolver composition must not fail");
+        assert_eq!(resolver_type_response.status, ResolveStatus::Ok);
+        assert_eq!(
+            type_response.facts[0].fact.name.primary,
+            "ОтборКомпоновкиДанных"
+        );
+
+        let filter_member = adapter
+            .members(
+                &settings,
+                MemberQuery {
+                    name: Some("Отбор"),
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot member lookup must not fail");
+        assert_eq!(filter_member.status, ResolveStatus::Ok);
+        assert_eq!(filter_member.facts[0].owner, settings);
+
+        let has_type = adapter
+            .related(
+                &filter_member.facts[0].id.0,
+                RelationKind::HasType,
+                &ResolveContext::all(),
+            )
+            .expect("snapshot has_type traversal must not fail");
+        assert_eq!(
+            has_type.facts[0].id.local_id,
+            "platform_type:ОтборКомпоновкиДанных"
+        );
+
+        let callable = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: Some(&filter),
+                    name: "Найти",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot callable lookup must not fail");
+        assert_eq!(callable.status, ResolveStatus::Ok);
+        assert_eq!(
+            callable.facts[0].info.signatures[0].parameters[0].name,
+            "Значение"
+        );
+        assert_eq!(
+            callable.facts[0].info.return_types[0].target,
+            TypeRefTarget::Ok(TypeId(FactId::new(
+                source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:ЭлементОтбораКомпоновкиДанных",
+            )))
+        );
+
+        let constructor = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: Some(&filter),
+                    name: "Новый ОтборКомпоновкиДанных()",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot constructor lookup must not fail");
+        assert_eq!(constructor.status, ResolveStatus::Ok);
+
+        let enum_return_callable = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: None,
+                    name: "ПолучитьОбновлениеПредопределенныхДанныхИнформационнойБазы",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot enum-return callable lookup must not fail");
+        let enum_returns = adapter
+            .related(
+                &enum_return_callable.facts[0].id.0,
+                RelationKind::Returns,
+                &ResolveContext::all(),
+            )
+            .expect("snapshot enum returns traversal must not fail");
+        assert_eq!(enum_returns.status, ResolveStatus::Ok);
+        assert_eq!(enum_returns.facts[0].id.kind, FactKind::Type);
+        assert_eq!(
+            enum_returns.facts[0].id.local_id,
+            "enum:system:ОбновлениеПредопределенныхДанных"
+        );
+
+        let enum_value_id = FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::EnumValue,
+            "enum_value:enum:system:ОбновлениеПредопределенныхДанных:Обновлять",
+        );
+        let enum_member_of = adapter
+            .related(&enum_value_id, RelationKind::MemberOf, &ResolveContext::all())
+            .expect("snapshot enum value member_of traversal must not fail");
+        assert_eq!(enum_member_of.status, ResolveStatus::Ok);
+        assert_eq!(enum_member_of.facts[0].id.kind, FactKind::Enum);
+
+        let scope = adapter
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Bsl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot global context lookup must not fail");
+        assert!(scope.facts[0]
+            .methods
+            .iter()
+            .any(|method| method.fact.name.primary == "Сообщить"));
+        assert!(scope.facts[0]
+            .properties
+            .iter()
+            .any(|property| property.name.primary == "ТекущийОтбор"));
+
+        let context = adapter
+            .module_context(
+                ModuleContextQuery {
+                    language: GlobalContextLanguage::Bsl,
+                    domain: LanguageDomain::PlatformApi,
+                    kind: ModuleContextKind::Form,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot module context lookup must not fail");
+        assert_eq!(context.status, ResolveStatus::Ok);
+        assert!(context.facts[0]
+            .events
+            .iter()
+            .any(|event| event.fact.name.primary == "ПриОткрытии"));
+
+        let availability = adapter
+            .availability(&filter_member.facts[0].id.0, &ResolveContext::all())
+            .expect("snapshot availability lookup must not fail");
+        assert_eq!(availability.status, ResolveStatus::Ok);
+    }
+
+    #[test]
+    fn snapshot_resolver_returns_not_found_for_non_migrated_bsl_language_without_sql_fallback() {
+        let platform_source = fixture_source();
+        let query_source = SourceId::new("shcntx-query");
+        let language_source = SourceId::new("shlang");
+        let index_path = fixture_index_path("snapshot-no-bsl-language-fallback.sqlite");
+        let index = open_index(&index_path);
+        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        drop(index);
+        std::fs::remove_file(&index_path).expect("snapshot lookup must not require SQLite file");
+
+        let resolver = WorkerSafeCompositeResolver::new(vec![
+            Box::new(PlatformSnapshotSource::with_source_id(
+                Arc::clone(&snapshot),
+                platform_source.clone(),
+            )),
+            Box::new(QueryTableSnapshotSource::with_source_ids(
+                Arc::clone(&snapshot),
+                query_source,
+                platform_source,
+            )),
+        ]);
+
+        let bsl_string = resolver
+            .resolve_type(
+                TypeLookup::ExactName {
+                    source: Some(&language_source),
+                    domain: Some(LanguageDomain::BslLanguage),
+                    name: "Строка",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot-only resolver must not fail BSL lookup");
+        assert_eq!(bsl_string.status, ResolveStatus::NotFound);
+        assert!(
+            bsl_string.facts.is_empty(),
+            "non-migrated BSL-language facts must not be served by SQL/SearchIndex fallback"
+        );
+
+        let bsl_fact = resolver
+            .resolve(
+                context_resolver_core::ResolveQuery::ExactName {
+                    source: Some(&language_source),
+                    domain: Some(LanguageDomain::BslLanguage),
+                    kind: None,
+                    name: "Строка",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot-only resolver must not fail BSL fact lookup");
+        assert_eq!(bsl_fact.status, ResolveStatus::NotFound);
+        assert!(
+            bsl_fact.facts.is_empty(),
+            "snapshot composition without LanguageSnapshotSource must not consult LanguageSearchSource"
         );
     }
 
@@ -1180,6 +1427,187 @@ mod tests {
                 "platform_type:Дата",
             )))
         );
+    }
+
+    #[test]
+    fn query_table_snapshot_source_exposes_templates_fields_parameters_and_type_refs() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<QueryTableSnapshotSource>();
+        assert_send_sync::<WorkerSafeCompositeResolver>();
+
+        let query_source = SourceId::new("shcntx-query");
+        let platform_source = fixture_source();
+        let index_path = fixture_index_path("query-table-snapshot-source.sqlite");
+        let index = open_index(&index_path);
+        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        drop(index);
+        std::fs::remove_file(&index_path).expect("snapshot adapter must not need SQLite file");
+        let adapter = QueryTableSnapshotSource::with_source_ids(
+            snapshot.clone(),
+            query_source.clone(),
+            platform_source.clone(),
+        );
+
+        let capabilities = adapter.capabilities();
+        assert!(capabilities.exact_lookup);
+        assert!(capabilities.relations);
+        assert!(!capabilities.type_lookup);
+        assert!(!capabilities.callables);
+        assert!(capabilities.global_context);
+
+        let global_context = adapter
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Sdbl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("query table snapshot global context lookup must not fail");
+        assert_eq!(global_context.status, ResolveStatus::Ok);
+        let global_facts = &global_context.facts[0].facts;
+        assert!(global_facts
+            .iter()
+            .any(|fact| fact.id.kind == FactKind::QueryTable));
+        assert!(global_facts
+            .iter()
+            .any(|fact| fact.id.kind == FactKind::QueryField));
+        assert!(global_facts
+            .iter()
+            .any(|fact| fact.id.kind == FactKind::QueryParameter));
+
+        let table_id = FactId::new(
+            query_source.clone(),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryTable,
+            "query_table:ОсновнаяТаблица",
+        );
+        let table = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&table_id),
+                &ResolveContext::all(),
+            )
+            .expect("query table snapshot id lookup must not fail");
+        assert_eq!(table.status, ResolveStatus::Ok);
+        assert_eq!(table.facts[0].id, table_id);
+        let FactDetails::QueryTable(info) = &table.facts[0].details else {
+            panic!("query table snapshot must expose query table details");
+        };
+        assert_eq!(info.identifier.as_deref(), Some("ОсновнаяТаблица"));
+        assert_eq!(info.table_role, QueryTableRole::Primary);
+        assert_eq!(
+            info.syntax.as_ref().map(|syntax| syntax.primary.as_str()),
+            Some("ОсновнаяТаблица.<Имя таблицы>")
+        );
+        assert_eq!(
+            info.template_parameters,
+            vec!["Имя таблицы".to_string(), "Table name".to_string()]
+        );
+        assert_eq!(info.owner_path[0].primary, "Таблицы запросов");
+        let source = info.source.as_ref().expect("query table source evidence");
+        assert_eq!(source.source, query_source);
+        assert_eq!(source.evidence_id, "query_table:ОсновнаяТаблица");
+        assert_eq!(source.locale.as_deref(), Some("ru"));
+
+        for name in [
+            "Основная таблица",
+            "ОсновнаяТаблица",
+            "ОсновнаяТаблица.<Имя таблицы>",
+        ] {
+            let found = adapter
+                .resolve(
+                    context_resolver_core::ResolveQuery::ExactName {
+                        source: Some(&SourceId::new("shcntx-query")),
+                        domain: Some(LanguageDomain::QueryLanguage),
+                        kind: Some(FactKind::QueryTable),
+                        name,
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("query table snapshot exact-name lookup must not fail");
+            assert_eq!(found.status, ResolveStatus::Ok);
+            assert_eq!(found.facts[0].id, table_id);
+        }
+
+        let field_id = FactId::new(
+            SourceId::new("shcntx-query"),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryField,
+            "query_table_field:query_table:ОсновнаяТаблица:Период",
+        );
+        let field = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&field_id),
+                &ResolveContext::all(),
+            )
+            .expect("query field snapshot id lookup must not fail");
+        assert_eq!(field.status, ResolveStatus::Ok);
+        assert_eq!(field.facts[0].owner.as_ref(), Some(&table_id));
+        let FactDetails::QueryField(field_info) = &field.facts[0].details else {
+            panic!("query field snapshot must expose query field details");
+        };
+        assert_eq!(field_info.owner, table_id);
+        assert_eq!(field_info.note.as_deref(), Some("Field note."));
+        assert_eq!(
+            field_info.types[0].target,
+            TypeRefTarget::Ok(TypeId(FactId::new(
+                platform_source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:Дата",
+            )))
+        );
+        let field_by_name = adapter
+            .query_fields_by_name(&table_id, "Период", &ResolveContext::all())
+            .expect("query field table/name snapshot lookup must not fail");
+        assert_eq!(field_by_name.status, ResolveStatus::Ok);
+        assert_eq!(field_by_name.facts[0].id, field_id);
+
+        let member_of = adapter
+            .related(&field_id, RelationKind::MemberOf, &ResolveContext::all())
+            .expect("query field snapshot member_of traversal must not fail");
+        assert_eq!(member_of.status, ResolveStatus::Ok);
+        assert_eq!(member_of.facts[0].id, table_id);
+
+        let has_type = adapter
+            .related(&field_id, RelationKind::HasType, &ResolveContext::all())
+            .expect("query field snapshot has_type traversal must not fail");
+        assert_eq!(has_type.status, ResolveStatus::Ok);
+        assert_eq!(
+            has_type.facts[0].id,
+            FactId::new(
+                platform_source,
+                LanguageDomain::PlatformApi,
+                FactKind::Type,
+                "platform_type:Дата",
+            )
+        );
+
+        let parameter_id = FactId::new(
+            SourceId::new("shcntx-query"),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryParameter,
+            "query_table_parameter:query_table:ОсновнаяТаблица:Дата",
+        );
+        let parameter = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&parameter_id),
+                &ResolveContext::all(),
+            )
+            .expect("query parameter snapshot id lookup must not fail");
+        assert_eq!(parameter.status, ResolveStatus::Ok);
+        let FactDetails::QueryParameter(parameter_info) = &parameter.facts[0].details else {
+            panic!("query parameter snapshot must expose query parameter details");
+        };
+        assert_eq!(
+            parameter_info.default_value.as_deref(),
+            Some("НачалоПериода")
+        );
+        let parameter_by_name = adapter
+            .query_parameters_by_name(&table_id, "Дата", &ResolveContext::all())
+            .expect("query parameter table/name snapshot lookup must not fail");
+        assert_eq!(parameter_by_name.status, ResolveStatus::Ok);
+        assert_eq!(parameter_by_name.facts[0].id, parameter_id);
     }
 
     #[test]

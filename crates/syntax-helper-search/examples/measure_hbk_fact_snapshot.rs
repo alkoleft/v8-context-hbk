@@ -70,6 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let memory = snapshot.memory_accounting();
     let handle = snapshot.worker_handle();
     println!("snapshot_heap_bytes={}", memory.total_bytes());
+    println!("snapshot_payload_bytes={}", memory.total_payload_bytes());
     println!("strings={}", counts.strings);
     println!("platform_types={}", counts.platform_types);
     println!("type_members={}", counts.type_members);
@@ -79,6 +80,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("query_fields={}", counts.query_fields);
     println!("query_parameters={}", counts.query_parameters);
     println!("language_facts={}", counts.language_facts);
+    println!("enums={}", counts.enums);
+    println!("enum_values={}", counts.enum_values);
     print_entry("heap.string_store", memory.string_store);
     print_entry("heap.node_arenas", memory.node_arenas);
     print_entry("index.fact_ids", memory.indexes.fact_ids);
@@ -155,6 +158,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     print_entry("index.language_ids", memory.indexes.language_ids);
     print_entry("index.language_names", memory.indexes.language_names);
+    print_entry("index.enum_ids", memory.indexes.enum_ids);
+    print_entry("index.enum_names", memory.indexes.enum_names);
+    print_entry("index.enum_value_ids", memory.indexes.enum_value_ids);
+    print_entry(
+        "index.enum_values_by_enum",
+        memory.indexes.enum_values_by_enum,
+    );
+    print_entry(
+        "index.enum_values_by_enum_name",
+        memory.indexes.enum_values_by_enum_name,
+    );
     print_entry(
         "index.availability_by_fact",
         memory.indexes.availability_by_fact,
@@ -272,6 +286,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn print_entry(name: &str, entry: HbkFactSnapshotMemoryEntry) {
     println!("{name}.count={}", entry.count);
     println!("{name}.bytes={}", entry.bytes);
+    println!("{name}.payload_bytes={}", entry.payload_bytes);
 }
 
 fn print_duration(name: &str, duration: Duration) {

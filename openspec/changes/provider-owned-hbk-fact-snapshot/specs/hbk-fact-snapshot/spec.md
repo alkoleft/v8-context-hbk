@@ -18,6 +18,72 @@
 - **THEN** each thread SHALL receive equivalent results
 - **AND** no shared SQLite connection SHALL be used during those reads.
 
+### Requirement: Explicit Resolver Backends
+
+`context-resolver-search` SHALL expose snapshot-backed resolver sources separately from SQL/SearchIndex-backed resolver sources.
+
+#### Scenario: Snapshot Backend Is Selected Explicitly
+
+- **GIVEN** a provider-owned `HbkFactSnapshot` or public snapshot read handle
+- **WHEN** analyzer composition needs worker-safe documented HBK fact lookup
+- **THEN** callers SHALL compose snapshot-backed sources such as `PlatformSnapshotSource` or `QueryTableSnapshotSource`
+- **AND** a broader `LanguageSnapshotSource` SHALL be added or used only when the migrated slice covers non-query-table language facts
+- **AND** those sources SHALL implement `context_resolver_core::ContextSource`.
+
+#### Scenario: SQL SearchIndex Backend Remains Explicit
+
+- **GIVEN** an existing provider SQLite/SearchIndex artifact
+- **WHEN** CLI, debug, index inspection or sequential local resolver scenarios need the existing search-backed behavior
+- **THEN** callers SHALL compose `PlatformSearchSource` or `LanguageSearchSource`
+- **AND** those source names SHALL remain SQL/SearchIndex-backed rather than silently switching to snapshot behavior
+- **AND** downstream analyzer hot paths SHALL NOT use this backend as their worker-safe path.
+
+#### Scenario: Snapshot Backend Has No Hidden SQL Fallback
+
+- **GIVEN** a snapshot-backed resolver source
+- **WHEN** a migrated hot-path lookup is executed
+- **THEN** the lookup SHALL use `HbkFactReadHandle` or equivalent provider-owned snapshot read APIs
+- **AND** it SHALL NOT open or read SQLite internally
+- **AND** it SHALL NOT fall back to SQL/SearchIndex-backed source methods inside the resolver adapter
+- **AND** missing snapshot coverage SHALL return the documented unsupported or empty result instead of switching storage backends.
+
+#### Scenario: Adapter Boundary Is Worker Safe
+
+- **GIVEN** a snapshot-backed source composed into a resolver boundary that may be passed to downstream workers
+- **WHEN** the boundary is compiled or tested
+- **THEN** the source/resolver composition SHALL satisfy `Send + Sync`
+- **OR** the API SHALL expose and verify an explicit scoped-worker borrow contract
+- **AND** checking only `HbkFactSnapshot: Send + Sync` SHALL NOT satisfy this scenario
+- **AND** broad `Arc<Mutex<_>>` / `Arc<RwLock<_>>` wrappers around resolver/search state, SQLite connections or mutable adapter internals SHALL NOT satisfy this scenario.
+
+#### Scenario: Identity Is Preserved For Migrated Snapshot Sources
+
+- **GIVEN** facts with the same display name in source families migrated to snapshot-backed sources
+- **WHEN** callers resolve through the snapshot-backed resolver composition
+- **THEN** the result SHALL preserve source and domain identity
+- **AND** ambiguity SHALL NOT be hidden by source ordering.
+
+#### Scenario: Non-Migrated BSL-Language Facts Do Not Fall Back To SQL
+
+- **GIVEN** T171 does not migrate non-query-table BSL-language facts into `LanguageSnapshotSource`
+- **WHEN** a snapshot-backed resolver lookup requests such a fact
+- **THEN** the lookup SHALL return the documented unsupported or empty result
+- **AND** it SHALL NOT consult `LanguageSearchSource`, `PlatformSearchSource` or raw SQL/SearchIndex.
+
+#### Scenario: Query Table Snapshot Lookup Uses Snapshot Keys
+
+- **GIVEN** query-table facts are migrated to a snapshot-backed source
+- **WHEN** callers resolve query tables by name, syntax or identifier
+- **THEN** the lookup SHALL use provider-owned snapshot keys
+- **AND** it SHALL NOT rely on SQL table lookup.
+
+#### Scenario: Enum Fact Coverage Is Explicit
+
+- **GIVEN** enum and enum-value facts in the provider-owned snapshot
+- **WHEN** exact-id or relation lookup is migrated to a snapshot-backed resolver source
+- **THEN** enum and enum-value facts SHALL participate in the migrated lookup
+- **OR** the migrated slice SHALL document and test that those facts are excluded and return the documented unsupported or empty result.
+
 ### Requirement: Provider-Owned Fact Coverage
 
 The snapshot SHALL model documented HBK provider facts, not analyzer/project facts.

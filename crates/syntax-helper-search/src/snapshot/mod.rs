@@ -19,6 +19,7 @@ pub use types::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkFactSnapshot {
     strings: Vec<String>,
+    source_locale: Option<StringId>,
     platform_types: Vec<HbkPlatformType>,
     type_members: Vec<HbkTypeMember>,
     callables: Vec<HbkCallable>,
@@ -27,6 +28,8 @@ pub struct HbkFactSnapshot {
     query_fields: Vec<HbkQueryField>,
     query_parameters: Vec<HbkQueryParameter>,
     language_facts: Vec<HbkLanguageFact>,
+    enums: Vec<HbkEnum>,
+    enum_values: Vec<HbkEnumValue>,
     fact_ids: Vec<IdLookup<HbkFactRef>>,
     platform_type_ids: Vec<IdLookup<HbkPlatformTypeId>>,
     platform_type_names: Vec<NameLookup<HbkPlatformTypeId>>,
@@ -53,6 +56,11 @@ pub struct HbkFactSnapshot {
     query_parameters_by_table_name: Vec<OwnerNameLookup<HbkQueryTableId, HbkQueryParameterId>>,
     language_ids: Vec<IdLookup<HbkLanguageFactId>>,
     language_names: Vec<NameLookup<HbkLanguageFactId>>,
+    enum_ids: Vec<IdLookup<HbkEnumId>>,
+    enum_names: Vec<NameLookup<HbkEnumId>>,
+    enum_value_ids: Vec<IdLookup<HbkEnumValueId>>,
+    enum_values_by_enum: CsrIndex<HbkEnumId, HbkEnumValueId>,
+    enum_values_by_enum_name: Vec<OwnerNameLookup<HbkEnumId, HbkEnumValueId>>,
     availability_by_fact: CsrIndex<HbkFactRef, StringId>,
     availability_since_by_fact: Vec<FactStringLookup>,
     relations_by_source_kind: CsrIndex<RelationLookupKey, HbkFactRef>,

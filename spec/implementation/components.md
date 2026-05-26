@@ -182,15 +182,19 @@ Recommended dependency layers:
 - `context-resolver-core`: the source-neutral public surface for static-analysis code. Consumers
   should depend on its typed ids, fact DTOs, `ContextSource`, `ContextResolver`,
   `CompositeResolver`, `ResolveContext` and `ResolveResponse`.
-- `context-resolver-search`: HBK-backed platform and language adapters over a prebuilt
-  `syntax-helper-search::SearchIndex`. Consumers may depend on this crate when they need this
-  repository's extracted platform/language facts as resolver sources. It exposes read-only
-  adapter constructors such as `PlatformSearchSource::open_read_only*` and
-  `LanguageSearchSource::open_*_read_only` so lookup-only consumers do not need to import
-  `syntax-helper-search` only to open an existing provider index.
-- `syntax-helper-search`: local index open/build primitives. The Rust API may be used to create or
-  open the rebuildable provider index, but SQLite table names, FTS columns, row ids and schema
-  internals remain private implementation details.
+- `context-resolver-search`: HBK-backed resolver source adapters. Downstream analyzer worker hot
+  paths should compose explicit snapshot-backed sources such as `PlatformSnapshotSource` and
+  `QueryTableSnapshotSource` over provider-owned `HbkFactSnapshot` / `HbkFactReadHandle` state.
+  Broader non-query language facts require a dedicated snapshot-backed language source before they
+  are part of the worker-safe analyzer surface. SQL/SearchIndex-backed constructors such as
+  `PlatformSearchSource::open_read_only*` and `LanguageSearchSource::open_*_read_only` remain
+  explicit local resolver, CLI, debug, index-inspection and sequential-use backends, not the
+  downstream analyzer hot path.
+- `syntax-helper-search`: provider index open/build primitives and provider-owned snapshot
+  materialization/read-model APIs. The Rust API may be used to create or open the rebuildable
+  provider index, or to materialize/load a provider-owned `HbkFactSnapshot`, but SQLite table names,
+  FTS columns, row ids, schema internals and experimental binary-cache layout remain private
+  implementation details.
 - `hbk-book`, `syntax-helper-extract` and `syntax-helper-language`: setup/index-refresh phase only,
   when the embedding application chooses to rebuild HBK-backed provider indexes in process.
 
@@ -973,21 +977,19 @@ identify the responsible index and either justify it with a measured lookup bene
 index into a separate follow-up. Do not trade a small point-lookup improvement for broad duplicated
 payload storage.
 
-T169's first snapshot-read-model batch implemented these index families inside
-`syntax-helper-search::HbkFactSnapshot` and exposed them through `HbkFactReadHandle`, with
-per-index memory accounting and a release measurement harness. The snapshot-owned heap and process
-RSS remained within the task tolerance on `shcntx_ru`, but warm build time still exceeded the T168
-median +15% threshold. The largest memory contributors from the new index families were
-`relations_by_source_kind`, `members_by_owner_name_kind`, `availability_by_fact`,
-`members_by_owner_name`, `fact_ids` and `availability_since_by_fact`.
+T169 implemented these index families inside `syntax-helper-search::HbkFactSnapshot` and exposed
+them through `HbkFactReadHandle`, with per-index memory accounting and a release measurement
+harness. It also added enum and enum-value fact refs to the exact-id, relation and availability
+lookup surfaces.
 
-This batch does not complete the resolver-adapter migration. `context-resolver-search` still owns
-the current DTO projection over `SearchIndex` for platform and query-table sources. The next batch
-must move the specified adapter hot paths to snapshot/read-handle calls without adding analyzer-side
-HBK mirrors, raw SQLite reads for migrated paths or broad provenance/description payloads to the
-snapshot node arenas.
-That migration also must close the enum/enum-value fact-ref coverage gap or keep relation/fact-id
-resolver support explicitly scoped to the represented fact families.
+The resolver-adapter boundary is now explicitly split. `context-resolver-search` owns
+snapshot-backed `PlatformSnapshotSource` and `QueryTableSnapshotSource` adapters over
+provider-owned `Arc<HbkFactSnapshot>` state for downstream analyzer hot paths. The existing
+`PlatformSearchSource` and `LanguageSearchSource` remain explicit SQL/SearchIndex-backed adapters
+for CLI, debug, index inspection and sequential local resolver usage. Snapshot-backed adapters use
+read-handle calls and project into `context-resolver-core` DTOs without analyzer-side HBK mirrors,
+broad `Arc<Mutex<_>>` / `Arc<RwLock<_>>` wrappers, raw SQLite reads for migrated paths or broad
+provenance/description payloads in the snapshot node arenas.
 
 Physical indexes remain a `syntax-helper-search` provider concern. `context-resolver-search` may
 adapt read-handle results into source-neutral DTOs, but it must not build a second provider-fact

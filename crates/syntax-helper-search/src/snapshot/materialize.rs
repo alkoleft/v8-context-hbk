@@ -139,6 +139,7 @@ impl<'a> SnapshotMaterializer<'a> {
         }
 
         let stage_start = start_stage!();
+        let index_metadata = self.index.metadata()?;
         let documents = self.documents()?;
         let metadata = self.metadata_rows()?;
         let type_identities = self.type_identities()?;
@@ -446,7 +447,7 @@ impl<'a> SnapshotMaterializer<'a> {
         let mut query_parameters = Vec::new();
         let mut query_parameter_owner_pairs = Vec::new();
         let mut query_parameters_by_table_name = Vec::new();
-        for (target_id, source_id) in query_owners {
+        for (target_id, source_id) in &query_owners {
             let Some(document) = documents_by_id.get(target_id.as_str()) else {
                 continue;
             };
@@ -542,6 +543,56 @@ impl<'a> SnapshotMaterializer<'a> {
             push_name_lookups(&mut language_names, &mut self.builder, &document.name, id);
         }
 
+        let mut enums = Vec::new();
+        let mut enum_by_document = BTreeMap::<String, HbkEnumId>::new();
+        let mut enum_ids = Vec::new();
+        let mut enum_names = Vec::new();
+        for document in documents
+            .iter()
+            .filter(|document| document.kind == SearchDocumentKind::Enum)
+        {
+            let id = HbkEnumId(enums.len() as u32);
+            enum_by_document.insert(document.id.clone(), id);
+            enums.push(HbkEnum {
+                id: self.builder.intern(&document.id),
+                name: self.builder.intern_name(&document.name),
+            });
+            push_id_lookup(&mut enum_ids, &mut self.builder, &document.id, id);
+            push_name_lookups(&mut enum_names, &mut self.builder, &document.name, id);
+        }
+
+        let mut enum_values = Vec::new();
+        let mut enum_value_ids = Vec::new();
+        let mut enum_value_owner_pairs = Vec::new();
+        let mut enum_values_by_enum_name = Vec::new();
+        for (target_id, source_id) in &query_owners {
+            let Some(document) = documents_by_id.get(target_id.as_str()) else {
+                continue;
+            };
+            if document.kind != SearchDocumentKind::EnumValue {
+                continue;
+            }
+            let Some(owner) = enum_by_document.get(source_id.as_str()).copied() else {
+                continue;
+            };
+            let id = HbkEnumValueId(enum_values.len() as u32);
+            enum_values.push(HbkEnumValue {
+                id: self.builder.intern(&document.id),
+                owner,
+                name: self.builder.intern_name(&document.name),
+            });
+            push_id_lookup(&mut enum_value_ids, &mut self.builder, &document.id, id);
+            enum_value_owner_pairs.push((owner, id));
+            push_owner_name_lookups(
+                &mut enum_values_by_enum_name,
+                &mut self.builder,
+                owner,
+                &document.name,
+                id,
+            );
+        }
+        drop(query_owners);
+
         let mut module_event_names = Vec::new();
         let mut module_contexts_by_domain_language_kind = Vec::new();
         for (document_id, context_key) in module_context_keys {
@@ -584,6 +635,8 @@ impl<'a> SnapshotMaterializer<'a> {
                 query_fields: &query_fields,
                 query_parameters: &query_parameters,
                 language_facts: &language_facts,
+                enums: &enums,
+                enum_values: &enum_values,
             },
         );
         let relation_pairs = relation_pairs(self.index, &mut self.builder, &fact_by_id)?;
@@ -620,11 +673,18 @@ impl<'a> SnapshotMaterializer<'a> {
             sorted_owner_name_lookup(query_parameters_by_table_name, &self.builder);
         let language_ids = sorted_id_lookup(language_ids, &self.builder);
         let language_names = sorted_name_lookup(language_names, &self.builder);
+        let enum_ids = sorted_id_lookup(enum_ids, &self.builder);
+        let enum_names = sorted_name_lookup(enum_names, &self.builder);
+        let enum_value_ids = sorted_id_lookup(enum_value_ids, &self.builder);
+        let enum_values_by_enum_name =
+            sorted_owner_name_lookup(enum_values_by_enum_name, &self.builder);
         finish_stage!(stage_start, sort_secondary_indexes);
 
         let stage_start = start_stage!();
+        let source_locale = Some(self.builder.intern(&index_metadata.source_locale));
         let snapshot = HbkFactSnapshot {
             strings: self.builder.strings,
+            source_locale,
             platform_types,
             type_members,
             callables: callables_vec,
@@ -633,6 +693,8 @@ impl<'a> SnapshotMaterializer<'a> {
             query_fields,
             query_parameters,
             language_facts,
+            enums,
+            enum_values,
             fact_ids,
             platform_type_ids,
             platform_type_names,
@@ -659,6 +721,11 @@ impl<'a> SnapshotMaterializer<'a> {
             query_parameters_by_table_name,
             language_ids,
             language_names,
+            enum_ids,
+            enum_names,
+            enum_value_ids,
+            enum_values_by_enum: CsrIndex::from_pairs(enum_value_owner_pairs),
+            enum_values_by_enum_name,
             availability_by_fact: CsrIndex::from_pairs(availability_pairs),
             availability_since_by_fact,
             relations_by_source_kind: CsrIndex::from_pairs(relation_pairs),
@@ -980,6 +1047,8 @@ struct FactIdSources<'a> {
     query_fields: &'a [HbkQueryField],
     query_parameters: &'a [HbkQueryParameter],
     language_facts: &'a [HbkLanguageFact],
+    enums: &'a [HbkEnum],
+    enum_values: &'a [HbkEnumValue],
 }
 
 fn collect_fact_ids(
@@ -1097,6 +1166,26 @@ fn collect_fact_ids(
                     HbkFactRef::LanguageFact(HbkLanguageFactId(index as u32)),
                 )
             }),
+    );
+    collect_fact_family_ids(
+        output,
+        by_id,
+        builder,
+        sources
+            .enums
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| (fact.id, HbkFactRef::Enum(HbkEnumId(index as u32)))),
+    );
+    collect_fact_family_ids(
+        output,
+        by_id,
+        builder,
+        sources
+            .enum_values
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| (fact.id, HbkFactRef::EnumValue(HbkEnumValueId(index as u32)))),
     );
 }
 

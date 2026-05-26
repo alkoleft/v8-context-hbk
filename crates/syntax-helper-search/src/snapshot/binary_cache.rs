@@ -4,7 +4,7 @@ use super::indexes::*;
 use super::*;
 
 const MAGIC: &[u8; 8] = b"HBKFSN1\0";
-const CACHE_VERSION: u32 = 1;
+const CACHE_VERSION: u32 = 2;
 
 impl HbkFactSnapshot {
     /// Writes a provider-owned binary snapshot cache for measurement.
@@ -245,10 +245,13 @@ binary_newtype_u32!(HbkQueryTableId);
 binary_newtype_u32!(HbkQueryFieldId);
 binary_newtype_u32!(HbkQueryParameterId);
 binary_newtype_u32!(HbkLanguageFactId);
+binary_newtype_u32!(HbkEnumId);
+binary_newtype_u32!(HbkEnumValueId);
 
 impl BinaryValue for HbkFactSnapshot {
     fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
         writer.write_vec(&self.strings)?;
+        self.source_locale.write_to(writer)?;
         writer.write_vec(&self.platform_types)?;
         writer.write_vec(&self.type_members)?;
         writer.write_vec(&self.callables)?;
@@ -257,6 +260,8 @@ impl BinaryValue for HbkFactSnapshot {
         writer.write_vec(&self.query_fields)?;
         writer.write_vec(&self.query_parameters)?;
         writer.write_vec(&self.language_facts)?;
+        writer.write_vec(&self.enums)?;
+        writer.write_vec(&self.enum_values)?;
         writer.write_vec(&self.fact_ids)?;
         writer.write_vec(&self.platform_type_ids)?;
         writer.write_vec(&self.platform_type_names)?;
@@ -283,6 +288,11 @@ impl BinaryValue for HbkFactSnapshot {
         writer.write_vec(&self.query_parameters_by_table_name)?;
         writer.write_vec(&self.language_ids)?;
         writer.write_vec(&self.language_names)?;
+        writer.write_vec(&self.enum_ids)?;
+        writer.write_vec(&self.enum_names)?;
+        writer.write_vec(&self.enum_value_ids)?;
+        self.enum_values_by_enum.write_to(writer)?;
+        writer.write_vec(&self.enum_values_by_enum_name)?;
         self.availability_by_fact.write_to(writer)?;
         writer.write_vec(&self.availability_since_by_fact)?;
         self.relations_by_source_kind.write_to(writer)
@@ -291,6 +301,7 @@ impl BinaryValue for HbkFactSnapshot {
     fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self> {
         Ok(Self {
             strings: reader.read_vec()?,
+            source_locale: Option::<StringId>::read_from(reader)?,
             platform_types: reader.read_vec()?,
             type_members: reader.read_vec()?,
             callables: reader.read_vec()?,
@@ -299,6 +310,8 @@ impl BinaryValue for HbkFactSnapshot {
             query_fields: reader.read_vec()?,
             query_parameters: reader.read_vec()?,
             language_facts: reader.read_vec()?,
+            enums: reader.read_vec()?,
+            enum_values: reader.read_vec()?,
             fact_ids: reader.read_vec()?,
             platform_type_ids: reader.read_vec()?,
             platform_type_names: reader.read_vec()?,
@@ -325,6 +338,11 @@ impl BinaryValue for HbkFactSnapshot {
             query_parameters_by_table_name: reader.read_vec()?,
             language_ids: reader.read_vec()?,
             language_names: reader.read_vec()?,
+            enum_ids: reader.read_vec()?,
+            enum_names: reader.read_vec()?,
+            enum_value_ids: reader.read_vec()?,
+            enum_values_by_enum: CsrIndex::read_from(reader)?,
+            enum_values_by_enum_name: reader.read_vec()?,
             availability_by_fact: CsrIndex::read_from(reader)?,
             availability_since_by_fact: reader.read_vec()?,
             relations_by_source_kind: CsrIndex::read_from(reader)?,
@@ -552,6 +570,36 @@ impl BinaryValue for HbkLanguageFact {
     }
 }
 
+impl BinaryValue for HbkEnum {
+    fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
+        self.id.write_to(writer)?;
+        self.name.write_to(writer)
+    }
+
+    fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self> {
+        Ok(Self {
+            id: StringId::read_from(reader)?,
+            name: HbkName::read_from(reader)?,
+        })
+    }
+}
+
+impl BinaryValue for HbkEnumValue {
+    fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
+        self.id.write_to(writer)?;
+        self.owner.write_to(writer)?;
+        self.name.write_to(writer)
+    }
+
+    fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self> {
+        Ok(Self {
+            id: StringId::read_from(reader)?,
+            owner: HbkEnumId::read_from(reader)?,
+            name: HbkName::read_from(reader)?,
+        })
+    }
+}
+
 impl BinaryValue for HbkTypeRef {
     fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
         self.name.write_to(writer)?;
@@ -731,6 +779,8 @@ impl BinaryValue for HbkFactRef {
             Self::QueryField(id) => write_tagged_id(writer, 5, id),
             Self::QueryParameter(id) => write_tagged_id(writer, 6, id),
             Self::LanguageFact(id) => write_tagged_id(writer, 7, id),
+            Self::Enum(id) => write_tagged_id(writer, 8, id),
+            Self::EnumValue(id) => write_tagged_id(writer, 9, id),
         }
     }
 
@@ -746,6 +796,8 @@ impl BinaryValue for HbkFactRef {
                 reader,
             )?)),
             7 => Ok(Self::LanguageFact(HbkLanguageFactId::read_from(reader)?)),
+            8 => Ok(Self::Enum(HbkEnumId::read_from(reader)?)),
+            9 => Ok(Self::EnumValue(HbkEnumValueId::read_from(reader)?)),
             _ => Err(invalid_data("invalid fact-ref tag")),
         }
     }

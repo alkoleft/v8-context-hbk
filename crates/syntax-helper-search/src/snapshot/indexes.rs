@@ -1,5 +1,5 @@
 use super::materialize::SnapshotBuilder;
-use super::memory::{HbkFactSnapshotMemoryEntry, vec_heap_bytes};
+use super::memory::{HbkFactSnapshotMemoryEntry, vec_heap_bytes, vec_payload_bytes};
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,6 +117,9 @@ where
         HbkFactSnapshotMemoryEntry {
             count: self.values.len(),
             bytes: self.estimated_heap_bytes(),
+            payload_bytes: vec_payload_bytes(&self.keys)
+                + vec_payload_bytes(&self.offsets)
+                + vec_payload_bytes(&self.values),
         }
     }
 }
@@ -448,55 +451,46 @@ pub(super) fn lookup_id<T: Copy>(
         .map(|position| index[position].value)
 }
 
-pub(super) fn lookup_id_all<T: Copy>(
-    index: &[IdLookup<T>],
+pub(super) fn lookup_id_all<'a, T: Copy>(
+    index: &'a [IdLookup<T>],
     snapshot: &HbkFactSnapshot,
     key: &str,
-) -> Vec<T> {
+) -> impl ExactSizeIterator<Item = T> + 'a + use<'a, T> {
     let range = matching_range(index, |candidate| snapshot.string(candidate.key).cmp(key));
-    index[range]
-        .iter()
-        .map(|candidate| candidate.value)
-        .collect()
+    index[range].iter().map(|candidate| candidate.value)
 }
 
-pub(super) fn lookup_name<T: Copy>(
-    index: &[NameLookup<T>],
+pub(super) fn lookup_name<'a, T: Copy>(
+    index: &'a [NameLookup<T>],
     snapshot: &HbkFactSnapshot,
     name: &str,
-) -> Vec<T> {
+) -> impl ExactSizeIterator<Item = T> + 'a + use<'a, T> {
     let key = normalize_lookup_key(name);
     let range = matching_range(index, |candidate| snapshot.string(candidate.key).cmp(&key));
-    index[range]
-        .iter()
-        .map(|candidate| candidate.value)
-        .collect()
+    index[range].iter().map(|candidate| candidate.value)
 }
 
-pub(super) fn lookup_type_template<T: Copy>(
-    index: &[TypeTemplateLookup<T>],
+pub(super) fn lookup_type_template<'a, T: Copy>(
+    index: &'a [TypeTemplateLookup<T>],
     snapshot: &HbkFactSnapshot,
     family: &str,
     variant: &str,
-) -> Vec<T> {
+) -> impl ExactSizeIterator<Item = T> + 'a + use<'a, T> {
     let range = matching_range(index, |candidate| {
         snapshot
             .string(candidate.family)
             .cmp(family)
             .then_with(|| snapshot.string(candidate.variant).cmp(variant))
     });
-    index[range]
-        .iter()
-        .map(|candidate| candidate.value)
-        .collect()
+    index[range].iter().map(|candidate| candidate.value)
 }
 
-pub(super) fn lookup_owner_name<Owner: Copy + Ord, Value: Copy>(
-    index: &[OwnerNameLookup<Owner, Value>],
+pub(super) fn lookup_owner_name<'a, Owner: Copy + Ord, Value: Copy>(
+    index: &'a [OwnerNameLookup<Owner, Value>],
     snapshot: &HbkFactSnapshot,
     owner: Owner,
     name: &str,
-) -> Vec<Value> {
+) -> impl ExactSizeIterator<Item = Value> + 'a + use<'a, Owner, Value> {
     let key = normalize_lookup_key(name);
     let range = matching_range(index, |candidate| {
         candidate
@@ -504,27 +498,21 @@ pub(super) fn lookup_owner_name<Owner: Copy + Ord, Value: Copy>(
             .cmp(&owner)
             .then_with(|| snapshot.string(candidate.key).cmp(&key))
     });
-    index[range]
-        .iter()
-        .map(|candidate| candidate.value)
-        .collect()
+    index[range].iter().map(|candidate| candidate.value)
 }
 
-pub(super) fn lookup_owner_name_by_key<Value: Copy>(
-    index: &[OwnerNameLookup<StringId, Value>],
+pub(super) fn lookup_owner_name_by_key<'a, Value: Copy>(
+    index: &'a [OwnerNameLookup<StringId, Value>],
     snapshot: &HbkFactSnapshot,
     key: &str,
-) -> Vec<Value> {
+) -> impl ExactSizeIterator<Item = Value> + 'a + use<'a, Value> {
     let range = matching_range(index, |candidate| {
         snapshot
             .string(candidate.owner)
             .cmp(key)
             .then_with(|| snapshot.string(candidate.key).cmp(key))
     });
-    index[range]
-        .iter()
-        .map(|candidate| candidate.value)
-        .collect()
+    index[range].iter().map(|candidate| candidate.value)
 }
 
 pub(super) fn matching_range<T, F>(values: &[T], mut compare: F) -> std::ops::Range<usize>

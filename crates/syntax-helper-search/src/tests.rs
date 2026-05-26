@@ -1465,6 +1465,31 @@ mod tests {
             name: "Строка".to_string(),
         }];
         parameter.default_value = Some("НачалоПериода".to_string());
+        let mut enum_definition = enum_definition_with_alias(
+            "ИспользованиеТекущейСтроки",
+            "CurrentRowUse",
+            "objects/catalog2/CurrentRowUse.html",
+        );
+        enum_definition
+            .facts
+            .availability
+            .contexts
+            .push(model::AvailabilityContext::Server);
+        enum_definition.facts.available_since = Some(model::VersionFact {
+            version: Some("8.3.2".to_string()),
+            text: "Available since 8.3.2".to_string(),
+        });
+        let mut enum_value =
+            enum_value_with_owner_alias("ИспользованиеТекущейСтроки", "CurrentRowUse", "Авто");
+        enum_value
+            .facts
+            .availability
+            .contexts
+            .push(model::AvailabilityContext::ThinClient);
+        enum_value.facts.available_since = Some(model::VersionFact {
+            version: Some("8.3.3".to_string()),
+            text: "Available since 8.3.3".to_string(),
+        });
         context.query_tables.push(table);
         context.query_tables.push(query_table(
             "ДругойИдентификатор",
@@ -1478,6 +1503,8 @@ mod tests {
         ));
         context.table_fields.push(field);
         context.table_parameters.push(parameter);
+        context.enums.push(enum_definition);
+        context.enum_values.push(enum_value);
 
         let mut builder = builder_from_context(&context);
         for fact in language_fixture_facts("ru") {
@@ -1498,15 +1525,24 @@ mod tests {
             .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
             .expect("platform type id lookup must work");
         assert_eq!(
-            handle.facts_by_id("platform_type:ОтборКомпоновкиДанных"),
+            handle
+                .facts_by_id("platform_type:ОтборКомпоновкиДанных")
+                .into_iter()
+                .collect::<Vec<_>>(),
             vec![HbkFactRef::PlatformType(filter)]
         );
         assert_eq!(
             snapshot.string(snapshot.platform_type(filter).name.primary),
             "ОтборКомпоновкиДанных"
         );
-        assert!(handle.platform_types_by_name("DataCompositionFilter").contains(&filter));
-        let manager_template = handle.platform_types_by_template_key("Catalog", "Manager");
+        assert!(handle
+            .platform_types_by_name("DataCompositionFilter")
+            .into_iter()
+            .any(|id| id == filter));
+        let manager_template = handle
+            .platform_types_by_template_key("Catalog", "Manager")
+            .into_iter()
+            .collect::<Vec<_>>();
         assert_eq!(manager_template.len(), 1);
         assert_eq!(
             snapshot.string(snapshot.platform_type(manager_template[0]).name.primary),
@@ -1541,12 +1577,13 @@ mod tests {
         assert_eq!(elements.len(), 1);
         assert!(handle
             .member_by_owner_name_kind(filter, "Элементы", Some(HbkTypeMemberKind::Method))
-            .is_empty());
+            .len()
+            == 0);
         assert!(
             handle
                 .callable_by_owner_name(filter, "ПолучитьОбъектПоИдентификатору")
-                .iter()
-                .map(|callable| snapshot.callable(*callable))
+                .into_iter()
+                .map(|callable| snapshot.callable(callable))
                 .any(|callable| {
                     snapshot.string(callable.name.primary) == "ПолучитьОбъектПоИдентификатору"
                 })
@@ -1558,24 +1595,31 @@ mod tests {
             "Новый ОтборКомпоновкиДанных()"
         );
 
-        let globals = handle.globals_by_name("Сообщить");
+        let globals = handle.globals_by_name("Сообщить").collect::<Vec<_>>();
         assert_eq!(globals.len(), 1);
         assert_eq!(
-            handle.globals_by_domain_name_kind(
-                HbkLanguageDomain::Bsl,
-                "Message",
-                Some(HbkGlobalFactKind::Method),
-            ),
+            handle
+                .globals_by_domain_name_kind(
+                    HbkLanguageDomain::Bsl,
+                    "Message",
+                    Some(HbkGlobalFactKind::Method),
+                )
+                .into_iter()
+                .collect::<Vec<_>>(),
             globals
         );
         assert_eq!(
-            handle.globals_by_domain_name_kind(HbkLanguageDomain::Bsl, "Message", None),
+            handle
+                .globals_by_domain_name_kind(HbkLanguageDomain::Bsl, "Message", None)
+                .into_iter()
+                .collect::<Vec<_>>(),
             globals
         );
         assert!(
             handle
                 .globals_by_domain_name_kind(HbkLanguageDomain::Query, "Message", None)
-                .is_empty()
+                .len()
+                == 0
         );
         assert!(
             snapshot
@@ -1586,23 +1630,52 @@ mod tests {
         );
         assert_eq!(handle.module_events("module_context:form").len(), 1);
         assert_eq!(
-            handle.module_context_events(HbkLanguageDomain::Bsl, "bsl", "form"),
-            handle.module_events("module_context:form")
+            handle
+                .module_context_events(HbkLanguageDomain::Bsl, "bsl", "form")
+                .into_iter()
+                .collect::<Vec<_>>(),
+            handle
+                .module_events("module_context:form")
+                .collect::<Vec<_>>()
         );
 
-        let tables = handle.query_tables_by_syntax("Справочник.<Имя справочника>");
+        let tables = handle
+            .query_tables_by_syntax("Справочник.<Имя справочника>")
+            .into_iter()
+            .collect::<Vec<_>>();
         assert_eq!(tables.len(), 1);
         let fields = handle.query_fields(tables[0]);
         let parameters = handle.query_parameters(tables[0]);
         assert_eq!(fields.len(), 1);
         assert_eq!(parameters.len(), 1);
-        assert_eq!(handle.query_tables_by_identifier("Справочник"), tables);
         assert_eq!(
-            handle.query_tables_by_syntax("Catalog.<Catalog name>"),
+            handle
+                .query_tables_by_identifier("Справочник")
+                .into_iter()
+                .collect::<Vec<_>>(),
             tables
         );
-        assert_eq!(handle.query_fields_by_name(tables[0], "Ссылка"), fields);
-        assert_eq!(handle.query_parameters_by_name(tables[0], "Дата"), parameters);
+        assert_eq!(
+            handle
+                .query_tables_by_syntax("Catalog.<Catalog name>")
+                .into_iter()
+                .collect::<Vec<_>>(),
+            tables
+        );
+        assert_eq!(
+            handle
+                .query_fields_by_name(tables[0], "Ссылка")
+                .into_iter()
+                .collect::<Vec<_>>(),
+            fields
+        );
+        assert_eq!(
+            handle
+                .query_parameters_by_name(tables[0], "Дата")
+                .into_iter()
+                .collect::<Vec<_>>(),
+            parameters
+        );
         let owned = handle.relations_by_source_kind(HbkFactRef::QueryTable(tables[0]), "owns");
         assert!(owned.contains(&HbkFactRef::QueryField(fields[0])));
         assert!(owned.contains(&HbkFactRef::QueryParameter(parameters[0])));
@@ -1615,13 +1688,83 @@ mod tests {
             "Дата"
         );
 
+        let enum_id = "enum:system:ИспользованиеТекущейСтроки";
+        let enum_value_id = "enum_value:enum:system:ИспользованиеТекущейСтроки:Авто";
+        let enum_fact = handle
+            .enum_by_id(enum_id)
+            .expect("enum exact id lookup must work");
+        let enum_value_fact = handle
+            .enum_value_by_id(enum_value_id)
+            .expect("enum-value exact id lookup must work");
+        assert_eq!(
+            handle.facts_by_id(enum_id).into_iter().collect::<Vec<_>>(),
+            vec![HbkFactRef::Enum(enum_fact)]
+        );
+        assert_eq!(
+            handle
+                .facts_by_id(enum_value_id)
+                .into_iter()
+                .collect::<Vec<_>>(),
+            vec![HbkFactRef::EnumValue(enum_value_fact)]
+        );
+        assert_eq!(
+            snapshot.string(snapshot.enum_fact(enum_fact).name.primary),
+            "ИспользованиеТекущейСтроки"
+        );
+        assert_eq!(
+            handle
+                .enums_by_name("CurrentRowUse")
+                .into_iter()
+                .collect::<Vec<_>>(),
+            vec![enum_fact]
+        );
+        assert_eq!(
+            snapshot.string(snapshot.enum_value(enum_value_fact).name.primary),
+            "Авто"
+        );
+        assert_eq!(snapshot.enum_value(enum_value_fact).owner, enum_fact);
+        assert_eq!(handle.enum_values(enum_fact), &[enum_value_fact]);
+        assert_eq!(
+            handle
+                .enum_values_by_name(enum_fact, "Авто")
+                .into_iter()
+                .collect::<Vec<_>>(),
+            vec![enum_value_fact]
+        );
+        assert_eq!(
+            handle
+                .relations_by_source_kind(HbkFactRef::Enum(enum_fact), "owns")
+                .to_vec(),
+            vec![HbkFactRef::EnumValue(enum_value_fact)]
+        );
+        assert_eq!(
+            handle
+                .relations_by_source_kind(HbkFactRef::EnumValue(enum_value_fact), "member_of")
+                .to_vec(),
+            vec![HbkFactRef::Enum(enum_fact)]
+        );
+        assert_eq!(
+            handle
+                .availability_contexts(HbkFactRef::Enum(enum_fact))
+                .iter()
+                .map(|context| snapshot.string(*context))
+                .collect::<Vec<_>>(),
+            vec!["server"]
+        );
+        assert_eq!(
+            handle
+                .available_since(HbkFactRef::EnumValue(enum_value_fact))
+                .map(|since| snapshot.string(since)),
+            Some("8.3.3")
+        );
+
         let bsl_string = handle.language_fact_by_id("shlang:def_String");
         assert!(bsl_string.is_some());
         let string_facts = handle.language_facts_by_name("Строка");
         assert!(
             string_facts
-                .iter()
-                .map(|fact| snapshot.language_fact(*fact))
+                .into_iter()
+                .map(|fact| snapshot.language_fact(fact))
                 .any(|fact| fact.domain == HbkLanguageDomain::Bsl)
         );
 

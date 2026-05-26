@@ -121,6 +121,46 @@ Add snapshot-specific provider DTOs or views:
 
 The resolver adapter may project snapshot nodes into `context-resolver-core` DTOs for compatibility. Downstream analyzer code should not own fallback readers or raw SQLite queries.
 
+## Resolver Backend Split
+
+`context-resolver-search` keeps two explicit adapter families:
+
+- SQL/SearchIndex-backed sources, currently `PlatformSearchSource` and `LanguageSearchSource`, for
+  CLI, debug, index inspection and sequential local resolver usage. This bucket explicitly excludes
+  downstream analyzer hot paths.
+- Snapshot-backed sources, such as the already introduced `PlatformSnapshotSource` and
+  `QueryTableSnapshotSource`, for the downstream worker-safe analyzer path. A broader
+  `LanguageSnapshotSource` should be added or used only if the migrated slice covers non-query-table
+  language facts.
+
+Backend selection happens at composition time by choosing the source type/constructor. A
+snapshot-backed resolver method must not silently fall back to the SQL/SearchIndex source when a
+lookup is missing or not yet migrated. Unmigrated lookup coverage is a task blocker or a documented
+unsupported result, not an internal storage switch.
+
+The snapshot-backed adapters use `HbkFactReadHandle` or equivalent public provider-owned snapshot
+read APIs for hot-path lookup and then project nodes into existing `context-resolver-core` DTOs:
+resolved types, members, callables, global context, module context, generic facts, availability and
+query table/field/parameter facts. They do not build second provider-fact indexes, copy broad DTO
+payloads into the snapshot model or introduce analyzer-owned fallback tables.
+
+Worker safety for the adapter boundary must come from immutable provider-owned snapshot data, for
+example `Arc<HbkFactSnapshot>`, plus worker-local handles or caches. Broad `Arc<Mutex<_>>` /
+`Arc<RwLock<_>>` wrappers around resolver/search state, SQLite connections or mutable adapter
+internals are not an accepted hot-path design. Worker-safe analyzer composition uses a resolver
+boundary that accepts only `ContextSource + Send + Sync` sources, while SQL/SearchIndex-backed
+sources remain available through the explicit sequential/local resolver path.
+
+Enum and enum-value exact-id/relation behavior is an explicit migration gate. The snapshot-backed
+adapter slice must either support those facts or document and test that they are outside the
+migrated slice and return the documented unsupported or empty result.
+
+Identity checks are scoped to migrated snapshot-backed source families. The first T171 slice may
+ship with `PlatformSnapshotSource` and `QueryTableSnapshotSource` only. In that case,
+non-query-table BSL-language facts are explicitly outside the migrated snapshot slice and must
+return the documented unsupported or empty result without consulting `LanguageSearchSource`. A
+broader `LanguageSnapshotSource` makes non-query-table BSL-language identity coverage mandatory.
+
 ## Materialization From SQLite
 
 The bulk loader should read table families in coarse passes, selecting only columns required by the
@@ -272,6 +312,26 @@ Implemented snapshot counts:
 The estimated heap is computed from the snapshot-owned string pool, typed arenas and derived
 indexes. Peak RSS is process-level and includes SQLite/materialization transient memory, allocator
 behavior and executable overhead.
+
+## T169 Stabilization Measurement: 2026-05-26
+
+T169 stabilizes the in-memory read model and the resolver backend split. `syntax-helper-search`
+owns the physical `HbkFactSnapshot` arenas/indexes, including enum and enum-value fact refs.
+`context-resolver-search` exposes explicit snapshot-backed `PlatformSnapshotSource` and
+`QueryTableSnapshotSource` adapters over `Arc<HbkFactSnapshot>`, while `PlatformSearchSource` and
+`LanguageSearchSource` remain SQL/SearchIndex-backed by name and constructor.
+
+Final release runs on the same `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite`
+index reported SQLite materialization build times of `2317 ms`, `788 ms` and `943 ms`; the first
+run is retained as cache-warm-up evidence, and the warmed post-build range is `788-943 ms`. Peak RSS
+was `105860-106164 KiB`. The SQLite-materialized snapshot estimated `23324034` bytes of
+snapshot-owned heap and `17950274` payload bytes after enum/enum-value coverage.
+
+The same runs wrote and read the measurement-only experimental binary cache. Cache reads were
+`39 ms`, `29 ms` and `30 ms`; the warmed read range is `29-30 ms`, about `26-31x` faster than the
+same-run SQLite materialization startup. The cache file was `11364011` bytes and every run reported
+`binary_cache.roundtrip_equal=true`. This strengthens T170 prototype evidence, but the binary cache
+remains an experimental derived artifact until invalidation metadata and final format are specified.
 
 ## Non-Goals
 
