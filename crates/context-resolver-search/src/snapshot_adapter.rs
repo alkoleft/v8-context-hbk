@@ -364,6 +364,7 @@ impl PlatformSnapshotSource {
                     })
                     .collect(),
                 return_types: self.map_type_refs(&signature.return_type_refs),
+                variadic: signature_text_is_variadic(self.snapshot.string(signature.text)),
                 title: Some(self.snapshot.string(signature.text).to_string()),
                 description: None,
             })

@@ -18,7 +18,7 @@ use syntax_helper_search::{
     HbkGlobalFactId, HbkGlobalFactKind, HbkLanguageDomain, HbkName, HbkPlatformTypeId,
     HbkQueryFieldId, HbkQueryParameterId, HbkQueryTableId, HbkTypeMemberId, HbkTypeMemberKind,
     HbkTypeRef, HbkTypeRefTarget, RelatedHit, SearchDocument, SearchDocumentKind, SearchError,
-    SearchHit, SearchIndex, SearchTypeRef, SearchTypeRefTarget,
+    SearchHit, SearchIndex, SearchSignature, SearchTypeRef, SearchTypeRefTarget,
 };
 
 const DEFAULT_SOURCE_ID: &str = "shcntx-platform";
@@ -45,6 +45,21 @@ pub struct QueryTableSnapshotSource {
     source_id: SourceId,
     platform_source_id: SourceId,
     snapshot: Arc<HbkFactSnapshot>,
+}
+
+fn signature_text_is_variadic(text: &str) -> bool {
+    text.contains("...") || text.contains('…')
+}
+
+fn search_signature_is_variadic(signature: &SearchSignature) -> bool {
+    signature_text_is_variadic(&signature.text) || structure_values_signature_is_variadic(signature)
+}
+
+fn structure_values_signature_is_variadic(signature: &SearchSignature) -> bool {
+    signature.text == "Новый Структура(<Ключи>, <Значения>)"
+        && signature.parameters.len() == 2
+        && signature.parameters[0].name == "Ключи"
+        && signature.parameters[1].name == "Значения"
 }
 
 fn search_source_failure(source_id: &SourceId, source: SearchError) -> ResolveError {

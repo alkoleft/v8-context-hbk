@@ -779,6 +779,47 @@ mod tests {
     }
 
     #[test]
+    fn platform_adapter_marks_variadic_signatures() {
+        let source = fixture_source();
+        let adapter = PlatformSearchSource::with_source_id(
+            fixture_index("platform-variadic-signatures.sqlite"),
+            source.clone(),
+        );
+
+        let min = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: None,
+                    name: "Мин",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("variadic global method lookup must not fail");
+
+        assert_eq!(min.status, ResolveStatus::Ok);
+        assert!(
+            min.facts[0].info.signatures[0].variadic,
+            "ellipsis signature must be marked variadic"
+        );
+
+        let structure = TypeId(FactId::new(
+            source,
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:Структура",
+        ));
+        let constructors = adapter
+            .constructors(&structure, &ResolveContext::all())
+            .expect("structure constructor lookup must not fail");
+
+        assert_eq!(constructors.status, ResolveStatus::Ok);
+        assert!(
+            constructors.facts[0].info.signatures[0].variadic,
+            "structure keys/values constructor must be marked variadic"
+        );
+    }
+
+    #[test]
     fn platform_adapter_exposes_provider_backed_module_context_events() {
         let source = fixture_source();
         let adapter = PlatformSearchSource::with_source_id(
@@ -2090,6 +2131,7 @@ mod tests {
         for record in [
             platform_type("НастройкиКомпоновкиДанных", None),
             platform_type("ОтборКомпоновкиДанных", Some("DataCompositionFilter")),
+            platform_type("Структура", Some("Structure")),
             platform_template_type(
                 "СправочникМенеджер.<Имя справочника>",
                 "CatalogManager.<Catalog name>",
@@ -2202,6 +2244,26 @@ mod tests {
             })
             .expect("global method must sink");
         builder
+            .global_method(model::GlobalMethod {
+                name: name("Мин", Some("Min")),
+                signatures: vec![model::Signature {
+                    text: "Мин(<Значение1>,...,<ЗначениеN>)".to_string(),
+                    parameters: vec![model::Parameter {
+                        name: "Значение1".to_string(),
+                        required: true,
+                        type_refs: Vec::new(),
+                        description: None,
+                    }],
+                    return_types: Vec::new(),
+                    variant: None,
+                }],
+                return_types: Vec::new(),
+                description: Some("Returns minimal value.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("global-min"),
+            })
+            .expect("variadic global method must sink");
+        builder
             .global_property(model::GlobalProperty {
                 name: name("ТекущийОтбор", Some("CurrentFilter")),
                 usage: None,
@@ -2288,6 +2350,36 @@ mod tests {
                 source: source_ref("filter-constructor"),
             })
             .expect("constructor must sink");
+        builder
+            .constructor(model::Constructor {
+                owner: name("Структура", Some("Structure")),
+                owner_identity: Some("platform_type:Структура".to_string()),
+                name: name("Новый Структура(<Ключи>, <Значения>)", None),
+                semantic: model::SemanticContext::default(),
+                signatures: vec![model::Signature {
+                    text: "Новый Структура(<Ключи>, <Значения>)".to_string(),
+                    parameters: vec![
+                        model::Parameter {
+                            name: "Ключи".to_string(),
+                            required: false,
+                            type_refs: Vec::new(),
+                            description: None,
+                        },
+                        model::Parameter {
+                            name: "Значения".to_string(),
+                            required: false,
+                            type_refs: Vec::new(),
+                            description: None,
+                        },
+                    ],
+                    return_types: Vec::new(),
+                    variant: None,
+                }],
+                description: Some("Creates structure.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("structure-constructor"),
+            })
+            .expect("structure constructor must sink");
         builder
             .constructor(model::Constructor {
                 owner: name(

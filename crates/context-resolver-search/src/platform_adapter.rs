@@ -350,6 +350,7 @@ impl PlatformSearchSource {
                         })
                         .collect::<Result<Vec<_>, ResolveError>>()?,
                     return_types: self.type_ref_facts(&signature.return_type_facts),
+                    variadic: search_signature_is_variadic(signature),
                     title: signature.title.clone(),
                     description: signature.description.clone(),
                 })

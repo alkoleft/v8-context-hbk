@@ -287,6 +287,7 @@ impl LanguageSearchSource {
                         })
                         .collect(),
                     return_types: self.type_refs(&signature.return_types),
+                    variadic: signature_text_is_variadic(&signature.text),
                     title: signature.title.clone(),
                     description: signature.description.clone(),
                 })

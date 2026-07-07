@@ -148,6 +148,7 @@ pub struct Parameter {
 pub struct Signature {
     pub parameters: Vec<Parameter>,
     pub return_types: Vec<TypeRef>,
+    pub variadic: bool,
     pub title: Option<String>,
     pub description: Option<String>,
 }
@@ -1393,6 +1394,7 @@ mod tests {
                 signatures: vec![Signature {
                     parameters,
                     return_types: Vec::new(),
+                    variadic: false,
                     title: None,
                     description: None,
                 }],
