@@ -23,6 +23,33 @@ impl PlatformSearchSource {
             .map_err(|source| search_source_failure(&source_id, source))
     }
 
+    pub fn constructors(
+        &self,
+        owner: &TypeId,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedCallable>, ResolveError> {
+        if !context.is_source_active(&self.source_id)
+            || owner.0.source != self.source_id
+            || owner.0.domain != LanguageDomain::PlatformApi
+        {
+            return Ok(ResolveResponse::not_found("platform owner type not found"));
+        }
+
+        let facts = self
+            .index
+            .constructors_by_type_id(&owner.0.local_id)
+            .map_err(|source| self.source_failure(source))?
+            .into_iter()
+            .filter_map(|hit| self.map_callable(hit).transpose())
+            .collect::<Result<Vec<_>, ResolveError>>()?;
+
+        if facts.is_empty() {
+            Ok(ResolveResponse::not_found("platform constructor not found"))
+        } else {
+            Ok(ResolveResponse::ok(facts))
+        }
+    }
+
     fn source_failure(&self, source: SearchError) -> ResolveError {
         search_source_failure(&self.source_id, source)
     }

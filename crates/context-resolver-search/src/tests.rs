@@ -371,6 +371,15 @@ mod tests {
                 "platform_type:ОтборКомпоновкиДанных",
             )))
         );
+        let constructors = adapter
+            .constructors(&filter, &ResolveContext::all())
+            .expect("constructor list lookup must not fail");
+        assert_eq!(constructors.status, ResolveStatus::Ok);
+        assert_eq!(constructors.facts.len(), 1);
+        assert_eq!(
+            constructors.facts[0].fact.name.primary,
+            "Новый ОтборКомпоновкиДанных()"
+        );
         let constructs = adapter
             .related(
                 &constructor.facts[0].id.0,
