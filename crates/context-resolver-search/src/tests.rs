@@ -1743,6 +1743,174 @@ mod tests {
     }
 
     #[test]
+    fn query_table_snapshot_source_enumerates_only_resolved_table_members() {
+        let query_source = SourceId::new("shcntx-query");
+        let platform_source = fixture_source();
+        let index_path = fixture_index_path("query-table-member-enumeration.sqlite");
+        let index = open_index(&index_path);
+        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        drop(index);
+        std::fs::remove_file(&index_path).expect("snapshot adapter must not need SQLite file");
+        let adapter = QueryTableSnapshotSource::with_source_ids(
+            snapshot,
+            query_source.clone(),
+            platform_source,
+        );
+        let table_id = FactId::new(
+            query_source.clone(),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryTable,
+            "query_table:ОсновнаяТаблица",
+        );
+
+        let fields = adapter
+            .query_fields(&table_id, &ResolveContext::all())
+            .expect("query field enumeration must not fail");
+        assert_eq!(fields.status, ResolveStatus::Ok);
+        assert_eq!(
+            fields
+                .facts
+                .iter()
+                .map(|fact| fact.id.local_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "query_table_field:query_table:ОсновнаяТаблица:Документ",
+                "query_table_field:query_table:ОсновнаяТаблица:Период",
+            ]
+        );
+        assert!(fields.facts.iter().all(|fact| fact.owner.as_ref() == Some(&table_id)));
+        let FactDetails::QueryField(period) = &fields.facts[1].details else {
+            panic!("enumerated field must preserve field evidence");
+        };
+        assert_eq!(period.note.as_deref(), Some("Field note."));
+        assert_eq!(
+            period
+                .source
+                .as_ref()
+                .expect("enumerated field must preserve provenance")
+                .evidence_id,
+            "query_table_field:query_table:ОсновнаяТаблица:Период"
+        );
+        assert_eq!(
+            adapter
+                .query_fields_by_name(&table_id, "Период", &ResolveContext::all())
+                .expect("query field point lookup must not fail")
+                .facts,
+            vec![fields.facts[1].clone()]
+        );
+
+        let parameters = adapter
+            .query_parameters(&table_id, &ResolveContext::all())
+            .expect("query parameter enumeration must not fail");
+        assert_eq!(parameters.status, ResolveStatus::Ok);
+        assert_eq!(
+            parameters
+                .facts
+                .iter()
+                .map(|fact| fact.id.local_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["query_table_parameter:query_table:ОсновнаяТаблица:Дата"]
+        );
+        assert!(parameters
+            .facts
+            .iter()
+            .all(|fact| fact.owner.as_ref() == Some(&table_id)));
+        let FactDetails::QueryParameter(date) = &parameters.facts[0].details else {
+            panic!("enumerated parameter must preserve parameter evidence");
+        };
+        assert_eq!(date.default_value.as_deref(), Some("НачалоПериода"));
+        assert_eq!(
+            adapter
+                .query_parameters_by_name(&table_id, "Дата", &ResolveContext::all())
+                .expect("query parameter point lookup must not fail")
+                .facts,
+            vec![parameters.facts[0].clone()]
+        );
+
+        let empty_table = FactId::new(
+            query_source.clone(),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryTable,
+            "query_table:ПустаяТаблица",
+        );
+        assert_eq!(
+            adapter
+                .query_fields(&empty_table, &ResolveContext::all())
+                .expect("empty table field enumeration must not fail"),
+            ResolveResponse::ok(Vec::new())
+        );
+        assert_eq!(
+            adapter
+                .query_parameters(&empty_table, &ResolveContext::all())
+                .expect("empty table parameter enumeration must not fail"),
+            ResolveResponse::ok(Vec::new())
+        );
+
+        for invalid_table in [
+            FactId::new(
+                SourceId::new("other-query"),
+                LanguageDomain::QueryLanguage,
+                FactKind::QueryTable,
+                "query_table:ОсновнаяТаблица",
+            ),
+            FactId::new(
+                query_source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::QueryTable,
+                "query_table:ОсновнаяТаблица",
+            ),
+            FactId::new(
+                query_source.clone(),
+                LanguageDomain::QueryLanguage,
+                FactKind::QueryField,
+                "query_table_field:query_table:ОсновнаяТаблица:Период",
+            ),
+            FactId::new(
+                query_source.clone(),
+                LanguageDomain::QueryLanguage,
+                FactKind::QueryTable,
+                "query_table:НеизвестнаяТаблица",
+            ),
+        ] {
+            assert_eq!(
+                adapter
+                    .query_fields(&invalid_table, &ResolveContext::all())
+                    .expect("invalid table field enumeration must not fail")
+                    .status,
+                ResolveStatus::NotFound
+            );
+            assert_eq!(
+                adapter
+                    .query_parameters(&invalid_table, &ResolveContext::all())
+                    .expect("invalid table parameter enumeration must not fail")
+                    .status,
+                ResolveStatus::NotFound
+            );
+        }
+
+        let inactive_source = SourceId::new("inactive-query");
+        let inactive_context = ResolveContext {
+            active_sources: std::slice::from_ref(&inactive_source),
+            domain: Some(LanguageDomain::QueryLanguage),
+            scope: None,
+        };
+        assert_eq!(
+            adapter
+                .query_fields(&table_id, &inactive_context)
+                .expect("inactive source field enumeration must not fail")
+                .status,
+            ResolveStatus::NotFound
+        );
+        assert_eq!(
+            adapter
+                .query_parameters(&table_id, &inactive_context)
+                .expect("inactive source parameter enumeration must not fail")
+                .status,
+            ResolveStatus::NotFound
+        );
+    }
+
+    #[test]
     fn platform_adapter_does_not_synthesize_constructor_return_from_owner() {
         let source = fixture_source();
         let filter = TypeId(FactId::new(
@@ -2422,6 +2590,21 @@ mod tests {
                 source: source_ref("query-table"),
             })
             .expect("query table must sink");
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:ПустаяТаблица".to_string()),
+                name: "Пустая таблица".to_string(),
+                syntax: None,
+                identifier: Some("ПустаяТаблица".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Additional,
+                description: Some("Empty query table provider fact.".to_string()),
+                source: source_ref("empty-query-table"),
+            })
+            .expect("empty query table must sink");
         builder
             .table_field(model::QueryTableField {
                 owner: name("ОсновнаяТаблица", None),

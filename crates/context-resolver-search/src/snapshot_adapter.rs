@@ -948,23 +948,71 @@ impl QueryTableSnapshotSource {
             .map_err(|source| search_source_failure(&source_id, source))
     }
 
+    fn query_table_id(
+        &self,
+        table: &FactId,
+        context: &ResolveContext<'_>,
+    ) -> Option<HbkQueryTableId> {
+        if !context.is_source_active(&self.source_id)
+            || table.source != self.source_id
+            || table.domain != LanguageDomain::QueryLanguage
+            || table.kind != FactKind::QueryTable
+        {
+            return None;
+        }
+        self.snapshot
+            .worker_handle()
+            .query_table_by_id(&table.local_id)
+    }
+
+    pub fn query_fields(
+        &self,
+        table: &FactId,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
+        let Some(table_id) = self.query_table_id(table, context) else {
+            return Ok(ResolveResponse::not_found("query table fact not found"));
+        };
+        let handle = self.snapshot.worker_handle();
+        Ok(ResolveResponse::ok(
+            handle
+                .query_fields(table_id)
+                .iter()
+                .copied()
+                .map(|id| self.map_query_field(id))
+                .collect(),
+        ))
+    }
+
+    pub fn query_parameters(
+        &self,
+        table: &FactId,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
+        let Some(table_id) = self.query_table_id(table, context) else {
+            return Ok(ResolveResponse::not_found("query table fact not found"));
+        };
+        let handle = self.snapshot.worker_handle();
+        Ok(ResolveResponse::ok(
+            handle
+                .query_parameters(table_id)
+                .iter()
+                .copied()
+                .map(|id| self.map_query_parameter(id))
+                .collect(),
+        ))
+    }
+
     pub fn query_fields_by_name(
         &self,
         table: &FactId,
         name: &str,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
-        if !context.is_source_active(&self.source_id)
-            || table.source != self.source_id
-            || table.domain != LanguageDomain::QueryLanguage
-            || table.kind != FactKind::QueryTable
-        {
-            return Ok(ResolveResponse::not_found("query table fact not found"));
-        }
-        let handle = self.snapshot.worker_handle();
-        let Some(table_id) = handle.query_table_by_id(&table.local_id) else {
+        let Some(table_id) = self.query_table_id(table, context) else {
             return Ok(ResolveResponse::not_found("query table fact not found"));
         };
+        let handle = self.snapshot.worker_handle();
         let facts = handle
             .query_fields_by_name(table_id, name)
             .into_iter()
@@ -979,17 +1027,10 @@ impl QueryTableSnapshotSource {
         name: &str,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
-        if !context.is_source_active(&self.source_id)
-            || table.source != self.source_id
-            || table.domain != LanguageDomain::QueryLanguage
-            || table.kind != FactKind::QueryTable
-        {
-            return Ok(ResolveResponse::not_found("query table fact not found"));
-        }
-        let handle = self.snapshot.worker_handle();
-        let Some(table_id) = handle.query_table_by_id(&table.local_id) else {
+        let Some(table_id) = self.query_table_id(table, context) else {
             return Ok(ResolveResponse::not_found("query table fact not found"));
         };
+        let handle = self.snapshot.worker_handle();
         let facts = handle
             .query_parameters_by_name(table_id, name)
             .into_iter()
