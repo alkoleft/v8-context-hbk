@@ -7,7 +7,8 @@ mod tests {
     use context_resolver_core::{
         CallableLookup, CompositeResolver, ContextResolver, ContextSource, GlobalContextLanguage,
         GlobalContextQuery, MemberQuery, PlatformTypeTemplateKey, RelationKind, ResolveContext,
-        ResolveStatus, TemplateParameterBinding, TypeLookup, WorkerSafeCompositeResolver,
+        ResolveError, ResolveStatus, TemplateParameterBinding, TypeLookup,
+        WorkerSafeCompositeResolver,
     };
     use syntax_helper_language::{LanguagePageInput, LanguageSourceFamily, extract_language_facts};
     use syntax_helper_model as model;
@@ -96,6 +97,228 @@ mod tests {
             .expect("semantic type template lookup must not fail");
         assert_eq!(by_kind.status, ResolveStatus::Ok);
         assert_eq!(by_kind.facts[0].id, template.id);
+    }
+
+    #[test]
+    fn platform_adapter_resolves_generated_self_role_selector() {
+        let source = fixture_source();
+        let index = fixture_index("platform-adapter-generated-self-selector.sqlite");
+        let adapter = PlatformSearchSource::with_source_id(index, source.clone());
+
+        let response = adapter
+            .resolve_type(
+                TypeLookup::GeneratedSelfTemplate {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    generated_self_role: "metadata.generated-self.catalog-manager",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("generated-self template lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ok);
+        assert_eq!(
+            response.facts[0].info.type_template_key,
+            Some(PlatformTypeTemplateKey::new("Catalog", "Manager"))
+        );
+    }
+
+    #[test]
+    fn platform_adapter_resolves_every_certified_generated_self_selector() {
+        let source = fixture_source();
+        let adapter = PlatformSearchSource::with_source_id(
+            generated_self_selector_index(
+                "platform-adapter-generated-self-selector-corpus.sqlite",
+                false,
+            ),
+            source.clone(),
+        );
+
+        for (selector, family, variant) in generated_self_selector_records() {
+            let response = adapter
+                .resolve_type(
+                    TypeLookup::GeneratedSelfTemplate {
+                        source: Some(&source),
+                        domain: Some(LanguageDomain::PlatformApi),
+                        generated_self_role: selector,
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("generated-self template lookup must not fail");
+
+            assert_eq!(response.status, ResolveStatus::Ok, "{selector}");
+            assert_eq!(response.facts.len(), 1, "{selector}");
+            assert_eq!(
+                response.facts[0].info.type_template_key,
+                Some(PlatformTypeTemplateKey::new(family, variant)),
+                "{selector}"
+            );
+            assert_eq!(response.facts[0].id.0.source, source, "{selector}");
+            assert_eq!(
+                response.facts[0].id.0.domain,
+                LanguageDomain::PlatformApi,
+                "{selector}"
+            );
+        }
+    }
+
+    #[test]
+    fn platform_snapshot_resolves_every_certified_generated_self_selector() {
+        let source = fixture_source();
+        let index = generated_self_selector_index(
+            "platform-snapshot-generated-self-selector-corpus.sqlite",
+            false,
+        );
+        let snapshot = Arc::new(
+            HbkFactSnapshot::from_index(&index)
+                .expect("generated-self selector snapshot must materialize"),
+        );
+        let adapter = PlatformSnapshotSource::with_source_id(snapshot, source.clone());
+
+        for (selector, family, variant) in generated_self_selector_records() {
+            let response = adapter
+                .resolve_type(
+                    TypeLookup::GeneratedSelfTemplate {
+                        source: Some(&source),
+                        domain: Some(LanguageDomain::PlatformApi),
+                        generated_self_role: selector,
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("snapshot generated-self template lookup must not fail");
+
+            assert_eq!(response.status, ResolveStatus::Ok, "{selector}");
+            assert_eq!(response.facts.len(), 1, "{selector}");
+            assert_eq!(
+                response.facts[0].info.type_template_key,
+                Some(PlatformTypeTemplateKey::new(family, variant)),
+                "{selector}"
+            );
+            assert_eq!(response.facts[0].id.0.source, source, "{selector}");
+            assert_eq!(
+                response.facts[0].id.0.domain,
+                LanguageDomain::PlatformApi,
+                "{selector}"
+            );
+        }
+    }
+
+    #[test]
+    fn generated_self_selector_respects_routing_and_failure_contracts() {
+        let source = fixture_source();
+        let adapter = PlatformSearchSource::with_source_id(
+            generated_self_selector_index(
+                "platform-adapter-generated-self-selector-statuses.sqlite",
+                false,
+            ),
+            source.clone(),
+        );
+        let query = |source, domain, generated_self_role| TypeLookup::GeneratedSelfTemplate {
+            source,
+            domain,
+            generated_self_role,
+        };
+
+        let wrong_source = SourceId::new("another-platform");
+        assert_eq!(
+            adapter
+                .resolve_type(
+                    query(
+                        Some(&wrong_source),
+                        Some(LanguageDomain::PlatformApi),
+                        "metadata.generated-self.catalog-manager",
+                    ),
+                    &ResolveContext::all(),
+                )
+                .expect("wrong-source lookup must not fail")
+                .status,
+            ResolveStatus::NotFound
+        );
+        assert_eq!(
+            adapter
+                .resolve_type(
+                    query(
+                        Some(&source),
+                        Some(LanguageDomain::BslLanguage),
+                        "metadata.generated-self.catalog-manager",
+                    ),
+                    &ResolveContext::all(),
+                )
+                .expect("wrong-domain lookup must not fail")
+                .status,
+            ResolveStatus::NotFound
+        );
+        assert_eq!(
+            adapter
+                .resolve_type(
+                    query(
+                        Some(&source),
+                        Some(LanguageDomain::PlatformApi),
+                        "metadata.generated-self.unknown",
+                    ),
+                    &ResolveContext::all(),
+                )
+                .expect("unknown-selector lookup must not fail")
+                .status,
+            ResolveStatus::NotFound
+        );
+
+        let language = LanguageSearchSource::shlang(open_index(&language_fixture_index(
+            "language-generated-self-selector-unsupported.sqlite",
+        )));
+        assert_eq!(
+            language
+                .resolve_type(
+                    query(
+                        None,
+                        None,
+                        "metadata.generated-self.catalog-manager",
+                    ),
+                    &ResolveContext::all(),
+                )
+                .expect("unsupported-source lookup must not fail")
+                .status,
+            ResolveStatus::Unsupported
+        );
+
+        let ambiguous = PlatformSearchSource::with_source_id(
+            generated_self_selector_index(
+                "platform-adapter-generated-self-selector-ambiguous.sqlite",
+                true,
+            ),
+            source.clone(),
+        )
+        .resolve_type(
+            query(
+                Some(&source),
+                Some(LanguageDomain::PlatformApi),
+                "metadata.generated-self.catalog-manager",
+            ),
+            &ResolveContext::all(),
+        )
+        .expect("ambiguous selector lookup must not fail");
+        assert_eq!(ambiguous.status, ResolveStatus::Ambiguous);
+
+        let path = generated_self_selector_index_path(
+            "platform-adapter-generated-self-selector-error.sqlite",
+            false,
+        );
+        let failing = PlatformSearchSource::with_source_id(open_index(&path), source.clone());
+        rusqlite::Connection::open(&path)
+            .expect("fixture database must open for mutation")
+            .execute_batch("DROP TABLE type_templates")
+            .expect("fixture template table must be removable");
+        assert!(matches!(
+            failing.resolve_type(
+                query(
+                    Some(&source),
+                    Some(LanguageDomain::PlatformApi),
+                    "metadata.generated-self.catalog-manager",
+                ),
+                &ResolveContext::all(),
+            ),
+            Err(ResolveError::SourceFailure { .. })
+        ));
     }
 
     #[test]
@@ -519,6 +742,18 @@ mod tests {
             template.info.type_template_key,
             Some(PlatformTypeTemplateKey::new("Catalog", "Manager"))
         );
+        let generated_self_response = adapter
+            .resolve_type(
+                TypeLookup::GeneratedSelfTemplate {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    generated_self_role: "metadata.generated-self.catalog-manager",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot generated-self template lookup must not fail");
+        assert_eq!(generated_self_response.status, ResolveStatus::Ok);
+        assert_eq!(generated_self_response.facts[0].id, template.id);
 
         let filter_member = adapter
             .members(
@@ -2245,6 +2480,135 @@ mod tests {
     fn fixture_index(file_name: &str) -> SearchIndex {
         let path = fixture_index_path(file_name);
         SearchIndex::open_read_only(path).expect("index must open")
+    }
+
+    fn generated_self_selector_index(file_name: &str, duplicate_catalog_manager: bool) -> SearchIndex {
+        let path = generated_self_selector_index_path(file_name, duplicate_catalog_manager);
+        SearchIndex::open_read_only(path).expect("generated-self selector index must open")
+    }
+
+    fn generated_self_selector_index_path(
+        file_name: &str,
+        duplicate_catalog_manager: bool,
+    ) -> PathBuf {
+        let path = temp_path(file_name);
+        let mut builder = SearchIndexBuilder::new();
+        for (_, family, variant) in generated_self_selector_records() {
+            let base = format!("{family}{variant}");
+            let primary = format!("{base}.<Generated>");
+            builder
+                .platform_type(platform_template_type(&primary, &primary, &base, "Generated"))
+                .expect("generated-self template must sink");
+        }
+        for family in [
+            "InformationRegister",
+            "AccumulationRegister",
+            "AccountingRegister",
+            "CalculationRegister",
+        ] {
+            let base = format!("{family}Manager");
+            let primary = format!("{base}.<Generated>");
+            builder
+                .platform_type(platform_template_type(&primary, &primary, &base, "Generated"))
+                .expect("generated-self family root must sink");
+        }
+        if duplicate_catalog_manager {
+            builder
+                .platform_type(platform_template_type(
+                    "CatalogManagerDuplicate.<Generated>",
+                    "CatalogManager.<Generated>",
+                    "CatalogManagerDuplicate",
+                    "Generated",
+                ))
+                .expect("duplicate catalog-manager template must sink");
+        }
+        build_index_from_builder(&path, &metadata(), builder)
+            .expect("generated-self selector index must build");
+        path
+    }
+
+    // Independent companion-contract fixture: this is the documented metadata selector corpus,
+    // not a production lookup. It deliberately constructs provider source facts and expected
+    // public resolver evidence without importing or reusing the HBK-owned runtime mapping.
+    fn generated_self_selector_records() -> [(&'static str, &'static str, &'static str); 20] {
+        [
+            ("metadata.generated-self.catalog-object", "Catalog", "Object"),
+            ("metadata.generated-self.catalog-manager", "Catalog", "Manager"),
+            ("metadata.generated-self.document-object", "Document", "Object"),
+            ("metadata.generated-self.document-manager", "Document", "Manager"),
+            (
+                "metadata.generated-self.information-register-record-set",
+                "InformationRegister",
+                "RecordSet",
+            ),
+            (
+                "metadata.generated-self.accumulation-register-record-set",
+                "AccumulationRegister",
+                "RecordSet",
+            ),
+            (
+                "metadata.generated-self.accounting-register-record-set",
+                "AccountingRegister",
+                "RecordSet",
+            ),
+            (
+                "metadata.generated-self.calculation-register-record-set",
+                "CalculationRegister",
+                "RecordSet",
+            ),
+            (
+                "metadata.generated-self.chart-of-characteristic-types-object",
+                "ChartOfCharacteristicTypes",
+                "Object",
+            ),
+            (
+                "metadata.generated-self.chart-of-characteristic-types-manager",
+                "ChartOfCharacteristicTypes",
+                "Manager",
+            ),
+            (
+                "metadata.generated-self.exchange-plan-object",
+                "ExchangePlan",
+                "Object",
+            ),
+            (
+                "metadata.generated-self.exchange-plan-manager",
+                "ExchangePlan",
+                "Manager",
+            ),
+            (
+                "metadata.generated-self.business-process-object",
+                "BusinessProcess",
+                "Object",
+            ),
+            (
+                "metadata.generated-self.business-process-manager",
+                "BusinessProcess",
+                "Manager",
+            ),
+            ("metadata.generated-self.task-object", "Task", "Object"),
+            ("metadata.generated-self.task-manager", "Task", "Manager"),
+            (
+                "metadata.generated-self.chart-of-accounts-object",
+                "ChartOfAccounts",
+                "Object",
+            ),
+            (
+                "metadata.generated-self.chart-of-accounts-manager",
+                "ChartOfAccounts",
+                "Manager",
+            ),
+            (
+                "metadata.generated-self.chart-of-calculation-types-object",
+                "ChartOfCalculationTypes",
+                "Object",
+            ),
+            (
+                "metadata.generated-self.chart-of-calculation-types-manager",
+                "ChartOfCalculationTypes",
+                "Manager",
+            ),
+        ]
     }
 
     fn fixture_index_without_constructor_result(file_name: &str) -> SearchIndex {

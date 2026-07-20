@@ -185,6 +185,15 @@ parameters. The SQLite storage used to preserve those facts remains internal to
 `syntax-helper-search`; resolver consumers receive only the public DTOs from
 `context-resolver-core`.
 
+T172 implementation note: `TypeLookup::GeneratedSelfTemplate` accepts a borrowed, stable opaque
+selector published by the metadata provider together with normal `SourceId` and `LanguageDomain`
+filters. `PlatformSearchSource` and `PlatformSnapshotSource` keep the selector-to-classified-template
+interpretation private to HBK and return the existing `ResolvedType` response. The query neither
+accepts nor returns a `PlatformTypeTemplateKey`; HBK does not import metadata types or compose a
+concrete configuration type. Unknown selector/template results are `NotFound`, non-platform
+sources return `Unsupported`, duplicate classified templates remain `Ambiguous`, and provider
+failures remain `ResolveError` with no exact-name, alias or cross-source fallback.
+
 Platform type template ownership remains in this repository. Consumers must not recognize
 localized names such as `СправочникСсылка` or aliases such as `CatalogRef` to discover generated
 metadata-object template types. The resolver DTOs must expose open HBK-owned type template

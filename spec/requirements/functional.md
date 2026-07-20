@@ -852,6 +852,10 @@ The resolver API must be source-neutral and fact-oriented:
 - expose platform type template facts through open family/variant keys owned by the HBK
   provider, so consumers can request generated metadata-object template variants without matching
   platform localized names or English aliases or depending on a closed metadata-kind enum;
+- accept a metadata-provider-certified opaque generated-self role selector through an explicit
+  source/domain-qualified type lookup, interpret that selector only inside HBK against classified
+  template evidence, and return the existing resolved type/member facts without exposing a
+  template key, metadata enum or generated configuration type;
 - preserve template owner-parameter bindings on member, callable return and parameter type
   references where provider evidence shows a type template result such as
   `DocumentObject<T> -> DocumentReference<T>`;
@@ -954,6 +958,10 @@ Acceptance:
   references.
 - Platform type template lookup returns provider-backed platform type facts by open family/variant key
   without consumers naming localized or alias platform types.
+- A metadata-certified generated-self selector resolves only through the explicit HBK lookup with
+  requested source/domain routing; unknown selectors are `not_found`, non-platform sources are
+  `unsupported`, duplicate classified templates are `ambiguous`, and provider failures stay typed
+  errors without name/alias or cross-source fallback.
 - Template member/callable type references preserve owner-parameter bindings for template-to-template
   references where the HBK source exposes them.
 - Platform adapter relation traversal preserves source-backed `has_type`, `returns`, `constructs`

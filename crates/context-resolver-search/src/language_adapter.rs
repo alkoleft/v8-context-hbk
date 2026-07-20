@@ -590,7 +590,12 @@ impl ContextSource for LanguageSearchSource {
                         .collect()
                 }
             }
-            TypeLookup::PlatformTypeTemplate { .. } => Vec::new(),
+            TypeLookup::PlatformTypeTemplate { .. }
+            | TypeLookup::GeneratedSelfTemplate { .. } => {
+                return Ok(ResolveResponse::unsupported(
+                    "language source does not expose platform generated-self templates",
+                ));
+            }
         };
         Ok(response_from_resolved_types(
             facts,

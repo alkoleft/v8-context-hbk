@@ -527,6 +527,11 @@ pub enum MemberQueryKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeLookup<'a> {
     Id(&'a TypeId),
+    GeneratedSelfTemplate {
+        source: Option<&'a SourceId>,
+        domain: Option<LanguageDomain>,
+        generated_self_role: &'a str,
+    },
     PlatformTypeTemplate {
         source: Option<&'a SourceId>,
         domain: Option<LanguageDomain>,
@@ -917,6 +922,10 @@ impl<T: ActiveContextSources> ContextResolver for T {
                 ..
             }
             | TypeLookup::PlatformTypeTemplate {
+                source: Some(query_source),
+                ..
+            }
+            | TypeLookup::GeneratedSelfTemplate {
                 source: Some(query_source),
                 ..
             } = query
@@ -1566,6 +1575,7 @@ mod tests {
                     .filter(|resolved| resolved.info.type_template_key.as_ref() == Some(key))
                     .cloned()
                     .collect(),
+                TypeLookup::GeneratedSelfTemplate { .. } => Vec::new(),
             };
             Ok(single_or_ambiguous(facts, "type not found"))
         }

@@ -51,6 +51,37 @@ Current first unchecked task: none. Add a new task before implementing new scope
 
 ## Active Tasks
 
+### [x] T172. Resolve metadata-generated self roles through the HBK template boundary
+
+References: FR-CTX-RESOLVE-001, `implementation/solution-context-resolve.md`,
+OpenSpec change `add-generated-self-template-lookup`.
+
+Scope:
+
+- Add a borrowed source/domain-qualified `TypeLookup::GeneratedSelfTemplate` selector query.
+- Keep the selector-to-classified-template mapping in the HBK platform adapters; do not depend on
+  metadata types, expose template keys to this query, compose configuration types or add an
+  analyzer/cache/SQLite boundary.
+- Preserve existing explicit resolver outcomes: unknown is `NotFound`, a non-platform source is
+  `Unsupported`, duplicate provider templates are `Ambiguous`, and provider storage errors remain
+  `ResolveError`; no name, alias or cross-source fallback is allowed.
+
+Verification:
+
+- public SQL and snapshot-backed resolver tests for the exact 20-selector corpus, source/domain
+  routing, unknown selector, unsupported source, ambiguity and provider error propagation;
+- `cargo test -p context-resolver-core`;
+- `cargo test -p context-resolver-search`;
+- `cargo fmt --all --check`;
+- `openspec validate add-generated-self-template-lookup --strict`.
+
+Completion notes:
+
+- `PlatformSearchSource` and `PlatformSnapshotSource` resolve the metadata-certified opaque role
+  selector through existing HBK template indexes and return existing `ResolvedType` facts.
+- The downstream consumer remains unable to construct or observe the internal template key for
+  this operation; normal source/domain filters and failure statuses terminate fallback.
+
 ### [x] T169. Reshape `HbkFactSnapshot` physical indexes around analyzer hot paths
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001, NFR-QUERY-001, UC-CTX-001,

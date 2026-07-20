@@ -614,6 +614,24 @@ impl ContextSource for PlatformSnapshotSource {
                         .collect()
                 }
             }
+            TypeLookup::GeneratedSelfTemplate {
+                source,
+                domain,
+                generated_self_role,
+            } => {
+                if !self.source_matches(source) || !self.domain_matches(domain) {
+                    Vec::new()
+                } else if let Some(key) = template_key_for_generated_self_role(generated_self_role)
+                {
+                    handle
+                        .platform_types_by_template_key(&key.family, &key.variant)
+                        .into_iter()
+                        .map(|id| self.platform_type_from_id(id))
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            }
         };
         Ok(response_from_resolved_types(
             facts,

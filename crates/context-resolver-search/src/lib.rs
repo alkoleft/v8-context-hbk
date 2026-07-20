@@ -6,4 +6,5 @@ include!("language_adapter.rs");
 include!("platform_context_source.rs");
 include!("snapshot_adapter.rs");
 include!("mapping.rs");
+include!("generated_self_template.rs");
 include!("tests.rs");

@@ -186,6 +186,29 @@ impl ContextSource for PlatformSearchSource {
                         .collect()
                 }
             }
+            TypeLookup::GeneratedSelfTemplate {
+                source,
+                domain,
+                generated_self_role,
+            } => {
+                if !self.source_matches(source) || !self.domain_matches(domain) {
+                    Vec::new()
+                } else if let Some(key) = template_key_for_generated_self_role(generated_self_role)
+                {
+                    let kind = syntax_helper_search::model::PlatformTypeTemplateKey::new(
+                        key.family,
+                        key.variant,
+                    );
+                    self.index
+                        .type_template_by_key(&kind)
+                        .map_err(|source| self.source_failure(source))?
+                        .into_iter()
+                        .map(|hit| self.map_type(hit))
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            }
         };
         Ok(response_from_resolved_types(
             facts,
