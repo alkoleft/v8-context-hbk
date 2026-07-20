@@ -581,6 +581,13 @@ pub struct ModuleContextQuery<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MetadataModuleContextLookup<'a> {
+    pub source: Option<&'a SourceId>,
+    pub domain: Option<LanguageDomain>,
+    pub metadata_module_role: &'a str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolveQuery<'a> {
     Id(&'a FactId),
     ExactName {
@@ -723,6 +730,16 @@ pub trait ContextResolver {
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError>;
 
+    fn metadata_module_context(
+        &self,
+        _query: MetadataModuleContextLookup<'_>,
+        _context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError> {
+        Ok(ResolveResponse::unsupported(
+            "context resolver does not expose metadata module context",
+        ))
+    }
+
     fn related(
         &self,
         source: &FactId,
@@ -839,6 +856,18 @@ fn source_id_matches(source: &dyn ContextSource, expected: &SourceId) -> bool {
     match source.source_id() {
         Some(source_id) => source_id == expected,
         None => source.descriptor().id == *expected,
+    }
+}
+
+fn metadata_module_context_kind(selector: &str) -> Option<ModuleContextKind> {
+    match selector {
+        "metadata.module-role.common" => Some(ModuleContextKind::Common),
+        "metadata.module-role.command" => Some(ModuleContextKind::Command),
+        "metadata.module-role.object" => Some(ModuleContextKind::Object),
+        "metadata.module-role.manager" => Some(ModuleContextKind::Manager),
+        "metadata.module-role.form" => Some(ModuleContextKind::Form),
+        "metadata.module-role.record-set" => Some(ModuleContextKind::RecordSet),
+        _ => None,
     }
 }
 
@@ -1195,6 +1224,61 @@ impl<T: ActiveContextSources> ContextResolver for T {
         Ok(ResolveResponse::not_found("module context not found"))
     }
 
+    fn metadata_module_context(
+        &self,
+        query: MetadataModuleContextLookup<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError> {
+        let Some(kind) = metadata_module_context_kind(query.metadata_module_role) else {
+            return Ok(ResolveResponse::not_found("metadata module role not found"));
+        };
+        let mut sources = Vec::new();
+        let mut unsupported = false;
+        self.for_each_active_source(context, |source| {
+            let descriptor = source.descriptor();
+            if descriptor.domain != LanguageDomain::PlatformApi
+                || query
+                    .domain
+                    .is_some_and(|domain| domain != descriptor.domain)
+                || query
+                    .source
+                    .is_some_and(|id| !source_id_matches(source, id))
+            {
+                return Ok(());
+            }
+            sources.push(descriptor.id);
+            unsupported |= !source.capabilities().module_context;
+            Ok::<_, ResolveError>(())
+        })?;
+        if sources.is_empty() {
+            return Ok(ResolveResponse::not_found(
+                "metadata module source not found",
+            ));
+        }
+        if unsupported {
+            return Ok(ResolveResponse::unsupported(
+                "selected source does not expose module context",
+            ));
+        }
+        if matches!(
+            kind,
+            ModuleContextKind::Common | ModuleContextKind::Command | ModuleContextKind::RecordSet
+        ) {
+            return Ok(ResolveResponse::not_found(
+                "metadata module context not found",
+            ));
+        }
+        self.module_context(
+            ModuleContextQuery {
+                language: GlobalContextLanguage::Bsl,
+                domain: LanguageDomain::PlatformApi,
+                kind,
+                sources: &sources,
+            },
+            context,
+        )
+    }
+
     fn related(
         &self,
         source_id: &FactId,
@@ -1304,6 +1388,9 @@ mod tests {
         module_contexts: Vec<ResolvedModuleContext>,
         resolve_type_status: Option<ResolveStatus>,
         callable_status: Option<ResolveStatus>,
+        module_context_status: Option<ResolveStatus>,
+        module_context_error: Option<&'static str>,
+        module_context_capability: bool,
     }
 
     impl FakeSource {
@@ -1319,6 +1406,9 @@ mod tests {
                 module_contexts: Vec::new(),
                 resolve_type_status: None,
                 callable_status: None,
+                module_context_status: None,
+                module_context_error: None,
+                module_context_capability: true,
             }
         }
 
@@ -1455,6 +1545,21 @@ mod tests {
             self.callable_status = Some(status);
             self
         }
+
+        fn without_module_context_capability(mut self) -> Self {
+            self.module_context_capability = false;
+            self
+        }
+
+        fn with_module_context_status(mut self, status: ResolveStatus) -> Self {
+            self.module_context_status = Some(status);
+            self
+        }
+
+        fn with_module_context_error(mut self, message: &'static str) -> Self {
+            self.module_context_error = Some(message);
+            self
+        }
     }
 
     impl ContextSource for FakeSource {
@@ -1478,7 +1583,7 @@ mod tests {
                 callables: true,
                 relations: true,
                 global_context: true,
-                module_context: true,
+                module_context: self.module_context_capability,
             }
         }
 
@@ -1660,6 +1765,12 @@ mod tests {
                     "module context source not active",
                 ));
             }
+            if let Some(message) = self.module_context_error {
+                return Err(ResolveError::SourceFailure {
+                    source_id: self.source.clone(),
+                    message: message.to_string(),
+                });
+            }
             let facts = self
                 .module_contexts
                 .iter()
@@ -1668,6 +1779,9 @@ mod tests {
                 .filter(|scope| scope.kind == query.kind)
                 .cloned()
                 .collect();
+            if let Some(status) = self.module_context_status {
+                return Ok(forced_response(status, facts));
+            }
             Ok(single_or_ambiguous(facts, "module context not found"))
         }
 
@@ -1684,6 +1798,80 @@ mod tests {
                 .map(|(_, _, target)| target.clone())
                 .collect();
             Ok(ResolveResponse::ok(facts))
+        }
+    }
+
+    struct DefaultMetadataResolver;
+
+    impl ContextResolver for DefaultMetadataResolver {
+        fn resolve(
+            &self,
+            _query: ResolveQuery<'_>,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
+            Ok(ResolveResponse::not_found("test resolver has no facts"))
+        }
+
+        fn resolve_type(
+            &self,
+            _query: TypeLookup<'_>,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ResolvedType>, ResolveError> {
+            Ok(ResolveResponse::not_found("test resolver has no types"))
+        }
+
+        fn members(
+            &self,
+            _owner: &TypeId,
+            _query: MemberQuery<'_>,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ResolvedMember>, ResolveError> {
+            Ok(ResolveResponse::not_found("test resolver has no members"))
+        }
+
+        fn callable(
+            &self,
+            _query: CallableLookup<'_>,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ResolvedCallable>, ResolveError> {
+            Ok(ResolveResponse::not_found("test resolver has no callables"))
+        }
+
+        fn global_context(
+            &self,
+            _query: GlobalContextQuery<'_>,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError> {
+            Ok(ResolveResponse::not_found("test resolver has no globals"))
+        }
+
+        fn module_context(
+            &self,
+            _query: ModuleContextQuery<'_>,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError> {
+            Ok(ResolveResponse::not_found(
+                "test resolver has no module context",
+            ))
+        }
+
+        fn related(
+            &self,
+            _source: &FactId,
+            _kind: RelationKind,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
+            Ok(ResolveResponse::not_found("test resolver has no relations"))
+        }
+
+        fn availability(
+            &self,
+            _source: &FactId,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<AvailabilityFact>, ResolveError> {
+            Ok(ResolveResponse::not_found(
+                "test resolver has no availability facts",
+            ))
         }
     }
 
@@ -1909,6 +2097,266 @@ mod tests {
             resolved.facts[0].details,
             FactDetails::ModuleContext(_)
         ));
+    }
+
+    #[test]
+    fn metadata_module_role_delegates_to_existing_module_context() {
+        let source = SourceId::new("platform");
+        let scope = module_context_scope(source.clone(), ModuleContextKind::Object);
+        let resolver = CompositeResolver::new(vec![Box::new(
+            FakeSource::new("platform", LanguageDomain::PlatformApi).with_module_context(scope),
+        )]);
+        let response = resolver
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("metadata module lookup must not fail");
+        assert_eq!(response.status, ResolveStatus::Ok);
+        assert_eq!(response.facts[0].kind, ModuleContextKind::Object);
+
+        for metadata_module_role in [
+            "metadata.module-role.common",
+            "metadata.module-role.command",
+            "metadata.module-role.record-set",
+            "metadata.module-role.unknown",
+        ] {
+            let response = resolver
+                .metadata_module_context(
+                    MetadataModuleContextLookup {
+                        source: Some(&source),
+                        domain: Some(LanguageDomain::PlatformApi),
+                        metadata_module_role,
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("metadata module lookup must not fail");
+            assert_eq!(response.status, ResolveStatus::NotFound);
+        }
+    }
+
+    #[test]
+    fn metadata_module_role_delegates_the_supported_corpus() {
+        let source = SourceId::new("platform");
+        let resolver = CompositeResolver::new(vec![Box::new(
+            FakeSource::new("platform", LanguageDomain::PlatformApi)
+                .with_module_context(module_context_scope(
+                    source.clone(),
+                    ModuleContextKind::Object,
+                ))
+                .with_module_context(module_context_scope(
+                    source.clone(),
+                    ModuleContextKind::Manager,
+                ))
+                .with_module_context(module_context_scope(
+                    source.clone(),
+                    ModuleContextKind::Form,
+                )),
+        )]);
+
+        for (metadata_module_role, expected_kind) in [
+            ("metadata.module-role.object", ModuleContextKind::Object),
+            ("metadata.module-role.manager", ModuleContextKind::Manager),
+            ("metadata.module-role.form", ModuleContextKind::Form),
+        ] {
+            let response = resolver
+                .metadata_module_context(
+                    MetadataModuleContextLookup {
+                        source: Some(&source),
+                        domain: Some(LanguageDomain::PlatformApi),
+                        metadata_module_role,
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("supported metadata module role must not fail");
+            assert_eq!(response.status, ResolveStatus::Ok);
+            assert_eq!(response.facts[0].kind, expected_kind);
+        }
+    }
+
+    #[test]
+    fn metadata_module_role_restricts_sources_and_requires_capability() {
+        let platform = SourceId::new("platform");
+        let missing = SourceId::new("missing");
+        let capable = SourceId::new("capable");
+        let unavailable = SourceId::new("unavailable");
+        let resolver = CompositeResolver::new(vec![
+            Box::new(
+                FakeSource::new("platform", LanguageDomain::PlatformApi).with_module_context(
+                    module_context_scope(platform.clone(), ModuleContextKind::Object),
+                ),
+            ),
+            Box::new(
+                FakeSource::new("bsl", LanguageDomain::BslLanguage)
+                    .with_module_context_error("non-platform source must not be selected"),
+            ),
+        ]);
+
+        let source_absent = resolver
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: Some(&missing),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("absent source must not fail");
+        assert_eq!(source_absent.status, ResolveStatus::NotFound);
+
+        let domain_mismatch = resolver
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: Some(&platform),
+                    domain: Some(LanguageDomain::BslLanguage),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("domain mismatch must not fail");
+        assert_eq!(domain_mismatch.status, ResolveStatus::NotFound);
+
+        let no_source_filter = resolver
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: None,
+                    domain: None,
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("non-platform source must stay outside dispatch");
+        assert_eq!(no_source_filter.status, ResolveStatus::Ok);
+
+        let capability_resolver = CompositeResolver::new(vec![
+            Box::new(
+                FakeSource::new("capable", LanguageDomain::PlatformApi).with_module_context(
+                    module_context_scope(capable.clone(), ModuleContextKind::Object),
+                ),
+            ),
+            Box::new(
+                FakeSource::new("unavailable", LanguageDomain::PlatformApi)
+                    .without_module_context_capability(),
+            ),
+        ]);
+        let any_unavailable = capability_resolver
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: None,
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("capability check must not fail");
+        assert_eq!(any_unavailable.status, ResolveStatus::Unsupported);
+
+        let source_isolated = capability_resolver
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: Some(&capable),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("selected capable source must not fail");
+        assert_eq!(source_isolated.status, ResolveStatus::Ok);
+        assert_eq!(source_isolated.facts[0].id.source, capable);
+        let unavailable_source = capability_resolver
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: Some(&unavailable),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("unsupported source must not fail");
+        assert_eq!(unavailable_source.status, ResolveStatus::Unsupported);
+    }
+
+    #[test]
+    fn metadata_module_role_preserves_ambiguity_and_resolver_failure() {
+        let source = SourceId::new("platform");
+        let ambiguous = CompositeResolver::new(vec![Box::new(
+            FakeSource::new("platform", LanguageDomain::PlatformApi)
+                .with_module_context(module_context_scope(
+                    source.clone(),
+                    ModuleContextKind::Object,
+                ))
+                .with_module_context(module_context_scope(
+                    source.clone(),
+                    ModuleContextKind::Object,
+                )),
+        )]);
+        let ambiguous_response = ambiguous
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("ambiguous source answer must not become an error");
+        assert_eq!(ambiguous_response.status, ResolveStatus::Ambiguous);
+
+        let failed = CompositeResolver::new(vec![Box::new(
+            FakeSource::new("platform", LanguageDomain::PlatformApi)
+                .with_module_context_error("provider failed"),
+        )]);
+        let error = failed
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect_err("provider failure must not be converted to absence");
+        assert!(matches!(
+            error,
+            ResolveError::SourceFailure { source_id, message }
+                if source_id == source && message == "provider failed"
+        ));
+
+        let unsupported = CompositeResolver::new(vec![Box::new(
+            FakeSource::new("platform", LanguageDomain::PlatformApi)
+                .with_module_context_status(ResolveStatus::Unsupported),
+        )]);
+        let unsupported_response = unsupported
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("provider unsupported outcome must not fail");
+        assert_eq!(unsupported_response.status, ResolveStatus::Unsupported);
+    }
+
+    #[test]
+    fn metadata_module_role_default_is_unsupported() {
+        let resolver = DefaultMetadataResolver;
+        let response = resolver
+            .metadata_module_context(
+                MetadataModuleContextLookup {
+                    source: None,
+                    domain: None,
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("default resolver response must not fail");
+        assert_eq!(response.status, ResolveStatus::Unsupported);
     }
 
     #[test]
@@ -2293,6 +2741,26 @@ mod tests {
             methods: Vec::new(),
             properties: Vec::new(),
             facts,
+        }
+    }
+
+    fn module_context_scope(source: SourceId, kind: ModuleContextKind) -> ResolvedModuleContext {
+        ResolvedModuleContext {
+            id: FactId::new(
+                source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::ModuleContext,
+                format!("module_context:{}", kind.as_str()),
+            ),
+            language: GlobalContextLanguage::Bsl,
+            domain: LanguageDomain::PlatformApi,
+            kind,
+            sources: vec![source],
+            self_member: None,
+            properties: Vec::new(),
+            methods: Vec::new(),
+            events: Vec::new(),
+            facts: Vec::new(),
         }
     }
 
