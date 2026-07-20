@@ -524,6 +524,22 @@ pub enum MemberQueryKind {
     EnumValue,
 }
 
+/// Classifies one provider-certified metadata member selector as a BSL member kind.
+///
+/// Unknown selectors are normal absence. Source availability and metadata-role
+/// certification remain owned by the provider that emitted the selector.
+#[must_use]
+pub fn metadata_bsl_member_kind(selector: &str) -> Option<MemberQueryKind> {
+    metadata_bsl_member_kind_mapping(selector)
+}
+
+fn metadata_bsl_member_kind_mapping(selector: &str) -> Option<MemberQueryKind> {
+    match selector {
+        "metadata.form-member.attribute" => Some(MemberQueryKind::Property),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeLookup<'a> {
     Id(&'a TypeId),
@@ -2720,6 +2736,52 @@ mod tests {
             }
             ResolveStatus::Unsupported => ResolveResponse::unsupported("forced unsupported"),
             ResolveStatus::NotFound => ResolveResponse::not_found("forced not found"),
+        }
+    }
+
+    #[test]
+    fn metadata_bsl_member_kind_classifies_only_certified_form_attributes() {
+        assert_eq!(
+            metadata_bsl_member_kind("metadata.form-member.attribute"),
+            Some(MemberQueryKind::Property),
+        );
+        for selector in [
+            "metadata.form-member.command",
+            "metadata.form-member.element",
+            "metadata.form-member.event-handler",
+            "metadata.generated-member.attribute",
+            "metadata.form-member.unknown",
+        ] {
+            assert_eq!(
+                metadata_bsl_member_kind(selector),
+                None,
+                "only the accepted selector may have a BSL member classification",
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_bsl_member_kind_stays_core_owned() {
+        let search_sources = [
+            include_str!("../../context-resolver-search/src/generated_self_template.rs"),
+            include_str!("../../context-resolver-search/src/imports.rs"),
+            include_str!("../../context-resolver-search/src/language_adapter.rs"),
+            include_str!("../../context-resolver-search/src/lib.rs"),
+            include_str!("../../context-resolver-search/src/mapping.rs"),
+            include_str!("../../context-resolver-search/src/platform_adapter.rs"),
+            include_str!("../../context-resolver-search/src/platform_context_source.rs"),
+            include_str!("../../context-resolver-search/src/snapshot_adapter.rs"),
+        ];
+
+        for source in search_sources {
+            assert!(
+                !source.contains("metadata.form-member."),
+                "search adapters must not map metadata member selectors",
+            );
+            assert!(
+                !source.contains("metadata_bsl_member_kind"),
+                "search adapters must not duplicate the core member-kind classifier",
+            );
         }
     }
 
