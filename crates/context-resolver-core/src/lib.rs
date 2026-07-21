@@ -535,7 +535,9 @@ pub fn metadata_bsl_member_kind(selector: &str) -> Option<MemberQueryKind> {
 
 fn metadata_bsl_member_kind_mapping(selector: &str) -> Option<MemberQueryKind> {
     match selector {
-        "metadata.form-member.attribute" => Some(MemberQueryKind::Property),
+        "metadata.form-member.attribute" | "metadata.generated-member.property" => {
+            Some(MemberQueryKind::Property)
+        }
         _ => None,
     }
 }
@@ -3144,9 +3146,13 @@ mod tests {
     }
 
     #[test]
-    fn metadata_bsl_member_kind_classifies_only_certified_form_attributes() {
+    fn metadata_bsl_member_kind_classifies_only_certified_property_source_roles() {
         assert_eq!(
             metadata_bsl_member_kind("metadata.form-member.attribute"),
+            Some(MemberQueryKind::Property),
+        );
+        assert_eq!(
+            metadata_bsl_member_kind("metadata.generated-member.property"),
             Some(MemberQueryKind::Property),
         );
         for selector in [
@@ -3154,6 +3160,7 @@ mod tests {
             "metadata.form-member.element",
             "metadata.form-member.event-handler",
             "metadata.generated-member.attribute",
+            "metadata.generated-member.method",
             "metadata.form-member.unknown",
         ] {
             assert_eq!(
@@ -3181,6 +3188,10 @@ mod tests {
             assert!(
                 !source.contains("metadata.form-member."),
                 "search adapters must not map metadata member selectors",
+            );
+            assert!(
+                !source.contains("metadata.generated-member."),
+                "search adapters must not map generated-member selectors",
             );
             assert!(
                 !source.contains("metadata_bsl_member_kind"),

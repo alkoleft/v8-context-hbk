@@ -11,6 +11,7 @@ The private literal match is the sole owner of the initial corpus:
 | Metadata-owned selector | HBK classification |
 | --- | --- |
 | `metadata.form-member.attribute` | `MemberQueryKind::Property` |
+| `metadata.generated-member.property` | `MemberQueryKind::Property` |
 | any other selector | `None` |
 
 `None` is normal language-classification absence. It is not a provider error
@@ -20,16 +21,16 @@ metadata source failure or ambiguity through its own normal flow.
 This is not a source adapter. Search and snapshot adapters remain selector
 blind because no platform source is queried. The function does not fabricate a
 `ResolvedMember`, `ContextFact` or selector-specific identity: metadata retains
-the form-member identity/evidence, while context-provider later compares this
-returned kind to its exact requested BSL kind and applies precedence.
+the form/generated-member identity and evidence, while context-provider later
+compares this returned kind to its exact requested BSL kind and applies
+precedence.
 
 ## Reintroduction guard
 
-The selector literal may occur only in the metadata-provider emitter and this
-core classifier. `MetadataGeneratedMember` selectors, analyzer
-`MetadataKind`-to-`MemberQueryKind` maps, resolver methods and source-adapter
-maps are prohibited until a separate accepted contract defines a real
-source-backed relation.
+Each selector literal may occur only in its metadata-provider fact/emitter and
+this core classifier. Analyzer `MetadataKind`-to-`MemberQueryKind` maps,
+resolver methods, source-adapter maps and a generated-member answer/identity
+mirror in HBK are prohibited.
 
 ## Architecture impact
 

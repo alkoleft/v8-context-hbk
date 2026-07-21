@@ -1,21 +1,22 @@
 ## ADDED Requirements
 
-### Requirement: HBK classifies the opaque form-attribute selector
+### Requirement: HBK classifies opaque metadata member selectors
 
 HBK SHALL expose a source-neutral language classifier for an opaque metadata
 member selector and SHALL return an existing `MemberQueryKind` only for the
 documented initial corpus.
 
-#### Scenario: Certified form attribute is classified
+#### Scenario: Certified property source roles are classified
 
-- **WHEN** a caller supplies `metadata.form-member.attribute`
+- **WHEN** a caller supplies `metadata.form-member.attribute` or
+  `metadata.generated-member.property`
 - **THEN** HBK returns `MemberQueryKind::Property`
 - **AND** the caller does not map a metadata role to a BSL kind
 
 #### Scenario: Selector is not in the accepted corpus
 
 - **WHEN** a caller supplies an unknown selector, a form command/element/event
-  selector or a generated-member selector
+  selector or an unsupported generated-member selector
 - **THEN** HBK returns normal absence
 - **AND** it does not infer a kind from spelling, source data or a template
 
