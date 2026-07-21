@@ -619,12 +619,16 @@ impl<'a> SnapshotMaterializer<'a> {
             let Some(callable) = callables_by_document.get(document_id.as_str()).copied() else {
                 continue;
             };
+            let Some(document) = documents_by_id.get(document_id.as_str()) else {
+                continue;
+            };
             let normalized_context_key = normalize_lookup_key(&context_key);
-            push_lookup_with_owner_key(
+            let owner = self.builder.intern(&normalized_context_key);
+            push_owner_lookup(
                 &mut module_event_names,
                 &mut self.builder,
-                &normalized_context_key,
-                &normalized_context_key,
+                owner,
+                &normalize_lookup_key(&document.name.primary),
                 callable,
             );
             let module_kind = normalized_context_key

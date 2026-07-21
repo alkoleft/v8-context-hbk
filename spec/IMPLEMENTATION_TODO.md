@@ -51,6 +51,62 @@ Current first unchecked task: none. Add a new task before implementing new scope
 
 ## Active Tasks
 
+### [x] T173. Resolve one metadata-selected BSL module member without materializing a module context
+
+References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,
+`implementation/solution-context-resolve.md`,
+`implementation/components.md`, OpenSpec change
+`add-exact-bsl-context-member-lookup`.
+
+Scope:
+
+- Add a provisional exact metadata-module BSL member request in
+  `context-resolver-core`, carrying one required source, the existing opaque
+  metadata module-role selector, optional matching domain, canonical name and
+  `MemberQueryKind`.
+- Add one HBK-owned answer enum over the existing property `ContextFact` and
+  `ResolvedCallable`; do not create a field-for-field member DTO or expose
+  `ModuleContextKind` to callers.
+- Route the certified selector only in the composite resolver, then ask that
+  one platform source for a direct indexed answer. SQL adds an intersection of
+  existing name/module-context keys and snapshot materializes the equivalent
+  `(module-context, canonical-name)` lookup; adapters must not call or filter
+  `module_context` or `ResolvedModuleContext`.
+- Preserve `Ok`, `NotFound`, `Ambiguous`, `Unsupported` and `ResolveError`
+  without fallback. Do not add metadata/analyzer dependencies, an HBK cache or
+  a new SQLite schema/index family. The existing derived snapshot cache must
+  advance its layout version if the physical event-index key semantics change.
+
+Verification:
+
+- RED-first core, SQL adapter and snapshot adapter tests for the explicit
+  supported role×kind matrix and property/method/event answers; source/domain isolation; not-found, ambiguity,
+  unsupported and provider error; SQL/snapshot primary-name parity (an alias
+  is absence); a binary-cache regression that forces the preceding snapshot
+  layout version to rebuild before deserialization and then resolves an exact
+  event; and a structural guard against calling or filtering `module_context`
+  in the exact path;
+- `cargo test -p context-resolver-core`;
+- `cargo test -p context-resolver-search`;
+- `cargo fmt --all --check`;
+- strict validation of the named OpenSpec change.
+
+Completion notes:
+
+- `MetadataModuleMemberLookup` selects exactly one platform source, and
+  `ResolvedBslContextMember` preserves existing property/callable evidence;
+  selector dispatch remains HBK-owned.
+- SQL and snapshot paths use direct primary-name lookups. They preserve exact
+  ambiguity and never call or traverse `module_context`; aliases are normal
+  absence for exact events.
+- The existing derived snapshot cache advances to layout version 3 and a
+  previous layout is verified to rebuild before it can serve exact event
+  lookups.
+- Passed `cargo test -p context-resolver-core`, `cargo test -p
+  syntax-helper-search`, `cargo test -p context-resolver-search`, `cargo fmt
+  --all --check` and `openspec validate
+  add-exact-bsl-context-member-lookup --strict`.
+
 ### [x] T172. Resolve metadata-generated self roles through the HBK template boundary
 
 References: FR-CTX-RESOLVE-001, `implementation/solution-context-resolve.md`,

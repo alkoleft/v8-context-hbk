@@ -416,6 +416,68 @@ impl ContextSource for PlatformSearchSource {
         }]))
     }
 
+    fn module_context_member(
+        &self,
+        query: ModuleContextMemberLookup<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        if !context.is_source_active(&self.source_id)
+            || query.language != GlobalContextLanguage::Bsl
+            || query.domain != LanguageDomain::PlatformApi
+        {
+            return Ok(ResolveResponse::not_found(
+                "platform source does not expose requested module member",
+            ));
+        }
+        let facts = match query.kind {
+            MemberQueryKind::Property => self
+                .index
+                .get_by_name(query.name)
+                .map_err(|source| self.source_failure(source))?
+                .into_iter()
+                .filter(|hit| hit.document.kind == SearchDocumentKind::GlobalProperty)
+                .map(|hit| ResolvedBslContextMember::Property(self.map_global_property(hit.document)))
+                .collect(),
+            MemberQueryKind::Method => self
+                .index
+                .get_by_name(query.name)
+                .map_err(|source| self.source_failure(source))?
+                .into_iter()
+                .filter(|hit| hit.document.kind == SearchDocumentKind::GlobalMethod)
+                .filter_map(|hit| self.map_callable(hit).transpose())
+                .collect::<Result<Vec<_>, ResolveError>>()?
+                .into_iter()
+                .map(ResolvedBslContextMember::Callable)
+                .collect(),
+            MemberQueryKind::Event => self
+                .index
+                .module_event_by_context_name(
+                    &format!("module_context:{}", query.module_kind.as_str()),
+                    query.name,
+                )
+                .map_err(|source| self.source_failure(source))?
+                .into_iter()
+                .filter(|hit| hit.document.kind == SearchDocumentKind::ModuleEvent)
+                .filter_map(|hit| {
+                    self.map_module_event(hit, &self.module_context_id(query.module_kind))
+                        .transpose()
+                })
+                .collect::<Result<Vec<_>, ResolveError>>()?
+                .into_iter()
+                .map(ResolvedBslContextMember::Callable)
+                .collect(),
+            MemberQueryKind::EnumValue => {
+                return Ok(ResolveResponse::unsupported(
+                    "platform module context does not expose enum-value members",
+                ));
+            }
+        };
+        Ok(response_from_bsl_context_members(
+            facts,
+            "platform module member not found",
+        ))
+    }
+
     fn related(
         &self,
         source: &FactId,

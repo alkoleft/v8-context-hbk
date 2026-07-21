@@ -278,18 +278,6 @@ pub(super) fn push_owner_lookup<Owner: Copy, Value: Copy>(
     });
 }
 
-pub(super) fn push_lookup_with_owner_key<Value: Copy>(
-    output: &mut Vec<OwnerNameLookup<StringId, Value>>,
-    builder: &mut SnapshotBuilder,
-    owner: &str,
-    key: &str,
-    value: Value,
-) {
-    let owner = builder.intern(owner);
-    let key = builder.intern(key);
-    output.push(OwnerNameLookup { owner, key, value });
-}
-
 pub(super) fn sorted_id_lookup<T: Copy + Ord>(
     mut values: Vec<IdLookup<T>>,
     builder: &SnapshotBuilder,
@@ -506,11 +494,22 @@ pub(super) fn lookup_owner_name_by_key<'a, Value: Copy>(
     snapshot: &HbkFactSnapshot,
     key: &str,
 ) -> impl ExactSizeIterator<Item = Value> + 'a + use<'a, Value> {
+    let range = matching_range(index, |candidate| snapshot.string(candidate.owner).cmp(key));
+    index[range].iter().map(|candidate| candidate.value)
+}
+
+pub(super) fn lookup_owner_name_by_key_and_name<'a, Value: Copy>(
+    index: &'a [OwnerNameLookup<StringId, Value>],
+    snapshot: &HbkFactSnapshot,
+    owner: &str,
+    name: &str,
+) -> impl ExactSizeIterator<Item = Value> + 'a + use<'a, Value> {
+    let key = normalize_lookup_key(name);
     let range = matching_range(index, |candidate| {
         snapshot
             .string(candidate.owner)
-            .cmp(key)
-            .then_with(|| snapshot.string(candidate.key).cmp(key))
+            .cmp(owner)
+            .then_with(|| snapshot.string(candidate.key).cmp(&key))
     });
     index[range].iter().map(|candidate| candidate.value)
 }

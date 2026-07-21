@@ -608,6 +608,26 @@ that member. Until HBK extraction/indexing stores dedicated predefined module me
 HBK-backed adapter must report `NotFound` or `Unsupported` with diagnostics instead of fabricating
 an analyzer-side fallback list.
 
+When a caller needs one BSL member of a metadata-selected module, it uses a
+separate exact resolver operation rather than `metadata_module_context` followed
+by a vector scan. The request requires one `SourceId`, keeps the metadata
+module-role selector opaque, adds an optional matching domain, canonical name
+and `MemberQueryKind`, and returns one HBK-owned union of the existing property
+`ContextFact` or `ResolvedCallable`. The composite resolver alone maps certified
+metadata selectors to module kinds. For `object`, `manager` and `form`, source
+adapters use an exact global index for properties/methods and a direct
+`(module-context, canonical-name)` event index; `common`, `command` and
+`record-set` are terminal `NotFound`. This does not expose metadata form facts,
+which remain deferred downstream. `Ok`, `NotFound`, `Ambiguous`, `Unsupported`
+and `ResolveError` remain terminal source outcomes. The operation does not
+create a new context collection, cache, analyzer-shaped answer model or a new
+provider index family outside the corresponding SQL/snapshot event lookup. The
+event name is the provider's normalized primary name; aliases are not a fallback
+spelling. The
+existing derived snapshot cache advances its layout version when the
+module-event index key changes, so prior owner-only cache entries rebuild before
+they can be interpreted as exact `(module-context, canonical-name)` entries.
+
 Responses keep recoverable lookup outcomes as data:
 
 ```rust

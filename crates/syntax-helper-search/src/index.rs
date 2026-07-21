@@ -184,6 +184,42 @@ impl SearchIndex {
         self.hydrate_hits(hits)
     }
 
+    pub fn module_event_by_context_name(
+        &self,
+        module_context_key: &str,
+        name: &str,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        let context_key = normalize_lookup_key(module_context_key);
+        let name = normalize_lookup_key(name);
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT DISTINCT d.id, d.kind, d.name_primary, d.name_alias, d.owner_primary, \
+                 d.owner_alias, d.signature_text, d.description, d.availability_contexts, d.available_since \
+                 FROM document_names n INDEXED BY document_names_key_idx \
+                 JOIN document_names context ON context.document_id = n.document_id \
+                 JOIN documents d ON d.id = n.document_id \
+                 WHERE n.key = ?1 \
+                   AND n.key_kind = 'primary' \
+                   AND context.key = ?2 \
+                   AND context.key_kind = 'module_context' \
+                 ORDER BY d.kind_priority, d.name_primary, d.id",
+            )
+            .map_err(|source| self.sqlite(source))?;
+        let rows = statement
+            .query_map(params![name, context_key], |row| {
+                Ok(SearchHit {
+                    document: document_from_row(row)?,
+                    score: 0,
+                })
+            })
+            .map_err(|source| self.sqlite(source))?;
+        let hits = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| self.sqlite(source))?;
+        self.hydrate_hits(hits)
+    }
+
     pub fn member_by_owner_type_id(
         &self,
         owner_type_id: &str,

@@ -79,6 +79,25 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].document.name.primary, "ПриОткрытии");
         assert_eq!(events[0].document.kind, SearchDocumentKind::ModuleEvent);
+
+        let exact = index
+            .module_event_by_context_name("module_context:form", "ПриОткрытии")
+            .expect("exact module event lookup must not fail");
+        assert_eq!(exact.len(), 1);
+        assert_eq!(exact[0].document.id, events[0].document.id);
+        assert!(
+            index
+                .module_event_by_context_name("module_context:form", "OnOpen")
+                .expect("alias event lookup must not fail")
+                .is_empty(),
+            "exact module-event lookup accepts only the canonical primary name"
+        );
+        assert!(
+            index
+                .module_event_by_context_name("module_context:form", "Неизвестно")
+                .expect("missing exact module event lookup must not fail")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1633,6 +1652,29 @@ mod tests {
         assert_eq!(handle.module_events("module_context:form").len(), 1);
         assert_eq!(
             handle
+                .module_event_by_context_name("module_context:form", "ПриОткрытии")
+                .collect::<Vec<_>>(),
+            handle
+                .module_events("module_context:form")
+                .collect::<Vec<_>>(),
+            "the snapshot keeps a direct context-and-canonical-name event path"
+        );
+        assert!(
+            handle
+                .module_event_by_context_name("module_context:form", "Неизвестно")
+                .next()
+                .is_none(),
+            "an exact event lookup must not enumerate a module context"
+        );
+        assert!(
+            handle
+                .module_event_by_context_name("module_context:form", "OnOpen")
+                .next()
+                .is_none(),
+            "snapshot exact event lookup must match the SQL primary-name contract"
+        );
+        assert_eq!(
+            handle
                 .module_context_events(HbkLanguageDomain::Bsl, "bsl", "form")
                 .into_iter()
                 .collect::<Vec<_>>(),
@@ -1798,7 +1840,13 @@ mod tests {
     fn hbk_fact_snapshot_binary_cache_rebuilds_when_missing_or_invalid() {
         let path = temp_path("hbk-fact-snapshot-cache-invalidation.sqlite");
         let cache_path = temp_path("hbk-fact-snapshot-cache-invalidation.bin");
-        build_test_index_from_context(&path, &metadata(), &fixture_context())
+        let mut context = fixture_context();
+        context.global_context_events.push(module_event(
+            model::ModuleKind::Form,
+            &["Форма", "Form"],
+            "ПриОткрытии",
+        ));
+        build_test_index_from_context(&path, &metadata(), &context)
             .expect("index must build");
 
         let first = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
@@ -1834,6 +1882,29 @@ mod tests {
             .expect("fresh cache must load");
         assert_eq!(loaded.status, HbkFactSnapshotCacheStatus::Loaded);
         assert_eq!(loaded.snapshot, first.snapshot);
+
+        let mut bytes = fs::read(&cache_path).expect("cache bytes must read");
+        overwrite_snapshot_cache_layout_version(&mut bytes, 2);
+        fs::write(&cache_path, bytes).expect("previous-layout cache must write");
+        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
+            .expect("previous snapshot layout must rebuild from SQLite");
+        match rebuilt.status {
+            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
+                assert!(reason.contains("metadata mismatch"));
+            }
+            HbkFactSnapshotCacheStatus::Loaded => {
+                panic!("previous snapshot layout must not load")
+            }
+        }
+        assert_eq!(
+            rebuilt
+                .snapshot
+                .worker_handle()
+                .module_event_by_context_name("module_context:form", "ПриОткрытии")
+                .count(),
+            1,
+            "the rebuilt snapshot must answer the new exact event lookup"
+        );
 
         {
             let connection = Connection::open(&path).expect("index must open for identity mutation");
@@ -1892,7 +1963,7 @@ mod tests {
             source_hbk: "changed.hbk".to_string(),
             ..metadata()
         };
-        build_test_index_from_context(&path, &changed_metadata, &fixture_context())
+        build_test_index_from_context(&path, &changed_metadata, &context)
             .expect("changed source index must rebuild");
         let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
             .expect("stale source cache must rebuild");
@@ -3548,6 +3619,29 @@ mod tests {
             source_hbk: "fixture.hbk".to_string(),
             source_extraction_schema_version: 11,
         }
+    }
+
+    fn overwrite_snapshot_cache_layout_version(bytes: &mut [u8], version: u32) {
+        // Binary cache header: magic, format version, provider version, source
+        // byte/hash identity, three length-prefixed strings, source extraction
+        // version, then snapshot layout version. This intentionally exercises
+        // the persisted header rather than a private cache implementation.
+        let mut offset = 8 + 4 + 4 + 8 + 8;
+        for _ in 0..3 {
+            let length = bytes
+                .get(offset..offset + 8)
+                .expect("cache string length must fit")
+                .try_into()
+                .expect("cache string length must have eight bytes");
+            let length = usize::try_from(u64::from_le_bytes(length))
+                .expect("cache string length must fit usize");
+            offset += 8 + length;
+        }
+        offset += 4;
+        bytes
+            .get_mut(offset..offset + 4)
+            .expect("cache layout version must fit")
+            .copy_from_slice(&version.to_le_bytes());
     }
 
     fn lookup_summary(snapshot: &HbkFactSnapshot) -> Vec<usize> {

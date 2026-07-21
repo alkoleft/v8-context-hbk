@@ -861,6 +861,61 @@ impl ContextSource for PlatformSnapshotSource {
         }]))
     }
 
+    fn module_context_member(
+        &self,
+        query: ModuleContextMemberLookup<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        if !context.is_source_active(&self.source_id)
+            || query.language != GlobalContextLanguage::Bsl
+            || query.domain != LanguageDomain::PlatformApi
+        {
+            return Ok(ResolveResponse::not_found(
+                "platform snapshot source does not expose requested module member",
+            ));
+        }
+        let handle = self.snapshot.worker_handle();
+        let facts = match query.kind {
+            MemberQueryKind::Property => handle
+                .globals_by_domain_name_kind(
+                    HbkLanguageDomain::Bsl,
+                    query.name,
+                    Some(HbkGlobalFactKind::Property),
+                )
+                .map(|id| ResolvedBslContextMember::Property(self.map_global_property(id)))
+                .collect(),
+            MemberQueryKind::Method => handle
+                .globals_by_domain_name_kind(
+                    HbkLanguageDomain::Bsl,
+                    query.name,
+                    Some(HbkGlobalFactKind::Method),
+                )
+                .filter_map(|id| self.snapshot.global_fact(id).callable)
+                .map(|id| ResolvedBslContextMember::Callable(self.map_callable(id)))
+                .collect(),
+            MemberQueryKind::Event => handle
+                .module_event_by_context_name(
+                    &format!("module_context:{}", query.module_kind.as_str()),
+                    query.name,
+                )
+                .map(|id| {
+                    let mut callable = self.map_callable(id);
+                    callable.fact.owner = Some(self.module_context_id(query.module_kind));
+                    ResolvedBslContextMember::Callable(callable)
+                })
+                .collect(),
+            MemberQueryKind::EnumValue => {
+                return Ok(ResolveResponse::unsupported(
+                    "platform module context does not expose enum-value members",
+                ));
+            }
+        };
+        Ok(response_from_bsl_context_members(
+            facts,
+            "platform module member not found",
+        ))
+    }
+
     fn related(
         &self,
         source: &FactId,

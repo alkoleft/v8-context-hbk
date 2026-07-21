@@ -6,7 +6,8 @@ mod tests {
 
     use context_resolver_core::{
         CallableLookup, CompositeResolver, ContextResolver, ContextSource, GlobalContextLanguage,
-        GlobalContextQuery, MemberQuery, PlatformTypeTemplateKey, RelationKind, ResolveContext,
+        GlobalContextQuery, MemberQuery, MemberQueryKind, ModuleContextMemberLookup,
+        ModuleContextKind, PlatformTypeTemplateKey, RelationKind, ResolveContext,
         ResolveError, ResolveStatus, TemplateParameterBinding, TypeLookup,
         WorkerSafeCompositeResolver,
     };
@@ -1133,6 +1134,95 @@ mod tests {
             availability.facts[0].availability.since.as_deref(),
             Some("8.3.1")
         );
+    }
+
+    #[test]
+    fn platform_adapter_resolves_exact_module_members_without_context_enumeration() {
+        let adapter = PlatformSearchSource::with_source_id(
+            fixture_index("platform-module-member-exact.sqlite"),
+            fixture_source(),
+        );
+        let request = |name, kind| ModuleContextMemberLookup {
+            language: GlobalContextLanguage::Bsl,
+            domain: LanguageDomain::PlatformApi,
+            module_kind: ModuleContextKind::Form,
+            name,
+            kind,
+        };
+
+        let property = adapter
+            .module_context_member(request("ТекущийОтбор", MemberQueryKind::Property), &ResolveContext::all())
+            .expect("exact property lookup must not fail");
+        assert_eq!(property.status, ResolveStatus::Ok);
+        let method = adapter
+            .module_context_member(request("Сообщить", MemberQueryKind::Method), &ResolveContext::all())
+            .expect("exact method lookup must not fail");
+        assert_eq!(method.status, ResolveStatus::Ok);
+        let event = adapter
+            .module_context_member(request("ПриОткрытии", MemberQueryKind::Event), &ResolveContext::all())
+            .expect("exact event lookup must not fail");
+        assert_eq!(event.status, ResolveStatus::Ok);
+        assert_eq!(
+            adapter
+                .module_context_member(request("Неизвестно", MemberQueryKind::Event), &ResolveContext::all())
+                .expect("missing exact event lookup must not fail")
+                .status,
+            ResolveStatus::NotFound
+        );
+    }
+
+    #[test]
+    fn platform_snapshot_resolves_exact_module_events_without_context_enumeration() {
+        let source = fixture_source();
+        let index = fixture_index("platform-snapshot-module-member-exact.sqlite");
+        let snapshot =
+            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+        let adapter = PlatformSnapshotSource::with_source_id(snapshot, source);
+
+        let response = adapter
+            .module_context_member(
+                ModuleContextMemberLookup {
+                    language: GlobalContextLanguage::Bsl,
+                    domain: LanguageDomain::PlatformApi,
+                    module_kind: ModuleContextKind::Form,
+                    name: "ПриОткрытии",
+                    kind: MemberQueryKind::Event,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("exact snapshot event lookup must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ok);
+        assert_eq!(response.facts.len(), 1);
+    }
+
+    #[test]
+    fn exact_module_event_ambiguity_is_preserved_by_sql_and_snapshot_adapters() {
+        let source = fixture_source();
+        let index = ambiguous_module_member_index("platform-module-member-ambiguous.sqlite");
+        let snapshot =
+            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+        let query = ModuleContextMemberLookup {
+            language: GlobalContextLanguage::Bsl,
+            domain: LanguageDomain::PlatformApi,
+            module_kind: ModuleContextKind::Form,
+            name: "ПриОткрытии",
+            kind: MemberQueryKind::Event,
+        };
+
+        let search = PlatformSearchSource::with_source_id(index, source.clone());
+        let search_response = search
+            .module_context_member(query, &ResolveContext::all())
+            .expect("ambiguous SQL event lookup must not fail");
+        assert_eq!(search_response.status, ResolveStatus::Ambiguous);
+        assert_eq!(search_response.candidates.len(), 2);
+
+        let snapshot = PlatformSnapshotSource::with_source_id(snapshot, source);
+        let snapshot_response = snapshot
+            .module_context_member(query, &ResolveContext::all())
+            .expect("ambiguous snapshot event lookup must not fail");
+        assert_eq!(snapshot_response.status, ResolveStatus::Ambiguous);
+        assert_eq!(snapshot_response.candidates.len(), 2);
     }
 
     #[test]
@@ -2480,6 +2570,24 @@ mod tests {
     fn fixture_index(file_name: &str) -> SearchIndex {
         let path = fixture_index_path(file_name);
         SearchIndex::open_read_only(path).expect("index must open")
+    }
+
+    fn ambiguous_module_member_index(file_name: &str) -> SearchIndex {
+        let path = temp_path(file_name);
+        let mut builder = SearchIndexBuilder::new();
+        for (owner, alias) in [("ПерваяФорма", "FirstOnOpen"), ("ВтораяФорма", "SecondOnOpen")] {
+            builder
+                .global_context_event(module_event(
+                    model::ModuleKind::Form,
+                    &[owner],
+                    "ПриОткрытии",
+                    alias,
+                ))
+                .expect("ambiguous module event must sink");
+        }
+        build_index_from_builder(&path, &metadata(), builder)
+            .expect("ambiguous module-event index must build");
+        SearchIndex::open_read_only(path).expect("ambiguous module-event index must open")
     }
 
     fn generated_self_selector_index(file_name: &str, duplicate_catalog_manager: bool) -> SearchIndex {

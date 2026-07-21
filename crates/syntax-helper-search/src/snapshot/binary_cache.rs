@@ -5,7 +5,7 @@ use super::*;
 
 const MAGIC: &[u8; 8] = b"HBKFSN1\0";
 const CACHE_FORMAT_VERSION: u32 = 3;
-const SNAPSHOT_LAYOUT_VERSION: u32 = 2;
+const SNAPSHOT_LAYOUT_VERSION: u32 = 3;
 const SNAPSHOT_LAYOUT_FLAGS: u64 = 0;
 const MAX_CACHE_PAYLOAD_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_CACHE_STRING_BYTES: usize = 16 * 1024 * 1024;

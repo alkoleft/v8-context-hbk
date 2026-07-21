@@ -288,3 +288,32 @@ fn response_from_resolved_callables(
         ),
     }
 }
+
+fn response_from_bsl_context_members(
+    facts: Vec<ResolvedBslContextMember>,
+    not_found: &'static str,
+) -> ResolveResponse<ResolvedBslContextMember> {
+    match facts.len() {
+        0 => ResolveResponse::not_found(not_found),
+        1 => ResolveResponse::ok(facts),
+        _ => ResolveResponse::ambiguous(
+            facts
+                .iter()
+                .map(|fact| match fact {
+                    ResolvedBslContextMember::Property(fact) => {
+                        context_resolver_core::ResolveCandidate {
+                            id: fact.id.clone(),
+                            name: fact.name.clone(),
+                        }
+                    }
+                    ResolvedBslContextMember::Callable(callable) => {
+                        context_resolver_core::ResolveCandidate {
+                            id: callable.id.0.clone(),
+                            name: callable.fact.name.clone(),
+                        }
+                    }
+                })
+                .collect(),
+        ),
+    }
+}

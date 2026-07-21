@@ -283,6 +283,20 @@ impl<'a> HbkFactReadHandle<'a> {
         lookup_owner_name_by_key(&self.snapshot.module_event_names, self.snapshot, &key)
     }
 
+    pub fn module_event_by_context_name(
+        &self,
+        module_context_key: &str,
+        name: &str,
+    ) -> impl ExactSizeIterator<Item = HbkCallableId> + '_ {
+        let owner = normalize_lookup_key(module_context_key);
+        lookup_owner_name_by_key_and_name(
+            &self.snapshot.module_event_names,
+            self.snapshot,
+            &owner,
+            name,
+        )
+    }
+
     pub fn module_context_events(
         &self,
         domain: HbkLanguageDomain,

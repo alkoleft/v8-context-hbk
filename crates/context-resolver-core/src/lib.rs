@@ -603,6 +603,37 @@ pub struct MetadataModuleContextLookup<'a> {
     pub metadata_module_role: &'a str,
 }
 
+/// One exact BSL member visible through a metadata-certified module role.
+///
+/// The source is mandatory so the composite resolver never merges or chooses
+/// between answers from separate provider sources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MetadataModuleMemberLookup<'a> {
+    pub source: &'a SourceId,
+    pub domain: Option<LanguageDomain>,
+    pub metadata_module_role: &'a str,
+    pub name: &'a str,
+    pub kind: MemberQueryKind,
+}
+
+/// Provider-owned exact BSL member evidence without a context collection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedBslContextMember {
+    Property(ContextFact),
+    Callable(ResolvedCallable),
+}
+
+/// Source-neutral exact request after the composite has interpreted a certified
+/// metadata module-role selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModuleContextMemberLookup<'a> {
+    pub language: GlobalContextLanguage,
+    pub domain: LanguageDomain,
+    pub module_kind: ModuleContextKind,
+    pub name: &'a str,
+    pub kind: MemberQueryKind,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolveQuery<'a> {
     Id(&'a FactId),
@@ -690,6 +721,16 @@ pub trait ContextSource {
         ))
     }
 
+    fn module_context_member(
+        &self,
+        _query: ModuleContextMemberLookup<'_>,
+        _context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        Ok(ResolveResponse::unsupported(
+            "context source does not expose exact module context members",
+        ))
+    }
+
     fn related(
         &self,
         source: &FactId,
@@ -753,6 +794,16 @@ pub trait ContextResolver {
     ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError> {
         Ok(ResolveResponse::unsupported(
             "context resolver does not expose metadata module context",
+        ))
+    }
+
+    fn metadata_module_member(
+        &self,
+        _query: MetadataModuleMemberLookup<'_>,
+        _context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        Ok(ResolveResponse::unsupported(
+            "context resolver does not expose exact metadata module members",
         ))
     }
 
@@ -1295,6 +1346,54 @@ impl<T: ActiveContextSources> ContextResolver for T {
         )
     }
 
+    fn metadata_module_member(
+        &self,
+        query: MetadataModuleMemberLookup<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        let Some(module_kind) = metadata_module_context_kind(query.metadata_module_role) else {
+            return Ok(ResolveResponse::not_found("metadata module role not found"));
+        };
+        if !matches!(
+            module_kind,
+            ModuleContextKind::Object | ModuleContextKind::Manager | ModuleContextKind::Form
+        ) {
+            return Ok(ResolveResponse::not_found(
+                "metadata module role has no provider-backed exact member",
+            ));
+        }
+        let Some(source) = self.find_active_source(context, query.source) else {
+            return Ok(ResolveResponse::not_found(
+                "metadata module source not found",
+            ));
+        };
+        let descriptor = source.descriptor();
+        if descriptor.domain != LanguageDomain::PlatformApi
+            || query
+                .domain
+                .is_some_and(|domain| domain != descriptor.domain)
+        {
+            return Ok(ResolveResponse::not_found(
+                "metadata module source or domain does not match",
+            ));
+        }
+        if !source.capabilities().module_context {
+            return Ok(ResolveResponse::unsupported(
+                "selected source does not expose module context",
+            ));
+        }
+        source.module_context_member(
+            ModuleContextMemberLookup {
+                language: GlobalContextLanguage::Bsl,
+                domain: LanguageDomain::PlatformApi,
+                module_kind,
+                name: query.name,
+                kind: query.kind,
+            },
+            context,
+        )
+    }
+
     fn related(
         &self,
         source_id: &FactId,
@@ -1402,11 +1501,19 @@ mod tests {
         relations: Vec<(FactId, RelationKind, ContextFact)>,
         global_contexts: Vec<ResolvedGlobalContext>,
         module_contexts: Vec<ResolvedModuleContext>,
+        module_context_members: Vec<(
+            ModuleContextKind,
+            MemberQueryKind,
+            String,
+            ResolvedBslContextMember,
+        )>,
         resolve_type_status: Option<ResolveStatus>,
         callable_status: Option<ResolveStatus>,
         module_context_status: Option<ResolveStatus>,
         module_context_error: Option<&'static str>,
         module_context_capability: bool,
+        module_context_member_status: Option<ResolveStatus>,
+        module_context_member_error: Option<&'static str>,
     }
 
     impl FakeSource {
@@ -1420,11 +1527,14 @@ mod tests {
                 relations: Vec::new(),
                 global_contexts: Vec::new(),
                 module_contexts: Vec::new(),
+                module_context_members: Vec::new(),
                 resolve_type_status: None,
                 callable_status: None,
                 module_context_status: None,
                 module_context_error: None,
                 module_context_capability: true,
+                module_context_member_status: None,
+                module_context_member_error: None,
             }
         }
 
@@ -1552,6 +1662,18 @@ mod tests {
             self
         }
 
+        fn with_module_context_member(
+            mut self,
+            module_kind: ModuleContextKind,
+            kind: MemberQueryKind,
+            name: &str,
+            member: ResolvedBslContextMember,
+        ) -> Self {
+            self.module_context_members
+                .push((module_kind, kind, name.to_string(), member));
+            self
+        }
+
         fn with_resolve_type_status(mut self, status: ResolveStatus) -> Self {
             self.resolve_type_status = Some(status);
             self
@@ -1574,6 +1696,16 @@ mod tests {
 
         fn with_module_context_error(mut self, message: &'static str) -> Self {
             self.module_context_error = Some(message);
+            self
+        }
+
+        fn with_module_context_member_status(mut self, status: ResolveStatus) -> Self {
+            self.module_context_member_status = Some(status);
+            self
+        }
+
+        fn with_module_context_member_error(mut self, message: &'static str) -> Self {
+            self.module_context_member_error = Some(message);
             self
         }
     }
@@ -1799,6 +1931,45 @@ mod tests {
                 return Ok(forced_response(status, facts));
             }
             Ok(single_or_ambiguous(facts, "module context not found"))
+        }
+
+        fn module_context_member(
+            &self,
+            query: ModuleContextMemberLookup<'_>,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+            if let Some(message) = self.module_context_member_error {
+                return Err(ResolveError::SourceFailure {
+                    source_id: self.source.clone(),
+                    message: message.to_string(),
+                });
+            }
+            if let Some(status) = self.module_context_member_status {
+                return Ok(match status {
+                    ResolveStatus::Ok => ResolveResponse::ok(Vec::new()),
+                    ResolveStatus::Ambiguous => ResolveResponse::ambiguous(Vec::new()),
+                    ResolveStatus::Unsupported => {
+                        ResolveResponse::unsupported("forced member unsupported")
+                    }
+                    ResolveStatus::NotFound => {
+                        ResolveResponse::not_found("forced member not found")
+                    }
+                });
+            }
+            if query.kind == MemberQueryKind::EnumValue {
+                return Ok(ResolveResponse::unsupported(
+                    "module context enum values are unsupported",
+                ));
+            }
+            let facts = self
+                .module_context_members
+                .iter()
+                .filter(|(module_kind, kind, name, _)| {
+                    *module_kind == query.module_kind && *kind == query.kind && name == query.name
+                })
+                .map(|(_, _, _, member)| member.clone())
+                .collect();
+            Ok(ResolveResponse::ok(facts))
         }
 
         fn related(
@@ -2360,6 +2531,239 @@ mod tests {
     }
 
     #[test]
+    fn metadata_module_member_uses_one_platform_source_and_exact_role_kind() {
+        let source = SourceId::new("platform");
+        let resolver = CompositeResolver::new(vec![
+            Box::new(
+                FakeSource::new("platform", LanguageDomain::PlatformApi)
+                    .with_module_context_member(
+                        ModuleContextKind::Object,
+                        MemberQueryKind::Property,
+                        "Наименование",
+                        ResolvedBslContextMember::Property(module_context_property(
+                            &source,
+                            "object-property:name",
+                            "Наименование",
+                        )),
+                    )
+                    .with_module_context_member(
+                        ModuleContextKind::Manager,
+                        MemberQueryKind::Method,
+                        "Создать",
+                        ResolvedBslContextMember::Callable(module_context_callable(
+                            &source,
+                            "manager-method:create",
+                            "Создать",
+                            CallableKind::Method,
+                        )),
+                    )
+                    .with_module_context_member(
+                        ModuleContextKind::Form,
+                        MemberQueryKind::Event,
+                        "ПриОткрытии",
+                        ResolvedBslContextMember::Callable(module_context_callable(
+                            &source,
+                            "form-event:on-open",
+                            "ПриОткрытии",
+                            CallableKind::Event,
+                        )),
+                    ),
+            ),
+            Box::new(FakeSource::new("bsl", LanguageDomain::BslLanguage)),
+        ]);
+
+        let object_property = resolver
+            .metadata_module_member(
+                MetadataModuleMemberLookup {
+                    source: &source,
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                    name: "Наименование",
+                    kind: MemberQueryKind::Property,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("exact object property lookup must not fail");
+        assert!(matches!(
+            object_property.facts.as_slice(),
+            [ResolvedBslContextMember::Property(fact)] if fact.name.primary == "Наименование"
+        ));
+
+        let manager_method = resolver
+            .metadata_module_member(
+                MetadataModuleMemberLookup {
+                    source: &source,
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.manager",
+                    name: "Создать",
+                    kind: MemberQueryKind::Method,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("exact manager method lookup must not fail");
+        assert!(matches!(
+            manager_method.facts.as_slice(),
+            [ResolvedBslContextMember::Callable(callable)] if callable.info.kind == CallableKind::Method
+        ));
+
+        let form_event = resolver
+            .metadata_module_member(
+                MetadataModuleMemberLookup {
+                    source: &source,
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.form",
+                    name: "ПриОткрытии",
+                    kind: MemberQueryKind::Event,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("exact form event lookup must not fail");
+        assert!(matches!(
+            form_event.facts.as_slice(),
+            [ResolvedBslContextMember::Callable(callable)] if callable.info.kind == CallableKind::Event
+        ));
+
+        for (metadata_module_role, name, kind, expected_status) in [
+            (
+                "metadata.module-role.common",
+                "ЛюбойЧлен",
+                MemberQueryKind::Property,
+                ResolveStatus::NotFound,
+            ),
+            (
+                "metadata.module-role.unknown",
+                "ЛюбойЧлен",
+                MemberQueryKind::Property,
+                ResolveStatus::NotFound,
+            ),
+            (
+                "metadata.module-role.object",
+                "Наименование",
+                MemberQueryKind::EnumValue,
+                ResolveStatus::Unsupported,
+            ),
+        ] {
+            let response = resolver
+                .metadata_module_member(
+                    MetadataModuleMemberLookup {
+                        source: &source,
+                        domain: Some(LanguageDomain::PlatformApi),
+                        metadata_module_role,
+                        name,
+                        kind,
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("terminal exact member outcome must not fail");
+            assert_eq!(response.status, expected_status, "{metadata_module_role}");
+        }
+
+        let missing_source = SourceId::new("missing");
+        let missing_source_response = resolver
+            .metadata_module_member(
+                MetadataModuleMemberLookup {
+                    source: &missing_source,
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                    name: "Наименование",
+                    kind: MemberQueryKind::Property,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("missing required source must be normal absence");
+        assert_eq!(missing_source_response.status, ResolveStatus::NotFound);
+
+        let wrong_domain = resolver
+            .metadata_module_member(
+                MetadataModuleMemberLookup {
+                    source: &source,
+                    domain: Some(LanguageDomain::BslLanguage),
+                    metadata_module_role: "metadata.module-role.object",
+                    name: "Наименование",
+                    kind: MemberQueryKind::Property,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("mismatched domain must be normal absence");
+        assert_eq!(wrong_domain.status, ResolveStatus::NotFound);
+    }
+
+    #[test]
+    fn metadata_module_member_preserves_source_terminal_outcomes() {
+        let source = SourceId::new("platform");
+        for status in [ResolveStatus::Ambiguous, ResolveStatus::Unsupported] {
+            let resolver = CompositeResolver::new(vec![Box::new(
+                FakeSource::new("platform", LanguageDomain::PlatformApi)
+                    .with_module_context_member_status(status),
+            )]);
+            let response = resolver
+                .metadata_module_member(
+                    MetadataModuleMemberLookup {
+                        source: &source,
+                        domain: Some(LanguageDomain::PlatformApi),
+                        metadata_module_role: "metadata.module-role.object",
+                        name: "Наименование",
+                        kind: MemberQueryKind::Property,
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("terminal source status must not become an error");
+            assert_eq!(response.status, status);
+        }
+
+        let failed = CompositeResolver::new(vec![Box::new(
+            FakeSource::new("platform", LanguageDomain::PlatformApi)
+                .with_module_context_member_error("provider failed"),
+        )]);
+        let error = failed
+            .metadata_module_member(
+                MetadataModuleMemberLookup {
+                    source: &source,
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                    name: "Наименование",
+                    kind: MemberQueryKind::Property,
+                },
+                &ResolveContext::all(),
+            )
+            .expect_err("provider failure must remain a resolver error");
+        assert!(matches!(
+            error,
+            ResolveError::SourceFailure { source_id, message }
+                if source_id == source && message == "provider failed"
+        ));
+    }
+
+    #[test]
+    fn exact_module_member_paths_do_not_materialize_module_contexts() {
+        let core = include_str!("lib.rs");
+        let core_exact_path = method_body(core, "fn metadata_module_member", "fn related");
+        assert!(
+            !core_exact_path.contains("metadata_module_context("),
+            "the exact composite path must not delegate through the vector operation"
+        );
+        assert!(
+            !core_exact_path.contains("self.module_context("),
+            "the exact composite path must not materialize module context"
+        );
+
+        for source in [
+            include_str!("../../context-resolver-search/src/platform_context_source.rs"),
+            include_str!("../../context-resolver-search/src/snapshot_adapter.rs"),
+        ] {
+            let exact_path = method_body(source, "fn module_context_member", "fn related");
+            assert!(
+                !exact_path.contains(".module_context("),
+                "source exact lookup must not enumerate module context"
+            );
+            assert!(
+                !exact_path.contains("ResolvedModuleContext"),
+                "source exact lookup must not traverse a module-context DTO"
+            );
+        }
+    }
+
+    #[test]
     fn metadata_module_role_default_is_unsupported() {
         let resolver = DefaultMetadataResolver;
         let response = resolver
@@ -2843,5 +3247,66 @@ mod tests {
             }),
             relations: Vec::new(),
         }
+    }
+
+    fn module_context_property(source: &SourceId, local_id: &str, name: &str) -> ContextFact {
+        ContextFact {
+            id: FactId::new(
+                source.clone(),
+                LanguageDomain::PlatformApi,
+                FactKind::Member,
+                local_id,
+            ),
+            name: Name::new(name, None::<String>),
+            owner: None,
+            details: FactDetails::Member(MemberInfo {
+                kind: MemberKind::Property,
+                types: Vec::new(),
+                description: None,
+            }),
+            relations: Vec::new(),
+        }
+    }
+
+    fn module_context_callable(
+        source: &SourceId,
+        local_id: &str,
+        name: &str,
+        kind: CallableKind,
+    ) -> ResolvedCallable {
+        let id = CallableId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Callable,
+            local_id,
+        ));
+        let info = CallableInfo {
+            kind,
+            signatures: Vec::new(),
+            return_types: Vec::new(),
+            description: None,
+        };
+        ResolvedCallable {
+            id: id.clone(),
+            owner: None,
+            fact: ContextFact {
+                id: id.0,
+                name: Name::new(name, None::<String>),
+                owner: None,
+                details: FactDetails::Callable(info.clone()),
+                relations: Vec::new(),
+            },
+            info,
+        }
+    }
+
+    fn method_body<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+        let (_, source) = source
+            .rsplit_once(start)
+            .expect("guarded method must exist");
+        let (body, _) = source
+            .split_once(end)
+            .expect("guarded method must end before the next trait method");
+        body
     }
 }
