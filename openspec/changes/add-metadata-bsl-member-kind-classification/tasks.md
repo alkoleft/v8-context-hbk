@@ -31,3 +31,12 @@
     after the generated-member-property corpus extension. The same 13
     pre-existing `snapshot_adapter.rs` Clippy findings remain the only blocker;
     this diff changes no search adapter.
+  - 2026-07-21 downstream handoff for `v8-context` task 3.9: HBK now exposes
+    source-owned metadata-module member enumeration through
+    `ContextResolver::metadata_module_members` and
+    `ContextSource::module_context_members`. SQL and snapshot adapters enumerate
+    global properties, global methods and module events from their owned indexes
+    without materializing `ResolvedModuleContext`; focused core/search tests and
+    the module-context structural guard cover the flow. This is a resolver
+    prerequisite for analyzer enumeration, not a new metadata-generated-member
+    classifier mapping.

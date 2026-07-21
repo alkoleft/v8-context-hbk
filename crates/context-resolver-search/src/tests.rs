@@ -7,6 +7,7 @@ mod tests {
     use context_resolver_core::{
         CallableLookup, CompositeResolver, ContextResolver, ContextSource, GlobalContextLanguage,
         GlobalContextQuery, MemberQuery, MemberQueryKind, ModuleContextMemberLookup,
+        ModuleContextMembersLookup,
         ModuleContextKind, PlatformTypeTemplateKey, RelationKind, ResolveContext,
         ResolveError, ResolveStatus, TemplateParameterBinding, TypeLookup,
         WorkerSafeCompositeResolver,
@@ -1169,6 +1170,50 @@ mod tests {
                 .status,
             ResolveStatus::NotFound
         );
+    }
+
+    #[test]
+    fn platform_adapters_enumerate_module_members_without_context_snapshot_filtering() {
+        let source = fixture_source();
+        let index = fixture_index("platform-module-member-enumeration.sqlite");
+        let snapshot =
+            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+        let query = ModuleContextMembersLookup {
+            language: GlobalContextLanguage::Bsl,
+            domain: LanguageDomain::PlatformApi,
+            module_kind: ModuleContextKind::Form,
+        };
+
+        let search = PlatformSearchSource::with_source_id(index, source.clone());
+        let search_response = search
+            .module_context_members(query, &ResolveContext::all())
+            .expect("SQL module member enumeration must not fail");
+        assert_eq!(search_response.status, ResolveStatus::Ok);
+        assert!(
+            search_response
+                .facts
+                .iter()
+                .any(|member| matches!(member, context_resolver_core::ResolvedBslContextMember::Property(fact) if fact.name.primary == "ТекущийОтбор"))
+        );
+        assert!(
+            search_response
+                .facts
+                .iter()
+                .any(|member| matches!(member, context_resolver_core::ResolvedBslContextMember::Callable(callable) if callable.fact.name.primary == "Сообщить"))
+        );
+        assert!(
+            search_response
+                .facts
+                .iter()
+                .any(|member| matches!(member, context_resolver_core::ResolvedBslContextMember::Callable(callable) if callable.fact.name.primary == "ПриОткрытии"))
+        );
+
+        let snapshot = PlatformSnapshotSource::with_source_id(snapshot, source);
+        let snapshot_response = snapshot
+            .module_context_members(query, &ResolveContext::all())
+            .expect("snapshot module member enumeration must not fail");
+        assert_eq!(snapshot_response.status, ResolveStatus::Ok);
+        assert_eq!(snapshot_response.facts.len(), search_response.facts.len());
     }
 
     #[test]

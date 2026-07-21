@@ -916,6 +916,66 @@ impl ContextSource for PlatformSnapshotSource {
         ))
     }
 
+    fn module_context_members(
+        &self,
+        query: ModuleContextMembersLookup,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        if !context.is_source_active(&self.source_id)
+            || query.language != GlobalContextLanguage::Bsl
+            || query.domain != LanguageDomain::PlatformApi
+        {
+            return Ok(ResolveResponse::not_found(
+                "platform snapshot source does not expose requested module members",
+            ));
+        }
+        let Some(search_key) = search_module_context_relation_key(query.module_kind) else {
+            return Ok(ResolveResponse::unsupported(format!(
+                "platform module context `{}` is not provider-backed by the HBK search index",
+                query.module_kind.as_str()
+            )));
+        };
+
+        let handle = self.snapshot.worker_handle();
+        let context_id = self.module_context_id(query.module_kind);
+        let mut facts = Vec::new();
+        for id in handle.global_fact_ids() {
+            let global = self.snapshot.global_fact(id);
+            match global.kind {
+                HbkGlobalFactKind::Property => {
+                    facts.push(ResolvedBslContextMember::Property(self.map_global_property(id)));
+                }
+                HbkGlobalFactKind::Method => {
+                    if let Some(callable) = global.callable {
+                        facts.push(ResolvedBslContextMember::Callable(
+                            self.map_callable(callable),
+                        ));
+                    }
+                }
+            }
+        }
+        facts.extend(
+            handle
+                .module_context_events(
+                    HbkLanguageDomain::Bsl,
+                    "bsl",
+                    search_key.trim_start_matches("module_context:"),
+                )
+                .into_iter()
+                .map(|id| {
+                    let mut callable = self.map_callable(id);
+                    callable.fact.owner = Some(context_id.clone());
+                    ResolvedBslContextMember::Callable(callable)
+                }),
+        );
+        if facts.is_empty() {
+            return Ok(ResolveResponse::not_found(
+                "platform module members not found",
+            ));
+        }
+        Ok(ResolveResponse::ok(facts))
+    }
+
     fn related(
         &self,
         source: &FactId,

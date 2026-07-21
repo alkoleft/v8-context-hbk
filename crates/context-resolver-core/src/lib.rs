@@ -618,6 +618,17 @@ pub struct MetadataModuleMemberLookup<'a> {
     pub kind: MemberQueryKind,
 }
 
+/// Deterministic BSL members visible through a metadata-certified module role.
+///
+/// The source is mandatory so the composite resolver never merges or chooses
+/// between answers from separate provider sources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MetadataModuleMembersLookup<'a> {
+    pub source: &'a SourceId,
+    pub domain: Option<LanguageDomain>,
+    pub metadata_module_role: &'a str,
+}
+
 /// Provider-owned exact BSL member evidence without a context collection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedBslContextMember {
@@ -634,6 +645,15 @@ pub struct ModuleContextMemberLookup<'a> {
     pub module_kind: ModuleContextKind,
     pub name: &'a str,
     pub kind: MemberQueryKind,
+}
+
+/// Source-neutral enumeration request after the composite has interpreted a
+/// certified metadata module-role selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModuleContextMembersLookup {
+    pub language: GlobalContextLanguage,
+    pub domain: LanguageDomain,
+    pub module_kind: ModuleContextKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -733,6 +753,16 @@ pub trait ContextSource {
         ))
     }
 
+    fn module_context_members(
+        &self,
+        _query: ModuleContextMembersLookup,
+        _context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        Ok(ResolveResponse::unsupported(
+            "context source does not expose module context member enumeration",
+        ))
+    }
+
     fn related(
         &self,
         source: &FactId,
@@ -806,6 +836,16 @@ pub trait ContextResolver {
     ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
         Ok(ResolveResponse::unsupported(
             "context resolver does not expose exact metadata module members",
+        ))
+    }
+
+    fn metadata_module_members(
+        &self,
+        _query: MetadataModuleMembersLookup<'_>,
+        _context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        Ok(ResolveResponse::unsupported(
+            "context resolver does not expose metadata module member enumeration",
         ))
     }
 
@@ -1396,6 +1436,52 @@ impl<T: ActiveContextSources> ContextResolver for T {
         )
     }
 
+    fn metadata_module_members(
+        &self,
+        query: MetadataModuleMembersLookup<'_>,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        let Some(module_kind) = metadata_module_context_kind(query.metadata_module_role) else {
+            return Ok(ResolveResponse::not_found("metadata module role not found"));
+        };
+        if !matches!(
+            module_kind,
+            ModuleContextKind::Object | ModuleContextKind::Manager | ModuleContextKind::Form
+        ) {
+            return Ok(ResolveResponse::not_found(
+                "metadata module role has no provider-backed member enumeration",
+            ));
+        }
+        let Some(source) = self.find_active_source(context, query.source) else {
+            return Ok(ResolveResponse::not_found(
+                "metadata module source not found",
+            ));
+        };
+        let descriptor = source.descriptor();
+        if descriptor.domain != LanguageDomain::PlatformApi
+            || query
+                .domain
+                .is_some_and(|domain| domain != descriptor.domain)
+        {
+            return Ok(ResolveResponse::not_found(
+                "metadata module source or domain does not match",
+            ));
+        }
+        if !source.capabilities().module_context {
+            return Ok(ResolveResponse::unsupported(
+                "selected source does not expose module context",
+            ));
+        }
+        source.module_context_members(
+            ModuleContextMembersLookup {
+                language: GlobalContextLanguage::Bsl,
+                domain: LanguageDomain::PlatformApi,
+                module_kind,
+            },
+            context,
+        )
+    }
+
     fn related(
         &self,
         source_id: &FactId,
@@ -1969,6 +2055,38 @@ mod tests {
                 .filter(|(module_kind, kind, name, _)| {
                     *module_kind == query.module_kind && *kind == query.kind && name == query.name
                 })
+                .map(|(_, _, _, member)| member.clone())
+                .collect();
+            Ok(ResolveResponse::ok(facts))
+        }
+
+        fn module_context_members(
+            &self,
+            query: ModuleContextMembersLookup,
+            _context: &ResolveContext<'_>,
+        ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+            if let Some(message) = self.module_context_member_error {
+                return Err(ResolveError::SourceFailure {
+                    source_id: self.source.clone(),
+                    message: message.to_string(),
+                });
+            }
+            if let Some(status) = self.module_context_member_status {
+                return Ok(match status {
+                    ResolveStatus::Ok => ResolveResponse::ok(Vec::new()),
+                    ResolveStatus::Ambiguous => ResolveResponse::ambiguous(Vec::new()),
+                    ResolveStatus::Unsupported => {
+                        ResolveResponse::unsupported("forced member unsupported")
+                    }
+                    ResolveStatus::NotFound => {
+                        ResolveResponse::not_found("forced member not found")
+                    }
+                });
+            }
+            let facts = self
+                .module_context_members
+                .iter()
+                .filter(|(module_kind, _, _, _)| *module_kind == query.module_kind)
                 .map(|(_, _, _, member)| member.clone())
                 .collect();
             Ok(ResolveResponse::ok(facts))
@@ -2691,6 +2809,68 @@ mod tests {
     }
 
     #[test]
+    fn metadata_module_members_routes_to_source_owned_enumeration() {
+        let source = SourceId::new("platform");
+        let resolver = CompositeResolver::new(vec![Box::new(
+            FakeSource::new("platform", LanguageDomain::PlatformApi)
+                .with_module_context_member(
+                    ModuleContextKind::Object,
+                    MemberQueryKind::Property,
+                    "Наименование",
+                    ResolvedBslContextMember::Property(module_context_property(
+                        &source,
+                        "object-property:name",
+                        "Наименование",
+                    )),
+                )
+                .with_module_context_member(
+                    ModuleContextKind::Object,
+                    MemberQueryKind::Method,
+                    "Записать",
+                    ResolvedBslContextMember::Callable(module_context_callable(
+                        &source,
+                        "object-method:write",
+                        "Записать",
+                        CallableKind::Method,
+                    )),
+                )
+                .with_module_context_member(
+                    ModuleContextKind::Manager,
+                    MemberQueryKind::Method,
+                    "Создать",
+                    ResolvedBslContextMember::Callable(module_context_callable(
+                        &source,
+                        "manager-method:create",
+                        "Создать",
+                        CallableKind::Method,
+                    )),
+                ),
+        )]);
+
+        let response = resolver
+            .metadata_module_members(
+                MetadataModuleMembersLookup {
+                    source: &source,
+                    domain: Some(LanguageDomain::PlatformApi),
+                    metadata_module_role: "metadata.module-role.object",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("metadata module member enumeration must not fail");
+
+        assert_eq!(response.status, ResolveStatus::Ok);
+        assert_eq!(response.facts.len(), 2);
+        assert!(matches!(
+            &response.facts[0],
+            ResolvedBslContextMember::Property(fact) if fact.name.primary == "Наименование"
+        ));
+        assert!(matches!(
+            &response.facts[1],
+            ResolvedBslContextMember::Callable(callable) if callable.fact.name.primary == "Записать"
+        ));
+    }
+
+    #[test]
     fn metadata_module_member_preserves_source_terminal_outcomes() {
         let source = SourceId::new("platform");
         for status in [ResolveStatus::Ambiguous, ResolveStatus::Unsupported] {
@@ -2748,6 +2928,15 @@ mod tests {
             !core_exact_path.contains("self.module_context("),
             "the exact composite path must not materialize module context"
         );
+        let core_enumeration_path = method_body(core, "fn metadata_module_members", "fn related");
+        assert!(
+            !core_enumeration_path.contains("metadata_module_context("),
+            "the enumeration composite path must not delegate through the vector operation"
+        );
+        assert!(
+            !core_enumeration_path.contains("self.module_context("),
+            "the enumeration composite path must not materialize module context"
+        );
 
         for source in [
             include_str!("../../context-resolver-search/src/platform_context_source.rs"),
@@ -2761,6 +2950,15 @@ mod tests {
             assert!(
                 !exact_path.contains("ResolvedModuleContext"),
                 "source exact lookup must not traverse a module-context DTO"
+            );
+            let enumeration_path = method_body(source, "fn module_context_members", "fn related");
+            assert!(
+                !enumeration_path.contains(".module_context("),
+                "source enumeration must not enumerate module context"
+            );
+            assert!(
+                !enumeration_path.contains("ResolvedModuleContext"),
+                "source enumeration must not traverse a module-context DTO"
             );
         }
     }

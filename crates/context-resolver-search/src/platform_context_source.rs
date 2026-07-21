@@ -478,6 +478,66 @@ impl ContextSource for PlatformSearchSource {
         ))
     }
 
+    fn module_context_members(
+        &self,
+        query: ModuleContextMembersLookup,
+        context: &ResolveContext<'_>,
+    ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
+        if !context.is_source_active(&self.source_id)
+            || query.language != GlobalContextLanguage::Bsl
+            || query.domain != LanguageDomain::PlatformApi
+        {
+            return Ok(ResolveResponse::not_found(
+                "platform source does not expose requested module members",
+            ));
+        }
+        let Some(search_key) = search_module_context_relation_key(query.module_kind) else {
+            return Ok(ResolveResponse::unsupported(format!(
+                "platform module context `{}` is not provider-backed by the HBK search index",
+                query.module_kind.as_str()
+            )));
+        };
+
+        let mut facts = Vec::new();
+        facts.extend(
+            self.index
+                .documents_by_kind(SearchDocumentKind::GlobalProperty)
+                .map_err(|source| self.source_failure(source))?
+                .into_iter()
+                .map(|hit| ResolvedBslContextMember::Property(self.map_global_property(hit.document))),
+        );
+        facts.extend(
+            self.index
+                .documents_by_kind(SearchDocumentKind::GlobalMethod)
+                .map_err(|source| self.source_failure(source))?
+                .into_iter()
+                .filter_map(|hit| self.map_callable(hit).transpose())
+                .collect::<Result<Vec<_>, ResolveError>>()?
+                .into_iter()
+                .map(ResolvedBslContextMember::Callable),
+        );
+        facts.extend(
+            self.index
+                .get_by_name(search_key)
+                .map_err(|source| self.source_failure(source))?
+                .into_iter()
+                .filter(|hit| hit.document.kind == SearchDocumentKind::ModuleEvent)
+                .filter_map(|hit| {
+                    self.map_module_event(hit, &self.module_context_id(query.module_kind))
+                        .transpose()
+                })
+                .collect::<Result<Vec<_>, ResolveError>>()?
+                .into_iter()
+                .map(ResolvedBslContextMember::Callable),
+        );
+        if facts.is_empty() {
+            return Ok(ResolveResponse::not_found(
+                "platform module members not found",
+            ));
+        }
+        Ok(ResolveResponse::ok(facts))
+    }
+
     fn related(
         &self,
         source: &FactId,
