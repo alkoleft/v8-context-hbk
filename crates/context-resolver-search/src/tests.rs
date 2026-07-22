@@ -1969,6 +1969,55 @@ mod tests {
         assert_eq!(source.evidence_id, "query_table:ОсновнаяТаблица");
         assert_eq!(source.locale.as_deref(), Some("ru"));
 
+        for (local_id, expected) in [
+            (
+                "query_table:Справочник",
+                Some("metadata.sdbl.query-source.catalog"),
+            ),
+            (
+                "query_table:Документ",
+                Some("metadata.sdbl.query-source.document"),
+            ),
+            (
+                "query_table:РегистрСведений",
+                Some("metadata.sdbl.query-source.information-register"),
+            ),
+            (
+                "query_table:РегистрНакопления",
+                Some("metadata.sdbl.query-source.accumulation-register"),
+            ),
+            (
+                "query_table:РегистрБухгалтерии",
+                Some("metadata.sdbl.query-source.accounting-register"),
+            ),
+            (
+                "query_table:РегистрРасчета",
+                Some("metadata.sdbl.query-source.calculation-register"),
+            ),
+            ("query_table:БизнесПроцесс", None),
+            (
+                "query_table:РегистрСведенийТаблицаСрезаПоследних",
+                None,
+            ),
+        ] {
+            let response = adapter
+                .resolve(
+                    context_resolver_core::ResolveQuery::Id(&FactId::new(
+                        SourceId::new("shcntx-query"),
+                        LanguageDomain::QueryLanguage,
+                        FactKind::QueryTable,
+                        local_id,
+                    )),
+                    &ResolveContext::all(),
+                )
+                .expect("query table selector lookup must not fail");
+            assert_eq!(response.status, ResolveStatus::Ok);
+            let FactDetails::QueryTable(info) = &response.facts[0].details else {
+                panic!("query table fact must expose query table details");
+            };
+            assert_eq!(info.sdbl_metadata_source_selector.as_deref(), expected);
+        }
+
         for name in [
             "Основная таблица",
             "ОсновнаяТаблица",
@@ -3107,6 +3156,150 @@ mod tests {
                 source: source_ref("query-table"),
             })
             .expect("query table must sink");
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:Справочник".to_string()),
+                name: "Таблица справочника".to_string(),
+                syntax: Some(name(
+                    "Справочник.<Имя справочника>",
+                    Some("Catalog.<Catalog name>"),
+                )),
+                identifier: Some("Справочник".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Primary,
+                description: Some("Catalog query source fact.".to_string()),
+                source: source_ref("query-table-catalog"),
+            })
+            .expect("catalog query table must sink");
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:Документ".to_string()),
+                name: "Таблица документа".to_string(),
+                syntax: Some(name(
+                    "Документ.<Имя документа>",
+                    Some("Document.<Document name>"),
+                )),
+                identifier: Some("Документ".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Primary,
+                description: Some("Document query source fact.".to_string()),
+                source: source_ref("query-table-document"),
+            })
+            .expect("document query table must sink");
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:РегистрСведений".to_string()),
+                name: "Таблица регистра сведений".to_string(),
+                syntax: Some(name(
+                    "РегистрСведений.<Имя регистра сведений>",
+                    Some("InformationRegister.<Information register name>"),
+                )),
+                identifier: Some("РегистрСведений".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Primary,
+                description: Some("Information register query source fact.".to_string()),
+                source: source_ref("query-table-information-register"),
+            })
+            .expect("information register query table must sink");
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:РегистрНакопления".to_string()),
+                name: "Таблица регистра накопления".to_string(),
+                syntax: Some(name(
+                    "РегистрНакопления.<Имя регистра накопления>",
+                    Some("AccumulationRegister.<Accumulation register name>"),
+                )),
+                identifier: Some("РегистрНакопления".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Primary,
+                description: Some("Accumulation register query source fact.".to_string()),
+                source: source_ref("query-table-accumulation-register"),
+            })
+            .expect("accumulation register query table must sink");
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:РегистрБухгалтерии".to_string()),
+                name: "Таблица регистра бухгалтерии".to_string(),
+                syntax: Some(name(
+                    "РегистрБухгалтерии.<Имя регистра бухгалтерии>",
+                    Some("AccountingRegister.<Accounting register name>"),
+                )),
+                identifier: Some("РегистрБухгалтерии".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Primary,
+                description: Some("Accounting register query source fact.".to_string()),
+                source: source_ref("query-table-accounting-register"),
+            })
+            .expect("accounting register query table must sink");
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:РегистрРасчета".to_string()),
+                name: "Таблица регистра расчета".to_string(),
+                syntax: Some(name(
+                    "РегистрРасчета.<Имя регистра расчета>",
+                    Some("CalculationRegister.<Calculation register name>"),
+                )),
+                identifier: Some("РегистрРасчета".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Primary,
+                description: Some("Calculation register query source fact.".to_string()),
+                source: source_ref("query-table-calculation-register"),
+            })
+            .expect("calculation register query table must sink");
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:БизнесПроцесс".to_string()),
+                name: "Таблица бизнес-процессов".to_string(),
+                syntax: Some(name(
+                    "БизнесПроцесс.<Имя бизнес-процесса>",
+                    Some("BusinessProcess.<Business process name>"),
+                )),
+                identifier: Some("БизнесПроцесс".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Primary,
+                description: Some("Deferred business process query source fact.".to_string()),
+                source: source_ref("query-table-business-process"),
+            })
+            .expect("business process query table must sink");
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:РегистрСведенийТаблицаСрезаПоследних".to_string()),
+                name: "Таблица среза последних".to_string(),
+                syntax: Some(name(
+                    "РегистрСведений.<Имя регистра сведений>.СрезПоследних",
+                    Some("InformationRegister.<Information register name>.SliceLast"),
+                )),
+                identifier: Some("РегистрСведенийТаблицаСрезаПоследних".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Additional,
+                description: Some("Deferred additional query source fact.".to_string()),
+                source: source_ref("query-table-slice-last"),
+            })
+            .expect("slice-last query table must sink");
         builder
             .query_table(model::QueryTable {
                 identity: Some("query_table:ПустаяТаблица".to_string()),

@@ -1209,6 +1209,9 @@ impl QueryTableSnapshotSource {
                 identifier: table
                     .identifier
                     .map(|id| self.snapshot.string(id).to_string()),
+                sdbl_metadata_source_selector: sdbl_metadata_source_selector(
+                    table.identifier.map(|id| self.snapshot.string(id)),
+                ),
                 table_role: query_table_role(table.role),
                 owner_path: table
                     .owner_path

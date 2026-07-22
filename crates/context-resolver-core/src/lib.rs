@@ -184,6 +184,7 @@ pub struct FactProvenance {
 pub struct QueryTableInfo {
     pub syntax: Option<Name>,
     pub identifier: Option<String>,
+    pub sdbl_metadata_source_selector: Option<String>,
     pub table_role: QueryTableRole,
     pub owner_path: Vec<Name>,
     pub template_parameters: Vec<String>,
@@ -535,9 +536,9 @@ pub fn metadata_bsl_member_kind(selector: &str) -> Option<MemberQueryKind> {
 
 fn metadata_bsl_member_kind_mapping(selector: &str) -> Option<MemberQueryKind> {
     match selector {
-        "metadata.form-member.attribute" | "metadata.generated-member.property" => {
-            Some(MemberQueryKind::Property)
-        }
+        "metadata.form-member.attribute"
+        | "metadata.generated-member.property"
+        | "metadata.generated-self-alias.property" => Some(MemberQueryKind::Property),
         _ => None,
     }
 }
@@ -3353,12 +3354,17 @@ mod tests {
             metadata_bsl_member_kind("metadata.generated-member.property"),
             Some(MemberQueryKind::Property),
         );
+        assert_eq!(
+            metadata_bsl_member_kind("metadata.generated-self-alias.property"),
+            Some(MemberQueryKind::Property),
+        );
         for selector in [
             "metadata.form-member.command",
             "metadata.form-member.element",
             "metadata.form-member.event-handler",
             "metadata.generated-member.attribute",
             "metadata.generated-member.method",
+            "metadata.generated-self-alias.method",
             "metadata.form-member.unknown",
         ] {
             assert_eq!(
@@ -3390,6 +3396,10 @@ mod tests {
             assert!(
                 !source.contains("metadata.generated-member."),
                 "search adapters must not map generated-member selectors",
+            );
+            assert!(
+                !source.contains("metadata.generated-self-alias."),
+                "search adapters must not map generated-self-alias selectors",
             );
             assert!(
                 !source.contains("metadata_bsl_member_kind"),

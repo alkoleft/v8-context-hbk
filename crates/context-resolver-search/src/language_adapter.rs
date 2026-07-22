@@ -370,6 +370,9 @@ impl LanguageSearchSource {
         QueryTableInfo {
             syntax: document.query_syntax.as_ref().map(map_model_name),
             identifier: document.query_identifier.clone(),
+            sdbl_metadata_source_selector: sdbl_metadata_source_selector(
+                document.query_identifier.as_deref(),
+            ),
             table_role: query_table_role(document.query_table_role),
             owner_path: document.owner_path.iter().map(map_model_name).collect(),
             template_parameters: document.template_parameters.clone(),
