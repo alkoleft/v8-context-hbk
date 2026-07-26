@@ -865,3 +865,21 @@ The stage-timing accounting changes only in terminology: `group_type_refs` now
 includes type-reference SQLite read, decode and grouping, while `read_sql_rows`
 excludes that work. Compare post-T174 stage buckets only with measurements that
 use the same accounting; total build time and process RSS remain comparable.
+
+## T175 Signature-Line Supportability Result
+
+T175 tested the smaller `split_lines` attribution after T174. A private
+borrowed-input experiment was allocation-identical under release DHAT and was
+reverted. The accepted source-level deletion in `signatures_by_callable`
+selects only the needed non-empty ordinal signature line and passes it directly
+to the existing string builder; it no longer expresses an all-lines temporary
+vector plus a selected-line clone.
+
+DHAT cannot prove a causal resource gain from this deletion: the
+`split_lines` first-frame aggregate remains `5811810` allocated bytes and the
+global process peak is unchanged. The task therefore records only
+supportability, not a memory or time improvement. Normal provider final runs
+are `600`, `601` and `611 ms` (601 ms median) and `79756`, `79884` and
+`79752 KiB` (79756 KiB median), with unchanged `23144545` snapshot-accounted
+bytes. The downstream five-run fixed workload preserves its zero-finding digest
+with a `0.75 s` / `89424 KiB` median, within the 5% no-regression guard.

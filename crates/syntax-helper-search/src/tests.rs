@@ -1934,6 +1934,41 @@ mod tests {
     }
 
     #[test]
+    fn hbk_fact_snapshot_preserves_non_empty_multiline_signature_order() {
+        let path = temp_path("hbk-fact-snapshot-multiline-signatures.sqlite");
+        let mut context = fixture_context();
+        let mut method = type_method(
+            "ОтборКомпоновкиДанных",
+            "МногострочныйМетод",
+            "ЭлементОтбораКомпоновкиДанных",
+        );
+        method.signatures[0].text = "Первая()\n\n".to_string();
+        let mut second_signature = method.signatures[0].clone();
+        second_signature.text = "Вторая()".to_string();
+        method.signatures.push(second_signature);
+        context.type_methods.push(method);
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        let handle = snapshot.worker_handle();
+        let owner = handle
+            .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
+            .expect("owner type must exist");
+        let callable = handle
+            .callable_by_owner_name(owner, "МногострочныйМетод")
+            .next()
+            .expect("callable must exist");
+        let signature_texts = snapshot
+            .callable(callable)
+            .signatures
+            .iter()
+            .map(|signature| snapshot.string(signature.text))
+            .collect::<Vec<_>>();
+
+        assert_eq!(signature_texts, ["Первая()", "Вторая()"]);
+    }
+
+    #[test]
     fn hbk_fact_snapshot_validates_ignored_type_reference_rows_before_filtering() {
         let path = temp_path("hbk-fact-snapshot-invalid-ignored-type-ref.sqlite");
         build_test_index_from_context(&path, &metadata(), &fixture_context())
@@ -1990,6 +2025,24 @@ mod tests {
         assert!(!source.contains("TypeRefRowSnapshot"));
         assert!(!source.contains("fn type_refs(&self) -> Result<Vec"));
         assert!(!source.contains("Vec<TypeRefRowSnapshot>"));
+    }
+
+    #[test]
+    fn snapshot_signature_selection_avoids_temporary_owned_lines() {
+        let source = include_str!("snapshot/materialize.rs");
+        let signatures_by_callable = source
+            .split("fn signatures_by_callable")
+            .nth(1)
+            .and_then(|section| section.split("\nfn ").next())
+            .expect("signatures_by_callable must stay a standalone helper");
+
+        assert!(signatures_by_callable.contains(".signature_text\n                    .lines()"));
+        assert!(signatures_by_callable.contains("text: builder.intern(signature_text)"));
+        assert!(!signatures_by_callable.contains("split_lines("));
+        assert!(!signatures_by_callable.contains("document.signature_text.clone()"));
+        assert!(!signatures_by_callable.contains(".map(str::to_owned)"));
+        assert!(!signatures_by_callable.contains(".to_string()"));
+        assert!(!signatures_by_callable.contains(".to_owned()"));
     }
 
     #[test]

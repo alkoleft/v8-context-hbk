@@ -51,6 +51,61 @@ Current first unchecked task: none. Add a new task before implementing new scope
 
 ## Active Tasks
 
+### [x] T175. Avoid materializing unused signature lines
+
+References: NFR-RESOLVE-001, `implementation/components.md`,
+`implementation/performance-baseline-t13.md`, OpenSpec change
+`optimize-hbk-snapshot-materialization-followups`.
+
+Scope:
+
+- The post-T174 borrowed-input `split_lines` experiment is allocation-identical
+  because release inlining removes the input clone. Revalidate the direct
+  materializer cost, then select the already-owned ordinal signature line as
+  `&str` and pass it directly to `SnapshotBuilder`. Preserve line order and
+  empty-line filtering; do not introduce borrowed data into `HbkFactSnapshot`.
+- Do not combine H2 enum-owner edge streaming, H3 interner redesign, H4
+  capacity hints, H5 cache-startup wiring or H8 1C semantic pruning with this
+  task.
+
+Structure impact:
+
+- Existing fact ownership stays in `HbkFactSnapshot`. This task removes one
+  private all-lines `Vec<String>` and selected-line `String` before the
+  existing builder owns the selected text; it adds no
+  fact/cache/schema/adapter/reader/serializer or public type.
+
+Reintroduction guard:
+
+- Root cause is splitting every signature line into an owned vector and then
+  cloning the selected line before the existing builder interns it. The only
+  valid materializer flow is `signature_text.lines()` -> existing non-empty
+  filter -> ordinal selection -> builder interning. A source check rejects a
+  materializer `split_lines` call, signature-text clone or owned selected line.
+
+Verification:
+
+- focused multi-line/empty-line signature behavior and structural-absence
+  tests; snapshot/read-handle/binary-cache coverage; package tests, formatting
+  and strict OpenSpec validation; release provider and downstream fixed-workload
+  comparisons. Record direct allocation removal separately from normal time and
+  RSS, and do not claim a process-level improvement without those measurements.
+
+Completion notes:
+
+- The first borrowed-input `split_lines` experiment was allocation-identical in
+  release DHAT and was reverted. The accepted P5b deletion instead selects the
+  required non-empty ordinal line as `&str` and passes it directly to the
+  existing builder, removing the source-level all-lines vector and
+  selected-line clone.
+- The direct DHAT comparison cannot causally attribute an allocation benefit:
+  `split_lines` remains 5,811,810 bytes and global peak is unchanged. This task
+  claims no memory/time improvement.
+- Focused multi-line ordering and structural absence, all 61 package tests,
+  cache/read-handle coverage, formatting and strict OpenSpec validation pass.
+  Provider and five-run downstream checks remain within 5%; the downstream
+  zero-finding digest is unchanged.
+
 ### [x] T174. Bound SQLite type-reference materialization for provider snapshots
 
 References: NFR-RESOLVE-001, `implementation/components.md`,

@@ -2565,6 +2565,22 @@ SQLite read, decode and grouping together; `read_sql_rows` excludes it. This is
 a timing-bucket accounting change only. Total build time and process RSS remain
 the comparable acceptance metrics.
 
+## T175 Durable Conclusion
+
+T175 removes the source-level all-lines signature temporary and selected-line
+clone in `signatures_by_callable`; the selected non-empty ordinal source line
+now flows directly into the existing snapshot string builder. Callable
+signature order, empty-line filtering, final snapshot accounting, cache and
+read-handle behavior remain unchanged. The preceding borrowed-input helper
+experiment was reverted because release DHAT was allocation-identical.
+
+The final direct-selection profile cannot causally claim a resource gain:
+`split_lines` remains 5,811,810 allocated bytes and the process global peak is
+unchanged. T175 is accepted as a P5b supportability deletion with normal
+no-regression evidence only. Provider median is 601 ms / 79,756 KiB and the
+fixed five-run analyzer workload retains its zero findings at 0.75 s / 89,424
+KiB, within the 5% guard relative to post-T174 evidence.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

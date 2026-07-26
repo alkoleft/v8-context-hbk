@@ -1438,9 +1438,11 @@ fn signatures_by_callable(
         let signature_text = documents
             .get(signature.callable_id.as_str())
             .and_then(|document| {
-                split_lines(document.signature_text.clone())
-                    .get(signature.ordinal as usize)
-                    .cloned()
+                document
+                    .signature_text
+                    .lines()
+                    .filter(|line| !line.is_empty())
+                    .nth(signature.ordinal as usize)
             })
             .unwrap_or_default();
         let params = parameters
@@ -1457,7 +1459,7 @@ fn signatures_by_callable(
             .entry(signature.callable_id)
             .or_default()
             .push(HbkSignature {
-                text: builder.intern(&signature_text),
+                text: builder.intern(signature_text),
                 parameters: params,
                 return_type_refs: signature_refs
                     .get(signature.signature_id.as_str())
