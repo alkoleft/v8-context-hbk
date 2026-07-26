@@ -2538,6 +2538,33 @@ runtime startup path. A new serialization, zero-copy or memory-mapped dependency
 by the current measurement; it would require a later task to show that cache deserialization or
 allocation, rather than SQLite materialization, is again the limiting startup component.
 
+## T174 Durable Conclusions
+
+T174 removed the transient complete raw type-reference collection from the
+SQLite-to-snapshot materialization path. `HbkFactSnapshot` stays the provider
+fact owner; only private temporary collection changed. The materializer decodes
+each ordered row before classification, then appends a mapped `HbkTypeRef` to
+the same document, document-return, signature-return or parameter group as
+before. This preserves invalid-row failure behavior and deterministic group
+ordering without changing the SQLite schema, binary cache layout/version,
+serialized snapshot fields, resolver adapters or 1C/BSL semantics.
+
+On the downstream 8.3.27.1859 `shcntx_ru.sqlite` provider index, three warm
+release builds improved from a 692 ms median / 105,592 KiB peak RSS to 609 ms /
+78,820 KiB: -12.0% build time and -26,772 KiB (-25.35%) RSS. Final
+snapshot-accounted heap remains 23,144,545 bytes, so this is a reduction of
+temporary materialization high-water rather than a public fact-model change.
+The rebuilt five-run analyzer `project-fast` workload keeps the exact zero
+finding digest and improved from P5a medians of 0.83 s / 108,332 KiB to 0.75 s
+/ 89,108 KiB. The independent query-owner, interner, capacity, cache-startup
+and signature-text hypotheses remain outside T174 and require their own
+evidence before implementation.
+
+For stage-level measurements, `group_type_refs` now accounts for type-reference
+SQLite read, decode and grouping together; `read_sql_rows` excludes it. This is
+a timing-bucket accounting change only. Total build time and process RSS remain
+the comparable acceptance metrics.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

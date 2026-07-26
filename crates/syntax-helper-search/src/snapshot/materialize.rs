@@ -88,13 +88,12 @@ struct ParameterRow {
     required: bool,
 }
 
-#[derive(Debug, Clone)]
-struct TypeRefRowSnapshot {
-    source_document_id: String,
-    ref_kind: String,
-    source_signature_id: Option<String>,
-    source_parameter_ordinal: Option<i64>,
-    fact: SearchTypeRef,
+#[derive(Default)]
+struct TypeRefGroups {
+    by_document: BTreeMap<(String, String), Vec<HbkTypeRef>>,
+    returns_by_document: BTreeMap<String, Vec<HbkTypeRef>>,
+    returns_by_signature: BTreeMap<String, Vec<HbkTypeRef>>,
+    parameters_by_signature: BTreeMap<(String, i64), Vec<HbkTypeRef>>,
 }
 
 #[derive(Default)]
@@ -163,7 +162,6 @@ impl<'a> SnapshotMaterializer<'a> {
         let callables = self.callables()?;
         let signatures = self.signatures()?;
         let parameters = self.parameters()?;
-        let type_refs = self.type_refs()?;
         let module_context_keys = self.module_context_keys()?;
         let query_owners = self.query_owner_edges()?;
         finish_stage!(stage_start, read_sql_rows);
@@ -238,10 +236,12 @@ impl<'a> SnapshotMaterializer<'a> {
         finish_stage!(stage_start, build_platform_types);
 
         let stage_start = start_stage!();
-        let type_refs_by_document = group_document_type_refs(&mut self.builder, &type_refs);
-        let return_refs_by_document = group_return_type_refs(&mut self.builder, &type_refs);
-        let signature_refs = group_signature_return_type_refs(&mut self.builder, &type_refs);
-        let parameter_refs = group_parameter_type_refs(&mut self.builder, &type_refs);
+        let TypeRefGroups {
+            by_document: type_refs_by_document,
+            returns_by_document: return_refs_by_document,
+            returns_by_signature: signature_refs,
+            parameters_by_signature: parameter_refs,
+        } = self.type_ref_groups()?;
         finish_stage!(stage_start, group_type_refs);
 
         let stage_start = start_stage!();
@@ -952,9 +952,10 @@ impl<'a> SnapshotMaterializer<'a> {
             .map_err(|source| self.index.sqlite(source))
     }
 
-    fn type_refs(&self) -> Result<Vec<TypeRefRowSnapshot>, SearchError> {
-        let mut statement = self
-            .index
+    fn type_ref_groups(&mut self) -> Result<TypeRefGroups, SearchError> {
+        let index = self.index;
+        let builder = &mut self.builder;
+        let mut statement = index
             .connection
             .prepare(
                 "SELECT source_document_id, ref_kind, source_signature_id,
@@ -967,20 +968,50 @@ impl<'a> SnapshotMaterializer<'a> {
                  ORDER BY source_document_id, ref_kind, source_signature_ordinal,
                           source_parameter_ordinal, ordinal, target_type_name",
             )
-            .map_err(|source| self.index.sqlite(source))?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok(TypeRefRowSnapshot {
-                    source_document_id: row.get(0)?,
-                    ref_kind: row.get(1)?,
-                    source_signature_id: row.get(2)?,
-                    source_parameter_ordinal: row.get(3)?,
-                    fact: snapshot_type_ref_from_row(row)?,
-                })
-            })
-            .map_err(|source| self.index.sqlite(source))?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|source| self.index.sqlite(source))
+            .map_err(|source| index.sqlite(source))?;
+        let mut rows = statement.query([]).map_err(|source| index.sqlite(source))?;
+        let mut groups = TypeRefGroups::default();
+        while let Some(row) = rows.next().map_err(|source| index.sqlite(source))? {
+            let source_document_id: String = row.get(0).map_err(|source| index.sqlite(source))?;
+            let ref_kind: String = row.get(1).map_err(|source| index.sqlite(source))?;
+            let source_signature_id: Option<String> =
+                row.get(2).map_err(|source| index.sqlite(source))?;
+            let source_parameter_ordinal: Option<i64> =
+                row.get(3).map_err(|source| index.sqlite(source))?;
+            let fact = snapshot_type_ref_from_row(row).map_err(|source| index.sqlite(source))?;
+
+            if source_signature_id.is_none() {
+                if ref_kind == "return_type" {
+                    groups
+                        .returns_by_document
+                        .entry(source_document_id)
+                        .or_default()
+                        .push(map_type_ref(builder, &fact));
+                } else {
+                    groups
+                        .by_document
+                        .entry((source_document_id, ref_kind))
+                        .or_default()
+                        .push(map_type_ref(builder, &fact));
+                }
+            } else if ref_kind == "return_type" && source_parameter_ordinal.is_none() {
+                groups
+                    .returns_by_signature
+                    .entry(source_signature_id.unwrap_or_default())
+                    .or_default()
+                    .push(map_type_ref(builder, &fact));
+            } else if ref_kind == "parameter_type"
+                && let (Some(signature_id), Some(ordinal)) =
+                    (source_signature_id, source_parameter_ordinal)
+            {
+                groups
+                    .parameters_by_signature
+                    .entry((signature_id, ordinal))
+                    .or_default()
+                    .push(map_type_ref(builder, &fact));
+            }
+        }
+        Ok(groups)
     }
 
     fn module_context_keys(&self) -> Result<Vec<(String, String)>, SearchError> {
@@ -1364,77 +1395,6 @@ fn snapshot_type_ref_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Searc
         type_template_key,
         template_binding,
     })
-}
-
-fn group_document_type_refs(
-    builder: &mut SnapshotBuilder,
-    rows: &[TypeRefRowSnapshot],
-) -> BTreeMap<(String, String), Vec<HbkTypeRef>> {
-    let mut groups = BTreeMap::<(String, String), Vec<HbkTypeRef>>::new();
-    for row in rows
-        .iter()
-        .filter(|row| row.source_signature_id.is_none() && row.ref_kind != "return_type")
-    {
-        groups
-            .entry((row.source_document_id.clone(), row.ref_kind.clone()))
-            .or_default()
-            .push(map_type_ref(builder, &row.fact));
-    }
-    groups
-}
-
-fn group_return_type_refs(
-    builder: &mut SnapshotBuilder,
-    rows: &[TypeRefRowSnapshot],
-) -> BTreeMap<String, Vec<HbkTypeRef>> {
-    let mut groups = BTreeMap::<String, Vec<HbkTypeRef>>::new();
-    for row in rows
-        .iter()
-        .filter(|row| row.source_signature_id.is_none() && row.ref_kind == "return_type")
-    {
-        groups
-            .entry(row.source_document_id.clone())
-            .or_default()
-            .push(map_type_ref(builder, &row.fact));
-    }
-    groups
-}
-
-fn group_signature_return_type_refs(
-    builder: &mut SnapshotBuilder,
-    rows: &[TypeRefRowSnapshot],
-) -> BTreeMap<String, Vec<HbkTypeRef>> {
-    let mut groups = BTreeMap::<String, Vec<HbkTypeRef>>::new();
-    for row in rows.iter().filter(|row| {
-        row.source_signature_id.is_some()
-            && row.source_parameter_ordinal.is_none()
-            && row.ref_kind == "return_type"
-    }) {
-        groups
-            .entry(row.source_signature_id.clone().unwrap_or_default())
-            .or_default()
-            .push(map_type_ref(builder, &row.fact));
-    }
-    groups
-}
-
-fn group_parameter_type_refs(
-    builder: &mut SnapshotBuilder,
-    rows: &[TypeRefRowSnapshot],
-) -> BTreeMap<(String, i64), Vec<HbkTypeRef>> {
-    let mut groups = BTreeMap::<(String, i64), Vec<HbkTypeRef>>::new();
-    for row in rows.iter().filter(|row| row.ref_kind == "parameter_type") {
-        if let (Some(signature_id), Some(ordinal)) = (
-            row.source_signature_id.as_deref(),
-            row.source_parameter_ordinal,
-        ) {
-            groups
-                .entry((signature_id.to_string(), ordinal))
-                .or_default()
-                .push(map_type_ref(builder, &row.fact));
-        }
-    }
-    groups
 }
 
 fn parameters_by_signature(

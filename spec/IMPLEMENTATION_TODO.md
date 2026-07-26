@@ -51,6 +51,71 @@ Current first unchecked task: none. Add a new task before implementing new scope
 
 ## Active Tasks
 
+### [x] T174. Bound SQLite type-reference materialization for provider snapshots
+
+References: NFR-RESOLVE-001, `implementation/components.md`,
+`implementation/performance-baseline-t13.md`, OpenSpec change
+`reduce-hbk-snapshot-materialization-peak`.
+
+Scope:
+
+- Start from downstream P5a evidence on the 8.3.27.1859 `shcntx_ru.sqlite`
+  provider index: `SnapshotMaterializer` accounts for `212585620` allocated
+  bytes and `98129653` bytes live at global peak; its `type_refs` reader alone
+  accounts for `42720841` allocated bytes and `25420393` live bytes at peak.
+- Replace the private bulk `Vec<TypeRefRowSnapshot>` and post-read grouping
+  passes with an ordered row-at-a-time collector into existing `HbkTypeRef`
+  groups. Decode every row before filtering so invalid ignored rows preserve
+  their existing typed error behavior. Do not change snapshot/read-handle facts, resolver behavior,
+  binary-cache layout, SQLite schema, source semantics or provider ownership.
+- Record deferred independent candidates: query-owner streaming, builder
+  interner duplication, capacity hints, cache loading and borrowed signature
+  text. Do not combine them with T174.
+
+Structure impact:
+
+- `HbkFactSnapshot` remains the published fact owner. The task deletes the
+  private raw type-reference row representation and adds one private typed
+  holder for the existing four temporary groups. It adds no public/JSON
+  contract, cache record, schema, adapter, mapping, parser, mirror or
+  dependency. Search and consumer evidence are in the active change design.
+
+Reintroduction guard:
+
+- Root cause is a complete raw SQL type-reference collection overlapping with
+  its grouped snapshot projection. The only valid flow is ordered row ->
+  `TypeRefGroups` -> existing `HbkFactSnapshot`; review/search rejects a
+  restored `TypeRefRowSnapshot`, `Vec`-returning row reader or equivalent full
+  raw collection.
+
+Verification:
+
+- three-run release baseline/final measurement of snapshot build time, peak
+  RSS and snapshot accounting; focused snapshot/cache/read-handle behavior;
+  `cargo test -p syntax-helper-search`; `cargo fmt --all --check`; strict
+  OpenSpec validation; unchanged `binary_cache.rs`, cache layout/version and
+  serialized snapshot fields by diff review; and five-run downstream
+  project-fast parity only (finding digest, median/MAD time and RSS). Accept
+  only an RSS reduction of at least 10% or 1 MiB with no more than 10% median
+  build-time regression.
+
+Completion notes:
+
+- The materializer now decodes each ordered SQLite type-reference row and
+  immediately appends its mapped `HbkTypeRef` to the existing target group.
+  It no longer retains a `Vec<TypeRefRowSnapshot>` alongside those groups;
+  invalid rows remain terminal even when no group consumes them.
+- Exact release provider medians changed from 692 ms / 105,592 KiB to 609 ms /
+  78,820 KiB: -12.0% build time and -25.35% peak RSS. Snapshot accounting
+  remains 23,144,545 bytes, so the gain is a transient materialization peak.
+- The rebuilt downstream five-run `project-fast` workload has the unchanged
+  zero-finding digest `c2b4465a4c66a8939d40febd117061959e85dcde77078be386c1e73ae97f60a3`
+  and medians of 0.75 s / 89,108 KiB versus P5a's 0.83 s / 108,332 KiB.
+- Passed focused behavior/structural/cache checks, `cargo test -p
+  syntax-helper-search`, `cargo fmt --all --check`, strict OpenSpec validation
+  and diff review confirming no cache layout/version, SQLite schema, resolver
+  adapter or downstream analyzer changes.
+
 ### [x] T173. Resolve one metadata-selected BSL module member without materializing a module context
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,

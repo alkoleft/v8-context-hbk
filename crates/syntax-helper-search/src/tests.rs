@@ -1837,6 +1837,162 @@ mod tests {
     }
 
     #[test]
+    fn hbk_fact_snapshot_preserves_order_for_each_type_reference_group() {
+        let path = temp_path("hbk-fact-snapshot-type-ref-order.sqlite");
+        let mut context = fixture_context();
+        let mut property = type_property(
+            "ОтборКомпоновкиДанных",
+            "УпорядоченноеСвойство",
+            "BetaProperty",
+        );
+        property.type_refs = vec![
+            model::TypeRef {
+                name: "BetaProperty".to_string(),
+            },
+            model::TypeRef {
+                name: "AlphaProperty".to_string(),
+            },
+        ];
+        let mut method = type_method(
+            "ОтборКомпоновкиДанных",
+            "УпорядоченныйМетод",
+            "BetaDocumentReturn",
+        );
+        method.return_types = vec![
+            model::TypeRef {
+                name: "BetaDocumentReturn".to_string(),
+            },
+            model::TypeRef {
+                name: "AlphaDocumentReturn".to_string(),
+            },
+        ];
+        method.signatures[0].return_types = vec![
+            model::TypeRef {
+                name: "BetaSignatureReturn".to_string(),
+            },
+            model::TypeRef {
+                name: "AlphaSignatureReturn".to_string(),
+            },
+        ];
+        method.signatures[0].parameters = vec![model::Parameter {
+            name: "Параметр".to_string(),
+            required: true,
+            type_refs: vec![
+                model::TypeRef {
+                    name: "BetaParameter".to_string(),
+                },
+                model::TypeRef {
+                    name: "AlphaParameter".to_string(),
+                },
+            ],
+            description: None,
+        }];
+        context.type_properties.push(property);
+        context.type_methods.push(method);
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        let handle = snapshot.worker_handle();
+        let owner = handle
+            .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
+            .expect("owner type must exist");
+        let property = handle
+            .member_by_owner_name_kind(
+                owner,
+                "УпорядоченноеСвойство",
+                Some(HbkTypeMemberKind::Property),
+            )
+            .next()
+            .expect("property must exist");
+        let callable = handle
+            .callable_by_owner_name(owner, "УпорядоченныйМетод")
+            .next()
+            .expect("callable must exist");
+        let type_ref_names = |type_refs: &[HbkTypeRef]| {
+            type_refs
+                .iter()
+                .map(|type_ref| snapshot.string(type_ref.name))
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            type_ref_names(&snapshot.type_member(property).type_refs),
+            ["BetaProperty", "AlphaProperty"]
+        );
+        assert_eq!(
+            type_ref_names(&snapshot.callable(callable).return_type_refs),
+            ["BetaDocumentReturn", "AlphaDocumentReturn"]
+        );
+        assert_eq!(
+            type_ref_names(&snapshot.callable(callable).signatures[0].return_type_refs),
+            ["BetaSignatureReturn", "AlphaSignatureReturn"]
+        );
+        assert_eq!(
+            type_ref_names(&snapshot.callable(callable).signatures[0].parameters[0].type_refs),
+            ["BetaParameter", "AlphaParameter"]
+        );
+    }
+
+    #[test]
+    fn hbk_fact_snapshot_validates_ignored_type_reference_rows_before_filtering() {
+        let path = temp_path("hbk-fact-snapshot-invalid-ignored-type-ref.sqlite");
+        build_test_index_from_context(&path, &metadata(), &fixture_context())
+            .expect("index must build");
+
+        let connection = Connection::open(&path).expect("index sqlite must open");
+        let (source_document_id, signature_id): (String, String) = connection
+            .query_row(
+                "SELECT callable_id, signature_id
+                 FROM signatures
+                 ORDER BY signature_id
+                 LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("fixture must contain a callable signature");
+        connection
+            .execute(
+                "INSERT INTO type_refs (
+                     source_document_id, ref_kind, ordinal, source_signature_id,
+                     source_signature_ordinal, source_parameter_ordinal,
+                     target_type_name, target_type_id, target_resolution_status,
+                     target_candidate_type_ids, type_template_family,
+                     type_template_variant, template_binding_kind,
+                     template_binding_owner_parameter_index,
+                     template_binding_target_parameter_index, template_binding_arguments
+                 ) VALUES (
+                     ?1, 'ignored_type_ref_kind', 999, ?2,
+                     0, NULL,
+                     'Ignored', NULL, 'invalid',
+                     NULL, NULL,
+                     NULL, NULL,
+                     NULL, NULL, NULL
+                 )",
+                params![source_document_id, signature_id],
+            )
+            .expect("invalid ignored row must insert");
+
+        let error = HbkFactSnapshot::from_path(&path)
+            .expect_err("invalid ignored type-reference row must fail materialization");
+        assert!(matches!(
+            error,
+            SearchError::Sqlite {
+                source: rusqlite::Error::InvalidQuery,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn snapshot_materializer_has_no_bulk_type_reference_row_collection() {
+        let source = include_str!("snapshot/materialize.rs");
+        assert!(source.contains("struct TypeRefGroups"));
+        assert!(!source.contains("TypeRefRowSnapshot"));
+        assert!(!source.contains("fn type_refs(&self) -> Result<Vec"));
+        assert!(!source.contains("Vec<TypeRefRowSnapshot>"));
+    }
+
+    #[test]
     fn hbk_fact_snapshot_binary_cache_rebuilds_when_missing_or_invalid() {
         let path = temp_path("hbk-fact-snapshot-cache-invalidation.sqlite");
         let cache_path = temp_path("hbk-fact-snapshot-cache-invalidation.bin");

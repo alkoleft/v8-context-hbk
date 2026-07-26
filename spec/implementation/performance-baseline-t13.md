@@ -832,3 +832,36 @@ pipeline or cache mechanism is justified.
 
 No broad pipeline framework, cache, plugin system, tuning knob or compatibility adapter is justified
 by the current evidence.
+
+## T174 Snapshot-Materialization Results
+
+T174 is a provider-startup optimization, not a Syntax Assistant HBK extraction
+or export change. The downstream analyzer's P5a DHAT run on 2026-07-27 loads
+`v8-context/.v8-context/platform-indexes/8.3.27.1859/shcntx_ru.sqlite` into
+`HbkFactSnapshot` and attributes `212585620` allocated bytes and `98129653`
+bytes live at global heap maximum to `syntax_helper_search` materialization.
+`SnapshotMaterializer::type_refs` is the largest direct source: `42720841`
+allocated bytes and `25420393` live bytes at that peak.
+
+Three warm release runs of the existing snapshot example measured a `692 ms`
+median build, `105592 KiB` peak RSS and `23144545` bytes snapshot accounting
+(`7500929` string store, `9034176` node arenas, `6609440` indexes). The source
+contains 46,863 type-reference rows.
+
+T174 maps each ordered SQLite row directly into the existing four snapshot
+type-reference groups after decoding it, rather than retaining a complete owned
+row vector before grouping. Three final warm release runs measured `613 ms`,
+`609 ms` and `605 ms` snapshot build time and `78820 KiB`, `78824 KiB` and
+`78820 KiB` peak RSS. The final medians are `609 ms` (-12.0%) and `78820 KiB`
+(-26772 KiB, -25.35%). Snapshot accounting remains exactly `23144545` bytes,
+which confirms that the saved memory was transient materialization storage.
+
+The acceptance gate is met: RSS decreases by more than 10% and build time does
+not regress. Query-owner streaming, interner storage, capacity hints,
+binary-cache startup integration and borrowed signature text remain independent
+hypotheses for separately measured tasks.
+
+The stage-timing accounting changes only in terminology: `group_type_refs` now
+includes type-reference SQLite read, decode and grouping, while `read_sql_rows`
+excludes that work. Compare post-T174 stage buckets only with measurements that
+use the same accounting; total build time and process RSS remain comparable.
