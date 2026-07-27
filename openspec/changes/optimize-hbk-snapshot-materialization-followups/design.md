@@ -8,7 +8,7 @@ The remaining profile evidence is not a license to combine unrelated changes:
 
 | ID | Candidate | Current evidence | Owner / status |
 | --- | --- | --- | --- |
-| H2 | Stream `query_owner_edges`. | 6,954,078 allocated bytes; 21,304 owns rows, of which only 2,934 enum-value rows survive. | `syntax-helper-search` materializer; ready for a separate task. |
+| H2 | Filter `query_owner_edges` by target document kind. | The analyzer index has 21,304 `owns` rows and its DHAT points fall from 6,954,078 to 1,012,703 bytes (-85.43%). The separate provider artifact has 21,613 rows; only 498 query-table fields, 56 query-table parameters and 3,087 enum values reach this reader's consumers. | `syntax-helper-search` materializer; accepted with matched provider and downstream no-regression evidence. |
 | H3 | Remove temporary string-interner duplicate ownership. | 6,291,360 allocated bytes; map dies at snapshot assembly but exact reclaim design is unproven. | `SnapshotBuilder`; measure/design first. |
 | H4 | Pre-size temporary collections. | `Vec::new`/`BTreeMap::new` sites exist, but no attributable growth metric. | Unmeasured; do not implement speculatively. |
 | H5 | Use derived binary cache in analyzer startup. | Cache loading is 26-31x faster in earlier provider evidence, but normal analyzer startup never selects it. | Cross-repository provider startup decision; deferred. |
@@ -68,12 +68,27 @@ multiple helper call sites yet removes no measured allocation. Moving
 `signature_text` out of `DocumentRow` is also rejected because it broadens
 ownership changes without eliminating the all-lines temporary path.
 
-### 2. H2, H3 and H4 remain independent follow-up tasks
+### 2. H2 filters the existing reader; H3 and H4 remain independent
 
-H2's reader is a filtered transient vector and can be streamed into the final
-enum-value owner pairs. H3 changes the temporary interner's implementation and
-H4 needs allocation-growth evidence. No task combines them, because their
-resource signature, behavior oracle and rollback differ.
+`query_owner_edges` feeds two existing consumer loops: query-table
+fields/parameters and enum values. In the provider release artifact, 17,972 of
+its 21,613 `owns` rows target facts that neither loop can consume. H2 keeps the private
+`Vec<(String, String)>` interface and both loops, but constrains its SQL reader
+through a target-id predicate derived from the three existing target
+`SearchDocumentKind` values. It does not introduce
+a streaming callback or move enum construction, because either would add a
+new seam without reducing the caller interface.
+
+The H2 acceptance gate is exact snapshot/read-handle parity; a
+`query_owner_edges` first-frame DHAT result no greater than 3,477,039 bytes
+(50% of the 6,954,078-byte baseline); and provider/downstream median time and
+RSS no more than 5% above their matched counterfactual baselines. The earlier
+T175 `0.75 s / 89,424 KiB` downstream observation is historical context only:
+it is not the H2 comparator. A gate failure reverts the
+source change and leaves H2 rejected or deferred. H3 changes the temporary
+interner's implementation and H4 needs allocation-growth evidence. No task
+combines them, because their resource signature, behavior oracle and rollback
+differ.
 
 Alternative rejected: one broad materializer rewrite. It would obscure which
 allocation/lifetime caused a measured result and complicate cache/read-handle
@@ -115,6 +130,15 @@ tasks must update this note before adding any iterator, owner map, capacity
 source or data flow. H5 requires a separate provider-owned lifecycle design.
 H8 adds no code.
 
+H2 keeps `SnapshotMaterializer::query_owner_edges` as the sole reader owner
+and its existing `Vec<(String, String)>` as the only intermediate shape. The
+`documents` table and `SearchDocumentKind::as_str()` remain the owners of target
+kind facts; the reader adds only a bound SQL predicate. No schema/index,
+cache, snapshot field, serializer, adapter, mapping, public re-export or
+production helper is added. The materializer-local test may reuse existing
+`cfg(test)` fixture construction only to call this private reader directly; it
+does not reproduce index construction or introduce a production test seam.
+
 ## Reintroduction Guards
 
 - H7 root cause: materializing `Vec<String>` for all document signature lines
@@ -127,6 +151,13 @@ H8 adds no code.
 - H8 root cause: treating equal type strings as permission to merge facts. The
   only valid owner flow keeps the four existing context-specific groups; tests
   retain distinct document-return, signature-return and parameter results.
+- H2 root cause: selecting every `owns` row although only
+  `query_table_field`, `query_table_parameter` and `enum_value` targets reach
+  the two existing consumers. The only valid flow constrains `relations` with a
+  target-id predicate derived from `documents`, binds those existing kind owners
+  and orders by `source_id`, `target_id`, followed by the unchanged loops. A
+  private-reader
+  fixture test and source guard reject an unconditional full-`owns` query.
 
 ## Risks / Trade-offs
 
@@ -169,3 +200,24 @@ runs are 600 / 601 / 611 ms (601 ms median) and 79,756 / 79,884 / 79,752 KiB
 The five-run downstream workload retains the exact zero-finding digest with a
 0.75 s / 89,424 KiB median, versus the post-T174 0.75 s / 89,108 KiB. The
 0.35% RSS difference is inside the 5% guard.
+
+H2 first evaluated a target-document `JOIN`: it reduced direct allocation but
+measured a 668 ms provider median against the historic 601 ms observation. It
+was rejected before the matched counterfactual protocol was corrected, so it
+does not supply H2 pass/fail evidence. The accepted target-id subquery uses the
+existing `relations_target_idx` without a schema or index change.
+
+The direct-allocation and normal measurements use two deliberately distinct
+artifacts. DHAT runs use the analyzer provider index with 21,304 `owns` rows;
+the five `query_owner_edges` points decrease from 6,954,078 to 1,012,703
+allocated bytes (-85.43%), while global peak is unchanged within two bytes.
+Provider release runs use the 21,613-row snapshot artifact and improve from
+659 ms / 80,280 KiB to 608 ms / 79,512 KiB (-7.74% time, -0.96% RSS), with
+unchanged 23,254,254-byte snapshot accounting and 498/56/3,087
+query-field/query-parameter/enum-value facts. The separately matched five-run
+downstream experiment improves from 0.86 s / 92,500 KiB to 0.80 s / 91,444 KiB
+(-6.98% time, -1.14% RSS), preserving the exact zero-finding digest in every
+run. The explicit 5% ceilings are 691.95 ms / 84,294 KiB for provider and
+0.903 s / 97,125 KiB for downstream. H2 therefore passes its 50%
+direct-allocation and matched 5% normal no-regression gates; the T175 0.75 s
+downstream result is not used as an H2 gate.

@@ -51,6 +51,75 @@ Current first unchecked task: none. Add a new task before implementing new scope
 
 ## Active Tasks
 
+### [x] T176. Filter unused owner-edge rows before materialization
+
+References: NFR-RESOLVE-001, `implementation/components.md`,
+`implementation/performance-baseline-t13.md`, OpenSpec change
+`optimize-hbk-snapshot-materialization-followups`.
+
+Scope:
+
+- On the provider release artifact
+  `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite`,
+  `query_owner_edges` materializes 21,613 `owns` rows although only 498
+  query-table fields, 56 query-table
+  parameters and 3,087 enum values reach its existing consumers. Keep the
+  reader and its ordered vector, but restrict it through a target-id predicate
+  derived from those three existing `SearchDocumentKind` values before row
+  materialization.
+- Preserve both consumers, source-owner skips, `source_id`/`target_id` order,
+  snapshot/read-handle facts and cache behavior. Do not introduce streaming,
+  callbacks, a helper, cache/schema/index changes, source-kind filtering or a
+  public contract.
+
+Structure impact:
+
+- `SnapshotMaterializer::query_owner_edges` remains the only reader and
+  `Vec<(String, String)>` remains its only intermediate shape.
+  `SearchDocumentKind` remains the storage-kind owner. The sole production
+  behavior change is an SQL predicate; no semantic structure, conversion,
+  mapping, serializer, cache key, adapter or public re-export is added.
+- Test-only fixture reuse may expose existing construction helpers within the
+  test crate so a materializer-local unit test can invoke the private reader.
+  It adds no production model or data path and reuses the production index
+  builder rather than recreating storage behavior.
+
+Reintroduction guard:
+
+- Root cause is the unconditional `owns` reader materializing 17,972 rows that
+  its two consumers always discard. The only valid flow uses a target-id
+  predicate derived from `documents`, binds the three existing target kinds and
+  orders by source then target before the unchanged loops. A private-reader
+  fixture and narrow source guard reject an unconditional full-`owns` query.
+
+Verification:
+
+- private-reader accepted/rejected target-kind and order test; snapshot,
+  read-handle and binary-cache parity; package tests, formatting and strict
+  OpenSpec validation; direct DHAT, three release provider runs and five fixed
+  downstream runs.
+- Require exact parity, `query_owner_edges` first-frame allocation no greater
+  than 3,477,039 bytes (50% of 6,954,078), and every normal median no more than
+  5% above a matched counterfactual on the same artifact/workflow. Revert and record
+  rejected/deferred on any gate failure.
+
+Completion notes:
+
+- The initial target-document JOIN reduced allocation but was rejected against
+  the historic 601 ms provider observation at a 668 ms median, before the
+  matched protocol was corrected. The final target-id predicate uses the
+  existing `relations_target_idx` and adds no index or schema.
+- Direct DHAT uses the distinct 21,304-row analyzer index and is 1,012,703
+  bytes against 6,954,078 (-85.43%). The 21,613-row provider artifact has a
+  matched 608 ms / 79,512 KiB median against 659 ms / 80,280 KiB; the sequential
+  matched downstream experiment has a 0.80 s / 91,444 KiB median against 0.86 s
+  / 92,500 KiB. The 5% ceilings are 691.95 ms / 84,294 KiB and 0.903 s /
+  97,125 KiB; snapshot accounting and every exact zero-finding digest remain
+  unchanged. Historic T175 0.75 s / 89,424 KiB is not used as an H2 gate.
+- The 63-test package, private-reader order/filter fixture, read-handle/cache
+  coverage, formatting, strict OpenSpec validation and final diff review pass.
+  Architecture remains unchanged; workspace version is patched to 0.1.1.
+
 ### [x] T175. Avoid materializing unused signature lines
 
 References: NFR-RESOLVE-001, `implementation/components.md`,
@@ -64,7 +133,7 @@ Scope:
   materializer cost, then select the already-owned ordinal signature line as
   `&str` and pass it directly to `SnapshotBuilder`. Preserve line order and
   empty-line filtering; do not introduce borrowed data into `HbkFactSnapshot`.
-- Do not combine H2 enum-owner edge streaming, H3 interner redesign, H4
+- Do not combine H2 owner-edge materialization, H3 interner redesign, H4
   capacity hints, H5 cache-startup wiring or H8 1C semantic pruning with this
   task.
 

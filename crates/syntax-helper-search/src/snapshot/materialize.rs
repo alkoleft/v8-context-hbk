@@ -1037,17 +1037,127 @@ impl<'a> SnapshotMaterializer<'a> {
             .index
             .connection
             .prepare(
-                "SELECT target_id, source_id
+                "SELECT relations.target_id, relations.source_id
                  FROM relations
-                 WHERE edge_kind = 'owns'
-                 ORDER BY source_id, target_id",
+                 WHERE relations.edge_kind = 'owns'
+                   AND relations.target_id IN (
+                       SELECT id
+                       FROM documents
+                       WHERE kind IN (?1, ?2, ?3)
+                   )
+                 ORDER BY relations.source_id, relations.target_id",
             )
             .map_err(|source| self.index.sqlite(source))?;
         let rows = statement
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_map(
+                [
+                    SearchDocumentKind::QueryTableField.as_str(),
+                    SearchDocumentKind::QueryTableParameter.as_str(),
+                    SearchDocumentKind::EnumValue.as_str(),
+                ],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
             .map_err(|source| self.index.sqlite(source))?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|source| self.index.sqlite(source))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::{
+        build_test_index_from_context, enum_definition, enum_value, fixture_context, metadata,
+        query_table, query_table_field, query_table_parameter, temp_path,
+    };
+
+    #[test]
+    fn query_owner_edges_filters_targets_before_materialization_and_keeps_order() {
+        let path = temp_path("query-owner-edge-target-filter.sqlite");
+        let mut context = fixture_context();
+        context
+            .query_tables
+            .push(query_table("TestTable", "Test query tables", "Test table"));
+        context.table_fields.push(query_table_field(
+            "Test table",
+            "Test query tables",
+            "Field",
+        ));
+        context.table_parameters.push(query_table_parameter(
+            "Test table",
+            "Test query tables",
+            "Parameter",
+        ));
+        context
+            .enums
+            .push(enum_definition("Test enum", "test-enum.html"));
+        context.enum_values.push(enum_value("Test enum", "Value"));
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("index must open");
+        let irrelevant_target_count = index
+            .connection
+            .query_row(
+                "SELECT COUNT(*)
+                 FROM relations
+                 JOIN documents AS target_document ON target_document.id = relations.target_id
+                 WHERE relations.edge_kind = 'owns'
+                   AND target_document.kind IN (?1, ?2)",
+                [
+                    SearchDocumentKind::TypeProperty.as_str(),
+                    SearchDocumentKind::Constructor.as_str(),
+                ],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("fixture must contain irrelevant owns edges");
+        assert!(irrelevant_target_count >= 2);
+
+        let edges = SnapshotMaterializer::new(&index)
+            .query_owner_edges()
+            .expect("filtered owner reader must succeed");
+        assert_eq!(edges.len(), 3);
+        let target_kinds = edges
+            .iter()
+            .map(|(target_id, _)| {
+                index
+                    .get_by_id(target_id)
+                    .expect("target lookup must succeed")
+                    .expect("target document must exist")
+                    .document
+                    .kind
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            target_kinds,
+            [
+                SearchDocumentKind::QueryTableField,
+                SearchDocumentKind::QueryTableParameter,
+                SearchDocumentKind::EnumValue,
+            ]
+            .into_iter()
+            .collect()
+        );
+        let mut ordered = edges.clone();
+        ordered.sort_by(|left, right| left.1.cmp(&right.1).then(left.0.cmp(&right.0)));
+        assert_eq!(edges, ordered);
+    }
+
+    #[test]
+    fn query_owner_edges_source_guard_keeps_only_consumer_target_kinds() {
+        let source = include_str!("materialize.rs");
+        let reader = source
+            .split("fn query_owner_edges")
+            .nth(1)
+            .and_then(|section| section.split("\n}\n\n#[cfg(test)]").next())
+            .expect("query_owner_edges must stay a standalone reader");
+
+        assert!(reader.contains("relations.target_id IN ("));
+        assert!(reader.contains("FROM documents"));
+        assert!(reader.contains("SearchDocumentKind::QueryTableField.as_str()"));
+        assert!(reader.contains("SearchDocumentKind::QueryTableParameter.as_str()"));
+        assert!(reader.contains("SearchDocumentKind::EnumValue.as_str()"));
+        assert!(reader.contains("ORDER BY relations.source_id, relations.target_id"));
+        assert!(!reader.contains("FROM relations\n                 WHERE edge_kind = 'owns'"));
     }
 }
 

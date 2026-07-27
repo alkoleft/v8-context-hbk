@@ -883,3 +883,24 @@ are `600`, `601` and `611 ms` (601 ms median) and `79756`, `79884` and
 `79752 KiB` (79756 KiB median), with unchanged `23144545` snapshot-accounted
 bytes. The downstream five-run fixed workload preserves its zero-finding digest
 with a `0.75 s` / `89424 KiB` median, within the 5% no-regression guard.
+
+## T176 Target-Kind Owner-Edge Result
+
+T176 keeps `query_owner_edges` and its ordered `Vec<(String, String)>`, but
+constrains it with a target-id subquery over existing document-kind facts. It
+does not add a schema/index, cache or reader interface. The first JOIN variant
+was rejected against a historic provider observation before the matched H2
+protocol was corrected; `EXPLAIN QUERY PLAN` shows the final predicate uses
+existing `relations_target_idx`.
+
+The downstream DHAT first-frame total uses the analyzer provider index with
+21,304 `owns` rows and decreases from 6,954,078 to 1,012,703 bytes (-85.43%),
+while global peak remains effectively unchanged. The distinct 21,613-row
+provider release artifact has matched provider medians improving from 659 ms /
+80,280 KiB to 608 ms / 79,512 KiB; snapshot accounting stays 23,254,254 bytes
+and final query-field/query-parameter/enum-value counts stay 498 / 56 / 3,087.
+The sequential matched five-run analyzer workload improves from 0.86 s / 92,500
+KiB to 0.80 s / 91,444 KiB with the exact zero-finding digest in every run.
+The corresponding 5% ceilings are 691.95 ms / 84,294 KiB and 0.903 s / 97,125
+KiB. The earlier T175 0.75 s / 89,424 KiB workload result is historical only and
+is not an H2 acceptance comparator; later loaded-host runs are invalid evidence.

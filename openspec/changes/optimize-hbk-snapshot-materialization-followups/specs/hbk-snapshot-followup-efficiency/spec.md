@@ -34,6 +34,19 @@ selection without materializing every signature line in a temporary
   in the same order without an all-lines temporary vector or selected-line
   clone in the materializer path
 
+### Requirement: Owner-edge reader materializes only consumer target kinds
+The provider SHALL constrain `query_owner_edges` to target document kinds that
+feed its existing query-table and enum-value consumers. It SHALL preserve
+`source_id`, `target_id` order and the current source-owner skip behavior
+without adding a new reader, schema/index, cache or public interface.
+
+#### Scenario: Irrelevant owns edge is present
+- **WHEN** a `relations` row has `edge_kind = 'owns'` and its target is not a
+  query-table field, query-table parameter or enum value
+- **THEN** the private reader excludes the row before materializing its
+  `(target_id, source_id)` pair, while accepted target rows retain their
+  original `source_id`, `target_id` order
+
 ### Requirement: Type-reference contexts remain semantically distinct
 The provider SHALL keep document, document-return, signature-return and
 parameter type-reference groups distinct even when their names match. An

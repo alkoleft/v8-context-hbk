@@ -3821,7 +3821,7 @@ mod tests {
         );
     }
 
-    fn metadata() -> IndexMetadata {
+    pub(crate) fn metadata() -> IndexMetadata {
         IndexMetadata {
             locale: "ru".to_string(),
             source_locale: "ru".to_string(),
@@ -4000,7 +4000,7 @@ mod tests {
         }
     }
 
-    fn fixture_context() -> model::PlatformContext {
+    pub(crate) fn fixture_context() -> model::PlatformContext {
         model::PlatformContext {
             platform_types: vec![
                 platform_type(
@@ -4251,7 +4251,7 @@ mod tests {
         matches.next().is_none().then_some(first)
     }
 
-    fn build_test_index_from_context(
+    pub(crate) fn build_test_index_from_context(
         path: impl AsRef<Path>,
         metadata: &IndexMetadata,
         context: &model::PlatformContext,
@@ -4311,7 +4311,11 @@ mod tests {
         record
     }
 
-    fn query_table(identifier: &str, owner_path: &str, table_name: &str) -> model::QueryTable {
+    pub(crate) fn query_table(
+        identifier: &str,
+        owner_path: &str,
+        table_name: &str,
+    ) -> model::QueryTable {
         model::QueryTable {
             identity: None,
             name: table_name.to_string(),
@@ -4324,7 +4328,11 @@ mod tests {
         }
     }
 
-    fn query_table_field(owner: &str, owner_path: &str, primary: &str) -> model::QueryTableField {
+    pub(crate) fn query_table_field(
+        owner: &str,
+        owner_path: &str,
+        primary: &str,
+    ) -> model::QueryTableField {
         model::QueryTableField {
             owner: name(owner, None),
             owner_identity: None,
@@ -4337,7 +4345,7 @@ mod tests {
         }
     }
 
-    fn query_table_parameter(
+    pub(crate) fn query_table_parameter(
         owner: &str,
         owner_path: &str,
         primary: &str,
@@ -4354,7 +4362,7 @@ mod tests {
         }
     }
 
-    fn enum_definition(primary: &str, html_path: &str) -> model::EnumDefinition {
+    pub(crate) fn enum_definition(primary: &str, html_path: &str) -> model::EnumDefinition {
         enum_definition_with_alias(primary, "", html_path)
     }
 
@@ -4373,7 +4381,7 @@ mod tests {
         }
     }
 
-    fn enum_value(owner: &str, primary: &str) -> model::EnumValue {
+    pub(crate) fn enum_value(owner: &str, primary: &str) -> model::EnumValue {
         enum_value_with_owner_alias(owner, "", primary)
     }
 
@@ -4594,7 +4602,7 @@ mod tests {
         }
     }
 
-    fn temp_path(name: &str) -> PathBuf {
+    pub(crate) fn temp_path(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
             "v8-context-hbk-search-{}-{name}",
             std::process::id()

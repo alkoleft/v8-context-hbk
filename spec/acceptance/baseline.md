@@ -2581,6 +2581,27 @@ no-regression evidence only. Provider median is 601 ms / 79,756 KiB and the
 fixed five-run analyzer workload retains its zero findings at 0.75 s / 89,424
 KiB, within the 5% guard relative to post-T174 evidence.
 
+## T176 Durable Conclusion
+
+T176 confines `query_owner_edges` to the three document target kinds consumed
+by existing query-table and enum-value assembly. The private reader, vector,
+consumer loops, source-owner skip behavior and `source_id`/`target_id` order
+remain unchanged; no cache, schema, index or public interface is added. Its
+first JOIN form was rejected against a historic provider observation before the
+matched H2 protocol was corrected. The accepted target-id predicate uses the
+existing `relations_target_idx`.
+
+DHAT uses the analyzer provider index with 21,304 `owns` rows and allocates
+1,012,703 bytes in the five direct reader points, down 85.43% from 6,954,078.
+The separate provider release artifact has 21,613 rows: matched provider runs
+improve from a 659 ms / 80,280 KiB median to 608 ms / 79,512 KiB, with unchanged
+23,254,254-byte final snapshot accounting. The sequential matched downstream
+experiment improves from 0.86 s / 92,500 KiB to 0.80 s / 91,444 KiB and preserves
+the exact zero-finding digest in every run. The 5% ceilings are 691.95 ms /
+84,294 KiB and 0.903 s / 97,125 KiB. T175's earlier 0.75 s / 89,424 KiB result
+is historical context, not an H2 comparator. This is a transient reader-allocation
+reduction with no fact-model or contract change.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,
