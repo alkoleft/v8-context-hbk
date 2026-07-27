@@ -904,3 +904,27 @@ KiB to 0.80 s / 91,444 KiB with the exact zero-finding digest in every run.
 The corresponding 5% ceilings are 691.95 ms / 84,294 KiB and 0.903 s / 97,125
 KiB. The earlier T175 0.75 s / 89,424 KiB workload result is historical only and
 is not an H2 acceptance comparator; later loaded-host runs are invalid evidence.
+
+## T177 Snapshot-Interner Ownership Result
+
+T177 removes duplicate transient ownership of each interned snapshot string.
+The existing builder map owns values while IDs are assigned; after the final
+intern, it moves them once by stable `StringId` into the unchanged final string
+table before secondary-index sorting. This is a private lifecycle change, not a
+new cache format, string interner API or capacity policy.
+
+On the downstream 21,304-row index, direct `SnapshotBuilder::intern` DHAT
+allocation decreases from 18,404,610 to 7,756,607 bytes (-57.86%) and global
+peak from 69,614,844 to 63,019,028 bytes (-9.47%). The representative provider
+cache remains byte-identical at SHA-256
+`68e1662ae26518777cd3ac8c352281efa1ac1fb0b2f3f04b606b9017af1b1450`; its
+capacity-based heap decreases 23,254,254 to 22,376,046 bytes while logical
+payload remains 17,908,362 bytes.
+
+Matched provider median improves from 599 ms / 79,520 KiB to 580 ms / 75,620
+KiB. A sequential same-checkout five-run downstream A/B, reverting only the
+H3 production code for baseline, improves from 0.83 s / 88,620 KiB to 0.75 s /
+84,868 KiB. Every run has the exact zero-finding digest. H4 has no separately
+attributable cardinality source, H5 requires a provider-owned startup-policy
+proposal, and H8 remains a semantic non-merge rule rather than a performance
+candidate.

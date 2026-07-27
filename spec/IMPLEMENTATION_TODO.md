@@ -51,6 +51,35 @@ Current first unchecked task: none. Add a new task before implementing new scope
 
 ## Active Tasks
 
+### [x] T177. Eliminate duplicate snapshot-interner string ownership
+
+References: NFR-RESOLVE-001, `implementation/performance-baseline-t13.md`,
+OpenSpec change `optimize-hbk-snapshot-materialization-followups`.
+
+Scope and guard:
+
+- `SnapshotBuilder` must have exactly one build-time owner for each unique
+  string: map ownership while assigning `StringId`, followed by one move in
+  stable ID order into the existing `HbkFactSnapshot.strings` field. No new
+  snapshot model, cache/schema, adapter, reader, capacity policy or public
+  interface is allowed.
+- Lifecycle and source guards must reject a second build-time string table,
+  early string lookup, post-finalization interning and a non-lexical ID-order
+  change.
+
+Completion notes:
+
+- Direct DHAT for `SnapshotBuilder::intern` falls from 18,404,610 to 7,756,607
+  bytes (-57.86%); process global peak falls from 69,614,844 to 63,019,028
+  bytes. The provider cache SHA is exact, 66 package tests pass, and the final
+  snapshot payload remains 17,908,362 bytes.
+- Matched provider medians improve from 599 ms / 79,520 KiB to 580 ms /
+  75,620 KiB. The sequential fixed downstream A/B improves from 0.83 s /
+  88,620 KiB to 0.75 s / 84,868 KiB with the exact zero-finding digest in every
+  run. H4 is deferred for lack of independent growth evidence; H5 is deferred
+  to a provider-startup lifecycle proposal; H8 remains semantically rejected.
+- Architecture remains unchanged; workspace version is patched to 0.1.2.
+
 ### [x] T176. Filter unused owner-edge rows before materialization
 
 References: NFR-RESOLVE-001, `implementation/components.md`,

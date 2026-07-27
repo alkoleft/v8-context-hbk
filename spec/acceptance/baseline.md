@@ -2602,6 +2602,21 @@ the exact zero-finding digest in every run. The 5% ceilings are 691.95 ms /
 is historical context, not an H2 comparator. This is a transient reader-allocation
 reduction with no fact-model or contract change.
 
+## T177 Durable Conclusion
+
+T177 retains all snapshot, cache and read-handle string behavior while removing
+the former two-owner build phase. `SnapshotBuilder` owns each unique value only
+in its ID map until finalization, then transfers it in `StringId` order to the
+existing final string table before any lookup. The direct allocation point
+falls 18,404,610 to 7,756,607 bytes (-57.86%), global peak falls 69,614,844 to
+63,019,028 bytes (-9.47%), and the representative cache SHA remains exact.
+
+Provider medians improve 599 ms / 79,520 KiB to 580 ms / 75,620 KiB. The
+controlled sequential downstream A/B improves 0.83 s / 88,620 KiB to 0.75 s /
+84,868 KiB with the exact zero-finding digest in every run. This supports a
+private ownership simplification only: no generic capacity hint, analyzer cache
+selection, cache contract or type-reference group merge is accepted.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

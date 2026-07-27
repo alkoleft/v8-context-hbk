@@ -194,3 +194,207 @@ counterfactual evidence comparator.
   its same vector interface, and the predicate hides the selection detail inside
   that implementation. The test-only helper visibility creates no production
   seam, adapter or parallel data flow.
+
+## H3 Approved Task-Local Plan
+
+Post-H2 process-DHAT repeats attribute 18,404,610 direct allocated bytes to
+`SnapshotBuilder::intern`. Two symmetric 4,355,201-byte sites each include a
+2,012,987-byte live point: one owns the final string-table value and one owns
+the temporary `BTreeMap<String, StringId>` key. The 6,291,360-byte vector-growth
+site and 3,402,848-byte map-node site are not evidence for a general H4 capacity
+change. H3 is limited to removing the duplicate string ownership.
+
+1. During construction, `string_ids` is the sole owner of each unique string;
+   it assigns `StringId` from its pre-insertion length. `strings` is absent.
+2. After the last `intern` (including `source_locale`) and before any secondary
+   index invokes `builder.string`, a private `finish_interning` barrier consumes
+   map entries, orders them by their already assigned `StringId`, and moves each
+   value once into the final `Vec<String>`. `intern` after that barrier and
+   `string` before it are invalid private lifecycle states.
+3. Add a direct builder test using non-lexical `zulu`, `alpha`, `zulu` input;
+   prove IDs `0`, `1`, `0`, the final vector order, consumed map ownership and
+   lifecycle barrier. Existing snapshot/read-handle/cache tests remain the
+   behavior surface.
+4. Require exact snapshot/read-handle/finding parity and exact binary-cache
+   SHA-256 parity with the pre-change provider artifact
+   `68e1662ae26518777cd3ac8c352281efa1ac1fb0b2f3f04b606b9017af1b1450`.
+   DHAT must reduce direct `SnapshotBuilder::intern` allocation to at most
+   14,049,409 bytes (from 18,404,610); global peak must not exceed 73,095,586
+   bytes (5% above 69,614,844). Matched provider and downstream median time/RSS
+   must remain within 5%. Any miss reverts H3 and records it deferred.
+
+### Structure Impact
+
+Searched owners and consumers: `SnapshotBuilder`, `HbkFactSnapshot.strings`,
+`StringId`, sorted secondary-index helpers, binary-cache writer/reader,
+memory accounting, read handles, provider example, analyzer project-fast loader,
+tests, fixtures and OpenSpec performance artifacts. Search terms: `string_ids`,
+`builder.string`, `builder.intern`, `strings:`, `StringId`,
+`binary_cache`, `snapshot_payload_bytes` and `estimated_heap_bytes`.
+
+`HbkFactSnapshot` remains the sole final string-table owner and its serialized
+shape is unchanged. This task changes only the private build-time ownership flow
+inside `SnapshotBuilder`: no schema, cache layout/key, snapshot field, adapter,
+reader, mapping, public re-export, DTO or new seam is added. The sole permitted
+capacity knowledge is the already-known final interned count while materializing
+that one final vector; no `Vec`/`BTreeMap` capacity optimization is added for H4.
+
+### Reintroduction Guard
+
+Root cause: every unique string was independently owned by a growing final
+`Vec<String>` and by the build-time `BTreeMap` key. The only valid flow is
+`string_ids` sole ownership while interning -> `finish_interning` one-time move
+by stable `StringId` -> final `HbkFactSnapshot.strings`. The focused lifecycle
+test proves that final strings do not exist during interning, no map ownership
+remains after finishing and duplicate input reuses its ID; the source guard
+rejects a second build-time string store or a final vector before the barrier.
+
+### Codebase-Design Review
+
+`HbkFactSnapshot` remains the deep module and preserves its existing external
+interface. The lifecycle is hidden within its private builder, improving
+locality without adding an adapter or a second seam. The explicit private state
+is justified because it makes invalid interning/read order impossible at the
+implementation boundary; callers and cache consumers learn nothing new.
+
+### Skeptic Review
+
+The first H3 sketch was rejected because its lifecycle, ID-order oracle and
+allocation gate were under-specified. The revised plan supplies the hard
+`finish_interning` barrier, non-lexical ID test, cache hash, direct-DHAT ceiling,
+global-peak ceiling and no-regression disposition. Fresh review approved it;
+H4 remains evidence-only.
+
+## H3 Verification Results And Remaining Dispositions
+
+- The final private builder keeps map-key ownership while assigning dense
+  `StringId` values, then `finish_interning` moves map values once into the
+  final table before secondary-index sorting. Focused tests prove
+  `zulu`/`alpha`/`zulu` IDs `0`/`1`/`0`, final ID order, empty map ownership,
+  rejected post-finalization interning, and the source-level single-owner
+  lifecycle. The package has 66 passing tests, including existing read-handle
+  and binary-cache coverage.
+- Process DHAT uses the unchanged 21,304-row analyzer provider index. Direct
+  `SnapshotBuilder::intern` allocation is 7,756,607 bytes against the
+  18,404,610-byte baseline (-57.86%), below the 14,049,409-byte gate. Total
+  allocation is 255,122,518 bytes and global peak is 63,019,028 bytes, below
+  the 73,095,586-byte ceiling. The finding digest remains
+  `c2b4465a4c66a8939d40febd117061959e85dcde77078be386c1e73ae97f60a3`.
+- The same provider cache artifact has exact before/after SHA-256
+  `68e1662ae26518777cd3ac8c352281efa1ac1fb0b2f3f04b606b9017af1b1450`.
+  Its snapshot heap is 22,376,046 bytes versus 23,254,254 bytes (-3.78%),
+  payload remains 17,908,362 bytes. Matched release provider samples are
+  599/632/591 ms and 79,520/79,516/79,520 KiB before, then 581/580/579 ms and
+  75,620/75,624/75,620 KiB after: medians improve from 599 ms / 79,520 KiB to
+  580 ms / 75,620 KiB.
+- The downstream experiment is sequential, same-checkout A/B: the baseline
+  temporarily reverts only H3 production ownership code, then rebuilds the
+  same release CLI; tests remain out of the executable. Its five samples move
+  from 0.83/0.89/0.85/0.76/0.77 s and
+  88,364/88,624/88,612/88,620/88,620 KiB to
+  0.75/0.77/0.71/0.73/0.79 s and
+  85,032/84,904/84,868/84,648/84,776 KiB. Medians improve from 0.83 s /
+  88,620 KiB to 0.75 s / 84,868 KiB; every sample has the exact digest above.
+- H4 is deferred. The former 6,291,360-byte growth point is part of the H3
+  dual-owner allocation path and does not provide a separate input cardinality
+  for a safe `Vec` or `BTreeMap` reservation. No telemetry, tuning knob or
+  generic preallocation remains.
+- H5 is deferred to a dedicated cross-repository startup proposal. The cache
+  format and validation stay private in `syntax-helper-search::binary_cache`;
+  the analyzer presently calls `analyze-project::load_hbk_snapshot`, which
+  selects `HbkFactSnapshot::from_path`. The proposal must define provider-owned
+  discovery, write/rebuild, invalidation and CLI startup failure behavior.
+- H8 is rejected. The cited 1C documentation distinguishes documents,
+  function returns and parameters; it does not permit merging equal textual
+  types. Existing four context groups and explicit unknown semantics remain.
+- No architecture document changes: provider responsibility, dependency
+  direction, cache/schema, public snapshot contract and analyzer boundary are
+  unchanged. Workspace version advances from 0.1.1 to 0.1.2 for the completed
+  internal optimization.
+
+### Measurement Protocol And Artifact Identity
+
+Raw SQLite indexes, cache binaries, DHAT JSON and finding JSON are generated
+measurement data and are intentionally not committed. The following immutable
+identities and commands make the retained numbers reproducible without treating
+those files as source artifacts.
+
+- Cache parity uses the provider artifact
+  `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite`
+  (`sha256:cc9b2b8aaf31f64c880b92cc3a02fd3166541f10f8d209faf8c7a7c22cac0d55`).
+  Regenerate the pre-H3 executable in a detached worktree at
+  `6b1a63716c12c476499dcefc96f63b1018dc6910`, then generate the baseline and
+  final caches from that same absolute SQLite path. The resulting
+  `/tmp/t177-h3-baseline-20260727.cache` and
+  `/tmp/t177-h3-20260727.cache` both hash to
+  `68e1662ae26518777cd3ac8c352281efa1ac1fb0b2f3f04b606b9017af1b1450`.
+  Rebuild both release examples, then run these commands with the same index
+  and iteration count:
+
+  ```bash
+  git worktree add --detach /tmp/v8-context-hbk-t177-baseline \
+    6b1a63716c12c476499dcefc96f63b1018dc6910
+  cargo build --release \
+    --manifest-path /tmp/v8-context-hbk-t177-baseline/crates/syntax-helper-search/Cargo.toml \
+    --example measure_hbk_fact_snapshot
+  /usr/bin/time -f 'elapsed_seconds=%e max_rss_kib=%M' \
+    /tmp/v8-context-hbk-t177-baseline/target/release/examples/measure_hbk_fact_snapshot \
+    /home/alko/develop/open-source/v8-maintain-projects/v8-context-hbk/target/snapshot-materialization/shcntx_ru.schema16.release.sqlite \
+    20000 /tmp/t177-h3-baseline-20260727.cache
+  cargo build --release -p syntax-helper-search --example measure_hbk_fact_snapshot
+  /usr/bin/time -f 'elapsed_seconds=%e max_rss_kib=%M' \
+    target/release/examples/measure_hbk_fact_snapshot \
+    target/snapshot-materialization/shcntx_ru.schema16.release.sqlite \
+    20000 /tmp/t177-h3-20260727.cache
+  sha256sum /tmp/t177-h3-baseline-20260727.cache /tmp/t177-h3-20260727.cache
+  ```
+
+  The recreated baseline reports `snapshot_heap_bytes=23254254` and the final
+  replay reports `snapshot_build_ms=593`,
+  `snapshot_heap_bytes=22376046`, `snapshot_payload_bytes=17908362`,
+  `binary_cache.status=loaded` and `binary_cache.roundtrip_equal=true`; it is
+  a hash/parity replay, not an additional member of the three-sample timing
+  median.
+- The downstream A/B uses analyzer index
+  `.v8-context/platform-indexes/8.3.27.1859/shcntx_ru.sqlite`
+  (`sha256:317f3cdd914e635c89b975bf9ebcf28238bdbabd54e455121a083558d4e05f5e`),
+  the fixture project
+  `openspec/changes/add-context-provider-boundary/fixtures/context-benchmark/v1/fixture-project`,
+  profile `project-fast` and platform `8.3.27.1859`. These commands run from
+  the sibling analyzer workspace
+  `/home/alko/develop/open-source/v8-maintain-projects/v8-context`, not from
+  this provider workspace. At measurement time its checked-out commit was
+  `29525e56423d29bd5c6bcef95ee766e3638681be`; its tracked tree was clean and
+  the sole status entry was unrelated untracked
+  `docs/internal-analyzer-capability-map.md`, which neither Cargo nor the CLI
+  reads. The later lockfile and hypothesis-ledger edits are not part of either
+  A/B executable.
+
+  The adjacent path dependency was the provider tree under this change. The
+  release baseline is the exact reverse of H3 production changes in
+  `crates/syntax-helper-search/src/snapshot/materialize.rs` relative to
+  upstream commit `6b1a63716c12c476499dcefc96f63b1018dc6910`; no other
+  production source changes are present. The `cfg(test)` H3 tests remain in
+  the checkout but are not linked into either release executable. To reproduce,
+  arrange `v8-context` at that commit beside the H2 baseline or this H3 source
+  tree as `../v8-context-hbk`, confirm the index SHA, then change to the
+  analyzer workspace before rebuilding and running each side:
+
+  ```bash
+  cd /home/alko/develop/open-source/v8-maintain-projects/v8-context
+  git rev-parse HEAD
+  git status --porcelain
+  cargo build --release -p v8-analyzer-cli --features heap-profile
+  env RAYON_NUM_THREADS=1 /usr/bin/time -f 'elapsed_seconds=%e max_rss_kib=%M' \
+    target/release/v8-analyzer diagnostics \
+    --project openspec/changes/add-context-provider-boundary/fixtures/context-benchmark/v1/fixture-project \
+    --profile project-fast --platform-version 8.3.27.1859 \
+    --platform-install-root /opt/1cv8/x86_64 --findings /tmp/t177-h3-findings.json
+  sha256sum /tmp/t177-h3-findings.json
+  ```
+
+  The five baseline and five final samples recorded above are sequential in one
+  idle interval, not interleaved. The fixed source diff, index SHA, executable
+  build mode, command, profile and per-run finding SHA are the controls; the
+  result remains a sequential counterfactual rather than a claim of host-wide
+  benchmark precision.

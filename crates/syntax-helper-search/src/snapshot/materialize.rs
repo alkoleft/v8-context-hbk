@@ -98,7 +98,7 @@ struct TypeRefGroups {
 
 #[derive(Default)]
 pub(super) struct SnapshotBuilder {
-    pub(super) strings: Vec<String>,
+    strings: Option<Vec<String>>,
     pub(super) string_ids: BTreeMap<String, StringId>,
 }
 
@@ -668,6 +668,9 @@ impl<'a> SnapshotMaterializer<'a> {
             availability_pairs(&mut self.builder, &fact_by_id, &documents);
         finish_stage!(stage_start, build_fact_ids_relations_availability);
 
+        let source_locale = Some(self.builder.intern(&index_metadata.source_locale));
+        self.builder.finish_interning();
+
         let stage_start = start_stage!();
         let fact_ids = sorted_id_lookup(fact_ids, &self.builder);
         let platform_type_ids = sorted_id_lookup(platform_type_ids, &self.builder);
@@ -705,9 +708,8 @@ impl<'a> SnapshotMaterializer<'a> {
         finish_stage!(stage_start, sort_secondary_indexes);
 
         let stage_start = start_stage!();
-        let source_locale = Some(self.builder.intern(&index_metadata.source_locale));
         let snapshot = HbkFactSnapshot {
-            strings: self.builder.strings,
+            strings: self.builder.into_strings(),
             source_locale,
             platform_types,
             type_members,
@@ -1159,15 +1161,88 @@ mod tests {
         assert!(reader.contains("ORDER BY relations.source_id, relations.target_id"));
         assert!(!reader.contains("FROM relations\n                 WHERE edge_kind = 'owns'"));
     }
+
+    #[test]
+    fn snapshot_builder_finishes_non_lexical_strings_in_id_order() {
+        let mut builder = SnapshotBuilder::default();
+
+        let zulu = builder.intern("zulu");
+        let alpha = builder.intern("alpha");
+        let zulu_again = builder.intern("zulu");
+
+        assert_eq!(zulu, StringId(0));
+        assert_eq!(alpha, StringId(1));
+        assert_eq!(zulu_again, zulu);
+        assert!(builder.strings.is_none());
+        assert_eq!(builder.string_ids.len(), 2);
+
+        builder.finish_interning();
+
+        assert_eq!(builder.string(zulu), "zulu");
+        assert_eq!(builder.string(alpha), "alpha");
+        assert!(builder.string_ids.is_empty());
+        assert_eq!(
+            builder.into_strings(),
+            vec!["zulu".to_string(), "alpha".to_string()]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "snapshot strings cannot be interned after finalization")]
+    fn snapshot_builder_rejects_interning_after_finalization() {
+        let mut builder = SnapshotBuilder::default();
+        builder.intern("before");
+        builder.finish_interning();
+        builder.intern("after");
+    }
+
+    #[test]
+    fn snapshot_builder_source_guard_keeps_one_build_time_string_owner() {
+        let source = include_str!("materialize.rs");
+        let builder = source
+            .split("pub(super) struct SnapshotBuilder")
+            .nth(1)
+            .and_then(|section| section.split("struct SnapshotMaterializer").next())
+            .expect("snapshot builder declaration must remain separate");
+        let intern = source
+            .split("pub(super) fn intern(")
+            .nth(1)
+            .and_then(|section| section.split("pub(super) fn intern_option").next())
+            .expect("intern must remain a standalone builder operation");
+        let materialize = source
+            .split("fn materialize_inner")
+            .nth(1)
+            .and_then(|section| section.split("#[cfg(test)]").next())
+            .expect("materialization must remain separate from tests");
+
+        assert!(builder.contains("strings: Option<Vec<String>>"));
+        assert_eq!(builder.matches("Vec<String>").count(), 1);
+        assert!(!intern.contains("self.strings.push"));
+        assert!(!intern.contains("self.strings ="));
+
+        let source_locale = materialize
+            .find("let source_locale = Some(self.builder.intern")
+            .expect("source locale must be interned before finalization");
+        let finish = materialize
+            .find("self.builder.finish_interning();")
+            .expect("interner must finish before string lookups");
+        let first_secondary_sort = materialize
+            .find("let fact_ids = sorted_id_lookup")
+            .expect("secondary indexes must keep their sort phase");
+        assert!(source_locale < finish && finish < first_secondary_sort);
+    }
 }
 
 impl SnapshotBuilder {
     pub(super) fn intern(&mut self, value: &str) -> StringId {
+        assert!(
+            self.strings.is_none(),
+            "snapshot strings cannot be interned after finalization"
+        );
         if let Some(id) = self.string_ids.get(value).copied() {
             return id;
         }
-        let id = StringId(self.strings.len() as u32);
-        self.strings.push(value.to_string());
+        let id = StringId(self.string_ids.len() as u32);
         self.string_ids.insert(value.to_string(), id);
         id
     }
@@ -1188,7 +1263,35 @@ impl SnapshotBuilder {
     }
 
     pub(super) fn string(&self, id: StringId) -> &str {
-        &self.strings[id.0 as usize]
+        &self
+            .strings
+            .as_ref()
+            .expect("snapshot strings must be finalized before lookup")[id.0 as usize]
+    }
+
+    fn finish_interning(&mut self) {
+        assert!(
+            self.strings.is_none(),
+            "snapshot strings can only be finalized once"
+        );
+        let mut strings = std::mem::take(&mut self.string_ids)
+            .into_iter()
+            .map(|(value, id)| (id, value))
+            .collect::<Vec<_>>();
+        strings.sort_unstable_by_key(|(id, _)| id.0);
+        debug_assert!(
+            strings
+                .iter()
+                .enumerate()
+                .all(|(position, (id, _))| id.0 as usize == position),
+            "interned string IDs must remain dense and insertion ordered"
+        );
+        self.strings = Some(strings.into_iter().map(|(_, value)| value).collect());
+    }
+
+    fn into_strings(self) -> Vec<String> {
+        self.strings
+            .expect("snapshot strings must be finalized before assembly")
     }
 }
 fn collect_pairs(index: &SearchIndex, query: &str) -> Result<Vec<(String, String)>, SearchError> {

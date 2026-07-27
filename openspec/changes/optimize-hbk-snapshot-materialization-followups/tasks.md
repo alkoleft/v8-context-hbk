@@ -37,20 +37,28 @@
   counterfactual baselines; all findings retain the exact zero digest. The
   historical T175 0.75 s downstream result is not an H2 acceptance comparator.
 
-## 3. H3/H4 Evidence Before Implementation
+## 3. H3/H4 Evidence And Implementation
 
-- [ ] 3.1 Measure short-lived interner duplicate ownership after H7/H2 and
-  select or reject one build-only design that preserves finished snapshot and
-  cache representation.
-- [ ] 3.2 Instrument or otherwise attribute temporary collection-capacity
-  growth without retaining production telemetry; record whether any
-  row-count-driven reservation passes its own gate.
+- [x] 3.1 Measure short-lived interner duplicate ownership after H7/H2 and
+  select one build-only design that preserves finished snapshot and cache
+  representation. `finish_interning` moves map-owned values once into the
+  existing final table after the last intern; direct DHAT falls from 18,404,610
+  to 7,756,607 bytes, cache SHA and findings remain exact, and provider and
+  downstream medians remain within the 5% gate.
+- [x] 3.2 Attribute temporary collection growth without retaining production
+  telemetry. The historical 6,291,360-byte vector-growth point belongs to the
+  removed dual-owner H3 flow, not to an independently measurable row-count
+  source. No H4 reservation or generic capacity policy is selected.
 
 ## 4. Boundary And Semantic Dispositions
 
-- [ ] 4.1 Record H5's provider-owned cache-startup lifecycle/invalidation
+- [x] 4.1 Record H5's provider-owned cache-startup lifecycle/invalidation
   decision and the exact cross-repository prerequisite; do not add analyzer
-  cache policy or format exposure in this change.
-- [ ] 4.2 Record H8's official 1C semantic non-merge evidence and retain
+  cache policy or format exposure in this change. The current analyzer path is
+  CLI execution -> `analyze-project::load_hbk_snapshot` -> `from_path`; a
+  dedicated cross-repository proposal must select cache discovery, rebuild and
+  invalidation ownership before that path can use `binary_cache.rs`.
+- [x] 4.2 Record H8's official 1C semantic non-merge evidence and retain
   distinct type-reference context tests; do not claim a runtime 1C performance
-  conclusion from documentation alone.
+  conclusion from documentation alone. Equal textual names remain separately
+  addressable document, document-return, signature-return and parameter facts.

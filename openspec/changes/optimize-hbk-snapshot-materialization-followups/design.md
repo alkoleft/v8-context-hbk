@@ -9,9 +9,9 @@ The remaining profile evidence is not a license to combine unrelated changes:
 | ID | Candidate | Current evidence | Owner / status |
 | --- | --- | --- | --- |
 | H2 | Filter `query_owner_edges` by target document kind. | The analyzer index has 21,304 `owns` rows and its DHAT points fall from 6,954,078 to 1,012,703 bytes (-85.43%). The separate provider artifact has 21,613 rows; only 498 query-table fields, 56 query-table parameters and 3,087 enum values reach this reader's consumers. | `syntax-helper-search` materializer; accepted with matched provider and downstream no-regression evidence. |
-| H3 | Remove temporary string-interner duplicate ownership. | 6,291,360 allocated bytes; map dies at snapshot assembly but exact reclaim design is unproven. | `SnapshotBuilder`; measure/design first. |
-| H4 | Pre-size temporary collections. | `Vec::new`/`BTreeMap::new` sites exist, but no attributable growth metric. | Unmeasured; do not implement speculatively. |
-| H5 | Use derived binary cache in analyzer startup. | Cache loading is 26-31x faster in earlier provider evidence, but normal analyzer startup never selects it. | Cross-repository provider startup decision; deferred. |
+| H3 | Remove temporary string-interner duplicate ownership. | Direct `SnapshotBuilder::intern` allocation falls from 18,404,610 to 7,756,607 bytes (-57.86%); final cache SHA and findings remain exact. | `SnapshotBuilder`; accepted. |
+| H4 | Pre-size temporary collections. | The former 6,291,360-byte vector-growth site was part of H3's old two-owner flow; no row-count-driven growth source is attributable independently. | Deferred; do not add speculative capacity hints. |
+| H5 | Use derived binary cache in analyzer startup. | Cache loading is 26-31x faster in earlier provider evidence, but normal analyzer startup never selects it. | Deferred to a cross-repository provider-startup proposal with lifecycle/invalidation policy. |
 | H6 | Explicit drop after grouping. | Superseded by T174's row-at-a-time flow. | Rejected. |
 | H7 | Extract only the selected signature line. | Borrowed-input experiment was allocation-identical and reverted. Direct selection deletes the source-level all-lines vector and selected-line clone; parity/no-regression passes, but `split_lines` first-frame attribution remains 5,811,810 bytes, so no allocation/time/RSS improvement is claimed. | Accepted as P5b supportability deletion. |
 | H8 | Merge type-reference groups based on 1C semantics. | No semantic defect is evidenced. Official 1C material separates document type families, function returns and parameter descriptions. | Rejected. |
@@ -111,6 +111,20 @@ types from function parameters and returns; they contain no performance rule
 that permits collapsing those domains. Retain separate snapshot groups and
 explicit unknown behavior.
 
+### 5. H3 transfers the single temporary string owner at finalization
+
+During materialization, the existing `BTreeMap<String, StringId>` is the only
+owner of each unique build-time string. After the final `intern`, a private
+`finish_interning` barrier consumes that map, sorts entries by their already
+assigned dense `StringId`, and moves each value once into the unchanged final
+snapshot string table. Secondary indexes run only after the barrier, because
+they resolve IDs back to strings.
+
+This is not a generic interner, cache format or second representation: it
+removes the old simultaneous `Vec<String>` and map-key ownership. The final
+`HbkFactSnapshot.strings` field, IDs, serialization, cache bytes and consumer
+interface remain unchanged.
+
 ## Structure Impact
 
 Searched owners/consumers: `syntax-helper-search` identity helpers, snapshot
@@ -139,6 +153,13 @@ production helper is added. The materializer-local test may reuse existing
 `cfg(test)` fixture construction only to call this private reader directly; it
 does not reproduce index construction or introduce a production test seam.
 
+H3 keeps `HbkFactSnapshot.strings` as the sole final string-table owner and
+changes only private build-time ownership in `SnapshotBuilder`. The map owns
+unique values until `finish_interning` moves them by `StringId` into that final
+field. No snapshot field, cache layout/key, schema, adapter, reader, mapping,
+DTO, public re-export or capacity policy is added. The final-vector allocation
+uses only the map's already-known final length; it is not an H4 capacity hint.
+
 ## Reintroduction Guards
 
 - H7 root cause: materializing `Vec<String>` for all document signature lines
@@ -158,6 +179,12 @@ does not reproduce index construction or introduce a production test seam.
   and orders by `source_id`, `target_id`, followed by the unchanged loops. A
   private-reader
   fixture test and source guard reject an unconditional full-`owns` query.
+- H3 root cause: a final string vector and map keys independently owned every
+  unique build-time string. The only valid flow is map ownership while
+  interning, followed by one `finish_interning` move in stable `StringId`
+  order into `HbkFactSnapshot.strings`. Lifecycle and source-structure tests
+  reject a second build-time string owner, an early final vector, and an ID
+  order change.
 
 ## Risks / Trade-offs
 
@@ -221,3 +248,29 @@ run. The explicit 5% ceilings are 691.95 ms / 84,294 KiB for provider and
 0.903 s / 97,125 KiB for downstream. H2 therefore passes its 50%
 direct-allocation and matched 5% normal no-regression gates; the T175 0.75 s
 downstream result is not used as an H2 gate.
+
+H3 passes its independent gate. On the 21,304-row analyzer provider index,
+the direct `SnapshotBuilder::intern` DHAT allocation falls from 18,404,610 to
+7,756,607 bytes (-57.86%); total allocation falls from 261,308,643 to
+255,122,518 bytes and global peak from 69,614,844 to 63,019,028 bytes
+(-9.47%). The one-run provider cache artifact is byte-identical before and
+after (`sha256:68e1662ae26518777cd3ac8c352281efa1ac1fb0b2f3f04b606b9017af1b1450`),
+while its capacity-based snapshot heap decreases from 23,254,254 to
+22,376,046 bytes (-3.78%) with unchanged 17,908,362-byte payload.
+
+Matched provider release medians improve from 599 ms / 79,520 KiB to 580 ms /
+75,620 KiB (-3.17% / -4.90%). A sequential same-checkout downstream A/B,
+reverting only the H3 production ownership code for the baseline, improves
+from 0.83 s / 88,620 KiB to 0.75 s / 84,868 KiB (-9.64% / -4.23%). Every run
+has the exact zero-finding digest
+`c2b4465a4c66a8939d40febd117061959e85dcde77078be386c1e73ae97f60a3`; the
+5% no-regression ceilings are met. H4 remains deferred because this does not
+attribute a separate safe capacity source. H5 remains deferred until a
+cross-repository proposal selects the provider-owned cache lifecycle at the
+current analyzer `from_path` call boundary. H8 remains rejected: 1C evidence
+supports context distinction, not runtime type-group merging.
+
+The exact artifact identities, release commands and sequential-A/B controls are
+recorded in `implementation-notes.md` under "Measurement Protocol And Artifact
+Identity". Generated indexes, cache files, DHAT profiles and finding JSON
+remain outside source control by design.

@@ -47,6 +47,19 @@ without adding a new reader, schema/index, cache or public interface.
   `(target_id, source_id)` pair, while accepted target rows retain their
   original `source_id`, `target_id` order
 
+### Requirement: String interning has one build-time owner
+The snapshot materializer SHALL keep each unique interned string under one
+build-time owner until all IDs are assigned. It SHALL then move those values
+once into the existing final snapshot string table in `StringId` order before
+any secondary index resolves a string. It SHALL not change snapshot fields,
+cache bytes or read-handle string semantics.
+
+#### Scenario: Non-lexical duplicate input is finalized
+- **WHEN** the builder interns `zulu`, `alpha`, then `zulu`
+- **THEN** it assigns IDs `0`, `1`, `0`, owns no final string vector while
+  interning, and finalizes the existing table as `zulu`, `alpha` before a
+  string lookup is permitted
+
 ### Requirement: Type-reference contexts remain semantically distinct
 The provider SHALL keep document, document-return, signature-return and
 parameter type-reference groups distinct even when their names match. An
