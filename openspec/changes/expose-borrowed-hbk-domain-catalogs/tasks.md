@@ -137,7 +137,7 @@ under its tasks 6.2/6.6.
 - [x] 5.7 Reconcile final diff against the Structure impact and Reintroduction guard, accounting for every structure, behavior owner, conversion, mapping, adapter, public re-export, test fixture and documentation change.
 - [x] 5.8 Update ADR-0008 or companion implementation notes, spec references, measurements/counter notes and versioning as required by the accepted behavior and completed commits.
 - [x] 5.9 Run a fresh final review covering SKEP-003/008/009/010/011, independent BSL/SDBL commit boundaries, generic resolver retention, SQL/SearchIndex non-fallback, selector ownership and downstream handoff.
-- [ ] 5.10 Commit the final documentation/verification batch after staged files are limited to this OpenSpec change and required docs/versioning updates.
+- [x] 5.10 Commit the final documentation/verification batch after staged files are limited to this OpenSpec change and required docs/versioning updates.
 
 Verification and reconciliation evidence (2026-07-28):
 
@@ -183,4 +183,5 @@ Verification and reconciliation evidence (2026-07-28):
   distinguishing `current-bsl` from `current-sdbl`; the command labels,
   manifest and measurement summary were reconciled, all 177 payload hashes
   passed, strict validation passed, and the follow-up review returned
-  `NO FINDINGS`.
+  `NO FINDINGS`. Commit `35ea001` is the staged-file-limited final
+  documentation/verification batch required by task 5.10.

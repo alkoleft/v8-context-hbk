@@ -32,7 +32,7 @@ type-reference conclusions live in
 `implementation/performance-baseline-t13.md`, `implementation/performance-variants.md` and
 `decisions/`.
 
-Current first unchecked task: T178.
+Current first unchecked task: none.
 
 ## Loop Rule
 
@@ -51,7 +51,7 @@ Current first unchecked task: T178.
 
 ## Active Tasks
 
-### [ ] T178. Expose borrowed HBK BSL and SDBL domain catalogs
+### [x] T178. Expose borrowed HBK BSL and SDBL domain catalogs
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,
 `implementation/components.md`, ADR-0008, OpenSpec change
