@@ -266,3 +266,37 @@ SQLite-to-snapshot probe materialized the same index in `474 ms`, with `49112 Ki
 `34935365` estimated heap bytes. This accepts SQLite bulk materialization as the first
 implementation source for the worker-safe snapshot. Direct HBK reading remains setup/index-refresh
 input and comparison baseline, not the worker hot path.
+
+### 2026-07-28: Borrowed Domain Catalog Refinement
+
+The downstream context-formation measurements identified two hot-path domains
+where the source-neutral owned resolver DTO contract is broader than the
+consumer needs:
+
+- BSL platform context, generated-self, metadata module members/events and
+  typed availability;
+- SDBL query tables with owner-scoped fields/parameters and metadata
+  query-source classification.
+
+ADR-0008 remains accepted. Its source-neutral `ContextResolver` boundary
+continues to own cross-provider composition, generic identities, ambiguity
+status and compatibility DTOs for `analyze-project`, platform-adapter and
+explicit SQL/`SearchIndex` consumers.
+
+For these two measured analyzer hot paths, `context-resolver-search` additionally
+owns `HbkBslContextCatalog` and `HbkSdblQueryCatalog`. The catalogs hold the
+existing worker-safe `Arc<HbkFactSnapshot>` and lend typed IDs and records from
+the provider-owned arenas without first materializing generic `ContextFact` or
+`Resolved*` answers. Snapshot-backed generic adapters delegate catalog-covered
+acquisition and project once at the resolver boundary.
+
+This refinement does not create another storage/read model. `HbkFactSnapshot`
+and `HbkFactReadHandle` remain the only HBK snapshot storage/read owners.
+`PlatformSearchSource` and `LanguageSearchSource` remain explicit
+SQL/`SearchIndex` adapters for CLI, debug, index inspection and local sequential
+flows; snapshot catalogs never fall back to them. Raw
+`metadata.module-role.*` translation remains in `context-resolver-core`, and
+catalog-covered selector behavior must not be copied into analyzer code.
+
+The accepted implementation contract and consumer inventory are recorded by
+OpenSpec change `expose-borrowed-hbk-domain-catalogs`.

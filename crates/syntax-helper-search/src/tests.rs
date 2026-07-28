@@ -1969,6 +1969,105 @@ mod tests {
     }
 
     #[test]
+    fn read_handle_bsl_iterators_borrow_from_snapshot_not_temporary_handle() {
+        fn global_ids<'a>(
+            snapshot: &'a HbkFactSnapshot,
+        ) -> impl Iterator<Item = HbkGlobalFactId> + 'a + use<'a> {
+            snapshot.worker_handle().global_fact_ids()
+        }
+
+        fn globals_by_name<'a>(
+            snapshot: &'a HbkFactSnapshot,
+            name: &str,
+        ) -> impl ExactSizeIterator<Item = HbkGlobalFactId> + 'a + use<'a> {
+            snapshot.worker_handle().globals_by_name(name)
+        }
+
+        let path = temp_path("hbk-fact-snapshot-bsl-read-handle-lifetime.sqlite");
+        let mut context = fixture_context();
+        context.global_methods.push(model::GlobalMethod {
+            name: name("Сообщить", Some("Message")),
+            signatures: vec![model::Signature {
+                text: "Сообщить(<ТекстСообщения>)".to_string(),
+                parameters: vec![model::Parameter {
+                    name: "ТекстСообщения".to_string(),
+                    required: true,
+                    type_refs: vec![model::TypeRef {
+                        name: "Строка".to_string(),
+                    }],
+                    description: None,
+                }],
+                return_types: Vec::new(),
+                variant: None,
+            }],
+            return_types: Vec::new(),
+            description: Some("Global method description.".to_string()),
+            facts: model::SectionFacts::default(),
+            source: source("Сообщить"),
+        });
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        let mut all_globals = global_ids(&snapshot);
+        assert!(all_globals.next().is_some());
+
+        let globals = globals_by_name(&snapshot, "Сообщить");
+        assert_eq!(globals.len(), 1);
+        assert_eq!(
+            snapshot.string(snapshot.global_fact(globals.into_iter().next().unwrap()).name.primary),
+            "Сообщить"
+        );
+    }
+
+    #[test]
+    fn read_handle_sdbl_slices_and_iterators_borrow_from_snapshot_not_temporary_handle() {
+        fn query_fields(snapshot: &HbkFactSnapshot, table: HbkQueryTableId) -> &[HbkQueryFieldId] {
+            snapshot.worker_handle().query_fields(table)
+        }
+
+        fn query_fields_by_name<'a>(
+            snapshot: &'a HbkFactSnapshot,
+            table: HbkQueryTableId,
+            name: &str,
+        ) -> impl ExactSizeIterator<Item = HbkQueryFieldId> + 'a + use<'a> {
+            snapshot.worker_handle().query_fields_by_name(table, name)
+        }
+
+        let path = temp_path("hbk-fact-snapshot-sdbl-read-handle-lifetime.sqlite");
+        let mut context = fixture_context();
+        let mut table = query_table("Справочник", "Таблицы справочников", "Таблица справочника");
+        table.syntax = Some(name(
+            "Справочник.<Имя справочника>",
+            Some("Catalog.<Catalog name>"),
+        ));
+        context.query_tables.push(table);
+        context.table_fields.push(query_table_field(
+            "Таблица справочника",
+            "Таблицы справочников",
+            "Ссылка",
+        ));
+        build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
+
+        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        let table = snapshot
+            .worker_handle()
+            .query_tables_by_syntax("Справочник.<Имя справочника>")
+            .next()
+            .expect("query table must exist");
+
+        let fields = query_fields(&snapshot, table);
+        assert_eq!(fields.len(), 1);
+        assert_eq!(
+            snapshot.string(snapshot.query_field(fields[0]).name.primary),
+            "Ссылка"
+        );
+
+        let fields_by_name = query_fields_by_name(&snapshot, table, "Ссылка");
+        assert_eq!(fields_by_name.len(), 1);
+        assert_eq!(fields_by_name.into_iter().next(), Some(fields[0]));
+    }
+
+    #[test]
     fn hbk_fact_snapshot_validates_ignored_type_reference_rows_before_filtering() {
         let path = temp_path("hbk-fact-snapshot-invalid-ignored-type-ref.sqlite");
         build_test_index_from_context(&path, &metadata(), &fixture_context())

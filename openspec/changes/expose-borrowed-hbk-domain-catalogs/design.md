@@ -107,6 +107,21 @@ impl HbkBslContextCatalog {
         name: &str,
     ) -> impl Iterator<Item = (HbkPlatformTypeId, &HbkPlatformType)> + '_;
 
+    pub fn member_by_id(
+        &self,
+        id: &str,
+    ) -> Option<(HbkTypeMemberId, &HbkTypeMember)>;
+
+    pub fn callable_by_id(
+        &self,
+        id: &str,
+    ) -> Option<(HbkCallableId, &HbkCallable)>;
+
+    pub fn global_by_id(
+        &self,
+        id: &str,
+    ) -> Option<(HbkGlobalFactId, &HbkGlobalFact)>;
+
     pub fn platform_types_by_template_key(
         &self,
         family: &str,
@@ -238,6 +253,16 @@ impl HbkSdblQueryCatalog {
         &self,
         id: &str,
     ) -> Option<(HbkQueryTableId, &HbkQueryTable)>;
+
+    pub fn query_field_by_id(
+        &self,
+        id: &str,
+    ) -> Option<(HbkQueryFieldId, &HbkQueryField)>;
+
+    pub fn query_parameter_by_id(
+        &self,
+        id: &str,
+    ) -> Option<(HbkQueryParameterId, &HbkQueryParameter)>;
 
     pub fn query_tables(
         &self,

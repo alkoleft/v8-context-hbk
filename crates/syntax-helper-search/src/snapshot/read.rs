@@ -128,11 +128,11 @@ impl HbkFactSnapshot {
 }
 
 impl<'a> HbkFactReadHandle<'a> {
-    pub fn global_fact_ids(&self) -> impl Iterator<Item = HbkGlobalFactId> + '_ {
+    pub fn global_fact_ids(self) -> impl Iterator<Item = HbkGlobalFactId> + 'a {
         (0..self.snapshot.globals.len()).map(|index| HbkGlobalFactId(index as u32))
     }
 
-    pub fn query_table_ids(&self) -> impl Iterator<Item = HbkQueryTableId> + '_ {
+    pub fn query_table_ids(self) -> impl Iterator<Item = HbkQueryTableId> + 'a {
         (0..self.snapshot.query_tables.len()).map(|index| HbkQueryTableId(index as u32))
     }
 
@@ -144,7 +144,7 @@ impl<'a> HbkFactReadHandle<'a> {
         (0..self.snapshot.query_parameters.len()).map(|index| HbkQueryParameterId(index as u32))
     }
 
-    pub fn facts_by_id(&self, id: &str) -> impl ExactSizeIterator<Item = HbkFactRef> + '_ {
+    pub fn facts_by_id(self, id: &str) -> impl ExactSizeIterator<Item = HbkFactRef> + 'a + use<'a> {
         lookup_id_all(&self.snapshot.fact_ids, self.snapshot, id)
     }
 
@@ -153,17 +153,17 @@ impl<'a> HbkFactReadHandle<'a> {
     }
 
     pub fn platform_types_by_name(
-        &self,
+        self,
         name: &str,
-    ) -> impl ExactSizeIterator<Item = HbkPlatformTypeId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkPlatformTypeId> + 'a + use<'a> {
         lookup_name(&self.snapshot.platform_type_names, self.snapshot, name)
     }
 
     pub fn platform_types_by_template_key(
-        &self,
+        self,
         family: &str,
         variant: &str,
-    ) -> impl ExactSizeIterator<Item = HbkPlatformTypeId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkPlatformTypeId> + 'a + use<'a> {
         lookup_type_template(
             &self.snapshot.platform_type_templates,
             self.snapshot,
@@ -172,15 +172,15 @@ impl<'a> HbkFactReadHandle<'a> {
         )
     }
 
-    pub fn members_of_type(&self, owner: HbkPlatformTypeId) -> &[HbkTypeMemberId] {
+    pub fn members_of_type(self, owner: HbkPlatformTypeId) -> &'a [HbkTypeMemberId] {
         self.snapshot.members_by_owner.values(owner)
     }
 
     pub fn member_by_owner_name(
-        &self,
+        self,
         owner: HbkPlatformTypeId,
         name: &str,
-    ) -> impl ExactSizeIterator<Item = HbkTypeMemberId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkTypeMemberId> + 'a + use<'a> {
         lookup_owner_name(
             &self.snapshot.members_by_owner_name,
             self.snapshot,
@@ -190,11 +190,11 @@ impl<'a> HbkFactReadHandle<'a> {
     }
 
     pub fn member_by_owner_name_kind(
-        &self,
+        self,
         owner: HbkPlatformTypeId,
         name: &str,
         kind: Option<HbkTypeMemberKind>,
-    ) -> MemberLookupIter<'_> {
+    ) -> MemberLookupIter<'a> {
         let Some(kind) = kind else {
             let key = normalize_lookup_key(name);
             let range = matching_range(&self.snapshot.members_by_owner_name, |candidate| {
@@ -224,15 +224,15 @@ impl<'a> HbkFactReadHandle<'a> {
         }
     }
 
-    pub fn callables_of_type(&self, owner: HbkPlatformTypeId) -> &[HbkCallableId] {
+    pub fn callables_of_type(self, owner: HbkPlatformTypeId) -> &'a [HbkCallableId] {
         self.snapshot.callables_by_owner.values(owner)
     }
 
     pub fn callable_by_owner_name(
-        &self,
+        self,
         owner: HbkPlatformTypeId,
         name: &str,
-    ) -> impl ExactSizeIterator<Item = HbkCallableId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkCallableId> + 'a + use<'a> {
         lookup_owner_name(
             &self.snapshot.callables_by_owner_name,
             self.snapshot,
@@ -241,23 +241,23 @@ impl<'a> HbkFactReadHandle<'a> {
         )
     }
 
-    pub fn constructors_of_type(&self, owner: HbkPlatformTypeId) -> &[HbkCallableId] {
+    pub fn constructors_of_type(self, owner: HbkPlatformTypeId) -> &'a [HbkCallableId] {
         self.snapshot.constructors_by_type.values(owner)
     }
 
     pub fn globals_by_name(
-        &self,
+        self,
         name: &str,
-    ) -> impl ExactSizeIterator<Item = HbkGlobalFactId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkGlobalFactId> + 'a + use<'a> {
         lookup_name(&self.snapshot.global_names, self.snapshot, name)
     }
 
     pub fn globals_by_domain_name_kind(
-        &self,
+        self,
         domain: HbkLanguageDomain,
         name: &str,
         kind: Option<HbkGlobalFactKind>,
-    ) -> impl ExactSizeIterator<Item = HbkGlobalFactId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkGlobalFactId> + 'a + use<'a> {
         let key = normalize_lookup_key(name);
         let range = matching_range(&self.snapshot.globals_by_domain_name_kind, |candidate| {
             let ordering = candidate
@@ -284,10 +284,10 @@ impl<'a> HbkFactReadHandle<'a> {
     }
 
     pub fn module_event_by_context_name(
-        &self,
+        self,
         module_context_key: &str,
         name: &str,
-    ) -> impl ExactSizeIterator<Item = HbkCallableId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkCallableId> + 'a + use<'a> {
         let owner = normalize_lookup_key(module_context_key);
         lookup_owner_name_by_key_and_name(
             &self.snapshot.module_event_names,
@@ -298,11 +298,11 @@ impl<'a> HbkFactReadHandle<'a> {
     }
 
     pub fn module_context_events(
-        &self,
+        self,
         domain: HbkLanguageDomain,
         language_key: &str,
         module_kind: &str,
-    ) -> impl ExactSizeIterator<Item = HbkCallableId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkCallableId> + 'a + use<'a> {
         let language_key = normalize_lookup_key(language_key);
         let module_kind = normalize_lookup_key(module_kind);
         let range = matching_range(
@@ -333,16 +333,16 @@ impl<'a> HbkFactReadHandle<'a> {
     }
 
     pub fn query_tables_by_name(
-        &self,
+        self,
         name: &str,
-    ) -> impl ExactSizeIterator<Item = HbkQueryTableId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkQueryTableId> + 'a + use<'a> {
         lookup_name(&self.snapshot.query_table_names, self.snapshot, name)
     }
 
     pub fn query_tables_by_syntax(
-        &self,
+        self,
         syntax: &str,
-    ) -> impl ExactSizeIterator<Item = HbkQueryTableId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkQueryTableId> + 'a + use<'a> {
         lookup_name(
             &self.snapshot.query_table_syntax_names,
             self.snapshot,
@@ -351,9 +351,9 @@ impl<'a> HbkFactReadHandle<'a> {
     }
 
     pub fn query_tables_by_identifier(
-        &self,
+        self,
         identifier: &str,
-    ) -> impl ExactSizeIterator<Item = HbkQueryTableId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkQueryTableId> + 'a + use<'a> {
         lookup_name(
             &self.snapshot.query_table_identifiers,
             self.snapshot,
@@ -361,15 +361,15 @@ impl<'a> HbkFactReadHandle<'a> {
         )
     }
 
-    pub fn query_fields(&self, table: HbkQueryTableId) -> &[HbkQueryFieldId] {
+    pub fn query_fields(self, table: HbkQueryTableId) -> &'a [HbkQueryFieldId] {
         self.snapshot.query_fields_by_table.values(table)
     }
 
     pub fn query_fields_by_name(
-        &self,
+        self,
         table: HbkQueryTableId,
         name: &str,
-    ) -> impl ExactSizeIterator<Item = HbkQueryFieldId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkQueryFieldId> + 'a + use<'a> {
         lookup_owner_name(
             &self.snapshot.query_fields_by_table_name,
             self.snapshot,
@@ -378,15 +378,15 @@ impl<'a> HbkFactReadHandle<'a> {
         )
     }
 
-    pub fn query_parameters(&self, table: HbkQueryTableId) -> &[HbkQueryParameterId] {
+    pub fn query_parameters(self, table: HbkQueryTableId) -> &'a [HbkQueryParameterId] {
         self.snapshot.query_parameters_by_table.values(table)
     }
 
     pub fn query_parameters_by_name(
-        &self,
+        self,
         table: HbkQueryTableId,
         name: &str,
-    ) -> impl ExactSizeIterator<Item = HbkQueryParameterId> + '_ {
+    ) -> impl ExactSizeIterator<Item = HbkQueryParameterId> + 'a + use<'a> {
         lookup_owner_name(
             &self.snapshot.query_parameters_by_table_name,
             self.snapshot,
@@ -435,11 +435,11 @@ impl<'a> HbkFactReadHandle<'a> {
         )
     }
 
-    pub fn availability_contexts(&self, fact: HbkFactRef) -> &[StringId] {
+    pub fn availability_contexts(self, fact: HbkFactRef) -> &'a [StringId] {
         self.snapshot.availability_by_fact.values(fact)
     }
 
-    pub fn available_since(&self, fact: HbkFactRef) -> Option<StringId> {
+    pub fn available_since(self, fact: HbkFactRef) -> Option<StringId> {
         self.snapshot
             .availability_since_by_fact
             .binary_search_by(|candidate| candidate.fact.cmp(&fact))
