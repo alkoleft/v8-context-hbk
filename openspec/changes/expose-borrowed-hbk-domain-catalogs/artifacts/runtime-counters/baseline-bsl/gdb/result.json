@@ -1,0 +1,478 @@
+{
+  "binary": "/tmp/tmp.f0a51AYTxp/baseline-bsl-wt/target-runtime-counters/debug/deps/context_resolver_search-000667c4ef1d7a3e",
+  "counts": {
+    "compat": {
+      "context_source_global_context": {
+        "entries": 2,
+        "exits": 2
+      },
+      "map_availability": {
+        "entries": 1,
+        "exits": 1
+      },
+      "map_callable": {
+        "entries": 9,
+        "exits": 9
+      },
+      "map_global_property": {
+        "entries": 2,
+        "exits": 2
+      },
+      "map_member": {
+        "entries": 3,
+        "exits": 3
+      },
+      "map_platform_type": {
+        "entries": 1,
+        "exits": 1
+      },
+      "worker_handle": {
+        "entries": 11,
+        "exits": 11
+      }
+    },
+    "direct": {},
+    "outside": {
+      "search_index::metadata": {
+        "entries": 1,
+        "exits": 1
+      },
+      "search_index::metadata_optional_value": {
+        "entries": 1,
+        "exits": 1
+      },
+      "search_index::metadata_value": {
+        "entries": 6,
+        "exits": 6
+      },
+      "search_index::open_read_only": {
+        "entries": 1,
+        "exits": 1
+      }
+    }
+  },
+  "domain": "bsl",
+  "inferior_exit_code": 0,
+  "invalid_hits": [],
+  "markers": {
+    "compat_helper": {
+      "entries": 1,
+      "exits": 1,
+      "section": "compat",
+      "symbol": "context_resolver_search::tests::compat_adapter_sequence"
+    },
+    "test_marker": {
+      "entries": 1,
+      "exits": 1,
+      "section": "test",
+      "symbol": "context_resolver_search::tests::bsl_compat_measurement_probe"
+    }
+  },
+  "profile": "baseline",
+  "search_index": {
+    "method_count": 39,
+    "total_locations": 41
+  },
+  "symbols": {
+    "compat_helper": {
+      "location_count": 1,
+      "locations": [
+        "2       breakpoint     keep y   0x0000000000305a89 in context_resolver_search::tests::compat_adapter_sequence at crates/context-resolver-search/src/tests.rs:909"
+      ],
+      "role": "section",
+      "symbol": "context_resolver_search::tests::compat_adapter_sequence"
+    },
+    "context_source_global_context": {
+      "location_count": 1,
+      "locations": [
+        "4       breakpoint     keep y   0x00000000002ae466 in context_resolver_search::{impl#5}::global_context at crates/context-resolver-search/src/snapshot_adapter.rs:748"
+      ],
+      "role": "context_source_global_context",
+      "symbol": "<context_resolver_search::PlatformSnapshotSource as context_resolver_core::ContextSource>::global_context"
+    },
+    "map_availability": {
+      "location_count": 1,
+      "locations": [
+        "5       breakpoint     keep y   0x00000000002bc064 in context_resolver_search::PlatformSnapshotSource::map_availability at crates/context-resolver-search/src/snapshot_adapter.rs:376"
+      ],
+      "role": "projection",
+      "symbol": "context_resolver_search::PlatformSnapshotSource::map_availability"
+    },
+    "map_callable": {
+      "location_count": 1,
+      "locations": [
+        "6       breakpoint     keep y   0x00000000002bb4b7 in context_resolver_search::PlatformSnapshotSource::map_callable at crates/context-resolver-search/src/snapshot_adapter.rs:123"
+      ],
+      "role": "projection",
+      "symbol": "context_resolver_search::PlatformSnapshotSource::map_callable"
+    },
+    "map_event_as_member": {
+      "location_count": 1,
+      "locations": [
+        "7       breakpoint     keep y   0x00000000002bc927 in context_resolver_search::PlatformSnapshotSource::map_event_as_member at crates/context-resolver-search/src/snapshot_adapter.rs:227"
+      ],
+      "role": "projection",
+      "symbol": "context_resolver_search::PlatformSnapshotSource::map_event_as_member"
+    },
+    "map_global_property": {
+      "location_count": 1,
+      "locations": [
+        "8       breakpoint     keep y   0x00000000002bce57 in context_resolver_search::PlatformSnapshotSource::map_global_property at crates/context-resolver-search/src/snapshot_adapter.rs:156"
+      ],
+      "role": "projection",
+      "symbol": "context_resolver_search::PlatformSnapshotSource::map_global_property"
+    },
+    "map_member": {
+      "location_count": 1,
+      "locations": [
+        "9       breakpoint     keep y   0x00000000002baf57 in context_resolver_search::PlatformSnapshotSource::map_member at crates/context-resolver-search/src/snapshot_adapter.rs:96"
+      ],
+      "role": "projection",
+      "symbol": "context_resolver_search::PlatformSnapshotSource::map_member"
+    },
+    "map_platform_type": {
+      "location_count": 1,
+      "locations": [
+        "10      breakpoint     keep y   0x00000000002bc587 in context_resolver_search::PlatformSnapshotSource::map_platform_type at crates/context-resolver-search/src/snapshot_adapter.rs:84"
+      ],
+      "role": "projection",
+      "symbol": "context_resolver_search::PlatformSnapshotSource::map_platform_type"
+    },
+    "search_index::callable_by_id": {
+      "location_count": 1,
+      "locations": [
+        "11      breakpoint     keep y   0x00000000004c8eaa in syntax_helper_search::SearchIndex::callable_by_id at crates/syntax-helper-search/src/index.rs:270"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::callable_by_id"
+    },
+    "search_index::callable_by_owner_type_id": {
+      "location_count": 1,
+      "locations": [
+        "12      breakpoint     keep y   0x00000000004d0146 in syntax_helper_search::SearchIndex::callable_by_owner_type_id at crates/syntax-helper-search/src/index.rs:281"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::callable_by_owner_type_id"
+    },
+    "search_index::callable_exists": {
+      "location_count": 1,
+      "locations": [
+        "13      breakpoint     keep y   0x00000000004cabac in syntax_helper_search::SearchIndex::callable_exists at crates/syntax-helper-search/src/index.rs:662"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::callable_exists"
+    },
+    "search_index::constructors_by_type_id": {
+      "location_count": 1,
+      "locations": [
+        "14      breakpoint     keep y   0x00000000004cf13b in syntax_helper_search::SearchIndex::constructors_by_type_id at crates/syntax-helper-search/src/index.rs:266"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::constructors_by_type_id"
+    },
+    "search_index::document": {
+      "location_count": 1,
+      "locations": [
+        "15      breakpoint     keep y   0x00000000004d2bcb in syntax_helper_search::SearchIndex::document at crates/syntax-helper-search/src/index.rs:921"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::document"
+    },
+    "search_index::document_metadata_for": {
+      "location_count": 1,
+      "locations": [
+        "16      breakpoint     keep y   0x00000000004ce25c in syntax_helper_search::SearchIndex::document_metadata_for at crates/syntax-helper-search/src/index.rs:1004"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::document_metadata_for"
+    },
+    "search_index::documents_by_kind": {
+      "location_count": 1,
+      "locations": [
+        "17      breakpoint     keep y   0x00000000004cc725 in syntax_helper_search::SearchIndex::documents_by_kind at crates/syntax-helper-search/src/index.rs:90"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::documents_by_kind"
+    },
+    "search_index::edges_by_kind": {
+      "location_count": 1,
+      "locations": [
+        "18      breakpoint     keep y   0x00000000004c8aa3 in syntax_helper_search::SearchIndex::edges_by_kind at crates/syntax-helper-search/src/index.rs:894"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::edges_by_kind"
+    },
+    "search_index::get_by_id": {
+      "location_count": 1,
+      "locations": [
+        "19      breakpoint     keep y   0x00000000004d3f65 in syntax_helper_search::SearchIndex::get_by_id at crates/syntax-helper-search/src/index.rs:73"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::get_by_id"
+    },
+    "search_index::get_by_key": {
+      "location_count": 1,
+      "locations": [
+        "20      breakpoint     keep y   0x00000000004c8393 in syntax_helper_search::SearchIndex::get_by_key at crates/syntax-helper-search/src/index.rs:589"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::get_by_key"
+    },
+    "search_index::get_by_name": {
+      "location_count": 1,
+      "locations": [
+        "21      breakpoint     keep y   0x00000000004c8971 in syntax_helper_search::SearchIndex::get_by_name at crates/syntax-helper-search/src/index.rs:68"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::get_by_name"
+    },
+    "search_index::hydrate_document": {
+      "location_count": 1,
+      "locations": [
+        "22      breakpoint     keep y   0x00000000004cac6d in syntax_helper_search::SearchIndex::hydrate_document at crates/syntax-helper-search/src/index.rs:950"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::hydrate_document"
+    },
+    "search_index::hydrate_hits": {
+      "location_count": 1,
+      "locations": [
+        "23      breakpoint     keep y   0x00000000004c8a0b in syntax_helper_search::SearchIndex::hydrate_hits at crates/syntax-helper-search/src/index.rs:938"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::hydrate_hits"
+    },
+    "search_index::member_by_owner_type_id": {
+      "location_count": 1,
+      "locations": [
+        "24      breakpoint     keep y   0x00000000004cf1d6 in syntax_helper_search::SearchIndex::member_by_owner_type_id at crates/syntax-helper-search/src/index.rs:228"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::member_by_owner_type_id"
+    },
+    "search_index::members_by_type_id": {
+      "location_count": 1,
+      "locations": [
+        "25      breakpoint     keep y   0x00000000004ccdc3 in syntax_helper_search::SearchIndex::members_by_type_id at crates/syntax-helper-search/src/index.rs:162"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::members_by_type_id"
+    },
+    "search_index::metadata": {
+      "location_count": 1,
+      "locations": [
+        "26      breakpoint     keep y   0x00000000004d2e07 in syntax_helper_search::SearchIndex::metadata at crates/syntax-helper-search/src/index.rs:42"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::metadata"
+    },
+    "search_index::metadata_optional_value": {
+      "location_count": 1,
+      "locations": [
+        "27      breakpoint     keep y   0x00000000004cf8a2 in syntax_helper_search::SearchIndex::metadata_optional_value at crates/syntax-helper-search/src/index.rs:1288"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::metadata_optional_value"
+    },
+    "search_index::metadata_value": {
+      "location_count": 1,
+      "locations": [
+        "28      breakpoint     keep y   0x00000000004c8fd3 in syntax_helper_search::SearchIndex::metadata_value at crates/syntax-helper-search/src/index.rs:1272"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::metadata_value"
+    },
+    "search_index::module_event_by_context_name": {
+      "location_count": 1,
+      "locations": [
+        "29      breakpoint     keep y   0x00000000004d0d73 in syntax_helper_search::SearchIndex::module_event_by_context_name at crates/syntax-helper-search/src/index.rs:192"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::module_event_by_context_name"
+    },
+    "search_index::open_read_only": {
+      "location_count": 3,
+      "locations": [
+        "30.1                        y   0x00000000002cbb3a in syntax_helper_search::SearchIndex::open_read_only<std::path::PathBuf> at crates/syntax-helper-search/src/index.rs:19",
+        "30.2                        y   0x00000000002cc110 in syntax_helper_search::SearchIndex::open_read_only<&std::path::PathBuf> at crates/syntax-helper-search/src/index.rs:19",
+        "30.3                        y   0x00000000002cc6c7 in syntax_helper_search::SearchIndex::open_read_only<&std::path::Path> at crates/syntax-helper-search/src/index.rs:19"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::open_read_only"
+    },
+    "search_index::owned_documents_by_kind": {
+      "location_count": 1,
+      "locations": [
+        "31      breakpoint     keep y   0x00000000004cf96e in syntax_helper_search::SearchIndex::owned_documents_by_kind at crates/syntax-helper-search/src/index.rs:693"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::owned_documents_by_kind"
+    },
+    "search_index::owner_type_id_for_document": {
+      "location_count": 1,
+      "locations": [
+        "32      breakpoint     keep y   0x00000000004d089c in syntax_helper_search::SearchIndex::owner_type_id_for_document at crates/syntax-helper-search/src/index.rs:466"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::owner_type_id_for_document"
+    },
+    "search_index::parameter_terms_for": {
+      "location_count": 1,
+      "locations": [
+        "33      breakpoint     keep y   0x00000000004cd388 in syntax_helper_search::SearchIndex::parameter_terms_for at crates/syntax-helper-search/src/index.rs:1254"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::parameter_terms_for"
+    },
+    "search_index::parameter_type_facts": {
+      "location_count": 1,
+      "locations": [
+        "34      breakpoint     keep y   0x00000000004cd87c in syntax_helper_search::SearchIndex::parameter_type_facts at crates/syntax-helper-search/src/index.rs:1200"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::parameter_type_facts"
+    },
+    "search_index::parameters_for": {
+      "location_count": 1,
+      "locations": [
+        "35      breakpoint     keep y   0x00000000004c9073 in syntax_helper_search::SearchIndex::parameters_for at crates/syntax-helper-search/src/index.rs:1156"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::parameters_for"
+    },
+    "search_index::path": {
+      "location_count": 1,
+      "locations": [
+        "36      breakpoint     keep y   0x00000000004d2acc in syntax_helper_search::SearchIndex::path at crates/syntax-helper-search/src/index.rs:64"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::path"
+    },
+    "search_index::related_by_id_and_edge": {
+      "location_count": 1,
+      "locations": [
+        "37      breakpoint     keep y   0x00000000004ce358 in syntax_helper_search::SearchIndex::related_by_id_and_edge at crates/syntax-helper-search/src/index.rs:353"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::related_by_id_and_edge"
+    },
+    "search_index::related_type_refs_by_id_and_edge": {
+      "location_count": 1,
+      "locations": [
+        "38      breakpoint     keep y   0x00000000004d1b3f in syntax_helper_search::SearchIndex::related_type_refs_by_id_and_edge at crates/syntax-helper-search/src/index.rs:393"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::related_type_refs_by_id_and_edge"
+    },
+    "search_index::signature_return_type_facts": {
+      "location_count": 1,
+      "locations": [
+        "39      breakpoint     keep y   0x00000000004d0943 in syntax_helper_search::SearchIndex::signature_return_type_facts at crates/syntax-helper-search/src/index.rs:1230"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::signature_return_type_facts"
+    },
+    "search_index::signatures_for": {
+      "location_count": 1,
+      "locations": [
+        "40      breakpoint     keep y   0x00000000004c96af in syntax_helper_search::SearchIndex::signatures_for at crates/syntax-helper-search/src/index.rs:1100"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::signatures_for"
+    },
+    "search_index::sqlite": {
+      "location_count": 1,
+      "locations": [
+        "41      breakpoint     keep y   0x00000000004d2b02 in syntax_helper_search::SearchIndex::sqlite at crates/syntax-helper-search/src/index.rs:1266"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::sqlite"
+    },
+    "search_index::type_identities_by_alias": {
+      "location_count": 1,
+      "locations": [
+        "42      breakpoint     keep y   0x00000000004d0051 in syntax_helper_search::SearchIndex::type_identities_by_alias at crates/syntax-helper-search/src/index.rs:127"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::type_identities_by_alias"
+    },
+    "search_index::type_identities_by_lookup_key": {
+      "location_count": 1,
+      "locations": [
+        "43      breakpoint     keep y   0x00000000004d14c1 in syntax_helper_search::SearchIndex::type_identities_by_lookup_key at crates/syntax-helper-search/src/index.rs:630"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::type_identities_by_lookup_key"
+    },
+    "search_index::type_identities_by_name": {
+      "location_count": 1,
+      "locations": [
+        "44      breakpoint     keep y   0x00000000004cff91 in syntax_helper_search::SearchIndex::type_identities_by_name at crates/syntax-helper-search/src/index.rs:123"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::type_identities_by_name"
+    },
+    "search_index::type_identity_by_id": {
+      "location_count": 1,
+      "locations": [
+        "45      breakpoint     keep y   0x00000000004cd68c in syntax_helper_search::SearchIndex::type_identity_by_id at crates/syntax-helper-search/src/index.rs:116"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::type_identity_by_id"
+    },
+    "search_index::type_identity_document_id": {
+      "location_count": 1,
+      "locations": [
+        "46      breakpoint     keep y   0x00000000004d080c in syntax_helper_search::SearchIndex::type_identity_document_id at crates/syntax-helper-search/src/index.rs:615"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::type_identity_document_id"
+    },
+    "search_index::type_ref_facts": {
+      "location_count": 1,
+      "locations": [
+        "47      breakpoint     keep y   0x00000000004ca7b3 in syntax_helper_search::SearchIndex::type_ref_facts at crates/syntax-helper-search/src/index.rs:1074"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::type_ref_facts"
+    },
+    "search_index::type_template_by_key": {
+      "location_count": 1,
+      "locations": [
+        "48      breakpoint     keep y   0x00000000004cdc85 in syntax_helper_search::SearchIndex::type_template_by_key at crates/syntax-helper-search/src/index.rs:134"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::type_template_by_key"
+    },
+    "search_index::type_template_for": {
+      "location_count": 1,
+      "locations": [
+        "49      breakpoint     keep y   0x00000000004ccd0c in syntax_helper_search::SearchIndex::type_template_for at crates/syntax-helper-search/src/index.rs:1047"
+      ],
+      "role": "search_index",
+      "symbol": "syntax_helper_search::SearchIndex::type_template_for"
+    },
+    "test_marker": {
+      "location_count": 1,
+      "locations": [
+        "1       breakpoint     keep y   0x0000000000307a3b in context_resolver_search::tests::bsl_compat_measurement_probe at crates/context-resolver-search/src/tests.rs:899"
+      ],
+      "role": "test",
+      "symbol": "context_resolver_search::tests::bsl_compat_measurement_probe"
+    },
+    "worker_handle": {
+      "location_count": 1,
+      "locations": [
+        "3       breakpoint     keep y   0x00000000004c59eb in syntax_helper_search::snapshot::HbkFactSnapshot::worker_handle at crates/syntax-helper-search/src/snapshot/read.rs:56"
+      ],
+      "role": "worker_handle",
+      "symbol": "syntax_helper_search::snapshot::HbkFactSnapshot::worker_handle"
+    }
+  },
+  "test_args": [
+    "tests::bsl_compat_measurement_probe",
+    "--ignored",
+    "--exact",
+    "--nocapture"
+  ]
+}

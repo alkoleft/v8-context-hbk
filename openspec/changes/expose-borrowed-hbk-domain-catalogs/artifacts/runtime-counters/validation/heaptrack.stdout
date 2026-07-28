@@ -1,0 +1,11 @@
+heaptrack output will be written to "/tmp/tmp.WsyV23W87C/heaptrack.heaptrack_known_alloc.2111079.zst"
+/usr/lib/heaptrack/libheaptrack_preload.so
+starting application, this might take some time...
+fixture_done
+heaptrack stats:
+	allocations:          	9
+	leaked allocations:   	1
+	temporary allocations:	0
+Heaptrack finished! Now run the following to investigate the data:
+
+  heaptrack --analyze "/tmp/tmp.WsyV23W87C/heaptrack.heaptrack_known_alloc.2111079.zst"

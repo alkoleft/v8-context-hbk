@@ -1,0 +1,2 @@
+sum_final_field=7
+1 /home/alko/develop/open-source/v8-maintain-projects/v8-context-hbk/openspec/changes/expose-borrowed-hbk-domain-catalogs/artifacts/runtime-counters/validation/known-allocation.stacks

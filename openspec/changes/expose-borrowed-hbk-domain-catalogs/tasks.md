@@ -5,7 +5,7 @@
 - [x] 1.3 Reconcile ADR-0008 and implementation docs before implementation starts, explicitly naming borrowed BSL/SDBL catalogs as hot-path snapshot APIs, `ContextResolver`/generic DTO projection as a retained compatibility/composition API, and `PlatformSearchSource`/`LanguageSearchSource` as explicit SQL/SearchIndex flows retained for CLI/debug/index inspection and local sequential resolver use.
 - [x] 1.4 Record the task-local Structure impact note before any implementation edit: searched owners, representative field/result shapes, inputs/outputs, real consumers, exact first BSL slice, exact first SDBL slice, structures/behaviors/conversions reused/added/deleted, and why no new arena, index, cache, DTO mirror, universal trait, public `HbkFactRef` API, SQL fallback, analyzer shim, selector enum/wrapper, or generic resolver replacement is introduced.
 - [x] 1.5 Record the Reintroduction guard before implementation: `HbkFactSnapshot` remains the only storage owner; borrowed BSL/SDBL catalogs own catalog-covered snapshot behavior; generic resolver adapters delegate and project once; `PlatformSearchSource`/`LanguageSearchSource` SQL paths are explicit and non-fallback; verification must fail on duplicate flattened facts, hidden SQLite/SearchIndex fallback, analyzer selector mapping, selector enum/wrapper mirror, universal catalog trait, public `HbkFactRef`, or new parallel cache/index.
-- [ ] 1.6 Capture preimplementation counters and wall time for the first BSL and SDBL slices: owned generic DTO materializations, `ContextResolver::global_context` calls, `ContextFact`/`Resolved*` projections, `HbkFactSnapshot::worker_handle` reads, SQL/SearchIndex calls in snapshot paths, and controlled wall time for existing parity fixtures.
+- [x] 1.6 Capture preimplementation counters and wall time for the first BSL and SDBL slices: owned generic DTO materializations, `ContextResolver::global_context` calls, `ContextFact`/`Resolved*` projections, `HbkFactSnapshot::worker_handle` reads, SQL/SearchIndex calls in snapshot paths, and controlled wall time for existing parity fixtures.
 - [x] 1.7 Inventory and behavior-test the existing `syntax-helper-search` snapshot read-handle lifetime contract before adding catalogs: only `facts_by_id`, `platform_types_by_name`, `platform_types_by_template_key`, `members_of_type`, `member_by_owner_name`, `member_by_owner_name_kind`, `callables_of_type`, `callable_by_owner_name`, `constructors_of_type`, `global_fact_ids`, `globals_by_name`, `globals_by_domain_name_kind`, `module_event_by_context_name`, `module_context_events`, `query_table_ids`, `query_tables_by_name`, `query_tables_by_syntax`, `query_tables_by_identifier`, `query_fields`, `query_fields_by_name`, `query_parameters`, `query_parameters_by_name`, `availability_contexts` and `available_since` may consume the `Copy` `HbkFactReadHandle<'a>` and return borrowed iterators/slices tied to lifetime `'a`; add RED compile/runtime contract tests for representative BSL iterator and SDBL slice paths proving catalog construction can borrow through those existing methods without collecting or adding a new read API.
 
 Completion evidence (2026-07-28): `inventory.md` records the BSL/SDBL,
@@ -20,6 +20,18 @@ errors clippy run is still blocked by pre-existing
 `snapshot/memory.rs::vec_payload_bytes(&Vec<T>)` and pre-existing redundant
 `.into_iter()` calls in syntax-helper-search tests; the batch introduced no new
 clippy diagnostic after its test helper lifetime was elided.
+
+Task 1.6 final evidence (2026-07-28): `measurements.md` now records identical
+baseline/current helper workloads, repeat-stable helper-scoped heap allocation
+calls, GDB-bracketed `worker_handle`, explicit projection,
+`global_context` and `SearchIndex` method-entry counters, one warmup plus five
+wall-time runs, exact tool/profile/binary hashes and limitations for both BSL
+and SDBL. The measurement-only GDB script is commit `84e49ab`; the tracked
+`artifacts/runtime-counters/` tree retains 177 raw payload files plus a
+SHA-256 manifest, so every reported counter can be recomputed independently.
+SearchIndex entries inside every compat/direct helper were zero; the document
+deliberately keeps that distinct from uninstrumented rusqlite/SQL calls and
+retains deleted-SQLite/no-handle evidence for the latter.
 
 Prohibited scope for every batch: do not add new arenas, indexes, caches, DTO mirrors, universal traits, public `HbkFactRef` APIs, SQL/SearchIndex fallbacks, analyzer-side shims, selector enum/wrapper mirrors, private provider reads, or generic resolver replacements.
 

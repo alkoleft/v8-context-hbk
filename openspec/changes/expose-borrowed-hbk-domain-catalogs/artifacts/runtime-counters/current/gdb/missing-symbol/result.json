@@ -1,0 +1,31 @@
+{
+  "binary": "/tmp/tmp.nlx9vPdAm8/current-target/debug/deps/context_resolver_search-000667c4ef1d7a3e",
+  "counts": {
+    "compat": {},
+    "direct": {},
+    "outside": {}
+  },
+  "domain": "bsl",
+  "inferior_exit_code": null,
+  "invalid_hits": [
+    {
+      "error": "pending breakpoint",
+      "kind": "missing-required-symbol",
+      "name": "test_marker",
+      "symbol": "context_resolver_search::tests::definitely_missing_marker_for_negative_check"
+    }
+  ],
+  "markers": {},
+  "profile": "current",
+  "search_index": {
+    "method_count": 0,
+    "total_locations": 0
+  },
+  "symbols": {},
+  "test_args": [
+    "tests::bsl_catalog_measurement_probe",
+    "--ignored",
+    "--exact",
+    "--nocapture"
+  ]
+}

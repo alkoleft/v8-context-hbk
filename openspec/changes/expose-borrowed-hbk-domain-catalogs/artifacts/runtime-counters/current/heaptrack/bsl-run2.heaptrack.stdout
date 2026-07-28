@@ -1,0 +1,45 @@
+heaptrack output will be written to "/tmp/tmp.dT5UzNahR7/heaptrack.context_resolver_search-000667c4ef1d7a3e.2118397.zst"
+/usr/lib/heaptrack/libheaptrack_preload.so
+starting application, this might take some time...
+
+running 1 test
+compat_deleted_sqlite_success=1
+compat_global_context_invocations=1
+compat_global_context_responses=1
+compat_global_methods=3
+compat_global_properties=1
+compat_generated_self_responses=1
+compat_exact_member_responses=1
+compat_member_enum_responses=1
+compat_callable_responses=1
+compat_module_context_responses=1
+compat_module_context_methods=3
+compat_module_context_properties=1
+compat_module_context_events=1
+compat_module_event_responses=1
+compat_availability_responses=1
+compat_availability_contexts=0
+compat_availability_since_present=0
+direct_deleted_sqlite_success=1
+direct_source_locale_present=1
+direct_generated_self_records=1
+direct_exact_member_records=1
+direct_member_enum_records=1
+direct_callable_records=1
+direct_global_method_records=3
+direct_global_property_records=1
+direct_module_event_records=1
+direct_exact_module_event_records=1
+direct_availability_contexts=0
+direct_availability_since_present=0
+test tests::bsl_catalog_measurement_probe ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out; finished in 0.37s
+
+heaptrack stats:
+	allocations:          	12636
+	leaked allocations:   	3
+	temporary allocations:	2874
+Heaptrack finished! Now run the following to investigate the data:
+
+  heaptrack --analyze "/tmp/tmp.dT5UzNahR7/heaptrack.context_resolver_search-000667c4ef1d7a3e.2118397.zst"

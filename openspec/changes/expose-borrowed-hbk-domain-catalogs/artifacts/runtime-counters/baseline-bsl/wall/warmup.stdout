@@ -1,0 +1,23 @@
+
+running 1 test
+compat_deleted_sqlite_success=1
+compat_global_context_invocations=1
+compat_global_context_responses=1
+compat_global_methods=3
+compat_global_properties=1
+compat_generated_self_responses=1
+compat_exact_member_responses=1
+compat_member_enum_responses=1
+compat_callable_responses=1
+compat_module_context_responses=1
+compat_module_context_methods=3
+compat_module_context_properties=1
+compat_module_context_events=1
+compat_module_event_responses=1
+compat_availability_responses=1
+compat_availability_contexts=0
+compat_availability_since_present=0
+test tests::bsl_compat_measurement_probe ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 32 filtered out; finished in 0.02s
+

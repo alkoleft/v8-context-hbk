@@ -1,0 +1,10 @@
+domain=bsl
+profile=current
+inferior_exit_code=None
+invalid_hits=1
+search_index_method_count=0
+search_index_total_locations=0
+section.compat.total_entries=0 total_exits=0 item_count=0
+section.direct.total_entries=0 total_exits=0 item_count=0
+section.outside.total_entries=0 total_exits=0 item_count=0
+invalid_hits_json=[{"error": "pending breakpoint", "kind": "missing-required-symbol", "name": "test_marker", "symbol": "context_resolver_search::tests::definitely_missing_marker_for_negative_check"}]

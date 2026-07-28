@@ -1,0 +1,35 @@
+
+running 1 test
+compat_deleted_sqlite_success=1
+compat_global_context_invocations=1
+compat_global_response_count=1
+compat_global_fact_total=13
+compat_global_query_table_count=10
+compat_global_query_field_count=2
+compat_global_query_parameter_count=1
+compat_table_id_response_count=1
+compat_table_exact_response_count=1
+compat_field_enum_count=2
+compat_field_exact_count=1
+compat_parameter_enum_count=1
+compat_parameter_exact_count=1
+compat_selector_projection_count=6
+direct_deleted_sqlite_success=1
+direct_source_locale_present=1
+direct_all_table_count=10
+direct_primary_table_point_count=1
+direct_table_name_count=1
+direct_table_syntax_count=1
+direct_table_identifier_count=1
+direct_field_enum_count=2
+direct_field_id_count=1
+direct_field_name_count=1
+direct_parameter_enum_count=1
+direct_parameter_id_count=1
+direct_parameter_name_count=1
+direct_selector_present_count=6
+direct_unknown_selector_absent=1
+test tests::sdbl_catalog_measurement_probe ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 39 filtered out; finished in 0.02s
+

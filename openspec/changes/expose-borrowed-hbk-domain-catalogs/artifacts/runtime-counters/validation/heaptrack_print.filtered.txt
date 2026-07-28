@@ -1,0 +1,25 @@
+reading file "heaptrack.heaptrack_known_alloc.2111079.zst" - please wait, this might take some time...
+Debuggee command was: ./heaptrack_known_alloc
+finished reading file, now analyzing data:
+
+MOST CALLS TO ALLOCATION FUNCTIONS
+7 calls to allocation functions with 0B peak consumption from
+known_allocation_fixture
+  at /tmp/tmp.WsyV23W87C/heaptrack_known_alloc.c:7
+  in /tmp/tmp.WsyV23W87C/heaptrack_known_alloc
+7 calls with 0B peak consumption from:
+    main
+      at /tmp/tmp.WsyV23W87C/heaptrack_known_alloc.c:15
+      in /tmp/tmp.WsyV23W87C/heaptrack_known_alloc
+
+
+PEAK MEMORY CONSUMERS
+
+MOST TEMPORARY ALLOCATIONS
+
+total runtime: 0.00s.
+calls to allocation functions: 9 (9000/s)
+temporary memory allocations: 0 (0/s)
+peak heap memory consumption: 76.80K
+peak RSS (including heaptrack overhead): 3.90M
+total memory leaked: 4.10K

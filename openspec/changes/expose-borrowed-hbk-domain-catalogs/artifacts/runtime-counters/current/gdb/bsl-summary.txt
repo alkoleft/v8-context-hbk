@@ -1,0 +1,23 @@
+domain=bsl
+profile=current
+inferior_exit_code=0
+invalid_hits=0
+search_index_method_count=39
+search_index_total_locations=41
+marker.compat_helper.entries=1 exits=1 section=compat
+marker.direct_helper.entries=1 exits=1 section=direct
+marker.test_marker.entries=1 exits=1 section=test
+section.compat.total_entries=33 total_exits=33 item_count=6
+count.compat.context_source_global_context.entries=2 exits=2
+count.compat.map_callable.entries=9 exits=9
+count.compat.map_global_property.entries=2 exits=2
+count.compat.map_member.entries=2 exits=2
+count.compat.map_platform_type.entries=1 exits=1
+count.compat.worker_handle.entries=17 exits=17
+section.direct.total_entries=12 total_exits=12 item_count=1
+count.direct.worker_handle.entries=12 exits=12
+section.outside.total_entries=9 total_exits=9 item_count=4
+count.outside.search_index::metadata.entries=1 exits=1
+count.outside.search_index::metadata_optional_value.entries=1 exits=1
+count.outside.search_index::metadata_value.entries=6 exits=6
+count.outside.search_index::open_read_only.entries=1 exits=1

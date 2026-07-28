@@ -1,0 +1,27 @@
+date_utc=2026-07-28T06:21:03Z
+repo_head=84e49ab4bf161b91f76d526441c595d29d707786
+script_commit=84e49ab4bf161b91f76d526441c595d29d707786
+heaptrack 1.3.0
+heaptrack_print 1.3.0
+rustc 1.95.0 (59807616e 2026-04-14)
+binary: rustc
+commit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860
+commit-date: 2026-04-14
+host: x86_64-unknown-linux-gnu
+release: 1.95.0
+LLVM version: 22.1.2
+cargo 1.95.0 (f2d3ce0bd 2026-03-21)
+release: 1.95.0
+commit-hash: f2d3ce0bd7f24a49f8f72d9000448f8838c4e850
+commit-date: 2026-03-21
+host: x86_64-unknown-linux-gnu
+libgit2: 1.9.2 (sys:0.20.4 vendored)
+libcurl: 8.15.0-DEV (sys:0.4.83+curl-8.15.0 vendored ssl:OpenSSL/3.5.4)
+ssl: OpenSSL 3.5.4 30 Sep 2025
+os: Ubuntu 22.4.0 (jammy) [64-bit]
+GNU nm (GNU Binutils for Ubuntu) 2.38
+Copyright (C) 2022 Free Software Foundation, Inc.
+This program is free software; you may redistribute it under the terms of
+GNU gdb (Ubuntu 12.1-0ubuntu1~22.04.2) 12.1
+time (GNU Time) UNKNOWN
+sha256sum (GNU coreutils) 8.32

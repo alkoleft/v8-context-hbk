@@ -1,0 +1,269 @@
+0000000000288790 t core::ptr::drop_in_place<alloc::vec::Vec<context_resolver_core::ContextFact>::extend_trusted<core::iter::adapters::chain::Chain<core::iter::adapters::chain::Chain<core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_table_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>,core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_field_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>,core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_parameter_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>>::{{closure}}>
+0000000000288a40 t core::ptr::drop_in_place<core::iter::traits::iterator::Iterator::for_each::call<context_resolver_core::ContextFact,alloc::vec::Vec<context_resolver_core::ContextFact>::extend_trusted<core::iter::adapters::chain::Chain<core::iter::adapters::chain::Chain<core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_table_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>,core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_field_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>,core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_parameter_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>>::{{closure}}>::{{closure}}>
+0000000000289010 t core::ptr::drop_in_place<core::iter::adapters::map::map_fold<syntax_helper_search::snapshot::types::HbkQueryParameterId,context_resolver_core::ContextFact,(),<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}},core::iter::traits::iterator::Iterator::for_each::call<context_resolver_core::ContextFact,alloc::vec::Vec<context_resolver_core::ContextFact>::extend_trusted<core::iter::adapters::chain::Chain<core::iter::adapters::chain::Chain<core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_table_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>,core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_field_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>,core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_parameter_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>>::{{closure}}>::{{closure}}>::{{closure}}>
+0000000000289250 t core::ptr::drop_in_place<core::iter::adapters::map::map_fold<usize,syntax_helper_search::snapshot::types::HbkQueryParameterId,(),syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_parameter_ids::{{closure}},core::iter::adapters::map::map_fold<syntax_helper_search::snapshot::types::HbkQueryParameterId,context_resolver_core::ContextFact,(),<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}},core::iter::traits::iterator::Iterator::for_each::call<context_resolver_core::ContextFact,alloc::vec::Vec<context_resolver_core::ContextFact>::extend_trusted<core::iter::adapters::chain::Chain<core::iter::adapters::chain::Chain<core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_table_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>,core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_field_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>,core::iter::adapters::map::Map<core::iter::adapters::map::Map<core::ops::range::Range<usize>,syntax_helper_search::snapshot::read::<impl syntax_helper_search::snapshot::HbkFactReadHandle>::query_parameter_ids::{{closure}}>,<context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>>::{{closure}}>::{{closure}}>::{{closure}}>::{{closure}}>
+00000000002895b0 t core::ptr::drop_in_place<core::iter::adapters::filter::Filter<alloc::vec::into_iter::IntoIter<syntax_helper_search::SearchHit>,<context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>
+00000000002895d0 t core::ptr::drop_in_place<core::iter::adapters::filter::Filter<alloc::vec::into_iter::IntoIter<syntax_helper_search::SearchHit>,<context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>
+00000000002899c0 t core::ptr::drop_in_place<alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::snapshot::types::StringId>,context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}>>::{{closure}}>
+0000000000289a80 t core::ptr::drop_in_place<alloc::vec::Vec<context_resolver_core::Name>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::snapshot::types::HbkName>,context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}>>::{{closure}}>
+000000000028a080 t core::ptr::drop_in_place<core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::snapshot::types::StringId>,context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}>>::{{closure}}>::{{closure}}>
+000000000028a180 t core::ptr::drop_in_place<core::iter::traits::iterator::Iterator::for_each::call<context_resolver_core::Name,alloc::vec::Vec<context_resolver_core::Name>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::snapshot::types::HbkName>,context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}>>::{{closure}}>::{{closure}}>
+000000000028a460 t core::ptr::drop_in_place<core::iter::adapters::filter_map::FilterMap<core::iter::adapters::filter::Filter<alloc::vec::into_iter::IntoIter<syntax_helper_search::SearchHit>,<context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}>,<context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}>>
+000000000028c750 t core::ptr::drop_in_place<core::iter::adapters::map::map_fold<&syntax_helper_search::snapshot::types::StringId,alloc::string::String,(),context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}},core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::snapshot::types::StringId>,context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}>>::{{closure}}>::{{closure}}>::{{closure}}>
+000000000028cb30 t core::ptr::drop_in_place<core::iter::adapters::map::map_fold<&syntax_helper_search::snapshot::types::HbkName,context_resolver_core::Name,(),context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}},core::iter::traits::iterator::Iterator::for_each::call<context_resolver_core::Name,alloc::vec::Vec<context_resolver_core::Name>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::snapshot::types::HbkName>,context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}>>::{{closure}}>::{{closure}}>::{{closure}}>
+00000000002b3760 t <context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context
+00000000002b8060 t <context_resolver_search::PlatformSearchSource as context_resolver_core::ContextSource>::global_context
+00000000002be290 t <context_resolver_search::PlatformSnapshotSource as context_resolver_core::ContextSource>::global_context
+00000000002c1ba0 t <context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context
+00000000002c3960 t context_resolver_search::LanguageSearchSource::map_callable
+00000000002c67c0 t context_resolver_search::PlatformSearchSource::map_member
+00000000002c77d0 t context_resolver_search::PlatformSearchSource::map_callable
+00000000002c8d50 t context_resolver_search::PlatformSearchSource::map_global_property
+00000000002caaa0 t context_resolver_search::PlatformSnapshotSource::map_member
+00000000002cafd0 t context_resolver_search::PlatformSnapshotSource::map_callable
+00000000002cbb90 t context_resolver_search::PlatformSnapshotSource::map_availability
+00000000002cc0b0 t context_resolver_search::PlatformSnapshotSource::map_platform_type
+00000000002cc430 t context_resolver_search::PlatformSnapshotSource::map_event_as_member
+00000000002cc930 t context_resolver_search::PlatformSnapshotSource::map_global_property
+00000000002cf4c0 t context_resolver_search::QueryTableSnapshotSource::map_query_field
+00000000002cfa50 t context_resolver_search::QueryTableSnapshotSource::map_query_table
+00000000002d01f0 t context_resolver_search::QueryTableSnapshotSource::map_query_parameter
+00000000002d10f0 t context_resolver_search::QueryTableSnapshotSource::map_platform_type_for_relation
+00000000002dca50 t syntax_helper_search::SearchIndex::open_read_only
+00000000002dd030 t syntax_helper_search::SearchIndex::open_read_only
+00000000002dd5e0 t syntax_helper_search::SearchIndex::open_read_only
+00000000002ddba0 t syntax_helper_search::SearchIndex::open_read_only::{{closure}}
+00000000002ddc60 t syntax_helper_search::SearchIndex::open_read_only::{{closure}}
+00000000002ddd20 t syntax_helper_search::SearchIndex::open_read_only::{{closure}}
+00000000002e6c20 t <context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e6ca0 t <context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e6cc0 t <context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e6d20 t <context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e6d50 t <context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e6d80 t <context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e6de0 t <context_resolver_search::LanguageSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e76a0 t <context_resolver_search::PlatformSearchSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e8c80 t <context_resolver_search::PlatformSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e8cb0 t <context_resolver_search::PlatformSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e8ce0 t <context_resolver_search::PlatformSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e98e0 t <context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e9910 t <context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e9940 t <context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002e9970 t <context_resolver_search::QueryTableSnapshotSource as context_resolver_core::ContextSource>::global_context::{{closure}}
+00000000002eb9b0 t context_resolver_search::PlatformSearchSource::map_callable::{{closure}}
+00000000002eb9e0 t context_resolver_search::PlatformSearchSource::map_callable::{{closure}}
+00000000002ebcf0 t context_resolver_search::PlatformSearchSource::map_callable::{{closure}}
+00000000002ebd20 t context_resolver_search::PlatformSearchSource::map_callable::{{closure}}::{{closure}}
+00000000002ed430 t context_resolver_search::PlatformSnapshotSource::map_callable::{{closure}}
+00000000002ed4a0 t context_resolver_search::PlatformSnapshotSource::map_callable::{{closure}}
+00000000002eda90 t context_resolver_search::PlatformSnapshotSource::map_availability::{{closure}}
+00000000002edad0 t context_resolver_search::PlatformSnapshotSource::map_availability::{{closure}}
+00000000002ee610 t context_resolver_search::QueryTableSnapshotSource::map_query_field::{{closure}}
+00000000002ee670 t context_resolver_search::QueryTableSnapshotSource::map_query_field::{{closure}}
+00000000002ee810 t context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}
+00000000002ee840 t context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}
+00000000002ee9e0 t context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}
+00000000002eea30 t context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}
+00000000002eea90 t context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}
+00000000002eeac0 t context_resolver_search::QueryTableSnapshotSource::map_query_table::{{closure}}
+00000000002eebe0 t context_resolver_search::QueryTableSnapshotSource::map_query_parameter::{{closure}}
+00000000002eed80 t context_resolver_search::QueryTableSnapshotSource::map_query_parameter::{{closure}}
+000000000031fa30 t context_resolver_search::tests::compat_adapter_sequence
+0000000000322330 t context_resolver_search::tests::compat_sdbl_adapter_sequence
+0000000000323ed0 t context_resolver_search::tests::sdbl_compat_measurement_probe
+0000000000330390 t context_resolver_search::tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately
+0000000000339a60 t context_resolver_search::tests::platform_adapter_exposes_bsl_global_context_and_ownerless_global_callable
+0000000000344200 t context_resolver_search::tests::compat_sdbl_adapter_sequence::{{closure}}
+0000000000344230 t context_resolver_search::tests::compat_sdbl_adapter_sequence::{{closure}}
+0000000000344260 t context_resolver_search::tests::compat_sdbl_adapter_sequence::{{closure}}
+0000000000344480 t context_resolver_search::tests::compat_sdbl_adapter_sequence::{{closure}}
+00000000003444c0 t context_resolver_search::tests::compat_sdbl_adapter_sequence::{{closure}}
+00000000003444f0 t context_resolver_search::tests::compat_sdbl_adapter_sequence::{{closure}}::{{closure}}
+00000000003445b0 t context_resolver_search::tests::sdbl_compat_measurement_probe::{{closure}}
+0000000000345020 t context_resolver_search::tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately::{{closure}}
+0000000000345050 t context_resolver_search::tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately::{{closure}}
+0000000000345090 t context_resolver_search::tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately::{{closure}}
+00000000003450d0 t context_resolver_search::tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately::{{closure}}
+0000000000345130 t context_resolver_search::tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately::{{closure}}
+0000000000345190 t context_resolver_search::tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately::{{closure}}
+00000000003451f0 t context_resolver_search::tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately::{{closure}}
+00000000003456a0 t context_resolver_search::tests::platform_adapter_exposes_bsl_global_context_and_ownerless_global_callable::{{closure}}
+00000000003456e0 t context_resolver_search::tests::platform_adapter_exposes_bsl_global_context_and_ownerless_global_callable::{{closure}}
+0000000000345710 t context_resolver_search::tests::platform_adapter_exposes_bsl_global_context_and_ownerless_global_callable::{{closure}}
+00000000003457b0 t context_resolver_search::tests::platform_adapter_exposes_bsl_global_context_and_ownerless_global_callable::{{closure}}
+000000000040b3a0 t syntax_helper_search::SearchIndex::get_by_key::{{closure}}
+000000000040b3f0 t syntax_helper_search::SearchIndex::get_by_key::{{closure}}
+000000000040b440 t syntax_helper_search::SearchIndex::get_by_key::{{closure}}
+000000000040b490 t syntax_helper_search::SearchIndex::get_by_key::{{closure}}
+000000000040b5c0 t syntax_helper_search::SearchIndex::hydrate_hits::{{closure}}
+000000000040b660 t syntax_helper_search::SearchIndex::hydrate_hits::{{closure}}::{{closure}}
+000000000040b6b0 t syntax_helper_search::SearchIndex::edges_by_kind::{{closure}}
+000000000040c120 t syntax_helper_search::SearchIndex::edges_by_kind::{{closure}}
+000000000040c170 t syntax_helper_search::SearchIndex::edges_by_kind::{{closure}}
+000000000040c1c0 t syntax_helper_search::SearchIndex::edges_by_kind::{{closure}}
+000000000040c210 t syntax_helper_search::SearchIndex::metadata_value::{{closure}}
+000000000040c3c0 t syntax_helper_search::SearchIndex::metadata_value::{{closure}}
+000000000040c3f0 t syntax_helper_search::SearchIndex::parameters_for::{{closure}}
+000000000040c940 t syntax_helper_search::SearchIndex::parameters_for::{{closure}}
+000000000040c990 t syntax_helper_search::SearchIndex::parameters_for::{{closure}}
+000000000040c9e0 t syntax_helper_search::SearchIndex::parameters_for::{{closure}}
+000000000040cb40 t syntax_helper_search::SearchIndex::parameters_for::{{closure}}
+000000000040cb90 t syntax_helper_search::SearchIndex::parameters_for::{{closure}}::{{closure}}
+000000000040cd70 t syntax_helper_search::SearchIndex::parameters_for::{{closure}}::{{closure}}::{{closure}}
+000000000040cdb0 t syntax_helper_search::SearchIndex::signatures_for::{{closure}}
+000000000040ce00 t syntax_helper_search::SearchIndex::signatures_for::{{closure}}
+000000000040cfb0 t syntax_helper_search::SearchIndex::signatures_for::{{closure}}
+000000000040d610 t syntax_helper_search::SearchIndex::signatures_for::{{closure}}
+000000000040d660 t syntax_helper_search::SearchIndex::signatures_for::{{closure}}
+000000000040d6b0 t syntax_helper_search::SearchIndex::signatures_for::{{closure}}
+000000000040d6f0 t syntax_helper_search::SearchIndex::type_ref_facts::{{closure}}
+000000000040d740 t syntax_helper_search::SearchIndex::type_ref_facts::{{closure}}
+000000000040d790 t syntax_helper_search::SearchIndex::type_ref_facts::{{closure}}
+000000000040d7e0 t syntax_helper_search::SearchIndex::callable_exists::{{closure}}
+000000000040d800 t syntax_helper_search::SearchIndex::callable_exists::{{closure}}
+000000000040d830 t syntax_helper_search::SearchIndex::callable_exists::{{closure}}
+000000000040d880 t syntax_helper_search::SearchIndex::hydrate_document::{{closure}}
+000000000040d8c0 t syntax_helper_search::SearchIndex::hydrate_document::{{closure}}
+000000000040d900 t syntax_helper_search::SearchIndex::documents_by_kind::{{closure}}
+000000000040da30 t syntax_helper_search::SearchIndex::documents_by_kind::{{closure}}
+000000000040da80 t syntax_helper_search::SearchIndex::documents_by_kind::{{closure}}
+000000000040dad0 t syntax_helper_search::SearchIndex::documents_by_kind::{{closure}}
+000000000040db20 t syntax_helper_search::SearchIndex::type_template_for::{{closure}}
+000000000040e4b0 t syntax_helper_search::SearchIndex::type_template_for::{{closure}}
+000000000040e500 t syntax_helper_search::SearchIndex::members_by_type_id::{{closure}}
+000000000040e550 t syntax_helper_search::SearchIndex::members_by_type_id::{{closure}}
+000000000040e5a0 t syntax_helper_search::SearchIndex::members_by_type_id::{{closure}}
+000000000040e6d0 t syntax_helper_search::SearchIndex::members_by_type_id::{{closure}}
+000000000040e720 t syntax_helper_search::SearchIndex::parameter_type_facts::{{closure}}
+000000000040e770 t syntax_helper_search::SearchIndex::parameter_type_facts::{{closure}}
+000000000040e7c0 t syntax_helper_search::SearchIndex::parameter_type_facts::{{closure}}
+000000000040e810 t syntax_helper_search::SearchIndex::type_template_by_key::{{closure}}
+000000000040e940 t syntax_helper_search::SearchIndex::type_template_by_key::{{closure}}
+000000000040e990 t syntax_helper_search::SearchIndex::type_template_by_key::{{closure}}
+000000000040e9e0 t syntax_helper_search::SearchIndex::type_template_by_key::{{closure}}
+000000000040ea30 t syntax_helper_search::SearchIndex::document_metadata_for::{{closure}}
+0000000000410e60 t syntax_helper_search::SearchIndex::document_metadata_for::{{closure}}
+0000000000410eb0 t syntax_helper_search::SearchIndex::member_by_owner_type_id::{{closure}}
+0000000000410f00 t syntax_helper_search::SearchIndex::member_by_owner_type_id::{{closure}}
+0000000000410f50 t syntax_helper_search::SearchIndex::member_by_owner_type_id::{{closure}}
+0000000000411080 t syntax_helper_search::SearchIndex::member_by_owner_type_id::{{closure}}
+00000000004110d0 t syntax_helper_search::SearchIndex::metadata_optional_value::{{closure}}
+0000000000411100 t syntax_helper_search::SearchIndex::metadata_optional_value::{{closure}}
+0000000000411150 t syntax_helper_search::SearchIndex::owned_documents_by_kind::{{closure}}
+00000000004111a0 t syntax_helper_search::SearchIndex::owned_documents_by_kind::{{closure}}
+00000000004112d0 t syntax_helper_search::SearchIndex::owned_documents_by_kind::{{closure}}
+0000000000411320 t syntax_helper_search::SearchIndex::owned_documents_by_kind::{{closure}}
+0000000000411370 t syntax_helper_search::SearchIndex::callable_by_owner_type_id::{{closure}}
+00000000004113c0 t syntax_helper_search::SearchIndex::callable_by_owner_type_id::{{closure}}
+0000000000411410 t syntax_helper_search::SearchIndex::callable_by_owner_type_id::{{closure}}
+0000000000411540 t syntax_helper_search::SearchIndex::callable_by_owner_type_id::{{closure}}
+0000000000411590 t syntax_helper_search::SearchIndex::type_identity_document_id::{{closure}}
+00000000004115e0 t syntax_helper_search::SearchIndex::type_identity_document_id::{{closure}}
+0000000000411610 t syntax_helper_search::SearchIndex::owner_type_id_for_document::{{closure}}
+0000000000411660 t syntax_helper_search::SearchIndex::owner_type_id_for_document::{{closure}}
+0000000000411690 t syntax_helper_search::SearchIndex::signature_return_type_facts::{{closure}}
+00000000004116e0 t syntax_helper_search::SearchIndex::signature_return_type_facts::{{closure}}
+0000000000411730 t syntax_helper_search::SearchIndex::signature_return_type_facts::{{closure}}
+0000000000411780 t syntax_helper_search::SearchIndex::module_event_by_context_name::{{closure}}
+00000000004117d0 t syntax_helper_search::SearchIndex::module_event_by_context_name::{{closure}}
+0000000000411900 t syntax_helper_search::SearchIndex::module_event_by_context_name::{{closure}}
+0000000000411950 t syntax_helper_search::SearchIndex::module_event_by_context_name::{{closure}}
+00000000004119a0 t syntax_helper_search::SearchIndex::type_identities_by_lookup_key::{{closure}}
+0000000000411ad0 t syntax_helper_search::SearchIndex::type_identities_by_lookup_key::{{closure}}
+0000000000411b20 t syntax_helper_search::SearchIndex::type_identities_by_lookup_key::{{closure}}
+0000000000411b70 t syntax_helper_search::SearchIndex::type_identities_by_lookup_key::{{closure}}
+0000000000411bc0 t syntax_helper_search::SearchIndex::related_type_refs_by_id_and_edge::{{closure}}
+0000000000411c10 t syntax_helper_search::SearchIndex::related_type_refs_by_id_and_edge::{{closure}}
+0000000000411c60 t syntax_helper_search::SearchIndex::related_type_refs_by_id_and_edge::{{closure}}
+0000000000411f90 t syntax_helper_search::SearchIndex::related_type_refs_by_id_and_edge::{{closure}}
+0000000000411fe0 t syntax_helper_search::SearchIndex::document::{{closure}}
+0000000000412030 t syntax_helper_search::SearchIndex::document::{{closure}}
+00000000004120b0 t syntax_helper_search::SearchIndex::metadata::{{closure}}
+0000000000412170 t syntax_helper_search::SearchIndex::get_by_id::{{closure}}
+00000000004121c0 t syntax_helper_search::SearchIndex::get_by_id::{{closure}}::{{closure}}
+000000000052abd0 t syntax_helper_search::SearchIndex::get_by_key
+000000000052b1b0 T syntax_helper_search::SearchIndex::get_by_name
+000000000052b270 t syntax_helper_search::SearchIndex::hydrate_hits
+000000000052b2e0 t syntax_helper_search::SearchIndex::edges_by_kind
+000000000052b6f0 T syntax_helper_search::SearchIndex::callable_by_id
+000000000052b830 t syntax_helper_search::SearchIndex::metadata_value
+000000000052b8b0 t syntax_helper_search::SearchIndex::parameters_for
+000000000052bef0 t syntax_helper_search::SearchIndex::signatures_for
+000000000052cff0 t syntax_helper_search::SearchIndex::type_ref_facts
+000000000052d400 t syntax_helper_search::SearchIndex::callable_exists
+000000000052d4b0 t syntax_helper_search::SearchIndex::hydrate_document
+000000000052ef70 T syntax_helper_search::SearchIndex::documents_by_kind
+000000000052f560 t syntax_helper_search::SearchIndex::type_template_for
+000000000052f600 T syntax_helper_search::SearchIndex::members_by_type_id
+000000000052fbe0 t syntax_helper_search::SearchIndex::parameter_terms_for
+000000000052fee0 T syntax_helper_search::SearchIndex::type_identity_by_id
+00000000005300c0 t syntax_helper_search::SearchIndex::parameter_type_facts
+00000000005304d0 T syntax_helper_search::SearchIndex::type_template_by_key
+0000000000530ab0 t syntax_helper_search::SearchIndex::document_metadata_for
+0000000000530b50 T syntax_helper_search::SearchIndex::related_by_id_and_edge
+00000000005319a0 T syntax_helper_search::SearchIndex::constructors_by_type_id
+00000000005319e0 T syntax_helper_search::SearchIndex::member_by_owner_type_id
+00000000005320f0 t syntax_helper_search::SearchIndex::metadata_optional_value
+00000000005321a0 t syntax_helper_search::SearchIndex::owned_documents_by_kind
+00000000005327d0 T syntax_helper_search::SearchIndex::type_identities_by_name
+0000000000532890 T syntax_helper_search::SearchIndex::type_identities_by_alias
+0000000000532950 T syntax_helper_search::SearchIndex::callable_by_owner_type_id
+0000000000533060 t syntax_helper_search::SearchIndex::type_identity_document_id
+00000000005330f0 T syntax_helper_search::SearchIndex::owner_type_id_for_document
+0000000000533180 t syntax_helper_search::SearchIndex::signature_return_type_facts
+0000000000533580 T syntax_helper_search::SearchIndex::module_event_by_context_name
+0000000000533cf0 t syntax_helper_search::SearchIndex::type_identities_by_lookup_key
+0000000000534340 t syntax_helper_search::SearchIndex::related_type_refs_by_id_and_edge
+0000000000535340 t syntax_helper_search::SearchIndex::path
+0000000000535360 t syntax_helper_search::SearchIndex::sqlite
+0000000000535410 t syntax_helper_search::SearchIndex::document
+0000000000535660 T syntax_helper_search::SearchIndex::metadata
+00000000005367c0 T syntax_helper_search::SearchIndex::get_by_id
+0000000000558070 T <syntax_helper_search::SearchIndexBuilder as syntax_helper_model::SyntaxHelperSink>::global_context_event
+00000000005cc000 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::get_by_key::{{closure}}>>
+00000000005cc040 T core::ptr::drop_in_place<syntax_helper_search::SearchIndex::parameters_for::{{closure}}::{{closure}}>
+00000000005cc2e0 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::edges_by_kind::{{closure}}>>
+00000000005cc300 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::parameters_for::{{closure}}>>
+00000000005cc320 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::signatures_for::{{closure}}>>
+00000000005cc480 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::documents_by_kind::{{closure}}>>
+00000000005cc4a0 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::members_by_type_id::{{closure}}>>
+00000000005cc6e0 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::type_template_by_key::{{closure}}>>
+00000000005cc920 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::member_by_owner_type_id::{{closure}}>>
+00000000005cc940 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::owned_documents_by_kind::{{closure}}>>
+00000000005cc980 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::callable_by_owner_type_id::{{closure}}>>
+00000000005ccb20 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::module_event_by_context_name::{{closure}}>>
+00000000005ccc00 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::type_identities_by_lookup_key::{{closure}}>>
+00000000005ccdc0 T core::ptr::drop_in_place<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::related_type_refs_by_id_and_edge::{{closure}}>>
+00000000005cf3f0 T core::ptr::drop_in_place<core::iter::adapters::map::Map<alloc::vec::into_iter::IntoIter<alloc::string::String>,syntax_helper_search::SearchIndex::signatures_for::{{closure}}>>
+00000000005cf670 T core::ptr::drop_in_place<core::iter::adapters::map::Map<alloc::vec::into_iter::IntoIter<syntax_helper_search::SearchHit>,syntax_helper_search::SearchIndex::hydrate_hits::{{closure}}>>
+00000000005d0330 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::get_by_key::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d03d0 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::edges_by_kind::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0410 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::parameters_for::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0430 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::signatures_for::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0470 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::documents_by_kind::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0490 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::members_by_type_id::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d04f0 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::type_template_by_key::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0530 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::member_by_owner_type_id::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0550 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::owned_documents_by_kind::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d05f0 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::callable_by_owner_type_id::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0630 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::module_event_by_context_name::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0650 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::type_identities_by_lookup_key::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0730 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<rusqlite::row::MappedRows<syntax_helper_search::SearchIndex::related_type_refs_by_id_and_edge::{{closure}}>,core::result::Result<core::convert::Infallible,rusqlite::error::Error>>>
+00000000005d0750 T core::ptr::drop_in_place<core::iter::adapters::map::Map<alloc::vec::into_iter::IntoIter<(i64,alloc::string::String,bool,core::option::Option<alloc::string::String>)>,syntax_helper_search::SearchIndex::parameters_for::{{closure}}>>
+00000000005d0b90 T core::ptr::drop_in_place<alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::signatures_for::{{closure}}>>::{{closure}}>
+00000000005d0c10 T core::ptr::drop_in_place<alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::hydrate_document::{{closure}}>>::{{closure}}>
+00000000005d0c30 T core::ptr::drop_in_place<alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::hydrate_document::{{closure}}>>::{{closure}}>
+00000000005d0cb0 T core::ptr::drop_in_place<alloc::vec::Vec<syntax_helper_search::SearchSignature>::extend_trusted<core::iter::adapters::map::Map<alloc::vec::into_iter::IntoIter<alloc::string::String>,syntax_helper_search::SearchIndex::signatures_for::{{closure}}>>::{{closure}}>
+00000000005d0f30 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<core::iter::adapters::map::Map<alloc::vec::into_iter::IntoIter<syntax_helper_search::SearchHit>,syntax_helper_search::SearchIndex::hydrate_hits::{{closure}}>,core::result::Result<core::convert::Infallible,syntax_helper_search::SearchError>>>
+00000000005d10f0 T core::ptr::drop_in_place<alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::parameters_for::{{closure}}::{{closure}}::{{closure}}>>::{{closure}}>
+00000000005d11f0 T core::ptr::drop_in_place<core::iter::adapters::GenericShunt<core::iter::adapters::map::Map<alloc::vec::into_iter::IntoIter<(i64,alloc::string::String,bool,core::option::Option<alloc::string::String>)>,syntax_helper_search::SearchIndex::parameters_for::{{closure}}>,core::result::Result<core::convert::Infallible,syntax_helper_search::SearchError>>>
+00000000005d1270 T core::ptr::drop_in_place<core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::signatures_for::{{closure}}>>::{{closure}}>::{{closure}}>
+00000000005d1290 T core::ptr::drop_in_place<core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::hydrate_document::{{closure}}>>::{{closure}}>::{{closure}}>
+00000000005d12b0 T core::ptr::drop_in_place<core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::hydrate_document::{{closure}}>>::{{closure}}>::{{closure}}>
+00000000005d1350 T core::ptr::drop_in_place<core::iter::traits::iterator::Iterator::for_each::call<syntax_helper_search::SearchSignature,alloc::vec::Vec<syntax_helper_search::SearchSignature>::extend_trusted<core::iter::adapters::map::Map<alloc::vec::into_iter::IntoIter<alloc::string::String>,syntax_helper_search::SearchIndex::signatures_for::{{closure}}>>::{{closure}}>::{{closure}}>
+00000000005d1470 T core::ptr::drop_in_place<core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::parameters_for::{{closure}}::{{closure}}::{{closure}}>>::{{closure}}>::{{closure}}>
+00000000005d2e80 T core::ptr::drop_in_place<core::iter::adapters::map::map_fold<&syntax_helper_search::SearchTypeRef,alloc::string::String,(),syntax_helper_search::SearchIndex::signatures_for::{{closure}},core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::signatures_for::{{closure}}>>::{{closure}}>::{{closure}}>::{{closure}}>
+00000000005d2f30 T core::ptr::drop_in_place<core::iter::adapters::map::map_fold<&syntax_helper_search::SearchTypeRef,alloc::string::String,(),syntax_helper_search::SearchIndex::hydrate_document::{{closure}},core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::hydrate_document::{{closure}}>>::{{closure}}>::{{closure}}>::{{closure}}>
+00000000005d2f50 T core::ptr::drop_in_place<core::iter::adapters::map::map_fold<&syntax_helper_search::SearchTypeRef,alloc::string::String,(),syntax_helper_search::SearchIndex::hydrate_document::{{closure}},core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::hydrate_document::{{closure}}>>::{{closure}}>::{{closure}}>::{{closure}}>
+00000000005d32e0 T core::ptr::drop_in_place<core::iter::adapters::map::map_fold<alloc::string::String,syntax_helper_search::SearchSignature,(),syntax_helper_search::SearchIndex::signatures_for::{{closure}},core::iter::traits::iterator::Iterator::for_each::call<syntax_helper_search::SearchSignature,alloc::vec::Vec<syntax_helper_search::SearchSignature>::extend_trusted<core::iter::adapters::map::Map<alloc::vec::into_iter::IntoIter<alloc::string::String>,syntax_helper_search::SearchIndex::signatures_for::{{closure}}>>::{{closure}}>::{{closure}}>::{{closure}}>
+00000000005d4a30 T core::ptr::drop_in_place<core::iter::adapters::map::map_fold<&syntax_helper_search::SearchTypeRef,alloc::string::String,(),syntax_helper_search::SearchIndex::parameters_for::{{closure}}::{{closure}}::{{closure}},core::iter::traits::iterator::Iterator::for_each::call<alloc::string::String,alloc::vec::Vec<alloc::string::String>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<syntax_helper_search::SearchTypeRef>,syntax_helper_search::SearchIndex::parameters_for::{{closure}}::{{closure}}::{{closure}}>>::{{closure}}>::{{closure}}>::{{closure}}>

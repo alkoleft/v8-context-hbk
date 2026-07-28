@@ -1,0 +1,4 @@
+gdb_command=gdb --quiet --batch --nx -ex 'source /tmp/catalog-probe-gdb-igc3d7sz/probe.py' --args /tmp/tmp.WfCNKa47j8/baseline-sdbl-wt/target-runtime-counters/debug/deps/context_resolver_search-000667c4ef1d7a3e tests::sdbl_compat_measurement_probe --ignored --exact --nocapture
+warning: Missing auto-load script at offset 0 in section .debug_gdb_scripts
+of file /tmp/tmp.WfCNKa47j8/baseline-sdbl-wt/target-runtime-counters/debug/deps/context_resolver_search-000667c4ef1d7a3e.
+Use `info auto-load python-scripts [REGEXP]' to list them.
