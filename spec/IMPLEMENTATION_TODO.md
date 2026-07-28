@@ -74,13 +74,16 @@ Scope and guard:
 
 Progress:
 
-- The read-handle lifetime foundation and first BSL catalog slice are complete.
-  `HbkBslContextCatalog` is the BSL acquisition owner,
-  `PlatformSnapshotSource` projects at the generic boundary, and the
-  `b0841e6`/after compatibility probe preserves every observable result count
-  and the 0.10 s warm command wall time.
-- SDBL catalog implementation, combined workspace verification, versioning and
-  downstream handoff remain open under the named OpenSpec change.
+- The read-handle lifetime foundation and both independently gated domain
+  catalogs are complete. `HbkBslContextCatalog` and `HbkSdblQueryCatalog` own
+  catalog-covered acquisition while their snapshot adapters project only at
+  the generic compatibility boundary.
+- The `b0841e6`/after BSL probe and `ff70367`/after SDBL probe preserve every
+  observable compatibility result count and their respective 0.10 s and
+  0.11 s warm command wall times; both snapshot paths work after deleting the
+  SQLite file.
+- Combined workspace verification, versioning, generic-resolver reconciliation
+  and downstream analyzer handoff remain open under the named OpenSpec change.
 
 ### [x] T177. Eliminate duplicate snapshot-interner string ownership
 

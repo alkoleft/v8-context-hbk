@@ -2552,6 +2552,31 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "measurement probe; run explicitly for SDBL catalog compatibility measurements"]
+    fn sdbl_catalog_measurement_probe() {
+        let query_source = SourceId::new("shcntx-query");
+        let platform_source = fixture_source();
+        let index_path = fixture_index_path("sdbl-compat-measurement-probe.sqlite");
+        let index = open_index(&index_path);
+        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        drop(index);
+        std::fs::remove_file(&index_path).expect("measurement probe must not need SQLite file");
+        println!("compat_deleted_sqlite_success=1");
+
+        let adapter = QueryTableSnapshotSource::with_source_ids(
+            snapshot.clone(),
+            query_source.clone(),
+            platform_source.clone(),
+        );
+        compat_sdbl_adapter_sequence(&adapter, &query_source);
+
+        let catalog =
+            crate::HbkSdblQueryCatalog::with_source_ids(snapshot, query_source, platform_source);
+        println!("direct_deleted_sqlite_success=1");
+        direct_sdbl_catalog_sequence(&catalog);
+    }
+
+    #[test]
     fn query_table_snapshot_source_exposes_templates_fields_parameters_and_type_refs() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<QueryTableSnapshotSource>();
@@ -3316,6 +3341,224 @@ mod tests {
                     && fact.id.local_id == "def_String"
             }),
             "SKD parameter type must traverse to the explicit BSL string type edge"
+        );
+    }
+
+    fn compat_sdbl_adapter_sequence(adapter: &QueryTableSnapshotSource, query_source: &SourceId) {
+        let context = ResolveContext::all();
+        let global = adapter
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Sdbl,
+                    sources: &[],
+                },
+                &context,
+            )
+            .expect("compat SDBL global context must not fail");
+        assert_eq!(global.status, ResolveStatus::Ok);
+        println!("compat_global_context_invocations=1");
+        println!("compat_global_response_count={}", global.facts.len());
+        let global_facts = global
+            .facts
+            .iter()
+            .flat_map(|context| context.facts.iter())
+            .collect::<Vec<_>>();
+        println!("compat_global_fact_total={}", global_facts.len());
+        println!(
+            "compat_global_query_table_count={}",
+            global_facts
+                .iter()
+                .filter(|fact| fact.id.kind == FactKind::QueryTable)
+                .count()
+        );
+        println!(
+            "compat_global_query_field_count={}",
+            global_facts
+                .iter()
+                .filter(|fact| fact.id.kind == FactKind::QueryField)
+                .count()
+        );
+        println!(
+            "compat_global_query_parameter_count={}",
+            global_facts
+                .iter()
+                .filter(|fact| fact.id.kind == FactKind::QueryParameter)
+                .count()
+        );
+
+        let table_id = FactId::new(
+            query_source.clone(),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryTable,
+            "query_table:ОсновнаяТаблица",
+        );
+        let table = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&table_id),
+                &context,
+            )
+            .expect("compat SDBL table id lookup must not fail");
+        assert_eq!(table.status, ResolveStatus::Ok);
+        println!("compat_table_id_response_count={}", table.facts.len());
+        let exact = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::ExactName {
+                    source: Some(query_source),
+                    domain: Some(LanguageDomain::QueryLanguage),
+                    kind: Some(FactKind::QueryTable),
+                    name: "Основная таблица",
+                },
+                &context,
+            )
+            .expect("compat SDBL exact name lookup must not fail");
+        assert_eq!(exact.status, ResolveStatus::Ok);
+        println!("compat_table_exact_response_count={}", exact.facts.len());
+
+        let fields = adapter
+            .query_fields(&table_id, &context)
+            .expect("compat SDBL field enumeration must not fail");
+        assert_eq!(fields.status, ResolveStatus::Ok);
+        println!("compat_field_enum_count={}", fields.facts.len());
+        let field_exact = adapter
+            .query_fields_by_name(&table_id, "Период", &context)
+            .expect("compat SDBL field exact lookup must not fail");
+        assert_eq!(field_exact.status, ResolveStatus::Ok);
+        println!("compat_field_exact_count={}", field_exact.facts.len());
+
+        let parameters = adapter
+            .query_parameters(&table_id, &context)
+            .expect("compat SDBL parameter enumeration must not fail");
+        assert_eq!(parameters.status, ResolveStatus::Ok);
+        println!("compat_parameter_enum_count={}", parameters.facts.len());
+        let parameter_exact = adapter
+            .query_parameters_by_name(&table_id, "Дата", &context)
+            .expect("compat SDBL parameter exact lookup must not fail");
+        assert_eq!(parameter_exact.status, ResolveStatus::Ok);
+        println!(
+            "compat_parameter_exact_count={}",
+            parameter_exact.facts.len()
+        );
+
+        let selector_projection_count = [
+            "query_table:Справочник",
+            "query_table:Документ",
+            "query_table:РегистрСведений",
+            "query_table:РегистрНакопления",
+            "query_table:РегистрБухгалтерии",
+            "query_table:РегистрРасчета",
+        ]
+        .into_iter()
+        .filter(|local_id| {
+            let response = adapter
+                .resolve(
+                    context_resolver_core::ResolveQuery::Id(&FactId::new(
+                        query_source.clone(),
+                        LanguageDomain::QueryLanguage,
+                        FactKind::QueryTable,
+                        *local_id,
+                    )),
+                    &context,
+                )
+                .expect("compat SDBL selector lookup must not fail");
+            assert_eq!(response.status, ResolveStatus::Ok);
+            response.facts.iter().any(|fact| {
+                matches!(
+                    &fact.details,
+                    FactDetails::QueryTable(info)
+                        if info.sdbl_metadata_source_selector.is_some()
+                )
+            })
+        })
+        .count();
+        println!(
+            "compat_selector_projection_count={}",
+            selector_projection_count
+        );
+    }
+
+    fn direct_sdbl_catalog_sequence(catalog: &crate::HbkSdblQueryCatalog) {
+        println!(
+            "direct_source_locale_present={}",
+            usize::from(catalog.source_locale().is_some())
+        );
+        println!("direct_all_table_count={}", catalog.query_tables().count());
+        let (table_id, _) = catalog
+            .query_table_by_id("query_table:ОсновнаяТаблица")
+            .expect("direct SDBL primary table must resolve");
+        println!("direct_primary_table_point_count=1");
+        println!(
+            "direct_table_name_count={}",
+            catalog.query_tables_by_name("Основная таблица").count()
+        );
+        println!(
+            "direct_table_syntax_count={}",
+            catalog
+                .query_tables_by_syntax("ОсновнаяТаблица.<Имя таблицы>")
+                .count()
+        );
+        println!(
+            "direct_table_identifier_count={}",
+            catalog
+                .query_tables_by_identifier("ОсновнаяТаблица")
+                .count()
+        );
+        println!(
+            "direct_field_enum_count={}",
+            catalog.query_fields(table_id).count()
+        );
+        println!(
+            "direct_field_id_count={}",
+            usize::from(
+                catalog
+                    .query_field_by_id("query_table_field:query_table:ОсновнаяТаблица:Период")
+                    .is_some()
+            )
+        );
+        println!(
+            "direct_field_name_count={}",
+            catalog.query_field_by_name(table_id, "Период").count()
+        );
+        println!(
+            "direct_parameter_enum_count={}",
+            catalog.query_parameters(table_id).count()
+        );
+        println!(
+            "direct_parameter_id_count={}",
+            usize::from(
+                catalog
+                    .query_parameter_by_id("query_table_parameter:query_table:ОсновнаяТаблица:Дата")
+                    .is_some()
+            )
+        );
+        println!(
+            "direct_parameter_name_count={}",
+            catalog.query_parameter_by_name(table_id, "Дата").count()
+        );
+        let selector_count = [
+            "query_table:Справочник",
+            "query_table:Документ",
+            "query_table:РегистрСведений",
+            "query_table:РегистрНакопления",
+            "query_table:РегистрБухгалтерии",
+            "query_table:РегистрРасчета",
+        ]
+        .into_iter()
+        .filter(|local_id| {
+            catalog
+                .query_table_by_id(local_id)
+                .and_then(|(id, _)| catalog.metadata_source_selector(id))
+                .is_some()
+        })
+        .count();
+        assert_eq!(selector_count, 6);
+        println!("direct_selector_present_count={selector_count}");
+        let unknown_selector_absent = catalog
+            .metadata_source_selector_for_identifier(Some("Unknown"))
+            .is_none();
+        assert!(unknown_selector_absent);
+        println!(
+            "direct_unknown_selector_absent={}",
+            usize::from(unknown_selector_absent)
         );
     }
 

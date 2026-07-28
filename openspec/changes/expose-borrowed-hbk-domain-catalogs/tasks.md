@@ -61,15 +61,31 @@ the implemented BSL boundary and the still-open SDBL slice.
 
 ## 3. First SDBL Catalog Slice
 
-- [ ] 3.1 Add RED tests for the exact first SDBL slice over `QueryTableSnapshotSource`: borrowed catalog construction from existing `Arc<HbkFactSnapshot>`, `Send + Sync`, no unavailable-SQLite fallback after deleting the source SQLite file, table point/enumeration parity, owner-scoped field/parameter parity, six exact opaque selectors, and unknown identifier returning `None`.
-- [ ] 3.2 Expose the first borrowed SDBL catalog API over existing snapshot/read-handle records only, covering query table point/enumeration, owner fields, owner parameters, query identifiers, syntax, type references and provenance; do not build a flattened `Vec<ContextFact>`, second arena, duplicate index or result DTO mirror.
-- [ ] 3.3 Move exact `sdbl_metadata_source_selector` behavior into one crate-private locale-aware function in `hbk_catalogs::sdbl`, reused by `HbkSdblQueryCatalog` and the retained SQL adapter, for only these six opaque values: `metadata.sdbl.query-source.catalog`, `metadata.sdbl.query-source.document`, `metadata.sdbl.query-source.information-register`, `metadata.sdbl.query-source.accumulation-register`, `metadata.sdbl.query-source.accounting-register`, and `metadata.sdbl.query-source.calculation-register`; the mapping applies only to `source_locale=ru`, and another locale or unknown identifier returns normal `None`, not an analyzer unknown reason.
-- [ ] 3.4 Make `QueryTableSnapshotSource::{global_context,resolve,related,query_fields,query_fields_by_name,query_parameters,query_parameters_by_name}` delegate catalog-covered behavior to the borrowed SDBL catalog and project to `context-resolver-core` DTOs only at the `ContextResolver` compatibility boundary.
-- [ ] 3.5 Delete duplicate SDBL flattening and selector mapping made obsolete by the catalog, specifically direct `QueryTableSnapshotSource` table/field/parameter enumeration and local selector branches that re-own catalog-covered behavior; retain only generic DTO projection helpers and non-catalog resolver glue.
-- [ ] 3.6 Preserve `LanguageSearchSource::{query_tables,open_query_tables_read_only,new_query_tables,global_context,resolve,related}` as explicit SQL/SearchIndex behavior for non-migrated CLI/debug/index-inspection and local sequential resolver flows; add tests proving snapshot catalog paths do not call or require these SQL flows.
-- [ ] 3.7 Verify first SDBL slice independently with `cargo test -p context-resolver-search sdbl_catalog -- --nocapture`, `cargo test -p context-resolver-search tests::query_table_snapshot_source_exposes_templates_fields_parameters_and_type_refs -- --exact`, and `cargo test -p context-resolver-search tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately -- --exact`.
-- [ ] 3.8 Capture after counters and wall time for the SDBL slice, comparing owned DTO materializations, `global_context` calls, flattened fact materializations, SQL/SearchIndex calls, selector mapping calls, and parity fixture wall time against 1.6.
-- [ ] 3.9 Run a fresh review for the SDBL slice, update ADR/docs/tasks with accepted evidence, then commit the independent SDBL batch before downstream analyzer handoff.
+- [x] 3.1 Add RED tests for the exact first SDBL slice over `QueryTableSnapshotSource`: borrowed catalog construction from existing `Arc<HbkFactSnapshot>`, `Send + Sync`, no unavailable-SQLite fallback after deleting the source SQLite file, table point/enumeration parity, owner-scoped field/parameter parity, six exact opaque selectors, and unknown identifier returning `None`.
+- [x] 3.2 Expose the first borrowed SDBL catalog API over existing snapshot/read-handle records only, covering query table point/enumeration, owner fields, owner parameters, query identifiers, syntax, type references and provenance; do not build a flattened `Vec<ContextFact>`, second arena, duplicate index or result DTO mirror.
+- [x] 3.3 Move exact `sdbl_metadata_source_selector` behavior into one crate-private locale-aware function in `hbk_catalogs::sdbl`, reused by `HbkSdblQueryCatalog` and the retained SQL adapter, for only these six opaque values: `metadata.sdbl.query-source.catalog`, `metadata.sdbl.query-source.document`, `metadata.sdbl.query-source.information-register`, `metadata.sdbl.query-source.accumulation-register`, `metadata.sdbl.query-source.accounting-register`, and `metadata.sdbl.query-source.calculation-register`; the mapping applies only to `source_locale=ru`, and another locale or unknown identifier returns normal `None`, not an analyzer unknown reason.
+- [x] 3.4 Make `QueryTableSnapshotSource::{global_context,resolve,related,query_fields,query_fields_by_name,query_parameters,query_parameters_by_name}` delegate catalog-covered behavior to the borrowed SDBL catalog and project to `context-resolver-core` DTOs only at the `ContextResolver` compatibility boundary.
+- [x] 3.5 Delete duplicate SDBL flattening and selector mapping made obsolete by the catalog, specifically direct `QueryTableSnapshotSource` table/field/parameter enumeration and local selector branches that re-own catalog-covered behavior; retain only generic DTO projection helpers and non-catalog resolver glue.
+- [x] 3.6 Preserve `LanguageSearchSource::{query_tables,open_query_tables_read_only,new_query_tables,global_context,resolve,related}` as explicit SQL/SearchIndex behavior for non-migrated CLI/debug/index-inspection and local sequential resolver flows; add tests proving snapshot catalog paths do not call or require these SQL flows.
+- [x] 3.7 Verify first SDBL slice independently with `cargo test -p context-resolver-search sdbl_catalog -- --nocapture`, `cargo test -p context-resolver-search tests::query_table_snapshot_source_exposes_templates_fields_parameters_and_type_refs -- --exact`, and `cargo test -p context-resolver-search tests::language_adapter_exposes_bsl_and_sdbl_global_contexts_separately -- --exact`.
+- [x] 3.8 Run an identical pre-SDBL/after compatibility probe and compare observable returned generic DTO/projection counts, one explicit `global_context` invocation, returned flattened fact counts, selector-bearing query-table projections, wall time and RSS. Record deleted-SQLite/no-required-`SearchIndex` evidence without reporting it as an instrumented SQL-call counter, and report the after-only direct borrowed catalog sequence separately. Keep task 1.6 open for allocator-level materialization, exact `worker_handle` invocation and instrumented SQL-call counters that this bounded probe does not provide.
+- [x] 3.9 Run a fresh review for the SDBL slice, update ADR/docs/tasks with accepted evidence, then commit the independent SDBL batch before downstream analyzer handoff.
+
+Implementation and measurement evidence (2026-07-28): commit `c140838`
+introduced the only public SDBL semantic handle, `HbkSdblQueryCatalog`, over
+the existing snapshot arenas. `QueryTableSnapshotSource` stores only that
+catalog, delegates table/field/parameter acquisition and keeps generic DTO
+projection plus private relation glue at the compatibility boundary. The six
+opaque selector literals have one production owner in `hbk_catalogs::sdbl`;
+the snapshot catalog and retained SQL adapter share its locale-aware behavior.
+Direct tests cover borrowed lifetimes, `Send + Sync`, table/member parity,
+Russian/unknown/non-Russian selectors and operation after deleting SQLite.
+The identical `ff70367`/after compatibility probe preserved all observable
+counts, 0.11 s warm wall time and changed command RSS from 39,524 to
+39,400 KiB. `measurements.md` records the exact commands and after-only direct
+counts. Task 1.6 remains open for the explicitly uninstrumented counter classes;
+the fresh implementation re-review and final evidence review both completed
+with no findings.
 
 ## 4. Generic Resolver And Downstream Handoff
 

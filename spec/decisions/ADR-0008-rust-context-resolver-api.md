@@ -309,5 +309,15 @@ preimplementation/after compatibility probe preserved every observable result
 count and the 0.10 s warm command wall time; the direct catalog and snapshot
 adapter both completed after removal of the source SQLite file. The exact
 probe and measurements are retained under OpenSpec change
-`expose-borrowed-hbk-domain-catalogs`; SDBL catalog completion remains a
-separate later slice.
+`expose-borrowed-hbk-domain-catalogs`.
+
+The SDBL catalog slice completed the second domain gate on 2026-07-28.
+`QueryTableSnapshotSource` now stores one `HbkSdblQueryCatalog`, delegates
+table/field/parameter acquisition and retains only generic projection plus
+private relation glue. The catalog and explicit SQL adapter share one
+locale-aware selector owner; non-Russian and unknown identifiers return normal
+absence. The identical `ff70367`/after compatibility probe preserved every
+observable result count and the 0.11 s warm command wall time, and both direct
+and compatibility snapshot paths completed after removal of the SQLite file.
+Downstream analyzer handoff remains separately gated by the active OpenSpec
+change.

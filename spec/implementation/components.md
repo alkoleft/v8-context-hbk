@@ -870,8 +870,15 @@ The snapshot family additionally exposes `HbkBslContextCatalog`, a narrow immuta
 the existing snapshot arenas. It lends typed HBK IDs and records for BSL platform context,
 generated-self owner members/callables, module events, globals and typed availability.
 `PlatformSnapshotSource` owns this catalog handle and projects borrowed records into generic
-resolver DTOs only at the `ContextSource` compatibility boundary. `syntax-helper-search` remains
-the sole HBK snapshot storage/read owner and not the generic cross-domain resolver model.
+resolver DTOs only at the `ContextSource` compatibility boundary.
+
+The same snapshot family exposes `HbkSdblQueryCatalog` for borrowed query tables, owner-scoped
+fields and parameters, query identifiers/syntax/type references and locale-aware metadata source
+selectors. `QueryTableSnapshotSource` owns this catalog handle and projects borrowed records into
+generic resolver DTOs only at the compatibility boundary; its retained relation traversal remains
+private adapter glue. The six opaque `metadata.sdbl.query-source.*` selectors have one owner in the
+SDBL catalog module and are reused by the explicit SQL adapter. `syntax-helper-search` remains the
+sole HBK snapshot storage/read owner and not the generic cross-domain resolver model.
 
 The first resolver API must keep BSL language types and query-language types separate from platform
 API types. Cross-domain links require explicit relations; same-name facts across domains or sources
