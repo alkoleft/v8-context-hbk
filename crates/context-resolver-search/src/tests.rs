@@ -659,6 +659,7 @@ mod tests {
     fn platform_snapshot_source_resolves_hot_paths_without_search_index_backend() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<PlatformSnapshotSource>();
+        assert_send_sync::<HbkBslContextCatalog>();
         assert_send_sync::<WorkerSafeCompositeResolver>();
 
         let source = fixture_source();
@@ -839,6 +840,10 @@ mod tests {
             enum_returns.facts[0].id.local_id,
             "enum:system:ОбновлениеПредопределенныхДанных"
         );
+        let enum_availability = adapter
+            .availability(&enum_returns.facts[0].id, &ResolveContext::all())
+            .expect("snapshot enum-as-type availability lookup must not fail");
+        assert_eq!(enum_availability.status, ResolveStatus::Ok);
 
         let enum_value_id = FactId::new(
             source.clone(),
@@ -891,6 +896,202 @@ mod tests {
             .availability(&filter_member.facts[0].id.0, &ResolveContext::all())
             .expect("snapshot availability lookup must not fail");
         assert_eq!(availability.status, ResolveStatus::Ok);
+    }
+
+    #[test]
+    fn bsl_catalog_exposes_borrowed_platform_context_records_without_sql_fallback() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<HbkBslContextCatalog>();
+
+        let source = fixture_source();
+        let index_path = fixture_index_path("bsl-catalog-direct.sqlite");
+        let snapshot =
+            Arc::new(HbkFactSnapshot::from_path(&index_path).expect("snapshot must build"));
+        std::fs::remove_file(&index_path).expect("catalog must not need SQLite file");
+        let catalog = HbkBslContextCatalog::with_source_id(Arc::clone(&snapshot), source.clone());
+
+        assert_eq!(catalog.source_id(), &source);
+        assert_eq!(catalog.source_locale(), Some("ru"));
+
+        let (settings_id, settings) = catalog
+            .platform_type_by_id("platform_type:НастройкиКомпоновкиДанных")
+            .expect("settings type must resolve by id");
+        assert_eq!(catalog.string(settings.name.primary), "НастройкиКомпоновкиДанных");
+        assert_eq!(
+            catalog
+                .platform_types_by_name("НастройкиКомпоновкиДанных")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![settings_id]
+        );
+
+        let generated = catalog
+            .generated_self_types("metadata.generated-self.catalog-manager")
+            .collect::<Vec<_>>();
+        assert_eq!(generated.len(), 1);
+        assert_eq!(
+            catalog.string(generated[0].1.name.primary),
+            "СправочникМенеджер.<Имя справочника>"
+        );
+        assert_eq!(
+            catalog
+                .platform_types_by_template_key("Catalog", "Manager")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![generated[0].0]
+        );
+
+        let (member_id, member) = catalog
+            .member_by_name(settings_id, "Отбор")
+            .next()
+            .expect("settings filter member must resolve by name");
+        assert_eq!(
+            catalog.member_by_id(catalog.string(member.id)).map(|(id, _)| id),
+            Some(member_id)
+        );
+        assert_eq!(
+            catalog
+                .members(settings_id)
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![member_id]
+        );
+        assert_eq!(
+            catalog
+                .member_by_name_kind(settings_id, "Отбор", Some(member.kind))
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![member_id]
+        );
+
+        let (filter_id, _) = catalog
+            .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
+            .expect("filter type must resolve by id");
+        let (callable_id, callable) = catalog
+            .callable_by_name(filter_id, "Найти")
+            .next()
+            .expect("filter callable must resolve by name");
+        assert_eq!(
+            catalog
+                .callable_by_id(catalog.string(callable.id))
+                .map(|(id, _)| id),
+            Some(callable_id)
+        );
+        assert!(
+            catalog
+                .callables(filter_id)
+                .any(|(id, _)| id == callable_id)
+        );
+        assert!(
+            catalog
+                .constructors(filter_id)
+                .any(|(_, constructor)| catalog.string(constructor.name.primary)
+                    == "Новый ОтборКомпоновкиДанных()")
+        );
+
+        let (global_property_id, global_property) = catalog
+            .global_property_by_name("ТекущийОтбор")
+            .next()
+            .expect("global property must resolve by name");
+        assert_eq!(
+            catalog
+                .global_by_id(catalog.string(global_property.id))
+                .map(|(id, _)| id),
+            Some(global_property_id)
+        );
+        assert!(catalog
+            .global_by_id(catalog.string(global_property.id))
+            .is_some_and(|(_, global)| global.domain == syntax_helper_search::HbkLanguageDomain::Bsl));
+        assert!(
+            catalog
+                .global_properties()
+                .any(|(id, _)| id == global_property_id)
+        );
+        let (_, _, global_callable_id, global_callable) = catalog
+            .global_method_by_name("Сообщить")
+            .next()
+            .expect("global method must resolve by name");
+        assert_eq!(catalog.string(global_callable.name.primary), "Сообщить");
+        assert!(
+            catalog
+                .global_methods()
+                .any(|(_, _, id, _)| id == global_callable_id)
+        );
+
+        let (event_id, event) = catalog
+            .module_context_event_by_name(ModuleContextKind::Form, "ПриОткрытии")
+            .next()
+            .expect("form module event must resolve by name");
+        let scoped_name_events = {
+            let event_iter = {
+                let event_name = String::from("ПриОткрытии");
+                catalog.module_context_event_by_name(ModuleContextKind::Form, event_name.as_str())
+            };
+            event_iter.collect::<Vec<_>>()
+        };
+        assert_eq!(scoped_name_events.len(), 1);
+        assert_eq!(scoped_name_events[0].0, event_id);
+        assert_eq!(catalog.string(event.name.alias.unwrap()), "OnOpen");
+        assert!(
+            catalog
+                .module_context_events(ModuleContextKind::Form)
+                .any(|(id, _)| id == event_id)
+        );
+        assert_eq!(
+            catalog
+                .module_context_events(ModuleContextKind::Command)
+                .count(),
+            0
+        );
+
+        assert_eq!(
+            catalog
+                .platform_type_availability(settings_id)
+                .0,
+            snapshot
+                .worker_handle()
+                .availability_contexts(syntax_helper_search::HbkFactRef::PlatformType(settings_id))
+        );
+        assert_eq!(
+            catalog.member_availability(member_id),
+            (
+                snapshot
+                    .worker_handle()
+                    .availability_contexts(syntax_helper_search::HbkFactRef::TypeMember(member_id)),
+                snapshot
+                    .worker_handle()
+                    .available_since(syntax_helper_search::HbkFactRef::TypeMember(member_id))
+            )
+        );
+        assert_eq!(
+            catalog.callable_availability(callable_id),
+            (
+                snapshot
+                    .worker_handle()
+                    .availability_contexts(syntax_helper_search::HbkFactRef::Callable(callable_id)),
+                snapshot
+                    .worker_handle()
+                    .available_since(syntax_helper_search::HbkFactRef::Callable(callable_id))
+            )
+        );
+        assert_eq!(
+            catalog.global_availability(global_property_id),
+            (
+                snapshot
+                    .worker_handle()
+                    .availability_contexts(syntax_helper_search::HbkFactRef::Global(global_property_id)),
+                snapshot
+                    .worker_handle()
+                    .available_since(syntax_helper_search::HbkFactRef::Global(global_property_id))
+            )
+        );
+        assert_eq!(
+            catalog
+                .callable_availability(event_id)
+                .1
+                .map(|id| catalog.string(id)),
+            Some("8.3.1")
+        );
     }
 
     #[test]
@@ -1170,6 +1371,19 @@ mod tests {
                 .status,
             ResolveStatus::NotFound
         );
+        assert_eq!(
+            adapter
+                .module_context_member(
+                    ModuleContextMemberLookup {
+                        module_kind: ModuleContextKind::Command,
+                        ..request("ПриОткрытии", MemberQueryKind::Event)
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("unsupported exact event context lookup must not fail")
+                .status,
+            ResolveStatus::Unsupported
+        );
     }
 
     #[test]
@@ -1239,6 +1453,23 @@ mod tests {
 
         assert_eq!(response.status, ResolveStatus::Ok);
         assert_eq!(response.facts.len(), 1);
+
+        let unsupported = adapter
+            .module_context_member(
+                ModuleContextMemberLookup {
+                    module_kind: ModuleContextKind::Command,
+                    ..ModuleContextMemberLookup {
+                        language: GlobalContextLanguage::Bsl,
+                        domain: LanguageDomain::PlatformApi,
+                        module_kind: ModuleContextKind::Form,
+                        name: "ПриОткрытии",
+                        kind: MemberQueryKind::Event,
+                    }
+                },
+                &ResolveContext::all(),
+            )
+            .expect("unsupported snapshot exact event context lookup must not fail");
+        assert_eq!(unsupported.status, ResolveStatus::Unsupported);
     }
 
     #[test]

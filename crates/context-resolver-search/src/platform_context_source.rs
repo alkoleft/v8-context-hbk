@@ -377,7 +377,7 @@ impl ContextSource for PlatformSearchSource {
                 "platform source does not expose requested module context",
             ));
         }
-        let Some(search_key) = search_module_context_relation_key(query.kind) else {
+        let Some(search_key) = crate::hbk_catalogs::bsl::bsl_module_context_key(query.kind) else {
             return Ok(ResolveResponse::unsupported(format!(
                 "platform module context `{}` is not provider-backed by the HBK search index",
                 query.kind.as_str()
@@ -449,23 +449,29 @@ impl ContextSource for PlatformSearchSource {
                 .into_iter()
                 .map(ResolvedBslContextMember::Callable)
                 .collect(),
-            MemberQueryKind::Event => self
-                .index
-                .module_event_by_context_name(
-                    &format!("module_context:{}", query.module_kind.as_str()),
-                    query.name,
-                )
-                .map_err(|source| self.source_failure(source))?
-                .into_iter()
-                .filter(|hit| hit.document.kind == SearchDocumentKind::ModuleEvent)
-                .filter_map(|hit| {
-                    self.map_module_event(hit, &self.module_context_id(query.module_kind))
-                        .transpose()
-                })
-                .collect::<Result<Vec<_>, ResolveError>>()?
-                .into_iter()
-                .map(ResolvedBslContextMember::Callable)
-                .collect(),
+            MemberQueryKind::Event => {
+                let Some(search_key) =
+                    crate::hbk_catalogs::bsl::bsl_module_context_key(query.module_kind)
+                else {
+                    return Ok(ResolveResponse::unsupported(format!(
+                        "platform module context `{}` is not provider-backed by the HBK search index",
+                        query.module_kind.as_str()
+                    )));
+                };
+                self.index
+                    .module_event_by_context_name(search_key, query.name)
+                    .map_err(|source| self.source_failure(source))?
+                    .into_iter()
+                    .filter(|hit| hit.document.kind == SearchDocumentKind::ModuleEvent)
+                    .filter_map(|hit| {
+                        self.map_module_event(hit, &self.module_context_id(query.module_kind))
+                            .transpose()
+                    })
+                    .collect::<Result<Vec<_>, ResolveError>>()?
+                    .into_iter()
+                    .map(ResolvedBslContextMember::Callable)
+                    .collect()
+            }
             MemberQueryKind::EnumValue => {
                 return Ok(ResolveResponse::unsupported(
                     "platform module context does not expose enum-value members",
@@ -491,7 +497,9 @@ impl ContextSource for PlatformSearchSource {
                 "platform source does not expose requested module members",
             ));
         }
-        let Some(search_key) = search_module_context_relation_key(query.module_kind) else {
+        let Some(search_key) =
+            crate::hbk_catalogs::bsl::bsl_module_context_key(query.module_kind)
+        else {
             return Ok(ResolveResponse::unsupported(format!(
                 "platform module context `{}` is not provider-backed by the HBK search index",
                 query.module_kind.as_str()

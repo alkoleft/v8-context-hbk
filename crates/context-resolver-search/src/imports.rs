@@ -16,8 +16,8 @@ use context_resolver_core::{
 };
 use syntax_helper_search::{
     HbkCallableId, HbkCallableKind, HbkEnumId, HbkEnumValueId, HbkFactRef, HbkFactSnapshot,
-    HbkGlobalFactId, HbkGlobalFactKind, HbkLanguageDomain, HbkName, HbkPlatformTypeId,
-    HbkQueryFieldId, HbkQueryParameterId, HbkQueryTableId, HbkTypeMemberId, HbkTypeMemberKind,
+    HbkGlobalFactId, HbkName, HbkPlatformTypeId, HbkQueryFieldId, HbkQueryParameterId,
+    HbkQueryTableId, HbkTypeMemberId, HbkTypeMemberKind,
     HbkTypeRef, HbkTypeRefTarget, RelatedHit, SearchDocument, SearchDocumentKind, SearchError,
     SearchHit, SearchIndex, SearchSignature, SearchTypeRef, SearchTypeRefTarget,
 };
@@ -38,8 +38,7 @@ pub struct LanguageSearchSource {
 }
 
 pub struct PlatformSnapshotSource {
-    source_id: SourceId,
-    snapshot: Arc<HbkFactSnapshot>,
+    catalog: HbkBslContextCatalog,
 }
 
 pub struct QueryTableSnapshotSource {

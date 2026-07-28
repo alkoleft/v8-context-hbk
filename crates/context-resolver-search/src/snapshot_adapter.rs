@@ -5,8 +5,7 @@ impl PlatformSnapshotSource {
 
     pub fn with_source_id(snapshot: Arc<HbkFactSnapshot>, source_id: SourceId) -> Self {
         Self {
-            source_id,
-            snapshot,
+            catalog: HbkBslContextCatalog::with_source_id(snapshot, source_id),
         }
     }
 
@@ -27,7 +26,7 @@ impl PlatformSnapshotSource {
 
     fn fact_id(&self, kind: FactKind, local_id: impl Into<String>) -> FactId {
         FactId::new(
-            self.source_id.clone(),
+            self.catalog.source_id().clone(),
             LanguageDomain::PlatformApi,
             kind,
             local_id,
@@ -60,7 +59,7 @@ impl PlatformSnapshotSource {
     }
 
     fn source_matches(&self, source: Option<&SourceId>) -> bool {
-        source.is_none_or(|source| source == &self.source_id)
+        source.is_none_or(|source| source == self.catalog.source_id())
     }
 
     fn domain_matches(&self, domain: Option<LanguageDomain>) -> bool {
@@ -81,29 +80,28 @@ impl PlatformSnapshotSource {
     }
 
     fn map_platform_type(&self, id: HbkPlatformTypeId) -> ContextFact {
-        let fact = self.snapshot.platform_type(id);
-        let local_id = self.snapshot.string(fact.id).to_string();
+        let snapshot = self.catalog.snapshot();
+        let fact = snapshot.platform_type(id);
+        let local_id = snapshot.string(fact.id).to_string();
         ContextFact {
             id: self.fact_id(FactKind::Type, local_id),
             name: self.map_name(&fact.name),
             owner: None,
-            details: FactDetails::Type(snapshot_platform_type_info(&self.snapshot, id)),
+            details: FactDetails::Type(snapshot_platform_type_info(snapshot, id)),
             relations: Vec::new(),
         }
     }
 
     fn map_member(&self, id: HbkTypeMemberId) -> ResolvedMember {
-        let member = self.snapshot.type_member(id);
-        let owner = self.type_id(
-            self.snapshot
-                .string(self.snapshot.platform_type(member.owner).id),
-        );
+        let snapshot = self.catalog.snapshot();
+        let member = snapshot.type_member(id);
+        let owner = self.type_id(snapshot.string(snapshot.platform_type(member.owner).id));
         let info = MemberInfo {
             kind: member_kind_from_snapshot(member.kind),
             types: self.map_type_refs(&member.type_refs),
             description: None,
         };
-        let member_id = MemberId(self.fact_id(FactKind::Member, self.snapshot.string(member.id)));
+        let member_id = MemberId(self.fact_id(FactKind::Member, snapshot.string(member.id)));
         let fact = ContextFact {
             id: member_id.0.clone(),
             name: self.map_name(&member.name),
@@ -120,11 +118,12 @@ impl PlatformSnapshotSource {
     }
 
     fn map_callable(&self, id: HbkCallableId) -> ResolvedCallable {
-        let callable = self.snapshot.callable(id);
+        let snapshot = self.catalog.snapshot();
+        let callable = snapshot.callable(id);
         let kind = callable_kind_from_snapshot(callable.kind);
         let owner = callable
             .owner
-            .map(|owner| self.type_id(self.snapshot.string(self.snapshot.platform_type(owner).id)));
+            .map(|owner| self.type_id(snapshot.string(snapshot.platform_type(owner).id)));
         let info = CallableInfo {
             kind,
             signatures: self.map_signatures(&callable.signatures),
@@ -136,7 +135,7 @@ impl PlatformSnapshotSource {
         } else {
             FactKind::Callable
         };
-        let id = CallableId(self.fact_id(fact_kind, self.snapshot.string(callable.id)));
+        let id = CallableId(self.fact_id(fact_kind, snapshot.string(callable.id)));
         let fact = ContextFact {
             id: id.0.clone(),
             name: self.map_name(&callable.name),
@@ -153,14 +152,15 @@ impl PlatformSnapshotSource {
     }
 
     fn map_global_property(&self, id: HbkGlobalFactId) -> ContextFact {
-        let global = self.snapshot.global_fact(id);
+        let snapshot = self.catalog.snapshot();
+        let global = snapshot.global_fact(id);
         let info = MemberInfo {
             kind: MemberKind::Property,
             types: self.map_type_refs(&global.type_refs),
             description: None,
         };
         ContextFact {
-            id: self.fact_id(FactKind::Global, self.snapshot.string(global.id)),
+            id: self.fact_id(FactKind::Global, snapshot.string(global.id)),
             name: self.map_name(&global.name),
             owner: None,
             details: FactDetails::Member(info),
@@ -205,17 +205,17 @@ impl PlatformSnapshotSource {
             (HbkFactRef::TypeMember(id), FactKind::Member) => Some(self.map_member(id).fact),
             (HbkFactRef::Global(id), FactKind::Global) => Some(self.map_global_property(id)),
             (HbkFactRef::Callable(id), FactKind::Constructor)
-                if self.snapshot.callable(id).kind == HbkCallableKind::Constructor =>
+                if self.catalog.snapshot().callable(id).kind == HbkCallableKind::Constructor =>
             {
                 Some(self.map_callable(id).fact)
             }
             (HbkFactRef::Callable(id), FactKind::Callable)
-                if self.snapshot.callable(id).kind != HbkCallableKind::Constructor =>
+                if self.catalog.snapshot().callable(id).kind != HbkCallableKind::Constructor =>
             {
                 Some(self.map_callable(id).fact)
             }
             (HbkFactRef::Callable(id), FactKind::Member)
-                if self.snapshot.callable(id).kind == HbkCallableKind::Event =>
+                if self.catalog.snapshot().callable(id).kind == HbkCallableKind::Event =>
             {
                 Some(self.map_event_as_member(id).fact)
             }
@@ -223,18 +223,78 @@ impl PlatformSnapshotSource {
         }
     }
 
+    fn map_catalog_fact_for_requested(
+        &self,
+        local_id: &str,
+        requested: FactKind,
+    ) -> Option<ContextFact> {
+        match requested {
+            FactKind::Type => self
+                .catalog
+                .platform_type_by_id(local_id)
+                .map(|(id, _)| self.map_platform_type(id))
+                .or_else(|| {
+                    let id = self
+                        .catalog
+                        .snapshot()
+                        .worker_handle()
+                        .enum_by_id(local_id)?;
+                    Some(self.map_enum_as_type(id))
+                }),
+            FactKind::Member => self
+                .catalog
+                .member_by_id(local_id)
+                .map(|(id, _)| self.map_member(id).fact)
+                .or_else(|| {
+                    let (id, callable) = self.catalog.callable_by_id(local_id)?;
+                    (callable.kind == HbkCallableKind::Event)
+                        .then(|| self.map_event_as_member(id).fact)
+                }),
+            FactKind::Global => self
+                .catalog
+                .global_by_id(local_id)
+                .map(|(id, _)| self.map_global_property(id)),
+            FactKind::Callable => {
+                let (id, callable) = self.catalog.callable_by_id(local_id)?;
+                (callable.kind != HbkCallableKind::Constructor).then(|| self.map_callable(id).fact)
+            }
+            FactKind::Constructor => {
+                let (id, callable) = self.catalog.callable_by_id(local_id)?;
+                (callable.kind == HbkCallableKind::Constructor).then(|| self.map_callable(id).fact)
+            }
+            FactKind::Enum => {
+                let id = self
+                    .catalog
+                    .snapshot()
+                    .worker_handle()
+                    .enum_by_id(local_id)?;
+                Some(self.map_enum(id))
+            }
+            FactKind::EnumValue => {
+                let id = self
+                    .catalog
+                    .snapshot()
+                    .worker_handle()
+                    .enum_value_by_id(local_id)?;
+                Some(self.map_enum_value(id))
+            }
+            _ => None,
+        }
+    }
+
     fn map_event_as_member(&self, id: HbkCallableId) -> ResolvedMember {
-        let callable = self.snapshot.callable(id);
+        let snapshot = self.catalog.snapshot();
+        let callable = snapshot.callable(id);
         let owner = callable
             .owner
             .expect("type event snapshot callable must have an owner");
-        let owner = self.type_id(self.snapshot.string(self.snapshot.platform_type(owner).id));
+        let owner = self.type_id(snapshot.string(snapshot.platform_type(owner).id));
         let info = MemberInfo {
             kind: MemberKind::Event,
             types: Vec::new(),
             description: None,
         };
-        let member_id = MemberId(self.fact_id(FactKind::Member, self.snapshot.string(callable.id)));
+        let member_id = MemberId(self.fact_id(FactKind::Member, snapshot.string(callable.id)));
         let fact = ContextFact {
             id: member_id.0.clone(),
             name: self.map_name(&callable.name),
@@ -251,9 +311,10 @@ impl PlatformSnapshotSource {
     }
 
     fn map_enum_as_type(&self, id: HbkEnumId) -> ContextFact {
-        let fact = self.snapshot.enum_fact(id);
+        let snapshot = self.catalog.snapshot();
+        let fact = snapshot.enum_fact(id);
         ContextFact {
-            id: self.fact_id(FactKind::Type, self.snapshot.string(fact.id)),
+            id: self.fact_id(FactKind::Type, snapshot.string(fact.id)),
             name: self.map_name(&fact.name),
             owner: None,
             details: FactDetails::Type(TypeInfo {
@@ -266,9 +327,10 @@ impl PlatformSnapshotSource {
     }
 
     fn map_enum(&self, id: HbkEnumId) -> ContextFact {
-        let fact = self.snapshot.enum_fact(id);
+        let snapshot = self.catalog.snapshot();
+        let fact = snapshot.enum_fact(id);
         ContextFact {
-            id: self.fact_id(FactKind::Enum, self.snapshot.string(fact.id)),
+            id: self.fact_id(FactKind::Enum, snapshot.string(fact.id)),
             name: self.map_name(&fact.name),
             owner: None,
             details: FactDetails::Enum,
@@ -277,22 +339,23 @@ impl PlatformSnapshotSource {
     }
 
     fn map_enum_value(&self, id: HbkEnumValueId) -> ContextFact {
-        let fact = self.snapshot.enum_value(id);
-        let owner = self.snapshot.enum_fact(fact.owner);
+        let snapshot = self.catalog.snapshot();
+        let fact = snapshot.enum_value(id);
+        let owner = snapshot.enum_fact(fact.owner);
         ContextFact {
-            id: self.fact_id(FactKind::EnumValue, self.snapshot.string(fact.id)),
+            id: self.fact_id(FactKind::EnumValue, snapshot.string(fact.id)),
             name: self.map_name(&fact.name),
-            owner: Some(self.fact_id(FactKind::Enum, self.snapshot.string(owner.id))),
+            owner: Some(self.fact_id(FactKind::Enum, snapshot.string(owner.id))),
             details: FactDetails::EnumValue,
             relations: Vec::new(),
         }
     }
 
     fn map_name(&self, name: &HbkName) -> Name {
+        let snapshot = self.catalog.snapshot();
         Name::new(
-            self.snapshot.string(name.primary).to_string(),
-            name.alias
-                .map(|alias| self.snapshot.string(alias).to_string()),
+            snapshot.string(name.primary).to_string(),
+            name.alias.map(|alias| snapshot.string(alias).to_string()),
         )
     }
 
@@ -304,7 +367,7 @@ impl PlatformSnapshotSource {
 
     fn map_type_ref(&self, type_ref: &HbkTypeRef) -> TypeRef {
         TypeRef {
-            name: self.snapshot.string(type_ref.name).to_string(),
+            name: self.catalog.snapshot().string(type_ref.name).to_string(),
             target: self.map_type_ref_target(&type_ref.target),
             template_binding: type_ref.template_binding.as_ref().map(|binding| {
                 TypeTemplateBinding {
@@ -331,12 +394,14 @@ impl PlatformSnapshotSource {
 
     fn map_type_ref_target(&self, target: &HbkTypeRefTarget) -> TypeRefTarget {
         match target {
-            HbkTypeRefTarget::Ok(id) => TypeRefTarget::Ok(self.type_id(self.snapshot.string(*id))),
+            HbkTypeRefTarget::Ok(id) => {
+                TypeRefTarget::Ok(self.type_id(self.catalog.snapshot().string(*id)))
+            }
             HbkTypeRefTarget::Unresolved => TypeRefTarget::Unresolved,
             HbkTypeRefTarget::Ambiguous(candidates) => TypeRefTarget::Ambiguous(
                 candidates
                     .iter()
-                    .map(|id| self.type_id(self.snapshot.string(*id)))
+                    .map(|id| self.type_id(self.catalog.snapshot().string(*id)))
                     .collect(),
             ),
         }
@@ -346,7 +411,7 @@ impl PlatformSnapshotSource {
         &self,
         key: syntax_helper_search::HbkPlatformTypeTemplateKey,
     ) -> PlatformTypeTemplateKey {
-        snapshot_type_template_key(&self.snapshot, key)
+        snapshot_type_template_key(self.catalog.snapshot(), key)
     }
 
     fn map_signatures(&self, signatures: &[syntax_helper_search::HbkSignature]) -> Vec<Signature> {
@@ -357,15 +422,17 @@ impl PlatformSnapshotSource {
                     .parameters
                     .iter()
                     .map(|parameter| Parameter {
-                        name: self.snapshot.string(parameter.name).to_string(),
+                        name: self.catalog.snapshot().string(parameter.name).to_string(),
                         required: parameter.required,
                         types: self.map_type_refs(&parameter.type_refs),
                         description: None,
                     })
                     .collect(),
                 return_types: self.map_type_refs(&signature.return_type_refs),
-                variadic: signature_text_is_variadic(self.snapshot.string(signature.text)),
-                title: Some(self.snapshot.string(signature.text).to_string()),
+                variadic: signature_text_is_variadic(
+                    self.catalog.snapshot().string(signature.text),
+                ),
+                title: Some(self.catalog.snapshot().string(signature.text).to_string()),
                 description: None,
             })
             .collect()
@@ -376,21 +443,98 @@ impl PlatformSnapshotSource {
             id: id.clone(),
             availability: AvailabilityInfo {
                 contexts: self
-                    .snapshot
+                    .catalog
+                    .snapshot()
                     .worker_handle()
                     .availability_contexts(fact)
                     .iter()
                     .filter_map(|context| {
-                        availability_context_from_code(self.snapshot.string(*context))
+                        availability_context_from_code(self.catalog.snapshot().string(*context))
                     })
                     .collect(),
                 since: self
-                    .snapshot
+                    .catalog
+                    .snapshot()
                     .worker_handle()
                     .available_since(fact)
-                    .map(|since| self.snapshot.string(since).to_string()),
+                    .map(|since| self.catalog.snapshot().string(since).to_string()),
             },
         }
+    }
+
+    fn catalog_availability(&self, id: &FactId) -> Option<AvailabilityFact> {
+        let (contexts, since) = match id.kind {
+            FactKind::Type => {
+                if let Some((typed_id, _)) = self.catalog.platform_type_by_id(&id.local_id) {
+                    self.catalog.platform_type_availability(typed_id)
+                } else {
+                    let fact = HbkFactRef::Enum(
+                        self.catalog
+                            .snapshot()
+                            .worker_handle()
+                            .enum_by_id(&id.local_id)?,
+                    );
+                    return Some(self.map_availability(id, fact));
+                }
+            }
+            FactKind::Member => {
+                if let Some((typed_id, _)) = self.catalog.member_by_id(&id.local_id) {
+                    self.catalog.member_availability(typed_id)
+                } else {
+                    let (typed_id, callable) = self.catalog.callable_by_id(&id.local_id)?;
+                    if callable.kind != HbkCallableKind::Event {
+                        return None;
+                    }
+                    self.catalog.callable_availability(typed_id)
+                }
+            }
+            FactKind::Callable | FactKind::Constructor => {
+                let (typed_id, callable) = self.catalog.callable_by_id(&id.local_id)?;
+                let matches_kind = match id.kind {
+                    FactKind::Constructor => callable.kind == HbkCallableKind::Constructor,
+                    _ => callable.kind != HbkCallableKind::Constructor,
+                };
+                if !matches_kind {
+                    return None;
+                }
+                self.catalog.callable_availability(typed_id)
+            }
+            FactKind::Global => {
+                let (typed_id, _) = self.catalog.global_by_id(&id.local_id)?;
+                self.catalog.global_availability(typed_id)
+            }
+            FactKind::Enum => {
+                let fact = HbkFactRef::Enum(
+                    self.catalog
+                        .snapshot()
+                        .worker_handle()
+                        .enum_by_id(&id.local_id)?,
+                );
+                return Some(self.map_availability(id, fact));
+            }
+            FactKind::EnumValue => {
+                let fact = HbkFactRef::EnumValue(
+                    self.catalog
+                        .snapshot()
+                        .worker_handle()
+                        .enum_value_by_id(&id.local_id)?,
+                );
+                return Some(self.map_availability(id, fact));
+            }
+            _ => return None,
+        };
+        Some(AvailabilityFact {
+            id: id.clone(),
+            availability: AvailabilityInfo {
+                contexts: contexts
+                    .iter()
+                    .filter_map(|context| {
+                        availability_context_from_code(self.catalog.snapshot().string(*context))
+                    })
+                    .collect(),
+                since: since.map(|since| self.catalog.snapshot().string(since).to_string()),
+            },
+        })
     }
 }
 
@@ -430,14 +574,14 @@ fn snapshot_type_template_key(
 impl ContextSource for PlatformSnapshotSource {
     fn descriptor(&self) -> SourceDescriptor {
         SourceDescriptor {
-            id: self.source_id.clone(),
+            id: self.catalog.source_id().clone(),
             domain: LanguageDomain::PlatformApi,
             label: "Syntax Assistant platform fact snapshot".to_string(),
         }
     }
 
     fn source_id(&self) -> Option<&SourceId> {
-        Some(&self.source_id)
+        Some(self.catalog.source_id())
     }
 
     fn capabilities(&self) -> SourceCapabilities {
@@ -457,15 +601,16 @@ impl ContextSource for PlatformSnapshotSource {
         query: context_resolver_core::ResolveQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
-        if !context.is_source_active(&self.source_id) {
+        if !context.is_source_active(self.catalog.source_id()) {
             return Ok(ResolveResponse::not_found(
                 "platform snapshot source is not active",
             ));
         }
-        let handle = self.snapshot.worker_handle();
         match query {
             context_resolver_core::ResolveQuery::Id(id) => {
-                if id.source != self.source_id || id.domain != LanguageDomain::PlatformApi {
+                if &id.source != self.catalog.source_id()
+                    || id.domain != LanguageDomain::PlatformApi
+                {
                     return Ok(ResolveResponse::not_found(
                         "fact source or domain does not match",
                     ));
@@ -496,9 +641,9 @@ impl ContextSource for PlatformSnapshotSource {
                         })
                     };
                 }
-                let facts = handle
-                    .facts_by_id(&id.local_id)
-                    .filter_map(|fact| self.map_context_fact_for_requested(fact, id.kind))
+                let facts = self
+                    .map_catalog_fact_for_requested(&id.local_id, id.kind)
+                    .into_iter()
                     .collect::<Vec<_>>();
                 Ok(response_from_facts(facts, "platform fact not found"))
             }
@@ -518,11 +663,14 @@ impl ContextSource for PlatformSnapshotSource {
                         "platform snapshot adapter supports exact-name resolver lookup for types only",
                     ));
                 }
-                let facts = handle
+                let facts = self
+                    .catalog
                     .platform_types_by_name(name)
-                    .map(|id| self.map_platform_type(id))
+                    .map(|(id, _)| self.map_platform_type(id))
                     .chain(
-                        handle
+                        self.catalog
+                            .snapshot()
+                            .worker_handle()
                             .enums_by_name(name)
                             .map(|id| self.map_enum_as_type(id)),
                     )
@@ -537,21 +685,27 @@ impl ContextSource for PlatformSnapshotSource {
         query: TypeLookup<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedType>, ResolveError> {
-        if !context.is_source_active(&self.source_id) {
+        if !context.is_source_active(self.catalog.source_id()) {
             return Ok(ResolveResponse::not_found(
                 "platform snapshot source is not active",
             ));
         }
-        let handle = self.snapshot.worker_handle();
         let facts = match query {
             TypeLookup::Id(id) => {
-                if id.0.source != self.source_id || id.0.domain != LanguageDomain::PlatformApi {
+                if &id.0.source != self.catalog.source_id()
+                    || id.0.domain != LanguageDomain::PlatformApi
+                {
                     Vec::new()
                 } else {
                     let mut facts = Vec::new();
-                    if let Some(id) = handle.platform_type_by_id(&id.0.local_id) {
+                    if let Some((id, _)) = self.catalog.platform_type_by_id(&id.0.local_id) {
                         facts.push(self.platform_type_from_id(id));
-                    } else if let Some(id) = handle.enum_by_id(&id.0.local_id) {
+                    } else if let Some(id) = self
+                        .catalog
+                        .snapshot()
+                        .worker_handle()
+                        .enum_by_id(&id.0.local_id)
+                    {
                         let fact = self.map_enum_as_type(id);
                         let FactDetails::Type(info) = fact.details.clone() else {
                             unreachable!("enum-as-type maps to type info");
@@ -578,10 +732,10 @@ impl ContextSource for PlatformSnapshotSource {
                 if !self.source_matches(source) || !self.domain_matches(domain) {
                     Vec::new()
                 } else {
-                    handle
+                    self.catalog
                         .platform_types_by_name(name)
-                        .map(|id| self.platform_type_from_id(id))
-                        .chain(handle.enums_by_name(name).map(|id| {
+                        .map(|(id, _)| self.platform_type_from_id(id))
+                        .chain(self.catalog.snapshot().worker_handle().enums_by_name(name).map(|id| {
                             let fact = self.map_enum_as_type(id);
                             let FactDetails::Type(info) = fact.details.clone() else {
                                 unreachable!("enum-as-type maps to type info");
@@ -603,9 +757,9 @@ impl ContextSource for PlatformSnapshotSource {
                 if !self.source_matches(source) || !self.domain_matches(domain) {
                     Vec::new()
                 } else {
-                    handle
+                    self.catalog
                         .platform_types_by_template_key(&key.family, &key.variant)
-                        .map(|id| self.platform_type_from_id(id))
+                        .map(|(id, _)| self.platform_type_from_id(id))
                         .collect()
                 }
             }
@@ -616,14 +770,11 @@ impl ContextSource for PlatformSnapshotSource {
             } => {
                 if !self.source_matches(source) || !self.domain_matches(domain) {
                     Vec::new()
-                } else if let Some(key) = template_key_for_generated_self_role(generated_self_role)
-                {
-                    handle
-                        .platform_types_by_template_key(&key.family, &key.variant)
-                        .map(|id| self.platform_type_from_id(id))
-                        .collect()
                 } else {
-                    Vec::new()
+                    self.catalog
+                        .generated_self_types(generated_self_role)
+                        .map(|(id, _)| self.platform_type_from_id(id))
+                        .collect()
                 }
             }
         };
@@ -639,26 +790,32 @@ impl ContextSource for PlatformSnapshotSource {
         query: MemberQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedMember>, ResolveError> {
-        if !context.is_source_active(&self.source_id)
-            || owner.0.source != self.source_id
+        if !context.is_source_active(self.catalog.source_id())
+            || &owner.0.source != self.catalog.source_id()
             || owner.0.domain != LanguageDomain::PlatformApi
         {
             return Ok(ResolveResponse::not_found("platform owner type not found"));
         }
-        let handle = self.snapshot.worker_handle();
-        let Some(owner_id) = handle.platform_type_by_id(&owner.0.local_id) else {
+        let Some((owner_id, _)) = self.catalog.platform_type_by_id(&owner.0.local_id) else {
             return Ok(ResolveResponse::not_found("platform owner type not found"));
         };
         let member_kind = query.kind.map(member_query_kind_to_snapshot);
-        let ids = match query.name {
-            Some(name) => handle
-                .member_by_owner_name_kind(owner_id, name, member_kind)
+        let facts = match query.name {
+            Some(name) => self
+                .catalog
+                .member_by_name_kind(owner_id, name, member_kind)
+                .map(|(id, _)| id)
                 .collect::<Vec<_>>(),
-            None => handle.members_of_type(owner_id).to_vec(),
-        };
-        let facts = ids
-            .into_iter()
-            .filter(|id| member_kind.is_none_or(|kind| self.snapshot.type_member(*id).kind == kind))
+            None => self
+                .catalog
+                .members(owner_id)
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+        }
+        .into_iter()
+            .filter(|id| {
+                member_kind.is_none_or(|kind| self.catalog.snapshot().type_member(*id).kind == kind)
+            })
             .map(|id| self.map_member(id))
             .collect::<Vec<_>>();
         if query.name.is_some() && facts.is_empty() {
@@ -672,63 +829,59 @@ impl ContextSource for PlatformSnapshotSource {
         query: CallableLookup<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedCallable>, ResolveError> {
-        if !context.is_source_active(&self.source_id) {
+        if !context.is_source_active(self.catalog.source_id()) {
             return Ok(ResolveResponse::not_found(
                 "platform snapshot source is not active",
             ));
         }
-        let handle = self.snapshot.worker_handle();
         let facts = match query {
             CallableLookup::Id(id) => {
-                if id.0.source != self.source_id || id.0.domain != LanguageDomain::PlatformApi {
+                if &id.0.source != self.catalog.source_id()
+                    || id.0.domain != LanguageDomain::PlatformApi
+                {
                     Vec::new()
                 } else {
-                    handle
-                        .facts_by_id(&id.0.local_id)
-                        .filter_map(|fact| match fact {
-                            HbkFactRef::Callable(id) => Some(self.map_callable(id)),
-                            _ => None,
-                        })
+                    self.catalog
+                        .callable_by_id(&id.0.local_id)
+                        .map(|(id, _)| self.map_callable(id))
+                        .into_iter()
                         .collect()
                 }
             }
             CallableLookup::OwnerName { owner, name } => {
                 if let Some(owner) = owner {
-                    if owner.0.source != self.source_id
+                    if &owner.0.source != self.catalog.source_id()
                         || owner.0.domain != LanguageDomain::PlatformApi
                     {
                         Vec::new()
                     } else {
-                        let Some(owner_id) = handle.platform_type_by_id(&owner.0.local_id) else {
+                        let Some((owner_id, _)) = self.catalog.platform_type_by_id(&owner.0.local_id) else {
                             return Ok(ResolveResponse::not_found("platform callable not found"));
                         };
-                        let mut ids = handle
-                            .callable_by_owner_name(owner_id, name)
+                        let mut ids = self
+                            .catalog
+                            .callable_by_name(owner_id, name)
+                            .map(|(id, _)| id)
                             .collect::<Vec<_>>();
                         ids.extend(
-                            handle
-                                .constructors_of_type(owner_id)
-                                .iter()
-                                .copied()
+                            self.catalog
+                                .constructors(owner_id)
                                 .filter(|id| {
                                     name_matches(
-                                        &self.map_name(&self.snapshot.callable(*id).name),
+                                        &self.map_name(&id.1.name),
                                         name,
                                     )
-                                }),
+                                })
+                                .map(|(id, _)| id),
                         );
                         ids.sort_unstable();
                         ids.dedup();
                         ids.into_iter().map(|id| self.map_callable(id)).collect()
                     }
                 } else {
-                    handle
-                        .globals_by_domain_name_kind(
-                            HbkLanguageDomain::Bsl,
-                            name,
-                            Some(HbkGlobalFactKind::Method),
-                        )
-                        .filter_map(|id| self.snapshot.global_fact(id).callable)
+                    self.catalog
+                        .global_method_by_name(name)
+                        .map(|(_, _, id, _)| id)
                         .map(|id| self.map_callable(id))
                         .collect()
                 }
@@ -745,37 +898,36 @@ impl ContextSource for PlatformSnapshotSource {
         query: GlobalContextQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError> {
-        if !context.is_source_active(&self.source_id) {
+        if !context.is_source_active(self.catalog.source_id()) {
             return Ok(ResolveResponse::not_found(
                 "platform snapshot source is not active",
             ));
         }
         let GlobalContextQuery::Language { language, sources } = query;
         if language != GlobalContextLanguage::Bsl
-            || (!sources.is_empty() && !sources.iter().any(|source| source == &self.source_id))
+            || (!sources.is_empty()
+                && !sources
+                    .iter()
+                    .any(|source| source == self.catalog.source_id()))
         {
             return Ok(ResolveResponse::not_found(
                 "platform source does not expose requested global context",
             ));
         }
-        let handle = self.snapshot.worker_handle();
-        let mut methods = Vec::new();
-        let mut properties = Vec::new();
-        for id in handle.global_fact_ids() {
-            let global = self.snapshot.global_fact(id);
-            match global.kind {
-                HbkGlobalFactKind::Method => {
-                    if let Some(callable) = global.callable {
-                        methods.push(self.map_callable(callable));
-                    }
-                }
-                HbkGlobalFactKind::Property => properties.push(self.map_global_property(id)),
-            }
-        }
+        let methods = self
+            .catalog
+            .global_methods()
+            .map(|(_, _, id, _)| self.map_callable(id))
+            .collect();
+        let properties = self
+            .catalog
+            .global_properties()
+            .map(|(id, _)| self.map_global_property(id))
+            .collect();
         Ok(ResolveResponse::ok(vec![ResolvedGlobalContext {
             id: self.fact_id(FactKind::Global, "global_context:bsl"),
             language,
-            sources: vec![self.source_id.clone()],
+            sources: vec![self.catalog.source_id().clone()],
             methods,
             properties,
             facts: Vec::new(),
@@ -787,7 +939,7 @@ impl ContextSource for PlatformSnapshotSource {
         query: ModuleContextQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedModuleContext>, ResolveError> {
-        if !context.is_source_active(&self.source_id) {
+        if !context.is_source_active(self.catalog.source_id()) {
             return Ok(ResolveResponse::not_found(
                 "platform snapshot source is not active",
             ));
@@ -795,26 +947,26 @@ impl ContextSource for PlatformSnapshotSource {
         if query.language != GlobalContextLanguage::Bsl
             || query.domain != LanguageDomain::PlatformApi
             || (!query.sources.is_empty()
-                && !query.sources.iter().any(|source| source == &self.source_id))
+                && !query
+                    .sources
+                    .iter()
+                    .any(|source| source == self.catalog.source_id()))
         {
             return Ok(ResolveResponse::not_found(
                 "platform source does not expose requested module context",
             ));
         }
-        let Some(search_key) = search_module_context_relation_key(query.kind) else {
+        if crate::hbk_catalogs::bsl::bsl_module_context_key(query.kind).is_none() {
             return Ok(ResolveResponse::unsupported(format!(
                 "platform module context `{}` is not provider-backed by the HBK search index",
                 query.kind.as_str()
             )));
-        };
-        let handle = self.snapshot.worker_handle();
+        }
         let context_id = self.module_context_id(query.kind);
-        let events = handle
-            .module_context_events(
-                HbkLanguageDomain::Bsl,
-                "bsl",
-                search_key.trim_start_matches("module_context:"),
-            )
+        let events = self
+            .catalog
+            .module_context_events(query.kind)
+            .map(|(id, _)| id)
             .map(|id| {
                 let mut callable = self.map_callable(id);
                 callable.fact.owner = Some(context_id.clone());
@@ -843,7 +995,7 @@ impl ContextSource for PlatformSnapshotSource {
             language: query.language,
             domain: query.domain,
             kind: query.kind,
-            sources: vec![self.source_id.clone()],
+            sources: vec![self.catalog.source_id().clone()],
             self_member: None,
             properties: global.properties,
             methods: global.methods,
@@ -857,7 +1009,7 @@ impl ContextSource for PlatformSnapshotSource {
         query: ModuleContextMemberLookup<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
-        if !context.is_source_active(&self.source_id)
+        if !context.is_source_active(self.catalog.source_id())
             || query.language != GlobalContextLanguage::Bsl
             || query.domain != LanguageDomain::PlatformApi
         {
@@ -865,36 +1017,34 @@ impl ContextSource for PlatformSnapshotSource {
                 "platform snapshot source does not expose requested module member",
             ));
         }
-        let handle = self.snapshot.worker_handle();
         let facts = match query.kind {
-            MemberQueryKind::Property => handle
-                .globals_by_domain_name_kind(
-                    HbkLanguageDomain::Bsl,
-                    query.name,
-                    Some(HbkGlobalFactKind::Property),
-                )
-                .map(|id| ResolvedBslContextMember::Property(self.map_global_property(id)))
+            MemberQueryKind::Property => self
+                .catalog
+                .global_property_by_name(query.name)
+                .map(|(id, _)| ResolvedBslContextMember::Property(self.map_global_property(id)))
                 .collect(),
-            MemberQueryKind::Method => handle
-                .globals_by_domain_name_kind(
-                    HbkLanguageDomain::Bsl,
-                    query.name,
-                    Some(HbkGlobalFactKind::Method),
-                )
-                .filter_map(|id| self.snapshot.global_fact(id).callable)
+            MemberQueryKind::Method => self
+                .catalog
+                .global_method_by_name(query.name)
+                .map(|(_, _, id, _)| id)
                 .map(|id| ResolvedBslContextMember::Callable(self.map_callable(id)))
                 .collect(),
-            MemberQueryKind::Event => handle
-                .module_event_by_context_name(
-                    &format!("module_context:{}", query.module_kind.as_str()),
-                    query.name,
-                )
-                .map(|id| {
-                    let mut callable = self.map_callable(id);
-                    callable.fact.owner = Some(self.module_context_id(query.module_kind));
-                    ResolvedBslContextMember::Callable(callable)
-                })
-                .collect(),
+            MemberQueryKind::Event => {
+                if crate::hbk_catalogs::bsl::bsl_module_context_key(query.module_kind).is_none() {
+                    return Ok(ResolveResponse::unsupported(format!(
+                        "platform module context `{}` is not provider-backed by the HBK search index",
+                        query.module_kind.as_str()
+                    )));
+                }
+                self.catalog
+                    .module_context_event_by_name(query.module_kind, query.name)
+                    .map(|(id, _)| {
+                        let mut callable = self.map_callable(id);
+                        callable.fact.owner = Some(self.module_context_id(query.module_kind));
+                        ResolvedBslContextMember::Callable(callable)
+                    })
+                    .collect()
+            }
             MemberQueryKind::EnumValue => {
                 return Ok(ResolveResponse::unsupported(
                     "platform module context does not expose enum-value members",
@@ -912,7 +1062,7 @@ impl ContextSource for PlatformSnapshotSource {
         query: ModuleContextMembersLookup,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedBslContextMember>, ResolveError> {
-        if !context.is_source_active(&self.source_id)
+        if !context.is_source_active(self.catalog.source_id())
             || query.language != GlobalContextLanguage::Bsl
             || query.domain != LanguageDomain::PlatformApi
         {
@@ -920,39 +1070,28 @@ impl ContextSource for PlatformSnapshotSource {
                 "platform snapshot source does not expose requested module members",
             ));
         }
-        let Some(search_key) = search_module_context_relation_key(query.module_kind) else {
+        if crate::hbk_catalogs::bsl::bsl_module_context_key(query.module_kind).is_none() {
             return Ok(ResolveResponse::unsupported(format!(
                 "platform module context `{}` is not provider-backed by the HBK search index",
                 query.module_kind.as_str()
             )));
-        };
-
-        let handle = self.snapshot.worker_handle();
-        let context_id = self.module_context_id(query.module_kind);
-        let mut facts = Vec::new();
-        for id in handle.global_fact_ids() {
-            let global = self.snapshot.global_fact(id);
-            match global.kind {
-                HbkGlobalFactKind::Property => {
-                    facts.push(ResolvedBslContextMember::Property(self.map_global_property(id)));
-                }
-                HbkGlobalFactKind::Method => {
-                    if let Some(callable) = global.callable {
-                        facts.push(ResolvedBslContextMember::Callable(
-                            self.map_callable(callable),
-                        ));
-                    }
-                }
-            }
         }
+
+        let context_id = self.module_context_id(query.module_kind);
+        let mut facts = self
+            .catalog
+            .global_properties()
+            .map(|(id, _)| ResolvedBslContextMember::Property(self.map_global_property(id)))
+            .collect::<Vec<_>>();
         facts.extend(
-            handle
-                .module_context_events(
-                    HbkLanguageDomain::Bsl,
-                    "bsl",
-                    search_key.trim_start_matches("module_context:"),
-                )
-                .map(|id| {
+            self.catalog
+                .global_methods()
+                .map(|(_, _, id, _)| ResolvedBslContextMember::Callable(self.map_callable(id))),
+        );
+        facts.extend(
+            self.catalog
+                .module_context_events(query.module_kind)
+                .map(|(id, _)| {
                     let mut callable = self.map_callable(id);
                     callable.fact.owner = Some(context_id.clone());
                     ResolvedBslContextMember::Callable(callable)
@@ -972,8 +1111,8 @@ impl ContextSource for PlatformSnapshotSource {
         kind: RelationKind,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
-        if !context.is_source_active(&self.source_id)
-            || source.source != self.source_id
+        if !context.is_source_active(self.catalog.source_id())
+            || &source.source != self.catalog.source_id()
             || source.domain != LanguageDomain::PlatformApi
         {
             return Ok(ResolveResponse::not_found("platform source fact not found"));
@@ -983,7 +1122,7 @@ impl ContextSource for PlatformSnapshotSource {
                 "platform adapter supports has_type, returns, constructs and member_of",
             ));
         };
-        let handle = self.snapshot.worker_handle();
+        let handle = self.catalog.snapshot().worker_handle();
         let Some(source_ref) = handle
             .facts_by_id(&source.local_id)
             .into_iter()
@@ -1015,26 +1154,16 @@ impl ContextSource for PlatformSnapshotSource {
         source: &FactId,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<AvailabilityFact>, ResolveError> {
-        if !context.is_source_active(&self.source_id)
-            || source.source != self.source_id
+        if !context.is_source_active(self.catalog.source_id())
+            || &source.source != self.catalog.source_id()
             || source.domain != LanguageDomain::PlatformApi
         {
             return Ok(ResolveResponse::not_found("platform source fact not found"));
         }
-        let handle = self.snapshot.worker_handle();
-        let Some(fact) = handle
-            .facts_by_id(&source.local_id)
-            .into_iter()
-            .find(|fact| {
-                self.map_context_fact_for_requested(*fact, source.kind)
-                    .is_some()
-            })
-        else {
+        let Some(availability) = self.catalog_availability(source) else {
             return Ok(ResolveResponse::not_found("platform fact not found"));
         };
-        Ok(ResolveResponse::ok(vec![
-            self.map_availability(source, fact)
-        ]))
+        Ok(ResolveResponse::ok(vec![availability]))
     }
 }
 

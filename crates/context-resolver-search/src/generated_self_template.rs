@@ -1,7 +1,14 @@
 fn template_key_for_generated_self_role(
     generated_self_role: &str,
 ) -> Option<PlatformTypeTemplateKey> {
-    let (family, variant) = match generated_self_role {
+    let (family, variant) = template_key_parts_for_generated_self_role(generated_self_role)?;
+    Some(PlatformTypeTemplateKey::new(family, variant))
+}
+
+fn template_key_parts_for_generated_self_role(
+    generated_self_role: &str,
+) -> Option<(&'static str, &'static str)> {
+    Some(match generated_self_role {
         "metadata.generated-self.catalog-object" => ("Catalog", "Object"),
         "metadata.generated-self.catalog-manager" => ("Catalog", "Manager"),
         "metadata.generated-self.document-object" => ("Document", "Object"),
@@ -41,6 +48,5 @@ fn template_key_for_generated_self_role(
             ("ChartOfCalculationTypes", "Manager")
         }
         _ => return None,
-    };
-    Some(PlatformTypeTemplateKey::new(family, variant))
+    })
 }
