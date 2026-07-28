@@ -1095,6 +1095,371 @@ mod tests {
     }
 
     #[test]
+    fn bsl_catalog_matches_snapshot_adapter_projection_boundary() {
+        let source = fixture_source();
+        let index_path = fixture_index_path("bsl-catalog-projection-boundary.sqlite");
+        let snapshot =
+            Arc::new(HbkFactSnapshot::from_path(&index_path).expect("snapshot must build"));
+        std::fs::remove_file(&index_path).expect("catalog parity must not need SQLite file");
+        let adapter = PlatformSnapshotSource::with_source_id(Arc::clone(&snapshot), source.clone());
+        let catalog = HbkBslContextCatalog::with_source_id(snapshot, source.clone());
+
+        let catalog_type_projection = |(_, ty): (
+            syntax_helper_search::HbkPlatformTypeId,
+            &syntax_helper_search::HbkPlatformType,
+        )| {
+            (
+                catalog.string(ty.id).to_string(),
+                catalog.string(ty.name.primary).to_string(),
+            )
+        };
+        let adapter_type_projection = |ty: &ResolvedType| {
+            (ty.id.0.local_id.clone(), ty.fact.name.primary.clone())
+        };
+        let expected_generated = catalog
+            .generated_self_types("metadata.generated-self.catalog-manager")
+            .map(catalog_type_projection)
+            .collect::<Vec<_>>();
+        let actual_generated = adapter
+            .resolve_type(
+                TypeLookup::GeneratedSelfTemplate {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    generated_self_role: "metadata.generated-self.catalog-manager",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot generated-self lookup must not fail")
+            .facts
+            .iter()
+            .map(adapter_type_projection)
+            .collect::<Vec<_>>();
+        assert_eq!(actual_generated, expected_generated);
+
+        let (settings_id, _) = catalog
+            .platform_type_by_id("platform_type:НастройкиКомпоновкиДанных")
+            .expect("settings type must resolve by id");
+        let settings = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:НастройкиКомпоновкиДанных",
+        ));
+        let catalog_member_projection = |(id, member): (
+            syntax_helper_search::HbkTypeMemberId,
+            &syntax_helper_search::HbkTypeMember,
+        )| {
+            (
+                catalog.string(catalog.snapshot().type_member(id).id).to_string(),
+                catalog.string(member.name.primary).to_string(),
+                catalog.string(catalog.snapshot().platform_type(member.owner).id).to_string(),
+            )
+        };
+        let adapter_member_projection = |member: &ResolvedMember| {
+            (
+                member.id.0.local_id.clone(),
+                member.fact.name.primary.clone(),
+                member.owner.0.local_id.clone(),
+            )
+        };
+        let expected_members = catalog
+            .members(settings_id)
+            .map(catalog_member_projection)
+            .collect::<Vec<_>>();
+        let actual_members = adapter
+            .members(
+                &settings,
+                MemberQuery {
+                    name: None,
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot member enumeration must not fail")
+            .facts
+            .iter()
+            .map(adapter_member_projection)
+            .collect::<Vec<_>>();
+        assert_eq!(actual_members, expected_members);
+
+        let (member_id, _) = catalog
+            .member_by_name(settings_id, "Отбор")
+            .next()
+            .expect("settings filter member must resolve by name");
+        let expected_exact_members = catalog
+            .member_by_name(settings_id, "Отбор")
+            .map(catalog_member_projection)
+            .collect::<Vec<_>>();
+        let actual_exact_members = adapter
+            .members(
+                &settings,
+                MemberQuery {
+                    name: Some("Отбор"),
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot exact member lookup must not fail")
+            .facts
+            .iter()
+            .map(adapter_member_projection)
+            .collect::<Vec<_>>();
+        assert_eq!(actual_exact_members, expected_exact_members);
+
+        let (filter_id, _) = catalog
+            .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
+            .expect("filter type must resolve by id");
+        let filter = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:ОтборКомпоновкиДанных",
+        ));
+        let catalog_callable_projection = |(id, callable): (
+            syntax_helper_search::HbkCallableId,
+            &syntax_helper_search::HbkCallable,
+        )| {
+            (
+                catalog.string(catalog.snapshot().callable(id).id).to_string(),
+                catalog.string(callable.name.primary).to_string(),
+                callable.owner.map(|owner| {
+                    catalog
+                        .string(catalog.snapshot().platform_type(owner).id)
+                        .to_string()
+                }),
+            )
+        };
+        let adapter_callable_projection = |callable: &ResolvedCallable| {
+            (
+                callable.id.0.local_id.clone(),
+                callable.fact.name.primary.clone(),
+                callable.owner.as_ref().map(|owner| owner.0.local_id.clone()),
+            )
+        };
+        let expected_callables = catalog
+            .callable_by_name(filter_id, "Найти")
+            .map(catalog_callable_projection)
+            .collect::<Vec<_>>();
+        let actual_callables = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: Some(&filter),
+                    name: "Найти",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot exact callable lookup must not fail")
+            .facts
+            .iter()
+            .map(adapter_callable_projection)
+            .collect::<Vec<_>>();
+        assert_eq!(actual_callables, expected_callables);
+        let (callable_id, _) = catalog
+            .callable_by_name(filter_id, "Найти")
+            .next()
+            .expect("filter callable must resolve by name");
+
+        let global_context = adapter
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Bsl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot global context lookup must not fail");
+        assert_eq!(global_context.status, ResolveStatus::Ok);
+        let global_context = global_context
+            .facts
+            .first()
+            .expect("global context must resolve");
+
+        let expected_global_methods = catalog
+            .global_methods()
+            .map(|(_, _, id, callable)| catalog_callable_projection((id, callable)))
+            .collect::<Vec<_>>();
+        let actual_global_methods = global_context
+            .methods
+            .iter()
+            .map(adapter_callable_projection)
+            .collect::<Vec<_>>();
+        assert_eq!(actual_global_methods, expected_global_methods);
+
+        let catalog_global_projection = |(id, global): (
+            syntax_helper_search::HbkGlobalFactId,
+            &syntax_helper_search::HbkGlobalFact,
+        )| {
+            (
+                catalog.string(catalog.snapshot().global_fact(id).id).to_string(),
+                catalog.string(global.name.primary).to_string(),
+            )
+        };
+        let adapter_global_projection = |global: &ContextFact| {
+            (global.id.local_id.clone(), global.name.primary.clone())
+        };
+        let expected_global_properties = catalog
+            .global_properties()
+            .map(catalog_global_projection)
+            .collect::<Vec<_>>();
+        let actual_global_properties = global_context
+            .properties
+            .iter()
+            .map(adapter_global_projection)
+            .collect::<Vec<_>>();
+        assert_eq!(actual_global_properties, expected_global_properties);
+        let (global_property_id, _) = catalog
+            .global_property_by_name("ТекущийОтбор")
+            .next()
+            .expect("global property must resolve by name");
+
+        let module_context = adapter
+            .module_context(
+                ModuleContextQuery {
+                    language: GlobalContextLanguage::Bsl,
+                    domain: LanguageDomain::PlatformApi,
+                    kind: ModuleContextKind::Form,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot module context lookup must not fail");
+        assert_eq!(module_context.status, ResolveStatus::Ok);
+        let module_context = module_context
+            .facts
+            .first()
+            .expect("form module context must resolve");
+
+        let module_methods = module_context
+            .methods
+            .iter()
+            .map(adapter_callable_projection)
+            .collect::<Vec<_>>();
+        let module_properties = module_context
+            .properties
+            .iter()
+            .map(adapter_global_projection)
+            .collect::<Vec<_>>();
+        assert_eq!(module_methods, expected_global_methods);
+        assert_eq!(module_properties, expected_global_properties);
+
+        let expected_form_events = catalog
+            .module_context_events(ModuleContextKind::Form)
+            .map(catalog_callable_projection)
+            .collect::<Vec<_>>();
+        let actual_form_events = module_context
+            .events
+            .iter()
+            .map(adapter_callable_projection)
+            .collect::<Vec<_>>();
+        assert_eq!(actual_form_events, expected_form_events);
+
+        let expected_exact_event = catalog
+            .module_context_event_by_name(ModuleContextKind::Form, "ПриОткрытии")
+            .map(catalog_callable_projection)
+            .collect::<Vec<_>>();
+        let exact_event = adapter
+            .module_context_member(
+                ModuleContextMemberLookup {
+                    language: GlobalContextLanguage::Bsl,
+                    domain: LanguageDomain::PlatformApi,
+                    module_kind: ModuleContextKind::Form,
+                    name: "ПриОткрытии",
+                    kind: MemberQueryKind::Event,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("snapshot exact module event lookup must not fail");
+        let actual_exact_event = exact_event
+            .facts
+            .iter()
+            .map(|member| match member {
+                context_resolver_core::ResolvedBslContextMember::Callable(callable) => {
+                    adapter_callable_projection(callable)
+                }
+                context_resolver_core::ResolvedBslContextMember::Property(_) => {
+                    panic!("exact event lookup must return callable events")
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual_exact_event, expected_exact_event);
+        let (event_id, _) = catalog
+            .module_context_event_by_name(ModuleContextKind::Form, "ПриОткрытии")
+            .next()
+            .expect("form module event must resolve by name");
+
+        let expected_availability = |(
+            contexts,
+            since,
+        ): (&[syntax_helper_search::StringId], Option<syntax_helper_search::StringId>)| {
+            (
+                contexts
+                    .iter()
+                    .filter_map(|context| availability_context_from_code(catalog.string(*context)))
+                    .collect::<Vec<_>>(),
+                since.map(|since| catalog.string(since).to_string()),
+            )
+        };
+        let actual_availability = |id: &FactId| {
+            let response = adapter
+                .availability(id, &ResolveContext::all())
+                .expect("snapshot availability lookup must not fail");
+            assert_eq!(response.status, ResolveStatus::Ok);
+            let fact = response
+                .facts
+                .first()
+                .expect("snapshot availability must return one fact");
+            (
+                fact.availability.contexts.clone(),
+                fact.availability.since.clone(),
+            )
+        };
+        for (id, expected) in [
+            (
+                settings.0.clone(),
+                expected_availability(catalog.platform_type_availability(settings_id)),
+            ),
+            (
+                FactId::new(
+                    source.clone(),
+                    LanguageDomain::PlatformApi,
+                    FactKind::Member,
+                    catalog.string(catalog.snapshot().type_member(member_id).id),
+                ),
+                expected_availability(catalog.member_availability(member_id)),
+            ),
+            (
+                FactId::new(
+                    source.clone(),
+                    LanguageDomain::PlatformApi,
+                    FactKind::Callable,
+                    catalog.string(catalog.snapshot().callable(callable_id).id),
+                ),
+                expected_availability(catalog.callable_availability(callable_id)),
+            ),
+            (
+                FactId::new(
+                    source.clone(),
+                    LanguageDomain::PlatformApi,
+                    FactKind::Global,
+                    catalog.string(catalog.snapshot().global_fact(global_property_id).id),
+                ),
+                expected_availability(catalog.global_availability(global_property_id)),
+            ),
+            (
+                FactId::new(
+                    source.clone(),
+                    LanguageDomain::PlatformApi,
+                    FactKind::Callable,
+                    catalog.string(catalog.snapshot().callable(event_id).id),
+                ),
+                expected_availability(catalog.callable_availability(event_id)),
+            ),
+        ] {
+            assert_eq!(actual_availability(&id), expected, "{}", id.local_id);
+        }
+    }
+
+    #[test]
     #[ignore = "manual measurement probe for borrowed BSL catalog OpenSpec batch"]
     fn bsl_catalog_measurement_probe() {
         let source = fixture_source();
@@ -2478,6 +2843,383 @@ mod tests {
     }
 
     #[test]
+    fn sdbl_catalog_matches_snapshot_adapter_projection_boundary() {
+        let query_source = SourceId::new("custom-query");
+        let platform_source = SourceId::new("custom-platform");
+        let index_path = fixture_index_path("sdbl-catalog-snapshot-parity.sqlite");
+        let index = open_index(&index_path);
+        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        drop(index);
+        std::fs::remove_file(&index_path).expect("projection paths must not need SQLite file");
+
+        let adapter = QueryTableSnapshotSource::with_source_ids(
+            snapshot.clone(),
+            query_source.clone(),
+            platform_source.clone(),
+        );
+        let catalog = crate::HbkSdblQueryCatalog::with_source_ids(
+            snapshot,
+            query_source.clone(),
+            platform_source.clone(),
+        );
+        let context = ResolveContext::all();
+        let fact_id = |kind, local_id: &str| {
+            FactId::new(
+                query_source.clone(),
+                LanguageDomain::QueryLanguage,
+                kind,
+                local_id,
+            )
+        };
+        let assert_type_ref_projection = |raw: &syntax_helper_search::HbkTypeRef,
+                                          projected: &TypeRef| {
+            assert_eq!(projected.name, catalog.string(raw.name));
+            match (&raw.target, &projected.target) {
+                (syntax_helper_search::HbkTypeRefTarget::Ok(raw_id), TypeRefTarget::Ok(id)) => {
+                    assert_eq!(id.0.source, platform_source);
+                    assert_eq!(id.0.domain, LanguageDomain::PlatformApi);
+                    assert_eq!(id.0.kind, FactKind::Type);
+                    assert_eq!(id.0.local_id, catalog.string(*raw_id));
+                }
+                (
+                    syntax_helper_search::HbkTypeRefTarget::Unresolved,
+                    TypeRefTarget::Unresolved,
+                ) => {}
+                (
+                    syntax_helper_search::HbkTypeRefTarget::Ambiguous(raw_candidates),
+                    TypeRefTarget::Ambiguous(candidates),
+                ) => {
+                    assert_eq!(candidates.len(), raw_candidates.len());
+                    for (raw_id, id) in raw_candidates.iter().zip(candidates) {
+                        assert_eq!(id.0.source, platform_source);
+                        assert_eq!(id.0.domain, LanguageDomain::PlatformApi);
+                        assert_eq!(id.0.kind, FactKind::Type);
+                        assert_eq!(id.0.local_id, catalog.string(*raw_id));
+                    }
+                }
+                (raw, projected) => panic!("type-ref target mismatch: {raw:?} != {projected:?}"),
+            }
+            match (&raw.template_binding, &projected.template_binding) {
+                (None, None) => {}
+                (Some(raw_binding), Some(binding)) => {
+                    assert_eq!(
+                        binding.template_key.family,
+                        catalog.string(raw_binding.template_key.family)
+                    );
+                    assert_eq!(
+                        binding.template_key.variant,
+                        catalog.string(raw_binding.template_key.variant)
+                    );
+                    assert_eq!(binding.arguments.len(), raw_binding.arguments.len());
+                    for (raw_argument, argument) in
+                        raw_binding.arguments.iter().zip(&binding.arguments)
+                    {
+                        match (raw_argument, argument) {
+                            (
+                                syntax_helper_search::model::TemplateParameterBinding::OwnerParameter {
+                                    owner_parameter_index: raw_owner,
+                                    target_parameter_index: raw_target,
+                                },
+                                TemplateParameterBinding::OwnerParameter {
+                                    owner_parameter_index,
+                                    target_parameter_index,
+                                },
+                            ) => {
+                                assert_eq!(owner_parameter_index, raw_owner);
+                                assert_eq!(target_parameter_index, raw_target);
+                            }
+                        }
+                    }
+                }
+                (raw, projected) => {
+                    panic!("type-ref template binding mismatch: {raw:?} != {projected:?}")
+                }
+            }
+        };
+
+        let global_context = adapter
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Sdbl,
+                    sources: &[],
+                },
+                &context,
+            )
+            .expect("SDBL global context projection must not fail");
+        assert_eq!(global_context.status, ResolveStatus::Ok);
+        let global_facts = global_context
+            .facts
+            .iter()
+            .flat_map(|context| context.facts.iter())
+            .collect::<Vec<_>>();
+
+        let global_table_ids = global_facts
+            .iter()
+            .filter(|fact| fact.id.kind == FactKind::QueryTable)
+            .map(|fact| fact.id.local_id.as_str())
+            .collect::<Vec<_>>();
+        let catalog_table_ids = catalog
+            .query_tables()
+            .map(|(_, table)| catalog.string(table.id))
+            .collect::<Vec<_>>();
+        assert_eq!(global_table_ids, catalog_table_ids);
+
+        let (table_id, table) = catalog
+            .query_table_by_id("query_table:ОсновнаяТаблица")
+            .expect("catalog table id lookup must resolve");
+        let table_fact_id = fact_id(FactKind::QueryTable, catalog.string(table.id));
+        let table_response = adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&table_fact_id),
+                &context,
+            )
+            .expect("snapshot table id lookup must not fail");
+        assert_eq!(table_response.status, ResolveStatus::Ok);
+        assert_eq!(table_response.facts.len(), 1);
+        let table_fact = &table_response.facts[0];
+        assert_eq!(table_fact.id, table_fact_id);
+        let FactDetails::QueryTable(table_info) = &table_fact.details else {
+            panic!("snapshot table must expose query table details");
+        };
+        assert_eq!(table_fact.name.primary, catalog.string(table.name.primary));
+        assert_eq!(
+            table_fact.name.alias.as_deref(),
+            table.name.alias.map(|id| catalog.string(id))
+        );
+        assert_eq!(
+            table_info.syntax.as_ref().map(|name| name.primary.as_str()),
+            table.syntax.as_ref().map(|name| catalog.string(name.primary))
+        );
+        assert_eq!(
+            table_info.syntax.as_ref().and_then(|name| name.alias.as_deref()),
+            table
+                .syntax
+                .as_ref()
+                .and_then(|name| name.alias.map(|id| catalog.string(id)))
+        );
+        assert_eq!(
+            table_info.identifier.as_deref(),
+            table.identifier.map(|id| catalog.string(id))
+        );
+        assert_eq!(table_info.table_role, QueryTableRole::Primary);
+        assert_eq!(
+            table_info.template_parameters,
+            table
+                .template_parameters
+                .iter()
+                .map(|id| catalog.string(*id).to_string())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            table_info
+                .owner_path
+                .iter()
+                .map(|name| (name.primary.as_str(), name.alias.as_deref()))
+                .collect::<Vec<_>>(),
+            table
+                .owner_path
+                .iter()
+                .map(|name| {
+                    (
+                        catalog.string(name.primary),
+                        name.alias.map(|id| catalog.string(id)),
+                    )
+                })
+                .collect::<Vec<_>>()
+        );
+
+        for (name, expected) in [
+            ("Основная таблица", &table_fact_id),
+            ("ОсновнаяТаблица.<Имя таблицы>", &table_fact_id),
+            ("ОсновнаяТаблица", &table_fact_id),
+        ] {
+            let facts = adapter
+                .resolve(
+                    context_resolver_core::ResolveQuery::ExactName {
+                        source: Some(&query_source),
+                        domain: Some(LanguageDomain::QueryLanguage),
+                        kind: Some(FactKind::QueryTable),
+                        name,
+                    },
+                    &context,
+                )
+                .expect("snapshot table point lookup must not fail")
+                .facts;
+            assert_eq!(facts.iter().map(|fact| &fact.id).collect::<Vec<_>>(), vec![expected]);
+        }
+        assert_eq!(
+            catalog
+                .query_tables_by_name("Основная таблица")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![table_id]
+        );
+        assert_eq!(
+            catalog
+                .query_tables_by_syntax("ОсновнаяТаблица.<Имя таблицы>")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![table_id]
+        );
+        assert_eq!(
+            catalog
+                .query_tables_by_identifier("ОсновнаяТаблица")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![table_id]
+        );
+
+        let fields = adapter
+            .query_fields(&table_fact_id, &context)
+            .expect("snapshot field enumeration must not fail");
+        assert_eq!(fields.status, ResolveStatus::Ok);
+        let catalog_fields = catalog.query_fields(table_id).collect::<Vec<_>>();
+        assert_eq!(fields.facts.len(), catalog_fields.len());
+        assert_eq!(
+            fields
+                .facts
+                .iter()
+                .map(|fact| fact.id.local_id.as_str())
+                .collect::<Vec<_>>(),
+            catalog_fields
+                .iter()
+                .map(|(_, field)| catalog.string(field.id))
+                .collect::<Vec<_>>()
+        );
+        for (field_id, field) in catalog_fields {
+            let local_id = catalog.string(field.id);
+            let expected_id = fact_id(FactKind::QueryField, local_id);
+            let field_fact = fields
+                .facts
+                .iter()
+                .find(|fact| fact.id == expected_id)
+                .expect("snapshot field enumeration must include catalog field");
+            assert_eq!(field_fact.owner.as_ref(), Some(&table_fact_id));
+            assert_eq!(field_fact.name.primary, catalog.string(field.name.primary));
+            assert_eq!(
+                field_fact.name.alias.as_deref(),
+                field.name.alias.map(|id| catalog.string(id))
+            );
+            let FactDetails::QueryField(field_info) = &field_fact.details else {
+                panic!("snapshot field must expose query field details");
+            };
+            assert_eq!(field_info.owner, table_fact_id);
+            assert_eq!(field_info.types.len(), field.type_refs.len());
+            for (raw, projected) in field.type_refs.iter().zip(&field_info.types) {
+                assert_type_ref_projection(raw, projected);
+            }
+            assert_eq!(
+                field_info.note.as_deref(),
+                field.note.map(|id| catalog.string(id))
+            );
+            assert_eq!(
+                catalog
+                    .query_field_by_name(table_id, catalog.string(field.name.primary))
+                    .map(|(id, _)| id)
+                    .collect::<Vec<_>>(),
+                vec![field_id]
+            );
+            assert_eq!(
+                adapter
+                    .query_fields_by_name(&table_fact_id, catalog.string(field.name.primary), &context)
+                    .expect("snapshot field point lookup must not fail")
+                    .facts,
+                vec![field_fact.clone()]
+            );
+        }
+
+        let parameters = adapter
+            .query_parameters(&table_fact_id, &context)
+            .expect("snapshot parameter enumeration must not fail");
+        assert_eq!(parameters.status, ResolveStatus::Ok);
+        let catalog_parameters = catalog.query_parameters(table_id).collect::<Vec<_>>();
+        assert_eq!(parameters.facts.len(), catalog_parameters.len());
+        assert_eq!(
+            parameters
+                .facts
+                .iter()
+                .map(|fact| fact.id.local_id.as_str())
+                .collect::<Vec<_>>(),
+            catalog_parameters
+                .iter()
+                .map(|(_, parameter)| catalog.string(parameter.id))
+                .collect::<Vec<_>>()
+        );
+        for (parameter_id, parameter) in catalog_parameters {
+            let local_id = catalog.string(parameter.id);
+            let expected_id = fact_id(FactKind::QueryParameter, local_id);
+            let parameter_fact = parameters
+                .facts
+                .iter()
+                .find(|fact| fact.id == expected_id)
+                .expect("snapshot parameter enumeration must include catalog parameter");
+            assert_eq!(parameter_fact.owner.as_ref(), Some(&table_fact_id));
+            assert_eq!(parameter_fact.name.primary, catalog.string(parameter.name.primary));
+            assert_eq!(
+                parameter_fact.name.alias.as_deref(),
+                parameter.name.alias.map(|id| catalog.string(id))
+            );
+            let FactDetails::QueryParameter(parameter_info) = &parameter_fact.details else {
+                panic!("snapshot parameter must expose query parameter details");
+            };
+            assert_eq!(parameter_info.owner, table_fact_id);
+            assert_eq!(parameter_info.types.len(), parameter.type_refs.len());
+            for (raw, projected) in parameter.type_refs.iter().zip(&parameter_info.types) {
+                assert_type_ref_projection(raw, projected);
+            }
+            assert_eq!(
+                parameter_info.default_value.as_deref(),
+                parameter.default_value.map(|id| catalog.string(id))
+            );
+            assert_eq!(
+                catalog
+                    .query_parameter_by_name(table_id, catalog.string(parameter.name.primary))
+                    .map(|(id, _)| id)
+                    .collect::<Vec<_>>(),
+                vec![parameter_id]
+            );
+            assert_eq!(
+                adapter
+                    .query_parameters_by_name(
+                        &table_fact_id,
+                        catalog.string(parameter.name.primary),
+                        &context,
+                    )
+                    .expect("snapshot parameter point lookup must not fail")
+                    .facts,
+                vec![parameter_fact.clone()]
+            );
+        }
+
+        for local_id in [
+            "query_table:Справочник",
+            "query_table:Документ",
+            "query_table:РегистрСведений",
+            "query_table:РегистрНакопления",
+            "query_table:РегистрБухгалтерии",
+            "query_table:РегистрРасчета",
+        ] {
+            let (selector_table_id, _) = catalog
+                .query_table_by_id(local_id)
+                .expect("catalog selector table must resolve");
+            let selector_response = adapter
+                .resolve(
+                    context_resolver_core::ResolveQuery::Id(&fact_id(FactKind::QueryTable, local_id)),
+                    &context,
+                )
+                .expect("snapshot selector table lookup must not fail");
+            assert_eq!(selector_response.status, ResolveStatus::Ok);
+            let FactDetails::QueryTable(selector_info) = &selector_response.facts[0].details else {
+                panic!("snapshot selector table must expose query table details");
+            };
+            assert_eq!(
+                selector_info.sdbl_metadata_source_selector.as_deref(),
+                catalog.metadata_source_selector(selector_table_id)
+            );
+        }
+    }
+
+    #[test]
     fn sdbl_catalog_and_sql_projection_gate_selectors_by_locale() {
         let path = temp_path("sdbl-catalog-non-ru-selector.sqlite");
         let mut builder = SearchIndexBuilder::new();
@@ -2548,6 +3290,98 @@ mod tests {
         assert_eq!(
             crate::hbk_catalogs::sdbl::sdbl_metadata_source_selector(Some("ru"), Some("Unknown")),
             None
+        );
+    }
+
+    #[test]
+    fn borrowed_catalog_source_guard_keeps_typed_owners_and_projection_boundary() {
+        let bsl_catalog = include_str!("hbk_catalogs/bsl.rs");
+        let sdbl_catalog = include_str!("hbk_catalogs/sdbl.rs");
+        let catalog_mod = include_str!("hbk_catalogs/mod.rs");
+        let imports = include_str!("imports.rs");
+        let language_adapter = include_str!("language_adapter.rs");
+        let mapping = include_str!("mapping.rs");
+        let snapshot_adapter = include_str!("snapshot_adapter.rs");
+        let lib = include_str!("lib.rs");
+
+        for (path, source) in [
+            ("hbk_catalogs/bsl.rs", bsl_catalog),
+            ("hbk_catalogs/sdbl.rs", sdbl_catalog),
+            ("hbk_catalogs/mod.rs", catalog_mod),
+        ] {
+            for forbidden in [
+                "ContextFact",
+                "Resolved",
+                "SearchIndex",
+                "rusqlite",
+                "from_index",
+                "pub trait",
+            ] {
+                assert!(
+                    !source.contains(forbidden),
+                    "{path} must keep borrowed catalog APIs typed and must not own {forbidden}"
+                );
+            }
+        }
+
+        for (path, source) in [
+            ("hbk_catalogs/bsl.rs", bsl_catalog),
+            ("hbk_catalogs/sdbl.rs", sdbl_catalog),
+            ("hbk_catalogs/mod.rs", catalog_mod),
+            ("lib.rs", lib),
+        ] {
+            for forbidden in ["-> HbkFactRef", "Item = HbkFactRef", "pub use HbkFactRef"] {
+                assert!(
+                    !source.contains(forbidden),
+                    "{path} must not export HbkFactRef through the catalog API"
+                );
+            }
+        }
+
+        assert_snapshot_source_stores_only_catalog(
+            imports,
+            "PlatformSnapshotSource",
+            "catalog: HbkBslContextCatalog,",
+        );
+        assert_snapshot_source_stores_only_catalog(
+            imports,
+            "QueryTableSnapshotSource",
+            "catalog: HbkSdblQueryCatalog,",
+        );
+
+        for selector in [
+            "metadata.sdbl.query-source.catalog",
+            "metadata.sdbl.query-source.document",
+            "metadata.sdbl.query-source.information-register",
+            "metadata.sdbl.query-source.accumulation-register",
+            "metadata.sdbl.query-source.accounting-register",
+            "metadata.sdbl.query-source.calculation-register",
+        ] {
+            assert_eq!(
+                count_occurrences(sdbl_catalog, selector),
+                1,
+                "{selector} must have exactly one owner in hbk_catalogs/sdbl.rs"
+            );
+            for (path, source) in [
+                ("hbk_catalogs/bsl.rs", bsl_catalog),
+                ("mapping.rs", mapping),
+                ("language_adapter.rs", language_adapter),
+                ("snapshot_adapter.rs", snapshot_adapter),
+                ("imports.rs", imports),
+                ("lib.rs", lib),
+            ] {
+                assert!(
+                    !source.contains(selector),
+                    "{selector} must not be duplicated in {path}"
+                );
+            }
+        }
+
+        assert!(
+            snapshot_adapter.contains("ContextFact")
+                && snapshot_adapter.contains("ResolvedType")
+                && snapshot_adapter.contains("ResolvedGlobalContext"),
+            "generic DTO projection must remain in the snapshot adapter compatibility boundary"
         );
     }
 
@@ -4558,6 +5392,44 @@ mod tests {
 
     fn open_index(path: &std::path::Path) -> SearchIndex {
         SearchIndex::open_read_only(path).expect("index must open")
+    }
+
+    fn assert_snapshot_source_stores_only_catalog(
+        source: &str,
+        struct_name: &str,
+        expected_body: &str,
+    ) {
+        let body = struct_body(source, struct_name);
+        assert_eq!(
+            collapse_whitespace(body),
+            collapse_whitespace(expected_body),
+            "{struct_name} must store only the borrowed catalog handle"
+        );
+        for forbidden in ["HbkFactSnapshot", "worker_handle", "SearchIndex"] {
+            assert!(
+                !body.contains(forbidden),
+                "{struct_name} must not keep catalog-covered storage field {forbidden}"
+            );
+        }
+    }
+
+    fn struct_body<'a>(source: &'a str, struct_name: &str) -> &'a str {
+        let marker = format!("pub struct {struct_name} {{");
+        source
+            .split_once(&marker)
+            .unwrap_or_else(|| panic!("{struct_name} definition must exist"))
+            .1
+            .split_once("\n}")
+            .unwrap_or_else(|| panic!("{struct_name} body must close"))
+            .0
+    }
+
+    fn collapse_whitespace(source: &str) -> String {
+        source.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn count_occurrences(source: &str, needle: &str) -> usize {
+        source.match_indices(needle).count()
     }
 
     fn temp_path(name: &str) -> PathBuf {
