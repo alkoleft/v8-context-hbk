@@ -93,7 +93,7 @@ with no findings.
 - [x] 4.1 Name and retain generic resolver consumers that still require source-neutral composition or generic DTO contracts, including `ContextResolver`, `ContextSource`, `CompositeResolver`, `WorkerSafeCompositeResolver`, analyzer platform-adapter composition, and SQL/SearchIndex-backed CLI/debug/index-inspection flows.
 - [x] 4.2 Add migration/parity tests proving `PlatformSnapshotSource` and `QueryTableSnapshotSource` generic `ContextResolver` results match the borrowed catalogs for catalog-covered facts while allocating generic DTOs only at the compatibility boundary.
 - [x] 4.3 Add downstream handoff notes for `v8-context`: analyzer hot paths should consume borrowed BSL/SDBL catalogs where available, must not add analyzer-local HBK shims or selector mappings, and may keep generic resolver use only for the retained source-neutral consumers named in 4.1.
-- [ ] 4.4 Add absence guards in tests or review scripts for analyzer-facing contracts: no `HbkFactRef` public domain API, no catalog-covered analyzer selector mapping, no flattened `Vec<ContextFact>` hot-path store, no SQL/SearchIndex fallback in snapshot-backed catalog/resolver adapter paths, and no universal catalog trait.
+- [x] 4.4 Add absence guards in tests or review scripts for analyzer-facing contracts: no `HbkFactRef` public domain API, no catalog-covered analyzer selector mapping, no flattened `Vec<ContextFact>` hot-path store, no SQL/SearchIndex fallback in snapshot-backed catalog/resolver adapter paths, and no universal catalog trait.
 
 Upstream handoff evidence (2026-07-28): the independent BSL API/evidence
 commits are `072a65f`/`ff70367`; the independent SDBL API/evidence commits are
@@ -109,6 +109,10 @@ names the retained source-neutral generic consumers and gives the downstream
 handoff contract. Task 4.4 deliberately remains open until the downstream
 `v8-context` repository contains and verifies its own executable absence guard;
 an upstream source scan is not a substitute for that consumer-owned check.
+Downstream `v8-context` commit `5e599dd` supplies the executable guard and
+seeded negative controls; `0418bff` accepts the exact upstream APIs and commits
+in the downstream OpenSpec while keeping transient SDBL materialization open
+under its tasks 6.2/6.6.
 
 ## 5. Full Verification And Completion
 

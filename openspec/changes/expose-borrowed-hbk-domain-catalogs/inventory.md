@@ -119,6 +119,9 @@ The upstream executable guard is
 `borrowed_catalog_source_guard_keeps_typed_owners_and_projection_boundary`.
 The ordered differential guards are
 `bsl_catalog_matches_snapshot_adapter_projection_boundary` and
-`sdbl_catalog_matches_snapshot_adapter_projection_boundary`. A separate
-downstream executable guard is still required because an upstream test cannot
-observe analyzer-local shims or retained analyzer hot-path state.
+`sdbl_catalog_matches_snapshot_adapter_projection_boundary`. Downstream
+`v8-context` commit `5e599dd` adds the separate consumer-owned executable guard
+and seeded negative controls because an upstream test cannot observe
+analyzer-local shims or retained analyzer hot-path state. Downstream commit
+`0418bff` records the accepted handoff without claiming that the still-open
+hot-path migration or transient SDBL materialization has completed.
