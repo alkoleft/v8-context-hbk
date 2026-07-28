@@ -482,6 +482,18 @@ availability/module selector/SDBL selector mappings. Completing only the SDBL
 or only the BSL slice is an upstream partial milestone, not downstream
 completeness.
 
+The upstream handoff gate was accepted on 2026-07-28. The exact typed APIs are
+`HbkBslContextCatalog` (`072a65f`, evidence `ff70367`) and
+`HbkSdblQueryCatalog` (`c140838`, evidence `b0d83ed`). Ordered differential
+parity and upstream structural ownership guards are committed as `30fecd4`.
+The downstream analyzer must own its own executable absence guard before task
+4.4 is complete; this repository intentionally does not inspect a sibling
+checkout from its test suite. No architecture document update is required for
+this handoff batch because it verifies and records the catalog/generic-resolver
+responsibilities already established in ADR-0008 and
+`spec/implementation/components.md`; it adds no responsibility or dependency
+direction.
+
 ## ADR-0008 Reconciliation
 
 ADR-0008 remains accepted with a refined responsibility split:

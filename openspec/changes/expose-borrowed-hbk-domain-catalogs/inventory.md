@@ -59,6 +59,38 @@ composing HBK providers. They are not catalog consumers and require no DTO or
 transport change. `handler-entry-points` has no production HBK resolver
 consumer. HBK CLI/search commands intentionally use `SearchIndex` directly.
 
+## Accepted Downstream Handoff
+
+The upstream contract is now concrete:
+
+- `HbkBslContextCatalog` from commit `072a65f` is the typed borrowed boundary
+  for generated-self types, owner members/callables, BSL globals, module
+  members/events and typed availability. Commit `ff70367` records its direct
+  and compatibility evidence.
+- `HbkSdblQueryCatalog` from commit `c140838` is the typed borrowed boundary
+  for query tables, owner fields/parameters and the locale-aware six-selector
+  classification. Commit `b0d83ed` records its direct and compatibility
+  evidence.
+- Commit `30fecd4` compares the downstream handoff fact families with their
+  generic snapshot-adapter projections in provider order after deleting the
+  source SQLite file. It covers BSL generated self, owner members/callables,
+  globals, form events and availability, plus SDBL tables, owner
+  fields/parameters and selectors, without adding a second production mapper.
+
+`v8-context` hot paths should retain these catalog handles through their
+domain-specific BSL and SDBL contexts. They must not read
+`HbkFactSnapshot::worker_handle`, expose `HbkFactRef`, duplicate
+`metadata.module-role.*` or `metadata.sdbl.query-source.*` mappings, retain a
+flattened SDBL `Vec<ContextFact>`, or add a SQL/`SearchIndex` fallback or
+universal catalog trait.
+
+Generic resolver use remains correct for the source-neutral consumers listed
+above: analyzer type/platform import and platform-reference composition,
+`ContextResolver`/`ContextSource` composition through
+`CompositeResolver`/`WorkerSafeCompositeResolver`, and explicit
+SQL/SearchIndex CLI/debug/index-inspection flows. Downstream migration must not
+delete or privately reproduce those distinct contracts.
+
 ## Searched Surfaces
 
 - HBK Rust crates: `context-resolver-core`, `context-resolver-search`,
@@ -82,3 +114,11 @@ The implementation review must reject:
 - SQL/`SearchIndex` fallback from a snapshot catalog path;
 - a stored flattened SDBL `Vec<ContextFact>` outside generic resolver answer
   projection.
+
+The upstream executable guard is
+`borrowed_catalog_source_guard_keeps_typed_owners_and_projection_boundary`.
+The ordered differential guards are
+`bsl_catalog_matches_snapshot_adapter_projection_boundary` and
+`sdbl_catalog_matches_snapshot_adapter_projection_boundary`. A separate
+downstream executable guard is still required because an upstream test cannot
+observe analyzer-local shims or retained analyzer hot-path state.

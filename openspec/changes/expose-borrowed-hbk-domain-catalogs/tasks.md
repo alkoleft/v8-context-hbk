@@ -89,11 +89,26 @@ with no findings.
 
 ## 4. Generic Resolver And Downstream Handoff
 
-- [ ] 4.0 Do not start downstream `v8-context` handoff, analyzer integration notes or analyzer absence guards until both independent gates are complete: BSL task 2.10 is reviewed/committed and SDBL task 3.9 is reviewed/committed.
-- [ ] 4.1 Name and retain generic resolver consumers that still require source-neutral composition or generic DTO contracts, including `ContextResolver`, `ContextSource`, `CompositeResolver`, `WorkerSafeCompositeResolver`, analyzer platform-adapter composition, and SQL/SearchIndex-backed CLI/debug/index-inspection flows.
-- [ ] 4.2 Add migration/parity tests proving `PlatformSnapshotSource` and `QueryTableSnapshotSource` generic `ContextResolver` results match the borrowed catalogs for catalog-covered facts while allocating generic DTOs only at the compatibility boundary.
-- [ ] 4.3 Add downstream handoff notes for `v8-context`: analyzer hot paths should consume borrowed BSL/SDBL catalogs where available, must not add analyzer-local HBK shims or selector mappings, and may keep generic resolver use only for the retained source-neutral consumers named in 4.1.
+- [x] 4.0 Do not start downstream `v8-context` handoff, analyzer integration notes or analyzer absence guards until both independent gates are complete: BSL task 2.10 is reviewed/committed and SDBL task 3.9 is reviewed/committed.
+- [x] 4.1 Name and retain generic resolver consumers that still require source-neutral composition or generic DTO contracts, including `ContextResolver`, `ContextSource`, `CompositeResolver`, `WorkerSafeCompositeResolver`, analyzer platform-adapter composition, and SQL/SearchIndex-backed CLI/debug/index-inspection flows.
+- [x] 4.2 Add migration/parity tests proving `PlatformSnapshotSource` and `QueryTableSnapshotSource` generic `ContextResolver` results match the borrowed catalogs for catalog-covered facts while allocating generic DTOs only at the compatibility boundary.
+- [x] 4.3 Add downstream handoff notes for `v8-context`: analyzer hot paths should consume borrowed BSL/SDBL catalogs where available, must not add analyzer-local HBK shims or selector mappings, and may keep generic resolver use only for the retained source-neutral consumers named in 4.1.
 - [ ] 4.4 Add absence guards in tests or review scripts for analyzer-facing contracts: no `HbkFactRef` public domain API, no catalog-covered analyzer selector mapping, no flattened `Vec<ContextFact>` hot-path store, no SQL/SearchIndex fallback in snapshot-backed catalog/resolver adapter paths, and no universal catalog trait.
+
+Upstream handoff evidence (2026-07-28): the independent BSL API/evidence
+commits are `072a65f`/`ff70367`; the independent SDBL API/evidence commits are
+`c140838`/`b0d83ed`. Commit `30fecd4` adds ordered differential parity for the
+downstream handoff fact families: BSL generated self, owner members/callables,
+globals, form events and availability, plus SDBL tables, owner
+fields/parameters and selectors. It also adds an executable upstream ownership
+guard. The guard proves that the catalog structs remain typed snapshot owners,
+generic DTO projection remains in `snapshot_adapter.rs`, neither catalog
+exports `HbkFactRef`, snapshot resolver structs retain only their catalog
+handles, and the six SDBL selectors have one production owner. `inventory.md`
+names the retained source-neutral generic consumers and gives the downstream
+handoff contract. Task 4.4 deliberately remains open until the downstream
+`v8-context` repository contains and verifies its own executable absence guard;
+an upstream source scan is not a substitute for that consumer-owned check.
 
 ## 5. Full Verification And Completion
 
