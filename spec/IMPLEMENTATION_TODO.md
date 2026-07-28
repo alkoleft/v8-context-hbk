@@ -82,8 +82,17 @@ Progress:
   observable compatibility result count and their respective 0.10 s and
   0.11 s warm command wall times; both snapshot paths work after deleting the
   SQLite file.
-- Combined workspace verification, versioning, generic-resolver reconciliation
-  and downstream analyzer handoff remain open under the named OpenSpec change.
+- Generic resolver consumers remain explicit compatibility/composition
+  boundaries; SQL/SearchIndex flows remain explicit and non-fallback. The
+  downstream analyzer handoff is accepted by `v8-context` commits `5e599dd`
+  and `0418bff`, with an executable absence guard against analyzer-owned HBK
+  mirrors, selectors and flattened hot-path stores.
+- Runtime evidence is retained with a verified 177-payload SHA-256 manifest.
+  Formatting, focused catalog/search tests and the full workspace passed after
+  the `0.2.0` version update. Full clippy has only the three exact diagnostics
+  already present at the task base; the 15 lint findings caused by the new
+  iterator-returning API were fixed in this task. Fresh final review completed
+  with no remaining findings.
 
 ### [x] T177. Eliminate duplicate snapshot-interner string ownership
 

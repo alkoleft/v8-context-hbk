@@ -329,12 +329,12 @@ A seeded missing test-marker run exited `2` with
 `missing-required-symbol`; valid runs had `invalid_hits=[]`.
 
 The complete raw evidence is retained under
-`artifacts/runtime-counters/`: 178 files (15,995,228 bytes) containing build
+`artifacts/runtime-counters/`: 178 files (15,995,318 bytes) containing build
 commands and binary identities, required-symbol listings, GDB JSON and
 summaries, both heaptrack repetitions and filtered stacks, one warmup plus five
 wall-time runs, and the known-allocation negative control. Its
 `artifact-manifest.tsv` has SHA-256
-`0de33f4f66798828be0375de9068859112444b1da9b6510b0416ebd2cd163ee1`.
+`5a73d15cb21792f8d2cfbfc8dc7c6560456e8b83147c59e9a75bd3c9d1ec6507`.
 The tabular values below are derived from those tracked raw files.
 
 ### Helper-scoped heap allocation calls

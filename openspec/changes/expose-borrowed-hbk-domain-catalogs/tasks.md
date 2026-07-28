@@ -128,13 +128,59 @@ under its tasks 6.2/6.6.
 
 ## 5. Full Verification And Completion
 
-- [ ] 5.1 Run `openspec validate expose-borrowed-hbk-domain-catalogs --strict` before and after each implementation batch.
-- [ ] 5.2 Run `cargo fmt --all --check`.
-- [ ] 5.3 Run `cargo test -p context-resolver-search` including focused BSL/SDBL catalog, parity, unavailable-SQLite/no-fallback, selectors+unknown and `Send + Sync` tests.
-- [ ] 5.4 Run `cargo test -p syntax-helper-search` when snapshot/read-handle APIs or arena exposure change.
-- [ ] 5.5 Run `cargo test --workspace` after the BSL and SDBL commits are both integrated.
-- [ ] 5.6 Run `cargo clippy --workspace --all-targets --all-features -- -D warnings` or record existing unrelated blockers with exact diagnostics.
-- [ ] 5.7 Reconcile final diff against the Structure impact and Reintroduction guard, accounting for every structure, behavior owner, conversion, mapping, adapter, public re-export, test fixture and documentation change.
-- [ ] 5.8 Update ADR-0008 or companion implementation notes, spec references, measurements/counter notes and versioning as required by the accepted behavior and completed commits.
-- [ ] 5.9 Run a fresh final review covering SKEP-003/008/009/010/011, independent BSL/SDBL commit boundaries, generic resolver retention, SQL/SearchIndex non-fallback, selector ownership and downstream handoff.
+- [x] 5.1 Run `openspec validate expose-borrowed-hbk-domain-catalogs --strict` before and after each implementation batch.
+- [x] 5.2 Run `cargo fmt --all --check`.
+- [x] 5.3 Run `cargo test -p context-resolver-search` including focused BSL/SDBL catalog, parity, unavailable-SQLite/no-fallback, selectors+unknown and `Send + Sync` tests.
+- [x] 5.4 Run `cargo test -p syntax-helper-search` when snapshot/read-handle APIs or arena exposure change.
+- [x] 5.5 Run `cargo test --workspace` after the BSL and SDBL commits are both integrated.
+- [x] 5.6 Run `cargo clippy --workspace --all-targets --all-features -- -D warnings` or record existing unrelated blockers with exact diagnostics.
+- [x] 5.7 Reconcile final diff against the Structure impact and Reintroduction guard, accounting for every structure, behavior owner, conversion, mapping, adapter, public re-export, test fixture and documentation change.
+- [x] 5.8 Update ADR-0008 or companion implementation notes, spec references, measurements/counter notes and versioning as required by the accepted behavior and completed commits.
+- [x] 5.9 Run a fresh final review covering SKEP-003/008/009/010/011, independent BSL/SDBL commit boundaries, generic resolver retention, SQL/SearchIndex non-fallback, selector ownership and downstream handoff.
 - [ ] 5.10 Commit the final documentation/verification batch after staged files are limited to this OpenSpec change and required docs/versioning updates.
+
+Verification and reconciliation evidence (2026-07-28):
+
+- Strict OpenSpec validation passed before the final version/test batch and
+  after every implementation/evidence batch. `cargo fmt --all --check`,
+  `cargo test -p context-resolver-search` (38 passed, 2 ignored, plus the
+  static-analysis consumer smoke test), `cargo test -p syntax-helper-search`
+  (68 passed) and the post-version, post-lint-fix `cargo test --workspace`
+  all passed. The real `shcntx` extraction test completed in 85.82 seconds.
+- The exact full clippy command was
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+  it exited `101` only on three diagnostics already present at base commit
+  `37b1b43`: `crates/syntax-helper-extract/src/html.rs:142`
+  `clippy::needless_borrow`,
+  `crates/syntax-helper-extract/src/error.rs:67`
+  `clippy::io_other_error`, and
+  `crates/syntax-helper-search/src/snapshot/memory.rs:450`
+  `clippy::ptr_arg`. The 15 `clippy::useless_conversion` findings caused by
+  this change's iterator-returning read APIs were fixed in the affected tests,
+  not misclassified as unrelated cleanup; a repeat full clippy run contained
+  none of them.
+- The final `37b1b43..824015c` structure review accounts for the only two new
+  semantic handles, `HbkBslContextCatalog` and `HbkSdblQueryCatalog`, over the
+  existing `HbkFactSnapshot` storage owner and existing typed IDs/records. It
+  accounts for the borrowed read-lifetime refinement, deleted duplicate
+  snapshot traversals and selector mapping, retained generic projection
+  helpers/adapters, the single SDBL selector owner, BSL/SDBL parity and
+  source-absence guards, differential measurement fixtures, raw runtime
+  evidence, downstream guard/handoff, and the `0.2.0` workspace release.
+  No second arena/index/cache, DTO or enum mirror, universal trait, public
+  `HbkFactRef`, analyzer shim, fallback reader, duplicate conversion chain,
+  alternate public re-export surface or SQL/SearchIndex fallback was added.
+- Codebase-design reconciliation found one typed catalog module with useful
+  domain interfaces and explicit generic compatibility adapters; it introduced
+  no shallow pass-through layer or new dependency edge. ADR-0008 and
+  `spec/implementation/components.md` already record the changed API ownership
+  and compatibility boundary. This HBK repository has no separate
+  `docs/architecture` tree, so creating one solely for completion bookkeeping
+  would duplicate those existing architecture owners.
+- The fresh final review covered the complete production, test and
+  documentation diff plus the independent commit boundaries and downstream
+  handoff. Its only finding was a stale raw-artifact label/hash after
+  distinguishing `current-bsl` from `current-sdbl`; the command labels,
+  manifest and measurement summary were reconciled, all 177 payload hashes
+  passed, strict validation passed, and the follow-up review returned
+  `NO FINDINGS`.
