@@ -1548,7 +1548,6 @@ mod tests {
         assert_eq!(
             handle
                 .facts_by_id("platform_type:ОтборКомпоновкиДанных")
-                .into_iter()
                 .collect::<Vec<_>>(),
             vec![HbkFactRef::PlatformType(filter)]
         );
@@ -1562,7 +1561,6 @@ mod tests {
             .any(|id| id == filter));
         let manager_template = handle
             .platform_types_by_template_key("Catalog", "Manager")
-            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(manager_template.len(), 1);
         assert_eq!(
@@ -1603,7 +1601,6 @@ mod tests {
         assert!(
             handle
                 .callable_by_owner_name(filter, "ПолучитьОбъектПоИдентификатору")
-                .into_iter()
                 .map(|callable| snapshot.callable(callable))
                 .any(|callable| {
                     snapshot.string(callable.name.primary) == "ПолучитьОбъектПоИдентификатору"
@@ -1625,14 +1622,12 @@ mod tests {
                     "Message",
                     Some(HbkGlobalFactKind::Method),
                 )
-                .into_iter()
                 .collect::<Vec<_>>(),
             globals
         );
         assert_eq!(
             handle
                 .globals_by_domain_name_kind(HbkLanguageDomain::Bsl, "Message", None)
-                .into_iter()
                 .collect::<Vec<_>>(),
             globals
         );
@@ -1676,7 +1671,6 @@ mod tests {
         assert_eq!(
             handle
                 .module_context_events(HbkLanguageDomain::Bsl, "bsl", "form")
-                .into_iter()
                 .collect::<Vec<_>>(),
             handle
                 .module_events("module_context:form")
@@ -1685,7 +1679,6 @@ mod tests {
 
         let tables = handle
             .query_tables_by_syntax("Справочник.<Имя справочника>")
-            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(tables.len(), 1);
         let fields = handle.query_fields(tables[0]);
@@ -1695,28 +1688,24 @@ mod tests {
         assert_eq!(
             handle
                 .query_tables_by_identifier("Справочник")
-                .into_iter()
                 .collect::<Vec<_>>(),
             tables
         );
         assert_eq!(
             handle
                 .query_tables_by_syntax("Catalog.<Catalog name>")
-                .into_iter()
                 .collect::<Vec<_>>(),
             tables
         );
         assert_eq!(
             handle
                 .query_fields_by_name(tables[0], "Ссылка")
-                .into_iter()
                 .collect::<Vec<_>>(),
             fields
         );
         assert_eq!(
             handle
                 .query_parameters_by_name(tables[0], "Дата")
-                .into_iter()
                 .collect::<Vec<_>>(),
             parameters
         );
@@ -1741,13 +1730,12 @@ mod tests {
             .enum_value_by_id(enum_value_id)
             .expect("enum-value exact id lookup must work");
         assert_eq!(
-            handle.facts_by_id(enum_id).into_iter().collect::<Vec<_>>(),
+            handle.facts_by_id(enum_id).collect::<Vec<_>>(),
             vec![HbkFactRef::Enum(enum_fact)]
         );
         assert_eq!(
             handle
                 .facts_by_id(enum_value_id)
-                .into_iter()
                 .collect::<Vec<_>>(),
             vec![HbkFactRef::EnumValue(enum_value_fact)]
         );
@@ -1758,7 +1746,6 @@ mod tests {
         assert_eq!(
             handle
                 .enums_by_name("CurrentRowUse")
-                .into_iter()
                 .collect::<Vec<_>>(),
             vec![enum_fact]
         );
@@ -1771,7 +1758,6 @@ mod tests {
         assert_eq!(
             handle
                 .enum_values_by_name(enum_fact, "Авто")
-                .into_iter()
                 .collect::<Vec<_>>(),
             vec![enum_value_fact]
         );
