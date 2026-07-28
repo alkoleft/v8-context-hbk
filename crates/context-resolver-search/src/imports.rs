@@ -42,9 +42,7 @@ pub struct PlatformSnapshotSource {
 }
 
 pub struct QueryTableSnapshotSource {
-    source_id: SourceId,
-    platform_source_id: SourceId,
-    snapshot: Arc<HbkFactSnapshot>,
+    catalog: HbkSdblQueryCatalog,
 }
 
 fn signature_text_is_variadic(text: &str) -> bool {

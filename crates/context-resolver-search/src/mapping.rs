@@ -140,19 +140,6 @@ fn query_table_role(role: Option<syntax_helper_search::model::QueryTableRole>) -
     }
 }
 
-fn sdbl_metadata_source_selector(identifier: Option<&str>) -> Option<String> {
-    let selector = match identifier? {
-        "Справочник" => "metadata.sdbl.query-source.catalog",
-        "Документ" => "metadata.sdbl.query-source.document",
-        "РегистрСведений" => "metadata.sdbl.query-source.information-register",
-        "РегистрНакопления" => "metadata.sdbl.query-source.accumulation-register",
-        "РегистрБухгалтерии" => "metadata.sdbl.query-source.accounting-register",
-        "РегистрРасчета" => "metadata.sdbl.query-source.calculation-register",
-        _ => return None,
-    };
-    Some(selector.to_string())
-}
-
 fn fact_provenance(
     source_id: &SourceId,
     document_id: &str,

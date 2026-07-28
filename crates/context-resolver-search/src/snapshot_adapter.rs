@@ -1182,9 +1182,7 @@ impl QueryTableSnapshotSource {
         platform_source_id: SourceId,
     ) -> Self {
         Self {
-            source_id,
-            platform_source_id,
-            snapshot,
+            catalog: HbkSdblQueryCatalog::with_source_ids(snapshot, source_id, platform_source_id),
         }
     }
 
@@ -1205,16 +1203,16 @@ impl QueryTableSnapshotSource {
         table: &FactId,
         context: &ResolveContext<'_>,
     ) -> Option<HbkQueryTableId> {
-        if !context.is_source_active(&self.source_id)
-            || table.source != self.source_id
+        if !context.is_source_active(self.catalog.source_id())
+            || table.source != *self.catalog.source_id()
             || table.domain != LanguageDomain::QueryLanguage
             || table.kind != FactKind::QueryTable
         {
             return None;
         }
-        self.snapshot
-            .worker_handle()
+        self.catalog
             .query_table_by_id(&table.local_id)
+            .map(|(id, _)| id)
     }
 
     pub fn query_fields(
@@ -1225,13 +1223,10 @@ impl QueryTableSnapshotSource {
         let Some(table_id) = self.query_table_id(table, context) else {
             return Ok(ResolveResponse::not_found("query table fact not found"));
         };
-        let handle = self.snapshot.worker_handle();
         Ok(ResolveResponse::ok(
-            handle
+            self.catalog
                 .query_fields(table_id)
-                .iter()
-                .copied()
-                .map(|id| self.map_query_field(id))
+                .map(|(id, _)| self.map_query_field(id))
                 .collect(),
         ))
     }
@@ -1244,13 +1239,10 @@ impl QueryTableSnapshotSource {
         let Some(table_id) = self.query_table_id(table, context) else {
             return Ok(ResolveResponse::not_found("query table fact not found"));
         };
-        let handle = self.snapshot.worker_handle();
         Ok(ResolveResponse::ok(
-            handle
+            self.catalog
                 .query_parameters(table_id)
-                .iter()
-                .copied()
-                .map(|id| self.map_query_parameter(id))
+                .map(|(id, _)| self.map_query_parameter(id))
                 .collect(),
         ))
     }
@@ -1264,10 +1256,10 @@ impl QueryTableSnapshotSource {
         let Some(table_id) = self.query_table_id(table, context) else {
             return Ok(ResolveResponse::not_found("query table fact not found"));
         };
-        let handle = self.snapshot.worker_handle();
-        let facts = handle
-            .query_fields_by_name(table_id, name)
-            .map(|id| self.map_query_field(id))
+        let facts = self
+            .catalog
+            .query_field_by_name(table_id, name)
+            .map(|(id, _)| self.map_query_field(id))
             .collect::<Vec<_>>();
         Ok(response_from_facts(facts, "query field fact not found"))
     }
@@ -1281,17 +1273,17 @@ impl QueryTableSnapshotSource {
         let Some(table_id) = self.query_table_id(table, context) else {
             return Ok(ResolveResponse::not_found("query table fact not found"));
         };
-        let handle = self.snapshot.worker_handle();
-        let facts = handle
-            .query_parameters_by_name(table_id, name)
-            .map(|id| self.map_query_parameter(id))
+        let facts = self
+            .catalog
+            .query_parameter_by_name(table_id, name)
+            .map(|(id, _)| self.map_query_parameter(id))
             .collect::<Vec<_>>();
         Ok(response_from_facts(facts, "query parameter fact not found"))
     }
 
     fn fact_id(&self, kind: FactKind, local_id: impl Into<String>) -> FactId {
         FactId::new(
-            self.source_id.clone(),
+            self.catalog.source_id().clone(),
             LanguageDomain::QueryLanguage,
             kind,
             local_id,
@@ -1300,7 +1292,7 @@ impl QueryTableSnapshotSource {
 
     fn platform_type_id(&self, local_id: impl Into<String>) -> TypeId {
         TypeId(FactId::new(
-            self.platform_source_id.clone(),
+            self.catalog.platform_source_id().clone(),
             LanguageDomain::PlatformApi,
             FactKind::Type,
             local_id,
@@ -1308,7 +1300,7 @@ impl QueryTableSnapshotSource {
     }
 
     fn source_matches(&self, source: Option<&SourceId>) -> bool {
-        source.is_none_or(|source| source == &self.source_id)
+        source.is_none_or(|source| source == self.catalog.source_id())
     }
 
     fn domain_matches(&self, domain: Option<LanguageDomain>) -> bool {
@@ -1316,19 +1308,19 @@ impl QueryTableSnapshotSource {
     }
 
     fn map_query_table(&self, id: HbkQueryTableId) -> ContextFact {
-        let table = self.snapshot.query_table(id);
+        let snapshot = self.catalog.snapshot();
+        let table = snapshot.query_table(id);
         ContextFact {
-            id: self.fact_id(FactKind::QueryTable, self.snapshot.string(table.id)),
+            id: self.fact_id(FactKind::QueryTable, snapshot.string(table.id)),
             name: self.map_name(&table.name),
             owner: None,
             details: FactDetails::QueryTable(QueryTableInfo {
                 syntax: table.syntax.as_ref().map(|name| self.map_name(name)),
-                identifier: table
-                    .identifier
-                    .map(|id| self.snapshot.string(id).to_string()),
-                sdbl_metadata_source_selector: sdbl_metadata_source_selector(
-                    table.identifier.map(|id| self.snapshot.string(id)),
-                ),
+                identifier: table.identifier.map(|id| snapshot.string(id).to_string()),
+                sdbl_metadata_source_selector: self
+                    .catalog
+                    .metadata_source_selector(id)
+                    .map(str::to_string),
                 table_role: query_table_role(table.role),
                 owner_path: table
                     .owner_path
@@ -1338,12 +1330,12 @@ impl QueryTableSnapshotSource {
                 template_parameters: table
                     .template_parameters
                     .iter()
-                    .map(|id| self.snapshot.string(*id).to_string())
+                    .map(|id| snapshot.string(*id).to_string())
                     .collect(),
                 description: None,
-                source: self.snapshot.source_locale().map(|locale| FactProvenance {
-                    source: self.source_id.clone(),
-                    evidence_id: self.snapshot.string(table.id).to_string(),
+                source: self.catalog.source_locale().map(|locale| FactProvenance {
+                    source: self.catalog.source_id().clone(),
+                    evidence_id: snapshot.string(table.id).to_string(),
                     locale: Some(locale.to_string()),
                 }),
             }),
@@ -1352,14 +1344,14 @@ impl QueryTableSnapshotSource {
     }
 
     fn map_query_field(&self, id: HbkQueryFieldId) -> ContextFact {
-        let field = self.snapshot.query_field(id);
+        let snapshot = self.catalog.snapshot();
+        let field = snapshot.query_field(id);
         let owner = self.fact_id(
             FactKind::QueryTable,
-            self.snapshot
-                .string(self.snapshot.query_table(field.owner).id),
+            snapshot.string(snapshot.query_table(field.owner).id),
         );
         ContextFact {
-            id: self.fact_id(FactKind::QueryField, self.snapshot.string(field.id)),
+            id: self.fact_id(FactKind::QueryField, snapshot.string(field.id)),
             name: self.map_name(&field.name),
             owner: Some(owner.clone()),
             details: FactDetails::QueryField(QueryFieldInfo {
@@ -1368,10 +1360,10 @@ impl QueryTableSnapshotSource {
                 description: None,
                 note: field
                     .note
-                    .map(|note| self.snapshot.string(note).to_string()),
-                source: self.snapshot.source_locale().map(|locale| FactProvenance {
-                    source: self.source_id.clone(),
-                    evidence_id: self.snapshot.string(field.id).to_string(),
+                    .map(|note| snapshot.string(note).to_string()),
+                source: self.catalog.source_locale().map(|locale| FactProvenance {
+                    source: self.catalog.source_id().clone(),
+                    evidence_id: snapshot.string(field.id).to_string(),
                     locale: Some(locale.to_string()),
                 }),
             }),
@@ -1380,14 +1372,14 @@ impl QueryTableSnapshotSource {
     }
 
     fn map_query_parameter(&self, id: HbkQueryParameterId) -> ContextFact {
-        let parameter = self.snapshot.query_parameter(id);
+        let snapshot = self.catalog.snapshot();
+        let parameter = snapshot.query_parameter(id);
         let owner = self.fact_id(
             FactKind::QueryTable,
-            self.snapshot
-                .string(self.snapshot.query_table(parameter.owner).id),
+            snapshot.string(snapshot.query_table(parameter.owner).id),
         );
         ContextFact {
-            id: self.fact_id(FactKind::QueryParameter, self.snapshot.string(parameter.id)),
+            id: self.fact_id(FactKind::QueryParameter, snapshot.string(parameter.id)),
             name: self.map_name(&parameter.name),
             owner: Some(owner.clone()),
             details: FactDetails::QueryParameter(QueryParameterInfo {
@@ -1396,10 +1388,10 @@ impl QueryTableSnapshotSource {
                 description: None,
                 default_value: parameter
                     .default_value
-                    .map(|value| self.snapshot.string(value).to_string()),
-                source: self.snapshot.source_locale().map(|locale| FactProvenance {
-                    source: self.source_id.clone(),
-                    evidence_id: self.snapshot.string(parameter.id).to_string(),
+                    .map(|value| snapshot.string(value).to_string()),
+                source: self.catalog.source_locale().map(|locale| FactProvenance {
+                    source: self.catalog.source_id().clone(),
+                    evidence_id: snapshot.string(parameter.id).to_string(),
                     locale: Some(locale.to_string()),
                 }),
             }),
@@ -1429,9 +1421,10 @@ impl QueryTableSnapshotSource {
             HbkFactRef::QueryParameter(id) => Some(self.map_query_parameter(id)),
             HbkFactRef::PlatformType(id) => Some(self.map_platform_type_for_relation(id)),
             HbkFactRef::Enum(id) => {
-                let fact = self.snapshot.enum_fact(id);
+                let snapshot = self.catalog.snapshot();
+                let fact = snapshot.enum_fact(id);
                 Some(ContextFact {
-                    id: self.platform_type_id(self.snapshot.string(fact.id)).0,
+                    id: self.platform_type_id(snapshot.string(fact.id)).0,
                     name: self.map_name(&fact.name),
                     owner: None,
                     details: FactDetails::Type(TypeInfo {
@@ -1447,21 +1440,22 @@ impl QueryTableSnapshotSource {
     }
 
     fn map_platform_type_for_relation(&self, id: HbkPlatformTypeId) -> ContextFact {
-        let fact = self.snapshot.platform_type(id);
+        let snapshot = self.catalog.snapshot();
+        let fact = snapshot.platform_type(id);
         ContextFact {
-            id: self.platform_type_id(self.snapshot.string(fact.id)).0,
+            id: self.platform_type_id(snapshot.string(fact.id)).0,
             name: self.map_name(&fact.name),
             owner: None,
-            details: FactDetails::Type(snapshot_platform_type_info(&self.snapshot, id)),
+            details: FactDetails::Type(snapshot_platform_type_info(snapshot, id)),
             relations: Vec::new(),
         }
     }
 
     fn map_name(&self, name: &HbkName) -> Name {
         Name::new(
-            self.snapshot.string(name.primary).to_string(),
+            self.catalog.snapshot().string(name.primary).to_string(),
             name.alias
-                .map(|alias| self.snapshot.string(alias).to_string()),
+                .map(|alias| self.catalog.snapshot().string(alias).to_string()),
         )
     }
 
@@ -1469,7 +1463,7 @@ impl QueryTableSnapshotSource {
         &self,
         key: syntax_helper_search::HbkPlatformTypeTemplateKey,
     ) -> PlatformTypeTemplateKey {
-        snapshot_type_template_key(&self.snapshot, key)
+        snapshot_type_template_key(self.catalog.snapshot(), key)
     }
 
     fn map_type_refs(&self, refs: &[HbkTypeRef]) -> Vec<TypeRef> {
@@ -1480,16 +1474,16 @@ impl QueryTableSnapshotSource {
 
     fn map_type_ref(&self, type_ref: &HbkTypeRef) -> TypeRef {
         TypeRef {
-            name: self.snapshot.string(type_ref.name).to_string(),
+            name: self.catalog.snapshot().string(type_ref.name).to_string(),
             target: match &type_ref.target {
                 HbkTypeRefTarget::Ok(id) => {
-                    TypeRefTarget::Ok(self.platform_type_id(self.snapshot.string(*id)))
+                    TypeRefTarget::Ok(self.platform_type_id(self.catalog.snapshot().string(*id)))
                 }
                 HbkTypeRefTarget::Unresolved => TypeRefTarget::Unresolved,
                 HbkTypeRefTarget::Ambiguous(candidates) => TypeRefTarget::Ambiguous(
                     candidates
                         .iter()
-                        .map(|id| self.platform_type_id(self.snapshot.string(*id)))
+                        .map(|id| self.platform_type_id(self.catalog.snapshot().string(*id)))
                         .collect(),
                 ),
             },
@@ -1520,14 +1514,17 @@ impl QueryTableSnapshotSource {
 impl ContextSource for QueryTableSnapshotSource {
     fn descriptor(&self) -> SourceDescriptor {
         SourceDescriptor {
-            id: self.source_id.clone(),
+            id: self.catalog.source_id().clone(),
             domain: LanguageDomain::QueryLanguage,
-            label: format!("Syntax Assistant query table snapshot {}", self.source_id),
+            label: format!(
+                "Syntax Assistant query table snapshot {}",
+                self.catalog.source_id()
+            ),
         }
     }
 
     fn source_id(&self) -> Option<&SourceId> {
-        Some(&self.source_id)
+        Some(self.catalog.source_id())
     }
 
     fn capabilities(&self) -> SourceCapabilities {
@@ -1547,23 +1544,41 @@ impl ContextSource for QueryTableSnapshotSource {
         query: context_resolver_core::ResolveQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
-        if !context.is_source_active(&self.source_id) {
+        if !context.is_source_active(self.catalog.source_id()) {
             return Ok(ResolveResponse::not_found(
                 "query table snapshot source is not active",
             ));
         }
-        let handle = self.snapshot.worker_handle();
         match query {
             context_resolver_core::ResolveQuery::Id(id) => {
-                if id.source != self.source_id || id.domain != LanguageDomain::QueryLanguage {
+                if id.source != *self.catalog.source_id()
+                    || id.domain != LanguageDomain::QueryLanguage
+                {
                     return Ok(ResolveResponse::not_found(
                         "fact source or domain does not match",
                     ));
                 }
-                let facts = handle
-                    .facts_by_id(&id.local_id)
-                    .filter_map(|fact| self.map_context_fact_for_requested(fact, id.kind))
-                    .collect::<Vec<_>>();
+                let facts = match id.kind {
+                    FactKind::QueryTable => self
+                        .catalog
+                        .query_table_by_id(&id.local_id)
+                        .map(|(id, _)| self.map_query_table(id))
+                        .into_iter()
+                        .collect(),
+                    FactKind::QueryField => self
+                        .catalog
+                        .query_field_by_id(&id.local_id)
+                        .map(|(id, _)| self.map_query_field(id))
+                        .into_iter()
+                        .collect(),
+                    FactKind::QueryParameter => self
+                        .catalog
+                        .query_parameter_by_id(&id.local_id)
+                        .map(|(id, _)| self.map_query_parameter(id))
+                        .into_iter()
+                        .collect(),
+                    _ => Vec::new(),
+                };
                 Ok(response_from_facts(facts, "query table fact not found"))
             }
             context_resolver_core::ResolveQuery::ExactName {
@@ -1580,9 +1595,13 @@ impl ContextSource for QueryTableSnapshotSource {
                 if !matches!(kind, None | Some(FactKind::QueryTable)) {
                     return Ok(ResolveResponse::not_found("query table fact not found"));
                 }
-                let mut ids = handle.query_tables_by_name(name).collect::<Vec<_>>();
-                ids.extend(handle.query_tables_by_identifier(name));
-                ids.extend(handle.query_tables_by_syntax(name));
+                let mut ids = self
+                    .catalog
+                    .query_tables_by_name(name)
+                    .map(|(id, _)| id)
+                    .collect::<Vec<_>>();
+                ids.extend(self.catalog.query_tables_by_identifier(name).map(|(id, _)| id));
+                ids.extend(self.catalog.query_tables_by_syntax(name).map(|(id, _)| id));
                 ids.sort_unstable();
                 ids.dedup();
                 Ok(response_from_facts(
@@ -1629,34 +1648,41 @@ impl ContextSource for QueryTableSnapshotSource {
         query: GlobalContextQuery<'_>,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ResolvedGlobalContext>, ResolveError> {
-        if !context.is_source_active(&self.source_id) {
+        if !context.is_source_active(self.catalog.source_id()) {
             return Ok(ResolveResponse::not_found(
                 "query table snapshot source is not active",
             ));
         }
         let GlobalContextQuery::Language { language, sources } = query;
         if language != GlobalContextLanguage::Sdbl
-            || (!sources.is_empty() && !sources.iter().any(|source| source == &self.source_id))
+            || (!sources.is_empty()
+                && !sources
+                    .iter()
+                    .any(|source| source == self.catalog.source_id()))
         {
             return Ok(ResolveResponse::not_found(
                 "query table source does not expose requested global context",
             ));
         }
-        let handle = self.snapshot.worker_handle();
-        let facts = handle
-            .query_table_ids()
-            .map(|id| self.map_query_table(id))
-            .chain(handle.query_field_ids().map(|id| self.map_query_field(id)))
-            .chain(
-                handle
-                    .query_parameter_ids()
-                    .map(|id| self.map_query_parameter(id)),
-            )
+        let facts = self
+            .catalog
+            .query_tables()
+            .map(|(id, _)| self.map_query_table(id))
+            .chain(self.catalog.query_tables().flat_map(|(table, _)| {
+                self.catalog
+                    .query_fields(table)
+                    .map(|(id, _)| self.map_query_field(id))
+            }))
+            .chain(self.catalog.query_tables().flat_map(|(table, _)| {
+                self.catalog
+                    .query_parameters(table)
+                    .map(|(id, _)| self.map_query_parameter(id))
+            }))
             .collect::<Vec<_>>();
         Ok(ResolveResponse::ok(vec![ResolvedGlobalContext {
             id: self.fact_id(FactKind::Global, "global_context:sdbl:query_tables"),
             language,
-            sources: vec![self.source_id.clone()],
+            sources: vec![self.catalog.source_id().clone()],
             methods: Vec::new(),
             properties: Vec::new(),
             facts,
@@ -1669,8 +1695,8 @@ impl ContextSource for QueryTableSnapshotSource {
         kind: RelationKind,
         context: &ResolveContext<'_>,
     ) -> Result<ResolveResponse<ContextFact>, ResolveError> {
-        if !context.is_source_active(&self.source_id)
-            || source.source != self.source_id
+        if !context.is_source_active(self.catalog.source_id())
+            || source.source != *self.catalog.source_id()
             || source.domain != LanguageDomain::QueryLanguage
         {
             return Ok(ResolveResponse::not_found(
@@ -1686,7 +1712,7 @@ impl ContextSource for QueryTableSnapshotSource {
                 ));
             }
         };
-        let handle = self.snapshot.worker_handle();
+        let handle = self.catalog.snapshot().worker_handle();
         let Some(source_ref) = handle
             .facts_by_id(&source.local_id)
             .into_iter()

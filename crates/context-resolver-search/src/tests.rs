@@ -2326,6 +2326,232 @@ mod tests {
     }
 
     #[test]
+    fn sdbl_catalog_exposes_borrowed_tables_fields_parameters_and_selectors() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<crate::HbkSdblQueryCatalog>();
+
+        let query_source = SourceId::new("custom-query");
+        let platform_source = SourceId::new("custom-platform");
+        let index_path = fixture_index_path("sdbl-catalog-direct.sqlite");
+        let index = open_index(&index_path);
+        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        drop(index);
+        std::fs::remove_file(&index_path).expect("catalog must not need SQLite file");
+
+        let catalog = crate::HbkSdblQueryCatalog::with_source_ids(
+            snapshot,
+            query_source.clone(),
+            platform_source.clone(),
+        );
+        assert_eq!(catalog.source_id(), &query_source);
+        assert_eq!(catalog.platform_source_id(), &platform_source);
+        assert_eq!(catalog.source_locale(), Some("ru"));
+
+        let (table_id, table) = catalog
+            .query_table_by_id("query_table:ОсновнаяТаблица")
+            .expect("query table must resolve by id");
+        assert_eq!(catalog.string(table.id), "query_table:ОсновнаяТаблица");
+        assert!(catalog.query_tables().any(|(id, _)| id == table_id));
+        assert_eq!(
+            catalog
+                .query_tables_by_name("Основная таблица")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![table_id]
+        );
+        let by_temporary_table_name = {
+            let name = String::from("Основная таблица");
+            catalog.query_tables_by_name(&name)
+        };
+        assert_eq!(
+            by_temporary_table_name
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![table_id]
+        );
+        assert_eq!(
+            catalog
+                .query_tables_by_identifier("ОсновнаяТаблица")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![table_id]
+        );
+        assert_eq!(
+            catalog
+                .query_tables_by_syntax("ОсновнаяТаблица.<Имя таблицы>")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![table_id]
+        );
+
+        let fields = catalog.query_fields(table_id).collect::<Vec<_>>();
+        assert_eq!(fields.len(), 2);
+        let (period_field_id, period_field) = catalog
+            .query_field_by_id("query_table_field:query_table:ОсновнаяТаблица:Период")
+            .expect("query field must resolve by id");
+        assert_eq!(catalog.string(period_field.id), "query_table_field:query_table:ОсновнаяТаблица:Период");
+        assert_eq!(period_field.owner, table_id);
+        assert!(fields.iter().any(|(id, _)| *id == period_field_id));
+        assert_eq!(
+            catalog
+                .query_field_by_name(table_id, "Период")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![period_field_id]
+        );
+        let by_temporary_field_name = {
+            let name = String::from("Период");
+            catalog.query_field_by_name(table_id, &name)
+        };
+        assert_eq!(
+            by_temporary_field_name
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![period_field_id]
+        );
+
+        let parameters = catalog.query_parameters(table_id).collect::<Vec<_>>();
+        assert_eq!(parameters.len(), 1);
+        let (date_parameter_id, date_parameter) = catalog
+            .query_parameter_by_id("query_table_parameter:query_table:ОсновнаяТаблица:Дата")
+            .expect("query parameter must resolve by id");
+        assert_eq!(
+            catalog.string(date_parameter.id),
+            "query_table_parameter:query_table:ОсновнаяТаблица:Дата"
+        );
+        assert_eq!(date_parameter.owner, table_id);
+        assert_eq!(parameters[0].0, date_parameter_id);
+        assert_eq!(
+            catalog
+                .query_parameter_by_name(table_id, "Дата")
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![date_parameter_id]
+        );
+        let by_temporary_parameter_name = {
+            let name = String::from("Дата");
+            catalog.query_parameter_by_name(table_id, &name)
+        };
+        assert_eq!(
+            by_temporary_parameter_name
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>(),
+            vec![date_parameter_id]
+        );
+
+        for (local_id, expected) in [
+            (
+                "query_table:Справочник",
+                Some("metadata.sdbl.query-source.catalog"),
+            ),
+            (
+                "query_table:Документ",
+                Some("metadata.sdbl.query-source.document"),
+            ),
+            (
+                "query_table:РегистрСведений",
+                Some("metadata.sdbl.query-source.information-register"),
+            ),
+            (
+                "query_table:РегистрНакопления",
+                Some("metadata.sdbl.query-source.accumulation-register"),
+            ),
+            (
+                "query_table:РегистрБухгалтерии",
+                Some("metadata.sdbl.query-source.accounting-register"),
+            ),
+            (
+                "query_table:РегистрРасчета",
+                Some("metadata.sdbl.query-source.calculation-register"),
+            ),
+            ("query_table:БизнесПроцесс", None),
+        ] {
+            let (id, _) = catalog
+                .query_table_by_id(local_id)
+                .expect("selector table must resolve");
+            assert_eq!(catalog.metadata_source_selector(id), expected);
+        }
+        assert_eq!(
+            catalog.metadata_source_selector_for_identifier(Some("Unknown")),
+            None
+        );
+    }
+
+    #[test]
+    fn sdbl_catalog_and_sql_projection_gate_selectors_by_locale() {
+        let path = temp_path("sdbl-catalog-non-ru-selector.sqlite");
+        let mut builder = SearchIndexBuilder::new();
+        builder
+            .query_table(model::QueryTable {
+                identity: Some("query_table:Справочник".to_string()),
+                name: "Catalog table".to_string(),
+                syntax: Some(name("Справочник.<Имя справочника>", Some("Catalog.<Catalog name>"))),
+                identifier: Some("Справочник".to_string()),
+                semantic: model::SemanticContext::new(
+                    model::BranchKind::QueryTables,
+                    model::RecordFamily::QueryTable,
+                ),
+                table_role: model::QueryTableRole::Primary,
+                description: Some("Non-ru selector fixture.".to_string()),
+                source: source_ref_with_locale("query-table-catalog-en", "en"),
+            })
+            .expect("non-ru query table must sink");
+        build_index_from_builder(&path, &metadata_with_locale("en"), builder)
+            .expect("non-ru query table index must build");
+
+        let index = SearchIndex::open_read_only(&path).expect("non-ru index must open");
+        let sql_adapter = LanguageSearchSource::new_query_tables(
+            "shcntx-query",
+            fixture_source(),
+            index,
+        );
+        let table_id = FactId::new(
+            SourceId::new("shcntx-query"),
+            LanguageDomain::QueryLanguage,
+            FactKind::QueryTable,
+            "query_table:Справочник",
+        );
+        let response = sql_adapter
+            .resolve(
+                context_resolver_core::ResolveQuery::Id(&table_id),
+                &ResolveContext::all(),
+            )
+            .expect("non-ru SQL query table lookup must not fail");
+        let FactDetails::QueryTable(info) = &response.facts[0].details else {
+            panic!("non-ru SQL query table must expose table details");
+        };
+        assert_eq!(info.sdbl_metadata_source_selector, None);
+
+        let snapshot = Arc::new(
+            HbkFactSnapshot::from_index(&sql_adapter.index).expect("non-ru snapshot must build"),
+        );
+        let catalog = crate::HbkSdblQueryCatalog::new(snapshot);
+        let (catalog_table_id, _) = catalog
+            .query_table_by_id("query_table:Справочник")
+            .expect("non-ru catalog table must resolve");
+        assert_eq!(catalog.source_locale(), Some("en"));
+        assert_eq!(catalog.metadata_source_selector(catalog_table_id), None);
+        assert_eq!(
+            crate::hbk_catalogs::sdbl::sdbl_metadata_source_selector(
+                Some("ru"),
+                Some("Справочник")
+            ),
+            Some("metadata.sdbl.query-source.catalog")
+        );
+        assert_eq!(
+            crate::hbk_catalogs::sdbl::sdbl_metadata_source_selector(
+                Some("en"),
+                Some("Справочник")
+            ),
+            None
+        );
+        assert_eq!(
+            crate::hbk_catalogs::sdbl::sdbl_metadata_source_selector(Some("ru"), Some("Unknown")),
+            None
+        );
+    }
+
+    #[test]
     fn query_table_snapshot_source_exposes_templates_fields_parameters_and_type_refs() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<QueryTableSnapshotSource>();
@@ -3974,9 +4200,13 @@ mod tests {
     }
 
     fn source_ref(title: &str) -> model::SyntaxHelperSource {
+        source_ref_with_locale(title, "ru")
+    }
+
+    fn source_ref_with_locale(title: &str, locale: &str) -> model::SyntaxHelperSource {
         model::SyntaxHelperSource {
-            hbk_path: PathBuf::from("/fixtures/shcntx_ru.hbk"),
-            locale: "ru".to_string(),
+            hbk_path: PathBuf::from(format!("/fixtures/shcntx_{locale}.hbk")),
+            locale: locale.to_string(),
             toc_path: Some(title.to_string()),
             html_path: format!("{title}.html"),
             page_title: title.to_string(),
@@ -3984,10 +4214,14 @@ mod tests {
     }
 
     fn metadata() -> IndexMetadata {
+        metadata_with_locale("ru")
+    }
+
+    fn metadata_with_locale(locale: &str) -> IndexMetadata {
         IndexMetadata {
-            locale: "ru".to_string(),
-            source_locale: "ru".to_string(),
-            source_hbk: "/fixtures/shcntx_ru.hbk".to_string(),
+            locale: locale.to_string(),
+            source_locale: locale.to_string(),
+            source_hbk: format!("/fixtures/shcntx_{locale}.hbk"),
             source_extraction_schema_version: 11,
         }
     }
