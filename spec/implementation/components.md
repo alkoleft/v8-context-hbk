@@ -862,9 +862,16 @@ Expected source-neutral public concepts:
 
 The resolver core is implemented as `context-resolver-core`, a separate crate with no HBK, SQLite,
 CLI or parser dependencies. The platform and first language-domain adapters are implemented in
-`context-resolver-search`, a sibling adapter crate over `SearchIndex`; `syntax-helper-search`
-remains the HBK/Syntax Assistant query implementation and not the generic cross-domain resolver
-model.
+`context-resolver-search`. Its explicit `PlatformSearchSource`/`LanguageSearchSource` family
+adapts `SearchIndex` for CLI, debug, index-inspection and local sequential flows. Its snapshot
+family adapts the provider-owned `HbkFactSnapshot` without a SQLite fallback.
+
+The snapshot family additionally exposes `HbkBslContextCatalog`, a narrow immutable handle over
+the existing snapshot arenas. It lends typed HBK IDs and records for BSL platform context,
+generated-self owner members/callables, module events, globals and typed availability.
+`PlatformSnapshotSource` owns this catalog handle and projects borrowed records into generic
+resolver DTOs only at the `ContextSource` compatibility boundary. `syntax-helper-search` remains
+the sole HBK snapshot storage/read owner and not the generic cross-domain resolver model.
 
 The first resolver API must keep BSL language types and query-language types separate from platform
 API types. Cross-domain links require explicit relations; same-name facts across domains or sources

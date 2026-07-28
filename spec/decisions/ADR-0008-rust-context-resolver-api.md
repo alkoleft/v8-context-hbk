@@ -300,3 +300,14 @@ catalog-covered selector behavior must not be copied into analyzer code.
 
 The accepted implementation contract and consumer inventory are recorded by
 OpenSpec change `expose-borrowed-hbk-domain-catalogs`.
+
+The first BSL catalog slice implemented this refinement on 2026-07-28.
+`PlatformSnapshotSource` now stores one `HbkBslContextCatalog`, catalog-covered
+acquisition returns existing typed snapshot IDs/records, and generic resolver
+DTOs are projected only by the compatibility adapter. The identical
+preimplementation/after compatibility probe preserved every observable result
+count and the 0.10 s warm command wall time; the direct catalog and snapshot
+adapter both completed after removal of the source SQLite file. The exact
+probe and measurements are retained under OpenSpec change
+`expose-borrowed-hbk-domain-catalogs`; SDBL catalog completion remains a
+separate later slice.

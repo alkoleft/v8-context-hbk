@@ -1095,6 +1095,211 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "manual measurement probe for borrowed BSL catalog OpenSpec batch"]
+    fn bsl_catalog_measurement_probe() {
+        let source = fixture_source();
+        let index_path = fixture_index_path("bsl-catalog-measurement-probe.sqlite");
+        let snapshot =
+            Arc::new(HbkFactSnapshot::from_path(&index_path).expect("snapshot must build"));
+        std::fs::remove_file(&index_path).expect("measurement probe must not need SQLite file");
+        println!("compat_deleted_sqlite_success=1");
+        compat_adapter_sequence(Arc::clone(&snapshot), source.clone());
+        println!("direct_deleted_sqlite_success=1");
+        direct_bsl_catalog_sequence(snapshot, source);
+    }
+
+    fn compat_adapter_sequence(snapshot: Arc<HbkFactSnapshot>, source: SourceId) {
+        let adapter = PlatformSnapshotSource::with_source_id(snapshot, source.clone());
+        let settings = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:НастройкиКомпоновкиДанных",
+        ));
+        let filter = TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            "platform_type:ОтборКомпоновкиДанных",
+        ));
+
+        let global_context = adapter
+            .global_context(
+                GlobalContextQuery::Language {
+                    language: GlobalContextLanguage::Bsl,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("compat global context lookup must not fail");
+        assert_eq!(global_context.status, ResolveStatus::Ok);
+        let global_scope = global_context
+            .facts
+            .first()
+            .expect("compat global context must return one scope");
+
+        let generated_self = adapter
+            .resolve_type(
+                TypeLookup::GeneratedSelfTemplate {
+                    source: Some(&source),
+                    domain: Some(LanguageDomain::PlatformApi),
+                    generated_self_role: "metadata.generated-self.catalog-manager",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("compat generated-self lookup must not fail");
+        assert_eq!(generated_self.status, ResolveStatus::Ok);
+
+        let exact_members = adapter
+            .members(
+                &settings,
+                MemberQuery {
+                    name: Some("Отбор"),
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("compat exact member lookup must not fail");
+        assert_eq!(exact_members.status, ResolveStatus::Ok);
+        let exact_member = exact_members
+            .facts
+            .first()
+            .expect("compat exact member must resolve");
+
+        let all_members = adapter
+            .members(
+                &settings,
+                MemberQuery {
+                    name: None,
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("compat member enumeration must not fail");
+        assert_eq!(all_members.status, ResolveStatus::Ok);
+
+        let callable = adapter
+            .callable(
+                CallableLookup::OwnerName {
+                    owner: Some(&filter),
+                    name: "Найти",
+                },
+                &ResolveContext::all(),
+            )
+            .expect("compat callable lookup must not fail");
+        assert_eq!(callable.status, ResolveStatus::Ok);
+
+        let module_context = adapter
+            .module_context(
+                ModuleContextQuery {
+                    language: GlobalContextLanguage::Bsl,
+                    domain: LanguageDomain::PlatformApi,
+                    kind: ModuleContextKind::Form,
+                    sources: &[],
+                },
+                &ResolveContext::all(),
+            )
+            .expect("compat module context lookup must not fail");
+        assert_eq!(module_context.status, ResolveStatus::Ok);
+        let module_scope = module_context
+            .facts
+            .first()
+            .expect("compat module context must return one scope");
+
+        let module_event = adapter
+            .module_context_member(
+                ModuleContextMemberLookup {
+                    language: GlobalContextLanguage::Bsl,
+                    domain: LanguageDomain::PlatformApi,
+                    module_kind: ModuleContextKind::Form,
+                    name: "ПриОткрытии",
+                    kind: MemberQueryKind::Event,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("compat exact module event lookup must not fail");
+        assert_eq!(module_event.status, ResolveStatus::Ok);
+
+        let availability = adapter
+            .availability(&exact_member.id.0, &ResolveContext::all())
+            .expect("compat member availability lookup must not fail");
+        assert_eq!(availability.status, ResolveStatus::Ok);
+        let availability_fact = availability
+            .facts
+            .first()
+            .expect("compat availability must return one fact");
+
+        println!("compat_global_context_invocations=1");
+        println!("compat_global_context_responses={}", global_context.facts.len());
+        println!("compat_global_methods={}", global_scope.methods.len());
+        println!("compat_global_properties={}", global_scope.properties.len());
+        println!("compat_generated_self_responses={}", generated_self.facts.len());
+        println!("compat_exact_member_responses={}", exact_members.facts.len());
+        println!("compat_member_enum_responses={}", all_members.facts.len());
+        println!("compat_callable_responses={}", callable.facts.len());
+        println!("compat_module_context_responses={}", module_context.facts.len());
+        println!("compat_module_context_methods={}", module_scope.methods.len());
+        println!("compat_module_context_properties={}", module_scope.properties.len());
+        println!("compat_module_context_events={}", module_scope.events.len());
+        println!("compat_module_event_responses={}", module_event.facts.len());
+        println!("compat_availability_responses={}", availability.facts.len());
+        println!(
+            "compat_availability_contexts={}",
+            availability_fact.availability.contexts.len()
+        );
+        println!(
+            "compat_availability_since_present={}",
+            usize::from(availability_fact.availability.since.is_some())
+        );
+    }
+
+    fn direct_bsl_catalog_sequence(snapshot: Arc<HbkFactSnapshot>, source: SourceId) {
+        let catalog = HbkBslContextCatalog::with_source_id(snapshot, source);
+        let (settings_id, _) = catalog
+            .platform_type_by_id("platform_type:НастройкиКомпоновкиДанных")
+            .expect("direct settings type must resolve");
+        let (filter_id, _) = catalog
+            .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
+            .expect("direct filter type must resolve");
+
+        let generated_self = catalog
+            .generated_self_types("metadata.generated-self.catalog-manager")
+            .count();
+        let (exact_member_id, _) = catalog
+            .member_by_name(settings_id, "Отбор")
+            .next()
+            .expect("direct exact member must resolve");
+        let exact_members = 1;
+        let all_members = catalog.members(settings_id).count();
+        let callables = catalog.callable_by_name(filter_id, "Найти").count();
+        let global_methods = catalog.global_methods().count();
+        let global_properties = catalog.global_properties().count();
+        let module_events = catalog
+            .module_context_events(ModuleContextKind::Form)
+            .count();
+        let exact_module_events = catalog
+            .module_context_event_by_name(ModuleContextKind::Form, "ПриОткрытии")
+            .count();
+        let (availability_contexts, available_since) =
+            catalog.member_availability(exact_member_id);
+
+        println!("direct_source_locale_present={}", usize::from(catalog.source_locale().is_some()));
+        println!("direct_generated_self_records={generated_self}");
+        println!("direct_exact_member_records={exact_members}");
+        println!("direct_member_enum_records={all_members}");
+        println!("direct_callable_records={callables}");
+        println!("direct_global_method_records={global_methods}");
+        println!("direct_global_property_records={global_properties}");
+        println!("direct_module_event_records={module_events}");
+        println!("direct_exact_module_event_records={exact_module_events}");
+        println!("direct_availability_contexts={}", availability_contexts.len());
+        println!(
+            "direct_availability_since_present={}",
+            usize::from(available_since.is_some())
+        );
+    }
+
+    #[test]
     fn snapshot_resolver_returns_not_found_for_non_migrated_bsl_language_without_sql_fallback() {
         let platform_source = fixture_source();
         let query_source = SourceId::new("shcntx-query");

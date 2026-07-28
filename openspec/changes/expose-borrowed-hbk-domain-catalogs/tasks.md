@@ -33,8 +33,8 @@ Prohibited scope for every batch: do not add new arenas, indexes, caches, DTO mi
 - [x] 2.6 Delete duplicate BSL snapshot adapter behavior made obsolete by the first catalog slice, specifically direct loops/mapping branches in `PlatformSnapshotSource` that re-own catalog-covered global/module-event traversal, generated-self template lookup, owner member/callable traversal, module-context member/event traversal and typed availability; retain only projection helpers needed for generic DTO output, and retain the single raw module-role selector translation in `context-resolver-core`.
 - [x] 2.7 Preserve `PlatformSearchSource::{resolve,resolve_type,members,callable,global_context,module_context,module_context_member,module_context_members,availability}` as explicit SQL/SearchIndex behavior for non-migrated CLI/debug/index-inspection and local sequential resolver flows; add tests proving snapshot catalog paths do not call or require these SQL flows.
 - [x] 2.8 Verify first BSL slice independently with `cargo test -p syntax-helper-search read_handle`, `cargo test -p context-resolver-search bsl_catalog -- --nocapture`, `cargo test -p context-resolver-search tests::platform_snapshot_source_resolves_hot_paths_without_search_index_backend -- --exact`, `cargo test -p context-resolver-search tests::platform_adapter_exposes_bsl_global_context_and_ownerless_global_callable -- --exact`, `cargo test -p context-resolver-search tests::platform_adapter_exposes_provider_backed_module_context_events -- --exact`, and `cargo test -p context-resolver-search tests::platform_adapters_enumerate_module_members_without_context_snapshot_filtering -- --exact`.
-- [ ] 2.9 Capture after counters and wall time for the BSL slice, comparing owned DTO materializations, `global_context` calls, projection counts, SQL/SearchIndex calls, and parity fixture wall time against 1.6.
-- [ ] 2.10 Run a fresh review for the BSL slice, update ADR/docs/tasks with accepted evidence, then commit the independent BSL batch before starting SDBL implementation.
+- [x] 2.9 Run the identical compatibility-adapter probe at the preimplementation commit and after the BSL slice; compare observable returned owned DTO/projection counts, `global_context` invocations and wall time, record deleted-SQLite/no-`SearchIndex`-handle evidence without mislabelling it as an instrumented SQL-call counter, and report the direct borrowed catalog sequence separately from the baseline comparison.
+- [x] 2.10 Run a fresh review for the BSL slice, update ADR/docs/tasks with accepted evidence, then commit the independent BSL batch before starting SDBL implementation.
 
 Completion evidence (2026-07-28): `HbkBslContextCatalog` is the only new public
 BSL semantic handle and returns existing `syntax-helper-search` IDs/records and
@@ -49,10 +49,15 @@ uses in `PlatformSnapshotSource` are enum/relation/projection glue outside the
 first BSL catalog slice; the retained SQL/SearchIndex adapters stay explicit in
 `PlatformSearchSource`. The direct catalog no-fallback test deletes the source
 SQLite file after snapshot construction and still resolves BSL records, events
-and availability. `measurements.md` records structural after-counts and focused
-wall times; task 2.9 and the broader task 1.6 remain open until the same
-compatibility-adapter probe is run at the preimplementation commit and after
-this slice, with the direct catalog sequence reported separately.
+and availability. `measurements.md` records structural after-counts, focused
+wall times and an identical `b0841e6`/after compatibility probe. Every
+observable returned DTO/projection count stayed equal, warm wall time remained
+0.10 s and the after-only direct sequence returned borrowed IDs/records without
+collecting them into owned vectors. The broader task 1.6 remains open for SDBL
+and for any allocator-level, `worker_handle`-invocation or instrumented
+SQL-call claims. Fresh implementation and evidence reviews completed with no
+findings; `spec/implementation/components.md`, ADR-0008 and active T178 record
+the implemented BSL boundary and the still-open SDBL slice.
 
 ## 3. First SDBL Catalog Slice
 

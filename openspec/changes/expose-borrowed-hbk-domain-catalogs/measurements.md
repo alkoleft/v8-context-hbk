@@ -107,3 +107,91 @@ All five commands passed. These measurements prove the BSL snapshot path does
 not require the SQLite file and retains the baseline smoke-test wall time. They
 do not close task 1.6's broader runtime probe requirement for distinguishing
 owned DTO projection counts and read-handle calls across both BSL and SDBL.
+
+### Controlled BSL compatibility probe
+
+The durable baseline patch is
+`artifacts/bsl-compat-baseline.patch`. It applies to commit `b0841e6` and adds
+the exact same `compat_adapter_sequence` helper used by the current ignored
+test. A normalized source comparison was not needed: direct `diff` of the two
+helper bodies returned no differences. Both runs use
+`bsl-catalog-measurement-probe.sqlite`, remove that SQLite file after building
+the snapshot and then construct `PlatformSnapshotSource` from the shared
+`Arc<HbkFactSnapshot>`.
+
+This is an intentionally duplicated differential-measurement helper, not a
+second production implementation: the patch exists only to run the unchanged
+public compatibility workload against the fixed historical commit.
+
+Baseline:
+
+```text
+git worktree add --detach <temporary-worktree> b0841e6
+git apply <catalog-change-worktree>/openspec/changes/expose-borrowed-hbk-domain-catalogs/artifacts/bsl-compat-baseline.patch
+/usr/bin/time -f 'baseline_elapsed_seconds=%e baseline_max_rss_kib=%M' \
+  cargo test -p context-resolver-search bsl_compat_measurement_probe \
+  -- --ignored --nocapture
+```
+
+After:
+
+```text
+/usr/bin/time -f 'after_elapsed_seconds=%e after_max_rss_kib=%M' \
+  cargo test -p context-resolver-search bsl_catalog_measurement_probe \
+  -- --ignored --nocapture
+```
+
+The compatibility counts are observable returned owned DTO/projection values,
+not allocator-level construction counters:
+
+| Compatibility metric | `b0841e6` | BSL catalog slice |
+| --- | ---: | ---: |
+| `compat_deleted_sqlite_success` | 1 | 1 |
+| `compat_global_context_invocations` | 1 | 1 |
+| `compat_global_context_responses` | 1 | 1 |
+| `compat_global_methods` | 3 | 3 |
+| `compat_global_properties` | 1 | 1 |
+| `compat_generated_self_responses` | 1 | 1 |
+| `compat_exact_member_responses` | 1 | 1 |
+| `compat_member_enum_responses` | 1 | 1 |
+| `compat_callable_responses` | 1 | 1 |
+| `compat_module_context_responses` | 1 | 1 |
+| `compat_module_context_methods` | 3 | 3 |
+| `compat_module_context_properties` | 1 | 1 |
+| `compat_module_context_events` | 1 | 1 |
+| `compat_module_event_responses` | 1 | 1 |
+| `compat_availability_responses` | 1 | 1 |
+| `compat_availability_contexts` | 0 | 0 |
+| `compat_availability_since_present` | 0 | 0 |
+| Warm command wall time | 0.10 s | 0.10 s |
+| Command max RSS | 39,524 KiB | 39,400 KiB |
+
+The direct catalog sequence is after-only and is not compared with the
+preimplementation generic adapter:
+
+| Direct borrowed metric | Count |
+| --- | ---: |
+| `direct_deleted_sqlite_success` | 1 |
+| `direct_source_locale_present` | 1 |
+| `direct_generated_self_records` | 1 |
+| `direct_exact_member_records` | 1 |
+| `direct_member_enum_records` | 1 |
+| `direct_callable_records` | 1 |
+| `direct_global_method_records` | 3 |
+| `direct_global_property_records` | 1 |
+| `direct_module_event_records` | 1 |
+| `direct_exact_module_event_records` | 1 |
+| `direct_availability_contexts` | 0 |
+| `direct_availability_since_present` | 0 |
+
+`catalog_generic_dto_surface=absent` is structural API evidence, not a runtime
+counter: the direct helper consumes only typed IDs and borrowed HBK records and
+counts iterators without collecting them into owned vectors. At `b0841e6`,
+`PlatformSnapshotSource` stored only `SourceId` plus `Arc<HbkFactSnapshot>`;
+after the slice it stores only `HbkBslContextCatalog`. Neither shape contains a
+`SearchIndex` handle, so the deleted-file success proves SQLite is not required
+by this snapshot path. It is not reported as an instrumented SQL-call count.
+
+Task 1.6 remains open for the SDBL baseline/after sequence and for any claimed
+allocator-level, `worker_handle`-invocation or SQL-call counters. The BSL slice
+does not add production instrumentation to manufacture those numbers.

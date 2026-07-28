@@ -32,7 +32,7 @@ type-reference conclusions live in
 `implementation/performance-baseline-t13.md`, `implementation/performance-variants.md` and
 `decisions/`.
 
-Current first unchecked task: none. Add a new task before implementing new scope.
+Current first unchecked task: T178.
 
 ## Loop Rule
 
@@ -50,6 +50,37 @@ Current first unchecked task: none. Add a new task before implementing new scope
 - Do not create empty commits.
 
 ## Active Tasks
+
+### [ ] T178. Expose borrowed HBK BSL and SDBL domain catalogs
+
+References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,
+`implementation/components.md`, ADR-0008, OpenSpec change
+`expose-borrowed-hbk-domain-catalogs`.
+
+Scope and guard:
+
+- Expose narrow `HbkBslContextCatalog` and `HbkSdblQueryCatalog` handles over
+  the existing provider-owned `Arc<HbkFactSnapshot>` arenas, returning existing
+  typed IDs and borrowed records without a second store, record mirror, generic
+  catalog trait or SQL fallback.
+- Keep `ContextResolver` and generic owned DTO projection as the compatibility
+  boundary for source-neutral composition. Keep explicit
+  `PlatformSearchSource`/`LanguageSearchSource` flows for CLI, debug and index
+  inspection. Raw metadata module-role translation remains in
+  `context-resolver-core`.
+- Verify each BSL and SDBL slice independently with identical compatibility
+  probes, deleted-SQLite behavior, point/enumeration parity and absence guards
+  before downstream analyzer handoff.
+
+Progress:
+
+- The read-handle lifetime foundation and first BSL catalog slice are complete.
+  `HbkBslContextCatalog` is the BSL acquisition owner,
+  `PlatformSnapshotSource` projects at the generic boundary, and the
+  `b0841e6`/after compatibility probe preserves every observable result count
+  and the 0.10 s warm command wall time.
+- SDBL catalog implementation, combined workspace verification, versioning and
+  downstream handoff remain open under the named OpenSpec change.
 
 ### [x] T177. Eliminate duplicate snapshot-interner string ownership
 
