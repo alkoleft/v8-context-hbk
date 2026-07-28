@@ -9,14 +9,15 @@ documented initial corpus.
 #### Scenario: Certified property source roles are classified
 
 - **WHEN** a caller supplies `metadata.form-member.attribute` or
-  `metadata.generated-member.property`
+  `metadata.generated-member.property` or
+  `metadata.generated-self-alias.property`
 - **THEN** HBK returns `MemberQueryKind::Property`
 - **AND** the caller does not map a metadata role to a BSL kind
 
 #### Scenario: Selector is not in the accepted corpus
 
 - **WHEN** a caller supplies an unknown selector, a form command/element/event
-  selector or an unsupported generated-member selector
+  selector or an unsupported generated selector
 - **THEN** HBK returns normal absence
 - **AND** it does not infer a kind from spelling, source data or a template
 

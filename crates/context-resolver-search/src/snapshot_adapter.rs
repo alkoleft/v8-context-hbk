@@ -498,7 +498,6 @@ impl ContextSource for PlatformSnapshotSource {
                 }
                 let facts = handle
                     .facts_by_id(&id.local_id)
-                    .into_iter()
                     .filter_map(|fact| self.map_context_fact_for_requested(fact, id.kind))
                     .collect::<Vec<_>>();
                 Ok(response_from_facts(facts, "platform fact not found"))
@@ -521,12 +520,10 @@ impl ContextSource for PlatformSnapshotSource {
                 }
                 let facts = handle
                     .platform_types_by_name(name)
-                    .into_iter()
                     .map(|id| self.map_platform_type(id))
                     .chain(
                         handle
                             .enums_by_name(name)
-                            .into_iter()
                             .map(|id| self.map_enum_as_type(id)),
                     )
                     .collect::<Vec<_>>();
@@ -583,9 +580,8 @@ impl ContextSource for PlatformSnapshotSource {
                 } else {
                     handle
                         .platform_types_by_name(name)
-                        .into_iter()
                         .map(|id| self.platform_type_from_id(id))
-                        .chain(handle.enums_by_name(name).into_iter().map(|id| {
+                        .chain(handle.enums_by_name(name).map(|id| {
                             let fact = self.map_enum_as_type(id);
                             let FactDetails::Type(info) = fact.details.clone() else {
                                 unreachable!("enum-as-type maps to type info");
@@ -609,7 +605,6 @@ impl ContextSource for PlatformSnapshotSource {
                 } else {
                     handle
                         .platform_types_by_template_key(&key.family, &key.variant)
-                        .into_iter()
                         .map(|id| self.platform_type_from_id(id))
                         .collect()
                 }
@@ -625,7 +620,6 @@ impl ContextSource for PlatformSnapshotSource {
                 {
                     handle
                         .platform_types_by_template_key(&key.family, &key.variant)
-                        .into_iter()
                         .map(|id| self.platform_type_from_id(id))
                         .collect()
                 } else {
@@ -691,7 +685,6 @@ impl ContextSource for PlatformSnapshotSource {
                 } else {
                     handle
                         .facts_by_id(&id.0.local_id)
-                        .into_iter()
                         .filter_map(|fact| match fact {
                             HbkFactRef::Callable(id) => Some(self.map_callable(id)),
                             _ => None,
@@ -735,7 +728,6 @@ impl ContextSource for PlatformSnapshotSource {
                             name,
                             Some(HbkGlobalFactKind::Method),
                         )
-                        .into_iter()
                         .filter_map(|id| self.snapshot.global_fact(id).callable)
                         .map(|id| self.map_callable(id))
                         .collect()
@@ -823,7 +815,6 @@ impl ContextSource for PlatformSnapshotSource {
                 "bsl",
                 search_key.trim_start_matches("module_context:"),
             )
-            .into_iter()
             .map(|id| {
                 let mut callable = self.map_callable(id);
                 callable.fact.owner = Some(context_id.clone());
@@ -961,7 +952,6 @@ impl ContextSource for PlatformSnapshotSource {
                     "bsl",
                     search_key.trim_start_matches("module_context:"),
                 )
-                .into_iter()
                 .map(|id| {
                     let mut callable = self.map_callable(id);
                     callable.fact.owner = Some(context_id.clone());
@@ -1148,7 +1138,6 @@ impl QueryTableSnapshotSource {
         let handle = self.snapshot.worker_handle();
         let facts = handle
             .query_fields_by_name(table_id, name)
-            .into_iter()
             .map(|id| self.map_query_field(id))
             .collect::<Vec<_>>();
         Ok(response_from_facts(facts, "query field fact not found"))
@@ -1166,7 +1155,6 @@ impl QueryTableSnapshotSource {
         let handle = self.snapshot.worker_handle();
         let facts = handle
             .query_parameters_by_name(table_id, name)
-            .into_iter()
             .map(|id| self.map_query_parameter(id))
             .collect::<Vec<_>>();
         Ok(response_from_facts(facts, "query parameter fact not found"))
@@ -1445,7 +1433,6 @@ impl ContextSource for QueryTableSnapshotSource {
                 }
                 let facts = handle
                     .facts_by_id(&id.local_id)
-                    .into_iter()
                     .filter_map(|fact| self.map_context_fact_for_requested(fact, id.kind))
                     .collect::<Vec<_>>();
                 Ok(response_from_facts(facts, "query table fact not found"))
