@@ -9,6 +9,11 @@ The ownership boundary belongs upstream in HBK: BSL availability/module-selector
 - Add `HbkBslContextCatalog` and `HbkSdblQueryCatalog` from `context-resolver-search` over the existing HBK snapshot/read handle.
 - Return `Arc` catalog handles whose methods return borrowed HBK records tied to the underlying snapshot/read-handle lifetime.
 - Expose complete BSL-context capability through `HbkBslContextCatalog`: generated-self facts, owner members/callables, module members/events, globals, and typed availability.
+- Complete the downstream BSL handoff by returning existing typed
+  `AvailabilityContext` values and borrowed available-since text instead of raw
+  snapshot string IDs, and by sharing the existing stable identity,
+  type-reference and signature projection behavior between the generic adapter
+  and the analyzer's concrete owned-output boundary.
 - Expose SDBL query-source classification through `HbkSdblQueryCatalog`.
 - Make only the narrow lifetime receiver refinement needed in the `syntax-helper-search` read handle; do not add a second API or storage path there.
 - Retain the generic `ContextResolver` contract for distinct consumers that still need source-neutral resolver semantics, including generic context resolution, diagnostics/debug inspection, and non-hot-path integration tests.
@@ -38,6 +43,9 @@ None.
 - Search impact: keep SQL-backed search and direct `SearchIndex` flows explicit and separate from borrowed catalogs.
 - Generic resolver impact: keep `ContextResolver` for source-neutral and diagnostic/debug consumers with a distinct contract from analyzer hot-path catalog reads.
 - Mapping impact: keep raw `metadata.module-role.*` selector translation in `context-resolver-core`; no catalog-local mapping table is added.
+- Projection impact: keep generic DTOs at concrete consumer boundaries, but
+  give the existing stable identity/type-reference/signature conversion one
+  reusable upstream owner so analyzer consumers do not copy it.
 - Boundary impact: BSL generated-self, owner member/callable, module member/event, global, availability facts and SDBL query-source classification remain upstream HBK responsibilities.
 - Delivery impact: BSL and SDBL exposure are independently gated commits under this change.
 - Documentation impact: ADR-0008 and related docs must be reconciled with the borrowed catalog API and the retained `ContextResolver` use case.

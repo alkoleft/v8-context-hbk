@@ -872,6 +872,14 @@ generated-self owner members/callables, module events, globals and typed availab
 `PlatformSnapshotSource` owns this catalog handle and projects borrowed records into generic
 resolver DTOs only at the `ContextSource` compatibility boundary.
 
+Pending T179, the direct analyzer handoff follow-up will complete the catalog's
+typed availability boundary: public catalog consumers will receive existing
+`AvailabilityContext` values and borrowed available-since text, not raw
+snapshot string IDs. Stable fact-id, HBK type-reference and signature
+projection will have one upstream behavior owner reused by the generic adapter
+and concrete downstream owned-output boundaries. The target adds no projection
+object, catalog wrapper, generic catalog payload or second storage/read owner.
+
 The same snapshot family exposes `HbkSdblQueryCatalog` for borrowed query tables, owner-scoped
 fields and parameters, query identifiers/syntax/type references and locale-aware metadata source
 selectors. `QueryTableSnapshotSource` owns this catalog handle and projects borrowed records into

@@ -298,6 +298,15 @@ flows; snapshot catalogs never fall back to them. Raw
 `metadata.module-role.*` translation remains in `context-resolver-core`, and
 catalog-covered selector behavior must not be copied into analyzer code.
 
+The direct BSL analyzer handoff refines the same accepted boundary without
+changing this decision. Catalog availability must expose existing typed
+`AvailabilityContext` values plus borrowed available-since text rather than
+raw snapshot string IDs. Stable fact-id, type-reference and signature
+projection is shared from one upstream behavior owner between the retained
+generic adapter and concrete downstream owned-output boundaries.
+`HbkBslContextCatalog` itself still does not expose generic resolver DTOs, and
+no projection holder or second adapter/storage layer is introduced.
+
 The accepted implementation contract and consumer inventory are recorded by
 OpenSpec change `expose-borrowed-hbk-domain-catalogs`.
 

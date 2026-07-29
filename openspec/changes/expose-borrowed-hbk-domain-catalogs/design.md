@@ -631,3 +631,33 @@ callable/global/module-event catalog parity including generated-self roles;
 structural absence checks for public `HbkFactRef`, a second read API, SQL
 fallback in borrowed catalogs and duplicate selector literals outside the SDBL
 catalog module.
+
+## Direct BSL Analyzer Handoff Follow-up
+
+The first downstream analyzer migration exposed one incomplete portion of the
+accepted BSL catalog contract: public availability methods still lend raw
+`StringId` values, forcing a consumer to understand the private HBK
+availability code protocol. `HbkBslContextCatalog` must instead decode those
+values through the existing HBK mapping owner and return existing typed
+`context_resolver_core::AvailabilityContext` values plus borrowed
+available-since text. This changes no snapshot record, arena, index or
+availability identity.
+
+The same migration needs stable generic `FactId`, `HbkTypeRef -> TypeRef` and
+`HbkSignature -> Signature` projection for the analyzer's already-existing
+owned effective view. Those conversions currently live as private methods in
+`snapshot_adapter.rs`. They are non-trivial HBK-to-core boundary behavior and
+must gain one selected upstream public owner reused by both
+`PlatformSnapshotSource` and the downstream concrete output boundary. Do not
+add a projection struct, catalog wrapper, DTO family or second adapter module;
+expose the narrow functions from the existing projection/mapping owner.
+`HbkBslContextCatalog` itself continues to return only typed HBK IDs/records and
+typed availability, never `ContextFact`, `Resolved*` or `HbkFactRef`.
+
+The follow-up is one separately committed upstream stage before analyzer
+integration. Required parity covers platform types, generated-self
+members/callables, global properties/methods, module members/events,
+availability contexts and available-since text. Structural guards reject raw
+availability string IDs in the public catalog contract, a second mapping copy,
+a projection holder/DTO, generic DTO exposure from the catalog and changes to
+snapshot storage.

@@ -140,3 +140,39 @@ generic adapter behavior owner for these facts.
   preserves parity with the borrowed API
 - **AND** it does not maintain a second behavior owner, duplicate storage,
   duplicate index or alternate selector access path
+
+### Requirement: Typed availability does not expose snapshot string protocol
+
+`HbkBslContextCatalog` availability operations SHALL return existing
+`AvailabilityContext` values and borrowed available-since text. Public catalog
+consumers SHALL NOT receive raw availability context or version `StringId`
+values and SHALL NOT need to reproduce the HBK availability code mapping.
+
+#### Scenario: Catalog availability is directly consumable
+
+- **WHEN** a platform type, member, callable or global has availability data
+- **THEN** the catalog returns its existing typed availability contexts in
+  deterministic provider order
+- **AND** returns available-since as borrowed text when present
+- **AND** the generic adapter and direct catalog consumer observe the same
+  contexts and version text
+- **AND** no new availability record, enum mirror, mapping table or snapshot
+  storage is introduced
+
+### Requirement: Stable core projection behavior has one upstream owner
+
+HBK SHALL keep one upstream owner for the stable HBK-record-to-core projection
+used at concrete compatibility/output boundaries for `FactId`,
+`HbkTypeRef -> TypeRef` and `HbkSignature -> Signature`. The snapshot generic
+adapter and direct analyzer handoff SHALL reuse that owner rather than
+maintaining parallel conversions.
+
+#### Scenario: Two concrete boundaries reuse one projection
+
+- **WHEN** the generic snapshot adapter or a direct catalog consumer needs an
+  owned core identity, type reference or signature
+- **THEN** both call the same narrow upstream projection behavior
+- **AND** `HbkBslContextCatalog` continues to expose typed HBK IDs/records
+  rather than generic `ContextFact` or `Resolved*` payloads
+- **AND** no projection holder, DTO mirror, second adapter layer or downstream
+  mapping implementation is added

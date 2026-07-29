@@ -185,3 +185,59 @@ Verification and reconciliation evidence (2026-07-28):
   passed, strict validation passed, and the follow-up review returned
   `NO FINDINGS`. Commit `35ea001` is the staged-file-limited final
   documentation/verification batch required by task 5.10.
+
+## 6. Complete direct BSL analyzer handoff
+
+- [ ] 6.1 Change `HbkBslContextCatalog` availability operations to return
+  existing typed `AvailabilityContext` values and borrowed available-since
+  text, reusing the existing HBK availability decoder and exposing no raw
+  availability `StringId`.
+- [ ] 6.2 Give stable `FactId`, `HbkTypeRef -> TypeRef` and
+  `HbkSignature -> Signature` projection one narrow public upstream owner;
+  reuse it from `PlatformSnapshotSource` and expose no projection holder, DTO
+  family or generic payload from `HbkBslContextCatalog`.
+- [ ] 6.3 Add catalog/generic-adapter parity for type, generated-self
+  member/callable, global property/method, module member/event, availability
+  contexts and available-since text; add structural guards for raw public
+  availability IDs and duplicate projection/mapping owners.
+- [ ] 6.4 Run focused and workspace verification, reconcile the actual diff
+  against the Structure impact/Reintroduction guard, update durable spec,
+  versioning and acceptance evidence, run a fresh review and commit this
+  upstream stage before downstream analyzer integration.
+
+Task-local Structure impact for 6.1-6.4:
+
+- Existing owners searched and reused:
+  `hbk_catalogs::bsl`, `snapshot_adapter`, `mapping`,
+  `context-resolver-core::{AvailabilityContext,FactId,TypeRef,Signature}`,
+  `syntax-helper-search` typed IDs/records and the current catalog/parity
+  fixtures. Inputs remain existing snapshot IDs/records; outputs remain
+  borrowed catalog evidence or existing core boundary types.
+- Reusable behavior changed: the existing availability decoder and stable
+  identity/type-reference/signature projection become the single callable
+  owners for two real boundaries. Structures, records, DTOs, enums, holders,
+  caches, registries, readers, parsers, normalizers, resolvers, storage/index
+  shapes, schema/generated shapes and alternate public re-export surfaces
+  added: none.
+- Public contract change: catalog availability no longer exposes raw
+  availability/version string IDs. Selected projection functions become public
+  because both the retained generic adapter and downstream concrete owned-view
+  boundary require the exact same non-trivial conversion. No serialized
+  contract changes.
+- Checked consumers include upstream generic/snapshot/SQL adapters, catalog
+  tests and downstream analyzer BSL/effective-view use. Frontend, transport,
+  metadata provider, query/SDBL, CLI output and source parsing are unaffected.
+
+Reintroduction guard for 6.1-6.4:
+
+- Root cause: private snapshot projection and raw availability IDs forced a
+  direct typed consumer either through generic envelopes or toward a duplicate
+  downstream mapping.
+- Single allowed flow:
+  `HbkFactSnapshot -> HbkBslContextCatalog typed acquisition/availability`;
+  concrete owned boundaries use the one upstream identity/type-ref/signature
+  projection owner.
+- Guards reject raw availability `StringId` in the public catalog signature,
+  a second availability decoder, duplicate type-ref/signature/fact-id mapping,
+  a projection wrapper/DTO, `ContextFact`/`Resolved*`/`HbkFactRef` catalog
+  output, a new arena/index/cache and SQL/SearchIndex fallback.
