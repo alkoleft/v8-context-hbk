@@ -2617,6 +2617,23 @@ controlled sequential downstream A/B improves 0.83 s / 88,620 KiB to 0.75 s /
 private ownership simplification only: no generic capacity hint, analyzer cache
 selection, cache contract or type-reference group merge is accepted.
 
+## T179 Durable Conclusion
+
+T179 makes `context-resolver-core::MemberKind::query_kind` the single
+source-neutral classification for all four resolver member kinds. Search-index
+and snapshot-backed platform sources now preserve the same complete raw
+`MemberQuery { name: None, kind }` enumeration: `Ok`, including an empty fact
+set, is complete for an existing owner; absent or inactive owners remain
+`NotFound`. Enum values participate in broad unfiltered and kind-filtered
+enumeration without broadening named enum lookup.
+
+The exact platform member hot path remains direct. Property, method, and event
+hits or misses do not acquire the owner record; owner-kind and enum-relation
+reads occur only after an empty broad enumeration. No resolver result cache,
+holder, registry, schema, analyzer model, or second kind mapping was added.
+Core/search tests, the static-analysis consumer smoke test, workspace check,
+formatting, and fresh review pass for workspace version `0.2.1`.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

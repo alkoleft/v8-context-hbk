@@ -238,15 +238,51 @@ impl ContextSource for PlatformSearchSource {
                 .members_by_type_id(&owner.0.local_id)
                 .map_err(|source| self.source_failure(source))?,
         };
+        if hits.is_empty() {
+            if query.name.is_some() {
+                return Ok(ResolveResponse::not_found("platform member not found"));
+            }
+            let Some(owner_hit) = self
+                .index
+                .get_by_id(&owner.0.local_id)
+                .map_err(|source| self.source_failure(source))?
+            else {
+                return Ok(ResolveResponse::not_found("platform owner type not found"));
+            };
+            match owner_hit.document.kind {
+                SearchDocumentKind::PlatformType => return Ok(ResolveResponse::ok(Vec::new())),
+                SearchDocumentKind::Enum => {
+                    if query
+                        .kind
+                        .is_some_and(|kind| kind != MemberQueryKind::EnumValue)
+                    {
+                        return Ok(ResolveResponse::ok(Vec::new()));
+                    }
+                    let owned_values = self
+                        .index
+                        .related_by_id_and_edge(&owner.0.local_id, "owns", usize::MAX)
+                        .map_err(|source| self.source_failure(source))?
+                        .into_iter()
+                        .filter(|hit| hit.document.kind == SearchDocumentKind::EnumValue)
+                        .map(|hit| SearchHit {
+                            document: hit.document,
+                            score: 0,
+                        })
+                        .collect::<Vec<_>>();
+                    let facts = owned_values
+                        .into_iter()
+                        .map(|hit| self.map_enum_value_member(owner, hit))
+                        .collect::<Vec<_>>();
+                    return Ok(ResolveResponse::ok(facts));
+                }
+                _ => return Ok(ResolveResponse::not_found("platform owner type not found")),
+            }
+        }
         let facts = hits
             .into_iter()
             .filter_map(|hit| self.map_member(hit).transpose())
             .filter_map(|member| match member {
-                Ok(member)
-                    if query
-                        .kind
-                        .is_none_or(|kind| member_query_matches(kind, member.info.kind)) =>
-                {
+                Ok(member) if query.kind.is_none_or(|kind| member.info.kind.query_kind() == kind) => {
                     Some(Ok(member))
                 }
                 Ok(_) => None,

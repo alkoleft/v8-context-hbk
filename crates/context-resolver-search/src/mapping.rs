@@ -152,16 +152,6 @@ fn fact_provenance(
     }
 }
 
-fn member_query_matches(query: MemberQueryKind, kind: MemberKind) -> bool {
-    matches!(
-        (query, kind),
-        (MemberQueryKind::Property, MemberKind::Property)
-            | (MemberQueryKind::Method, MemberKind::Method)
-            | (MemberQueryKind::Event, MemberKind::Event)
-            | (MemberQueryKind::EnumValue, MemberKind::EnumValue)
-    )
-}
-
 fn availability_context_from_code(value: &str) -> Option<AvailabilityContext> {
     match value {
         "thin_client" => Some(AvailabilityContext::ThinClient),

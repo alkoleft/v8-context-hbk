@@ -308,6 +308,28 @@ impl PlatformSearchSource {
         }))
     }
 
+    fn map_enum_value_member(&self, owner: &TypeId, hit: SearchHit) -> ResolvedMember {
+        let info = MemberInfo {
+            kind: MemberKind::EnumValue,
+            types: self.type_ref_facts(&hit.document.type_ref_facts),
+            description: hit.document.description.clone(),
+        };
+        let id = MemberId(self.fact_id(FactKind::Member, hit.document.id.clone()));
+        let fact = ContextFact {
+            id: id.0.clone(),
+            name: map_name(&hit.document),
+            owner: Some(owner.0.clone()),
+            details: FactDetails::Member(info.clone()),
+            relations: Vec::new(),
+        };
+        ResolvedMember {
+            id,
+            owner: owner.clone(),
+            fact,
+            info,
+        }
+    }
+
     fn map_callable(&self, hit: SearchHit) -> Result<Option<ResolvedCallable>, ResolveError> {
         let kind = match hit.document.kind {
             SearchDocumentKind::Constructor => CallableKind::Constructor,

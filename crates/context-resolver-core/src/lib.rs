@@ -247,6 +247,18 @@ pub enum MemberKind {
     EnumValue,
 }
 
+impl MemberKind {
+    #[must_use]
+    pub fn query_kind(self) -> MemberQueryKind {
+        match self {
+            Self::Property => MemberQueryKind::Property,
+            Self::Method => MemberQueryKind::Method,
+            Self::Event => MemberQueryKind::Event,
+            Self::EnumValue => MemberQueryKind::EnumValue,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberInfo {
     pub kind: MemberKind,
@@ -3373,6 +3385,17 @@ mod tests {
                 "only the accepted selector may have a BSL member classification",
             );
         }
+    }
+
+    #[test]
+    fn member_kind_classifies_to_query_kind_for_each_resolver_variant() {
+        assert_eq!(MemberKind::Property.query_kind(), MemberQueryKind::Property);
+        assert_eq!(MemberKind::Method.query_kind(), MemberQueryKind::Method);
+        assert_eq!(MemberKind::Event.query_kind(), MemberQueryKind::Event);
+        assert_eq!(
+            MemberKind::EnumValue.query_kind(),
+            MemberQueryKind::EnumValue
+        );
     }
 
     #[test]

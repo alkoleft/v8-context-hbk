@@ -51,6 +51,91 @@ Current first unchecked task: none.
 
 ## Active Tasks
 
+### [x] T179. Own complete member enumeration and resolver-kind classification
+
+References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,
+`implementation/components.md`, `implementation/solution-context-resolve.md`, ADR-0008, downstream
+OpenSpec change `simplify-context-provider-architecture` tasks 5.3 and 5.4.
+
+Scope and guard:
+
+- Define `MemberQuery { name: None, kind }` as complete raw enumeration for one resolved
+  source-qualified owner within the optional kind. `Ok`, including an empty fact vector, is the
+  only complete enumeration response. Owner/source `NotFound`, `Ambiguous`, `Unsupported`, and
+  `ResolveError` remain non-complete outcomes for downstream presence-index decisions.
+- Add one narrow classification owned by `context-resolver-core` from its existing `MemberKind` to
+  its existing `MemberQueryKind`. Migrate the search adapter's resolver-kind comparison to that
+  owner. Do not add a DTO, adapter, registry, cache, provider mirror, or analyzer concept.
+- Behavior-test search-index and snapshot-backed platform sources for complete unfiltered and
+  kind-filtered enumeration of property, method, event, and enum-value members, including empty and
+  absent-owner outcomes.
+
+Structure impact:
+
+- Existing owners searched: `context-resolver-core` query/member enums and source-neutral traits;
+  `context-resolver-search` search and snapshot platform adapters and their mapping helpers;
+  downstream `v8-context` effective enumeration and planned private point-key indexes. Both resolver
+  enums and their semantic relationship belong to core; provider-storage-kind conversion remains
+  adapter-owned.
+- Add one method on an existing core enum and contract tests. Delete the duplicate resolver-kind
+  comparison table from the search adapter. The parity inventory found that enum values were already
+  modeled by both provider stores but only the search adapter exposed them as broad members; add the
+  missing private snapshot enum-owner/value traversal and the corresponding search projection from
+  its existing `owns` relation into the existing `ResolvedMember` boundary. These are two distinct
+  provider-to-core projections over existing owner/value records, not a new owner, record, holder,
+  or conversion chain. Named enum lookup remains unchanged `NotFound`.
+- Added semantic structures, cache keys, readers, parsers, loaders, serializers, schemas, generated
+  shapes, public re-export families, and transport surfaces: none. Added reusable behavior is limited
+  to broad enum-owner enumeration inside the two existing provider adapters; inputs are existing
+  provider enum owner/value evidence and output is the existing source-neutral `ResolvedMember`.
+
+Reintroduction guard:
+
+- Root cause: the relation between two core-owned enums was reimplemented by adapters and consumers,
+  allowing enumeration filtering and downstream presence keys to drift.
+- Single allowed flow: provider member kind -> existing `MemberKind` -> core-owned
+  `MemberQueryKind` classification -> adapter filtering and downstream raw key construction.
+- Focused tests must fail if any of the four kinds is omitted or filtered differently between the
+  search and snapshot adapters. Final diff review must reject another exhaustive
+  `MemberKind`/`MemberQueryKind` resolver mapping outside core; storage-kind conversion at the
+  provider adapter boundary remains allowed.
+- Shared adapter tests must also fail if broad enum projection diverges, if named enum lookup is
+  broadened, or if exact property/method/event misses acquire an owner lookup. Future enum
+  projection must reuse provider-owned enum records and the existing `ResolvedMember` boundary,
+  never a mirrored enum-member DTO or adapter-local cache.
+
+Verification:
+
+- `cargo test -p context-resolver-core`;
+- `cargo test -p context-resolver-search`;
+- `cargo fmt --all -- --check`;
+- `cargo check --workspace`;
+- fresh diff review and source search for parallel resolver-kind mappings.
+
+Completion notes:
+
+- `MemberKind::query_kind` is now the sole source-neutral classification for
+  `Property`, `Method`, `Event`, and `EnumValue`. The duplicate exhaustive
+  resolver-kind table was deleted from the search adapter; the distinct
+  snapshot-storage conversion remains at its provider boundary.
+- `PlatformSearchSource` and `PlatformSnapshotSource` now agree that
+  `MemberQuery { name: None, kind }` enumerates the complete raw property,
+  method, event, or enum-value set for an existing owner. Existing empty owners
+  return `Ok([])` and absent/inactive owners return `NotFound`. Named enum
+  lookup remains the pre-task `NotFound` behavior in both adapters; T179 does
+  not broaden the exact member contract.
+- The search adapter keeps the original direct exact-member SQL path. The
+  additional owner-kind and enum-relation reads occur only after an empty broad
+  enumeration, so exact BSL member misses gain no owner lookup.
+- Structure review reconciled the approved impact: no DTO, holder, cache,
+  registry, schema, reader/parser family, analyzer concept, or parallel
+  resolver-kind mapping was added. Search-index and snapshot projections remain
+  distinct real provider adapters over the existing `ResolvedMember` boundary.
+- `cargo test -p context-resolver-core`, `cargo test -p
+  context-resolver-search`, `cargo fmt --all -- --check`, and `cargo check
+  --workspace` pass. Fresh review completed with no findings. The additive
+  provisional Rust contract advances the workspace patch version to `0.2.1`.
+
 ### [x] T178. Expose borrowed HBK BSL and SDBL domain catalogs
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,

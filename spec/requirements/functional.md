@@ -835,7 +835,9 @@ The resolver API must be source-neutral and fact-oriented:
 
 - resolve context facts by source-qualified id, exact name, owner/member pair and callable query;
 - resolve types in a requested source and language domain;
-- list members for one resolved owner identity;
+- list members for one resolved owner identity; an omitted member name must enumerate the complete
+  raw member set for that owner within the optional query kind, before downstream availability or
+  selection filtering;
 - retrieve domain-specific global context scopes when a static analyzer needs the complete set of
   globally visible facts; the first required scopes are BSL and SDBL/query language contexts;
 - list global methods and global properties through the explicit global-context scope without
@@ -866,6 +868,8 @@ The resolver API must be source-neutral and fact-oriented:
   domains instead of folding all same-name facts into platform API types;
 - use typed id wrappers for facts, types, members and callables; display names are lookup keys, not
   stable identities;
+- expose one source-neutral classification from every resolver `MemberKind` to the corresponding
+  `MemberQueryKind`, so adapters and consumers do not maintain parallel exhaustive mappings;
 - return identity-preserving typed results for type, member and callable convenience methods instead
   of naked detail structs that drop source/domain identity;
 - return ordinary lookup outcomes as data: `ok`, `not_found`, `ambiguous` and `unsupported`;

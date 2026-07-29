@@ -799,6 +799,21 @@ T146 implementation notes:
   child/member boundary. Callable/event handling remains available through callable mapping where
   the caller uses the callable fact shape.
 
+T179 contract refinement:
+
+- `MemberQuery { name: None, kind }` is the complete raw enumeration request for one already
+  resolved, source-qualified owner, limited only by the optional `MemberQueryKind`. `Ok(facts)` is
+  complete, including `Ok([])`. `NotFound` means that the requested owner/source is absent and is
+  not evidence of a complete enumeration for a previously resolved owner. `Ambiguous`,
+  `Unsupported`, and `ResolveError` are likewise not complete-enumeration outcomes.
+- Both the search-index and snapshot-backed platform adapters must preserve the same unfiltered and
+  kind-filtered enumeration for `Property`, `Method`, `Event`, and `EnumValue`. This contract is
+  raw provider evidence: it runs before analyzer availability, precedence, or selection rules.
+- `context-resolver-core` owns both `MemberKind` and `MemberQueryKind`; therefore it also owns their
+  exact one-to-one classification. `context-resolver-search` may use that classification while
+  adapting provider facts but must not maintain a second exhaustive resolver-kind table. A
+  conversion to `syntax-helper-search` storage kinds remains a distinct adapter-boundary mapping.
+
 T152 implementation notes:
 
 - `context-resolver-core` exposes first-class `module_context` lookup through

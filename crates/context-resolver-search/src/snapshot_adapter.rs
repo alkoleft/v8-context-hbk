@@ -117,6 +117,53 @@ impl PlatformSnapshotSource {
         }
     }
 
+    fn map_enum_value_member(&self, id: HbkEnumValueId) -> ResolvedMember {
+        let snapshot = self.catalog.snapshot();
+        let member = snapshot.enum_value(id);
+        let owner = self.type_id(snapshot.string(snapshot.enum_fact(member.owner).id));
+        let info = MemberInfo {
+            kind: MemberKind::EnumValue,
+            types: Vec::new(),
+            description: None,
+        };
+        let member_id = MemberId(self.fact_id(FactKind::Member, snapshot.string(member.id)));
+        let fact = ContextFact {
+            id: member_id.0.clone(),
+            name: self.map_name(&member.name),
+            owner: Some(owner.0.clone()),
+            details: FactDetails::Member(info.clone()),
+            relations: Vec::new(),
+        };
+        ResolvedMember {
+            id: member_id,
+            owner,
+            fact,
+            info,
+        }
+    }
+
+    fn enum_value_members(
+        &self,
+        owner_id: HbkEnumId,
+        query: MemberQuery<'_>,
+    ) -> Vec<ResolvedMember> {
+        if query
+            .kind
+            .is_some_and(|kind| kind != MemberQueryKind::EnumValue)
+            || query.name.is_some()
+        {
+            return Vec::new();
+        }
+        self.catalog
+            .snapshot()
+            .worker_handle()
+            .enum_values(owner_id)
+            .iter()
+            .copied()
+            .map(|id| self.map_enum_value_member(id))
+            .collect()
+    }
+
     fn map_callable(&self, id: HbkCallableId) -> ResolvedCallable {
         let snapshot = self.catalog.snapshot();
         let callable = snapshot.callable(id);
@@ -796,28 +843,40 @@ impl ContextSource for PlatformSnapshotSource {
         {
             return Ok(ResolveResponse::not_found("platform owner type not found"));
         }
-        let Some((owner_id, _)) = self.catalog.platform_type_by_id(&owner.0.local_id) else {
-            return Ok(ResolveResponse::not_found("platform owner type not found"));
-        };
-        let member_kind = query.kind.map(member_query_kind_to_snapshot);
-        let facts = match query.name {
-            Some(name) => self
-                .catalog
-                .member_by_name_kind(owner_id, name, member_kind)
-                .map(|(id, _)| id)
-                .collect::<Vec<_>>(),
-            None => self
-                .catalog
-                .members(owner_id)
-                .map(|(id, _)| id)
-                .collect::<Vec<_>>(),
-        }
-        .into_iter()
+        let facts = if let Some((owner_id, _)) = self.catalog.platform_type_by_id(&owner.0.local_id)
+        {
+            let member_kind = query.kind.map(member_query_kind_to_snapshot);
+            match query.name {
+                Some(name) => self
+                    .catalog
+                    .member_by_name_kind(owner_id, name, member_kind)
+                    .map(|(id, _)| id)
+                    .collect::<Vec<_>>(),
+                None => self
+                    .catalog
+                    .members(owner_id)
+                    .map(|(id, _)| id)
+                    .collect::<Vec<_>>(),
+            }
+            .into_iter()
             .filter(|id| {
                 member_kind.is_none_or(|kind| self.catalog.snapshot().type_member(*id).kind == kind)
             })
             .map(|id| self.map_member(id))
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+        } else if let Some(owner_id) = self
+            .catalog
+            .snapshot()
+            .worker_handle()
+            .enum_by_id(&owner.0.local_id)
+        {
+            if query.name.is_some() {
+                return Ok(ResolveResponse::not_found("platform member not found"));
+            }
+            self.enum_value_members(owner_id, query)
+        } else {
+            return Ok(ResolveResponse::not_found("platform owner type not found"));
+        };
         if query.name.is_some() && facts.is_empty() {
             return Ok(ResolveResponse::not_found("platform member not found"));
         }

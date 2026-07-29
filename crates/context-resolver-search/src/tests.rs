@@ -2152,6 +2152,28 @@ mod tests {
     }
 
     #[test]
+    fn platform_search_source_enumerates_complete_raw_members_by_owner_and_kind() {
+        let source = fixture_source();
+        let adapter = PlatformSearchSource::with_source_id(
+            fixture_index("platform-search-member-enumeration.sqlite"),
+            source.clone(),
+        );
+
+        assert_platform_member_enumeration_contract(&adapter, &source);
+    }
+
+    #[test]
+    fn platform_snapshot_source_enumerates_complete_raw_members_by_owner_and_kind() {
+        let source = fixture_source();
+        let index = fixture_index("platform-snapshot-member-enumeration.sqlite");
+        let snapshot =
+            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+        let adapter = PlatformSnapshotSource::with_source_id(snapshot, source.clone());
+
+        assert_platform_member_enumeration_contract(&adapter, &source);
+    }
+
+    #[test]
     fn platform_adapter_binds_type_events_to_semantic_owner_identity() {
         let path = temp_path("platform-type-event-semantic-owner.sqlite");
         let mut builder = SearchIndexBuilder::new();
@@ -4398,6 +4420,172 @@ mod tests {
 
     fn fixture_source() -> SourceId {
         SourceId::new("test-platform")
+    }
+
+    fn assert_platform_member_enumeration_contract(
+        adapter: &impl ContextSource,
+        source: &SourceId,
+    ) {
+        let filter = type_owner_id(source, "platform_type:ОтборКомпоновкиДанных");
+        let all_filter_members = adapter
+            .members(
+                &filter,
+                MemberQuery {
+                    name: None,
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("unfiltered platform member enumeration must not fail");
+        assert_eq!(all_filter_members.status, ResolveStatus::Ok);
+        assert_member_present(
+            &all_filter_members.facts,
+            "Элементы",
+            MemberKind::Property,
+        );
+        assert_member_present(&all_filter_members.facts, "Найти", MemberKind::Method);
+        assert_member_present(&all_filter_members.facts, "ПередЗаписью", MemberKind::Event);
+
+        assert_kind_filter(adapter, &filter, MemberQueryKind::Property, "Элементы");
+        assert_kind_filter(adapter, &filter, MemberQueryKind::Method, "Найти");
+        assert_kind_filter(
+            adapter,
+            &filter,
+            MemberQueryKind::Event,
+            "ПередЗаписью",
+        );
+
+        let enum_owner = type_owner_id(
+            source,
+            "enum:system:ОбновлениеПредопределенныхДанных",
+        );
+        let enum_members = adapter
+            .members(
+                &enum_owner,
+                MemberQuery {
+                    name: None,
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("unfiltered enum-value member enumeration must not fail");
+        assert_eq!(enum_members.status, ResolveStatus::Ok);
+        assert_member_present(&enum_members.facts, "Обновлять", MemberKind::EnumValue);
+        assert_kind_filter(
+            adapter,
+            &enum_owner,
+            MemberQueryKind::EnumValue,
+            "Обновлять",
+        );
+        assert_named_enum_member_queries_are_not_found(adapter, &enum_owner);
+
+        let empty_owner = type_owner_id(source, "platform_type:Дата");
+        let empty = adapter
+            .members(
+                &empty_owner,
+                MemberQuery {
+                    name: None,
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("empty existing owner enumeration must not fail");
+        assert_eq!(empty.status, ResolveStatus::Ok);
+        assert!(empty.facts.is_empty());
+
+        let absent_owner = type_owner_id(source, "platform_type:НетТакогоТипа");
+        let absent = adapter
+            .members(
+                &absent_owner,
+                MemberQuery {
+                    name: None,
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("absent owner enumeration must not fail");
+        assert_eq!(absent.status, ResolveStatus::NotFound);
+
+        let inactive_source = [SourceId::new("other-platform")];
+        let inactive = adapter
+            .members(
+                &filter,
+                MemberQuery {
+                    name: None,
+                    kind: None,
+                },
+                &ResolveContext {
+                    active_sources: &inactive_source,
+                    domain: None,
+                    scope: None,
+                },
+            )
+            .expect("inactive source enumeration must not fail");
+        assert_eq!(inactive.status, ResolveStatus::NotFound);
+    }
+
+    fn type_owner_id(source: &SourceId, local_id: &str) -> TypeId {
+        TypeId(FactId::new(
+            source.clone(),
+            LanguageDomain::PlatformApi,
+            FactKind::Type,
+            local_id,
+        ))
+    }
+
+    fn assert_kind_filter(
+        adapter: &impl ContextSource,
+        owner: &TypeId,
+        kind: MemberQueryKind,
+        expected_name: &str,
+    ) {
+        let response = adapter
+            .members(
+                owner,
+                MemberQuery {
+                    name: None,
+                    kind: Some(kind),
+                },
+                &ResolveContext::all(),
+            )
+            .expect("kind-filtered member enumeration must not fail");
+        assert_eq!(response.status, ResolveStatus::Ok);
+        assert_eq!(response.facts.len(), 1);
+        assert_eq!(response.facts[0].fact.name.primary, expected_name);
+        assert_eq!(response.facts[0].info.kind.query_kind(), kind);
+    }
+
+    fn assert_named_enum_member_queries_are_not_found(
+        adapter: &impl ContextSource,
+        owner: &TypeId,
+    ) {
+        for kind in [
+            None,
+            Some(MemberQueryKind::EnumValue),
+            Some(MemberQueryKind::Property),
+        ] {
+            let response = adapter
+                .members(
+                    owner,
+                    MemberQuery {
+                        name: Some("Обновлять"),
+                        kind,
+                    },
+                    &ResolveContext::all(),
+                )
+                .expect("named enum-value member lookup must not fail");
+            assert_eq!(response.status, ResolveStatus::NotFound);
+            assert!(response.facts.is_empty());
+        }
+    }
+
+    fn assert_member_present(facts: &[ResolvedMember], name: &str, kind: MemberKind) {
+        assert!(
+            facts
+                .iter()
+                .any(|fact| fact.fact.name.primary == name && fact.info.kind == kind),
+            "{name} {kind:?} must be enumerated"
+        );
     }
 
     fn fixture_index(file_name: &str) -> SearchIndex {
