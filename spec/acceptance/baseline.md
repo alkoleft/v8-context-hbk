@@ -2655,6 +2655,23 @@ pre-existing snapshot `ptr_arg` diagnostic. No wrapper, DTO, module, cache/index
 fallback reader, generic catalog payload or serialized contract was added. The
 workspace version is `0.2.2`.
 
+## T181 Durable Conclusion
+
+T181 completes the direct BSL projection handoff by making the existing
+exhaustive HBK member-kind and callable-kind conversions reusable at both
+concrete boundaries. `project_hbk_member_kind` and
+`project_hbk_callable_kind` are the single mapping owner;
+`PlatformSnapshotSource` delegates to them, and downstream analyzer code can
+reuse them without an exhaustive local table. The established
+`LanguageFunction -> GlobalMethod` compatibility meaning is unchanged.
+
+Focused tests cover every source and target enum variant. Structural review
+rejects the former private adapter helpers and a repeated language-function
+exception. Strict OpenSpec validation, formatting, focused and workspace
+verification, and fresh review pass. No wrapper, DTO, enum mirror, module,
+cache, registry, reader, parser, storage/index, serialized shape, query-kind
+mapping or alternate facade was added. The workspace version is `0.2.3`.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

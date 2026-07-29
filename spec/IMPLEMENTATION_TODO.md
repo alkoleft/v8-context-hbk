@@ -165,6 +165,35 @@ Progress:
   storage/index, fallback or analyzer model. Workspace version is `0.2.2`;
   downstream analyzer integration may now begin.
 
+### [x] T181. Centralize HBK member and callable kind projection
+
+References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,
+`implementation/components.md`, ADR-0008, OpenSpec change
+`expose-borrowed-hbk-domain-catalogs`.
+
+Scope and guard:
+
+- Promote the existing exhaustive `HbkTypeMemberKind -> MemberKind` and
+  `HbkCallableKind -> CallableKind` conversions from private snapshot-adapter
+  helpers to the current shared mapping owner.
+- Preserve `LanguageFunction -> GlobalMethod`; make the retained generic
+  adapter and direct analyzer boundary reuse the same behavior.
+- Add no wrapper, DTO, module, cache, registry, storage/index, query-kind
+  mapping, compatibility adapter or alternate public facade.
+
+Progress:
+
+- `project_hbk_member_kind` and `project_hbk_callable_kind` are the selected
+  public functions on the existing mapping owner. `PlatformSnapshotSource`
+  delegates to them and its duplicate private conversions were removed.
+- Exhaustive parity tests cover every HBK member/callable kind, including the
+  language-function compatibility meaning. The structural guard rejects a
+  second adapter-local kind projection.
+- Strict OpenSpec validation, formatting, focused tests, workspace check/test
+  and fresh review pass. Final Structure impact/codebase-design reconciliation
+  adds no semantic structure or new seam. Workspace version is `0.2.3`;
+  downstream analyzer integration can remove its temporary kind mappings.
+
 ### [x] T178. Expose borrowed HBK BSL and SDBL domain catalogs
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,

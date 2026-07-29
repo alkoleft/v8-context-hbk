@@ -880,6 +880,13 @@ by the generic adapter and concrete downstream owned-output boundaries. It
 adds no projection object, catalog wrapper, generic catalog payload or second
 storage/read owner.
 
+T181 completes that same projection seam for HBK member and callable kinds.
+The existing exhaustive conversions are public functions on the current
+mapping owner and are reused by `PlatformSnapshotSource` and direct analyzer
+owned-output boundaries. The established `LanguageFunction -> GlobalMethod`
+meaning remains unchanged; no downstream kind table, query-kind exception,
+projection holder or alternate adapter is introduced.
+
 The same snapshot family exposes `HbkSdblQueryCatalog` for borrowed query tables, owner-scoped
 fields and parameters, query identifiers/syntax/type references and locale-aware metadata source
 selectors. `QueryTableSnapshotSource` owns this catalog handle and projects borrowed records into

@@ -1555,6 +1555,31 @@ mod tests {
     }
 
     #[test]
+    fn project_hbk_member_kind_projects_all_snapshot_variants() {
+        for (snapshot, expected) in [
+            (HbkTypeMemberKind::Property, MemberKind::Property),
+            (HbkTypeMemberKind::Method, MemberKind::Method),
+            (HbkTypeMemberKind::Event, MemberKind::Event),
+            (HbkTypeMemberKind::EnumValue, MemberKind::EnumValue),
+        ] {
+            assert_eq!(project_hbk_member_kind(snapshot), expected);
+        }
+    }
+
+    #[test]
+    fn project_hbk_callable_kind_projects_all_snapshot_variants() {
+        for (snapshot, expected) in [
+            (HbkCallableKind::Method, CallableKind::Method),
+            (HbkCallableKind::Constructor, CallableKind::Constructor),
+            (HbkCallableKind::GlobalMethod, CallableKind::GlobalMethod),
+            (HbkCallableKind::Event, CallableKind::Event),
+            (HbkCallableKind::LanguageFunction, CallableKind::GlobalMethod),
+        ] {
+            assert_eq!(project_hbk_callable_kind(snapshot), expected);
+        }
+    }
+
+    #[test]
     #[ignore = "manual measurement probe for borrowed BSL catalog OpenSpec batch"]
     fn bsl_catalog_measurement_probe() {
         let source = fixture_source();
@@ -3456,6 +3481,16 @@ mod tests {
             "stable HBK FactId projection must have one public owner"
         );
         assert_eq!(
+            count_occurrences(mapping, "pub fn project_hbk_member_kind("),
+            1,
+            "HBK member-kind projection must have one public owner"
+        );
+        assert_eq!(
+            count_occurrences(mapping, "pub fn project_hbk_callable_kind("),
+            1,
+            "HBK callable-kind projection must have one public owner"
+        );
+        assert_eq!(
             count_occurrences(mapping, "pub fn project_hbk_type_ref("),
             1,
             "HBK type-reference projection must have one public owner"
@@ -3467,6 +3502,8 @@ mod tests {
         );
         for projection in [
             "project_hbk_fact_id",
+            "project_hbk_member_kind",
+            "project_hbk_callable_kind",
             "project_hbk_type_ref",
             "project_hbk_signature",
         ] {
@@ -3483,6 +3520,13 @@ mod tests {
             !platform_snapshot_adapter.contains("fn map_type_ref(")
                 && !platform_snapshot_adapter.contains("fn map_type_ref_target("),
             "platform snapshot adapter must not retain a second HBK type-reference projection"
+        );
+        assert!(
+            !platform_snapshot_adapter.contains("fn member_kind_from_snapshot(")
+                && !platform_snapshot_adapter.contains("fn callable_kind_from_snapshot(")
+                && !platform_snapshot_adapter
+                    .contains("HbkCallableKind::LanguageFunction => CallableKind::GlobalMethod"),
+            "platform snapshot adapter must not retain a second HBK kind projection"
         );
         assert_eq!(
             count_occurrences(mapping, "fn availability_context_from_code("),

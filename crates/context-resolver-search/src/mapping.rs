@@ -180,6 +180,25 @@ pub fn project_hbk_fact_id(
     )
 }
 
+pub fn project_hbk_member_kind(kind: HbkTypeMemberKind) -> MemberKind {
+    match kind {
+        HbkTypeMemberKind::Property => MemberKind::Property,
+        HbkTypeMemberKind::Method => MemberKind::Method,
+        HbkTypeMemberKind::Event => MemberKind::Event,
+        HbkTypeMemberKind::EnumValue => MemberKind::EnumValue,
+    }
+}
+
+pub fn project_hbk_callable_kind(kind: HbkCallableKind) -> CallableKind {
+    match kind {
+        HbkCallableKind::Method => CallableKind::Method,
+        HbkCallableKind::Constructor => CallableKind::Constructor,
+        HbkCallableKind::GlobalMethod => CallableKind::GlobalMethod,
+        HbkCallableKind::Event => CallableKind::Event,
+        HbkCallableKind::LanguageFunction => CallableKind::GlobalMethod,
+    }
+}
+
 pub fn project_hbk_type_ref(
     catalog: &HbkBslContextCatalog,
     type_ref: &HbkTypeRef,

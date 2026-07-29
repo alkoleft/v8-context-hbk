@@ -163,16 +163,27 @@ values and SHALL NOT need to reproduce the HBK availability code mapping.
 
 HBK SHALL keep one upstream owner for the stable HBK-record-to-core projection
 used at concrete compatibility/output boundaries for `FactId`,
-`HbkTypeRef -> TypeRef` and `HbkSignature -> Signature`. The snapshot generic
-adapter and direct analyzer handoff SHALL reuse that owner rather than
-maintaining parallel conversions.
+`HbkTypeRef -> TypeRef`, `HbkSignature -> Signature`,
+`HbkTypeMemberKind -> MemberKind` and `HbkCallableKind -> CallableKind`. The
+snapshot generic adapter and direct analyzer handoff SHALL reuse that owner
+rather than maintaining parallel conversions. Callable-kind projection SHALL
+preserve the established `LanguageFunction -> GlobalMethod` compatibility
+meaning.
 
 #### Scenario: Two concrete boundaries reuse one projection
 
 - **WHEN** the generic snapshot adapter or a direct catalog consumer needs an
-  owned core identity, type reference or signature
+  owned core identity, type reference, signature, member kind or callable kind
 - **THEN** both call the same narrow upstream projection behavior
 - **AND** `HbkBslContextCatalog` continues to expose typed HBK IDs/records
   rather than generic `ContextFact` or `Resolved*` payloads
 - **AND** no projection holder, DTO mirror, second adapter layer or downstream
   mapping implementation is added
+
+#### Scenario: Callable kind compatibility remains stable
+
+- **WHEN** the generic snapshot adapter or direct analyzer handoff projects an
+  HBK language function
+- **THEN** both observe the existing core `GlobalMethod` callable kind
+- **AND** no downstream exception or separate query-kind mapping reproduces
+  that compatibility behavior

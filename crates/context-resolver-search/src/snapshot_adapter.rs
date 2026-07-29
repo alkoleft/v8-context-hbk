@@ -92,7 +92,7 @@ impl PlatformSnapshotSource {
         let member = snapshot.type_member(id);
         let owner = self.type_id(snapshot.string(snapshot.platform_type(member.owner).id));
         let info = MemberInfo {
-            kind: member_kind_from_snapshot(member.kind),
+            kind: project_hbk_member_kind(member.kind),
             types: self.map_type_refs(&member.type_refs),
             description: None,
         };
@@ -162,7 +162,7 @@ impl PlatformSnapshotSource {
     fn map_callable(&self, id: HbkCallableId) -> ResolvedCallable {
         let snapshot = self.catalog.snapshot();
         let callable = snapshot.callable(id);
-        let kind = callable_kind_from_snapshot(callable.kind);
+        let kind = project_hbk_callable_kind(callable.kind);
         let owner = callable
             .owner
             .map(|owner| self.type_id(snapshot.string(snapshot.platform_type(owner).id)));
@@ -1695,30 +1695,11 @@ impl ContextSource for QueryTableSnapshotSource {
     }
 }
 
-fn member_kind_from_snapshot(kind: HbkTypeMemberKind) -> MemberKind {
-    match kind {
-        HbkTypeMemberKind::Property => MemberKind::Property,
-        HbkTypeMemberKind::Method => MemberKind::Method,
-        HbkTypeMemberKind::Event => MemberKind::Event,
-        HbkTypeMemberKind::EnumValue => MemberKind::EnumValue,
-    }
-}
-
 fn member_query_kind_to_snapshot(kind: MemberQueryKind) -> HbkTypeMemberKind {
     match kind {
         MemberQueryKind::Property => HbkTypeMemberKind::Property,
         MemberQueryKind::Method => HbkTypeMemberKind::Method,
         MemberQueryKind::Event => HbkTypeMemberKind::Event,
         MemberQueryKind::EnumValue => HbkTypeMemberKind::EnumValue,
-    }
-}
-
-fn callable_kind_from_snapshot(kind: HbkCallableKind) -> CallableKind {
-    match kind {
-        HbkCallableKind::Method => CallableKind::Method,
-        HbkCallableKind::Constructor => CallableKind::Constructor,
-        HbkCallableKind::GlobalMethod => CallableKind::GlobalMethod,
-        HbkCallableKind::Event => CallableKind::Event,
-        HbkCallableKind::LanguageFunction => CallableKind::GlobalMethod,
     }
 }

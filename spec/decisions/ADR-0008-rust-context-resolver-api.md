@@ -307,6 +307,13 @@ generic adapter and concrete downstream owned-output boundaries.
 `HbkBslContextCatalog` itself still does not expose generic resolver DTOs, and
 no projection holder or second adapter/storage layer is introduced.
 
+The same projection owner also provides the existing exhaustive HBK
+member-kind and callable-kind conversions. `PlatformSnapshotSource` and direct
+analyzer owned-output boundaries reuse those functions, including the
+established `LanguageFunction -> GlobalMethod` compatibility meaning. A
+downstream kind table, analyzer-specific exception or separate query-kind
+mapping is not an accepted seam.
+
 The accepted implementation contract and consumer inventory are recorded by
 OpenSpec change `expose-borrowed-hbk-domain-catalogs`.
 

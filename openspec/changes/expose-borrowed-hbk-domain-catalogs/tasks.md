@@ -279,16 +279,16 @@ Completion evidence (2026-07-29):
 
 ## 7. Complete downstream HBK kind projection handoff
 
-- [ ] 7.1 Expose the existing snapshot-adapter
+- [x] 7.1 Expose the existing snapshot-adapter
   `HbkTypeMemberKind -> MemberKind` and
   `HbkCallableKind -> CallableKind` behavior as two selected public functions
   on the current projection owner; retain the established
   `LanguageFunction -> GlobalMethod` meaning and add no wrapper, DTO, module or
   alternate facade.
-- [ ] 7.2 Keep `PlatformSnapshotSource` delegating to those functions and add
+- [x] 7.2 Keep `PlatformSnapshotSource` delegating to those functions and add
   focused parity plus structural single-owner guards that reject a second
   exhaustive mapping table in the upstream or downstream handoff.
-- [ ] 7.3 Verify strict OpenSpec, formatting, focused and workspace tests,
+- [x] 7.3 Verify strict OpenSpec, formatting, focused and workspace tests,
   reconcile Structure impact/codebase design, update patch versioning and
   commit this upstream owner correction before the downstream analyzer commit.
 
@@ -318,11 +318,38 @@ Reintroduction guard for 7.1-7.3:
   kind projections, forcing the direct consumer toward duplicate exhaustive
   matches.
 - Single allowed owner:
-  `context-resolver-search::snapshot_adapter` projects HBK member/callable
-  kinds to `context-resolver-core`; both the generic adapter and direct
-  analyzer boundary reuse it.
+  `context-resolver-search::mapping` projects HBK member/callable kinds to
+  `context-resolver-core`; `PlatformSnapshotSource` delegates to it and the
+  direct analyzer boundary reuses it.
 - Structural review rejects exhaustive
   `HbkTypeMemberKind::{Property,Method,Event,EnumValue}` or
   `HbkCallableKind::{Method,Constructor,GlobalMethod,Event,LanguageFunction}`
   projection tables outside that owner, including a renamed analyzer
   query-kind helper or language-function exception.
+
+Completion evidence (2026-07-29):
+
+- `project_hbk_member_kind` and `project_hbk_callable_kind` are public
+  functions on the existing `mapping.rs` owner. `PlatformSnapshotSource`
+  delegates to them; the former private
+  `member_kind_from_snapshot`/`callable_kind_from_snapshot` copies are deleted.
+- Exhaustive tests cover all four member kinds and all five callable kinds,
+  including `LanguageFunction -> GlobalMethod`. The existing source guard
+  proves one function definition for each projection and rejects the old
+  adapter-local helpers and repeated language-function exception.
+- Strict OpenSpec validation, `cargo fmt --all --check`,
+  `cargo check --workspace`, `cargo test -p context-resolver-search`
+  (`42` passed, `2` ignored plus the external smoke test) and
+  `cargo test --workspace` pass. The real `shcntx_ru` extraction fixture
+  completed in `88.04` seconds.
+- The preimplementation skeptic review and fresh implementation review both
+  returned `NO FINDINGS`. Final codebase-design/Structure impact
+  reconciliation accounts for only two selected functions on the existing
+  projection owner and deletion of their private adapter duplicates. No
+  structure, wrapper, DTO, module, cache, registry, reader, parser,
+  storage/index, schema, serialized contract, compatibility adapter or
+  alternate facade was added.
+- Durable owner/guard evidence is recorded by T181, ADR-0008, the component
+  description and acceptance baseline. Workspace patch version is `0.2.3`;
+  the downstream analyzer may now delete its temporary exhaustive kind
+  projections.
