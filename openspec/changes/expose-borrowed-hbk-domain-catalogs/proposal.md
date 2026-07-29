@@ -46,8 +46,10 @@ None.
 - Mapping impact: keep raw `metadata.module-role.*` selector translation in `context-resolver-core`; no catalog-local mapping table is added.
 - Projection impact: keep generic DTOs at concrete consumer boundaries, but
   give the existing stable identity/type-reference/signature/member-kind/
-  callable-kind conversion one reusable upstream owner so analyzer consumers
-  do not copy it.
+  callable-kind/callable-identity conversion and inverse member-query-kind
+  projection one reusable upstream owner so analyzer consumers do not copy
+  them. The existing opaque metadata-module-role translation becomes callable
+  by direct typed consumers from its current `context-resolver-core` owner.
 - Boundary impact: BSL generated-self, owner member/callable, module member/event, global, availability facts and SDBL query-source classification remain upstream HBK responsibilities.
 - Delivery impact: BSL and SDBL exposure are independently gated commits under this change.
 - Documentation impact: ADR-0008 and related docs must be reconciled with the borrowed catalog API and the retained `ContextResolver` use case.

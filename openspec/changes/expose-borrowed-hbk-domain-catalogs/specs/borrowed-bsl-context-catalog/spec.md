@@ -168,7 +168,11 @@ used at concrete compatibility/output boundaries for `FactId`,
 snapshot generic adapter and direct analyzer handoff SHALL reuse that owner
 rather than maintaining parallel conversions. Callable-kind projection SHALL
 preserve the established `LanguageFunction -> GlobalMethod` compatibility
-meaning.
+meaning. Stable callable identity SHALL classify constructors as
+`FactKind::Constructor`, all other HBK callables as `FactKind::Callable`, and
+construct the source-qualified `FactId` through the same upstream owner.
+Provider member lookup SHALL project `MemberQueryKind -> HbkTypeMemberKind`
+through that owner rather than a downstream table.
 
 #### Scenario: Two concrete boundaries reuse one projection
 
@@ -187,3 +191,39 @@ meaning.
 - **THEN** both observe the existing core `GlobalMethod` callable kind
 - **AND** no downstream exception or separate query-kind mapping reproduces
   that compatibility behavior
+
+#### Scenario: Callable identity is projected once
+
+- **WHEN** the generic snapshot adapter or direct analyzer boundary needs a
+  source-qualified identity for an HBK callable
+- **THEN** both use the same upstream callable identity projection
+- **AND** constructors use `FactKind::Constructor` while every other callable
+  uses `FactKind::Callable`
+- **AND** no downstream fact-kind classifier or callable identity helper is
+  introduced
+
+#### Scenario: Provider query kind is projected once
+
+- **WHEN** a generic snapshot adapter or direct analyzer boundary performs
+  owner-scoped HBK member lookup for a core `MemberQueryKind`
+- **THEN** both use the same upstream inverse kind projection
+- **AND** no downstream exhaustive `MemberQueryKind -> HbkTypeMemberKind`
+  table is introduced
+
+### Requirement: Opaque metadata module role translation has one callable owner
+
+`context-resolver-core` SHALL remain the sole owner of
+`metadata.module-role.* -> ModuleContextKind` translation and SHALL expose that
+existing typed projection to direct catalog consumers. Unknown selectors SHALL
+return normal absence.
+
+#### Scenario: Direct catalog consumer reuses selector translation
+
+- **WHEN** a direct BSL catalog consumer receives an opaque metadata module
+  role selector
+- **THEN** it obtains `ModuleContextKind` from the existing
+  `context-resolver-core` projection
+- **AND** it does not infer HBK module context from analyzer metadata
+  `ModuleKind`
+- **AND** no second selector table, enum mirror or compatibility adapter is
+  introduced

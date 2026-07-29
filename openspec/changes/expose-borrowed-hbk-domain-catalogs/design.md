@@ -670,3 +670,31 @@ availability contexts and available-since text. Structural guards reject raw
 availability string IDs in the public catalog contract, a second mapping copy,
 a projection holder/DTO, generic DTO exposure from the catalog and changes to
 snapshot storage.
+
+## Final Direct BSL Review Follow-up
+
+The downstream implementation review found three remaining copies of existing
+upstream boundary behavior:
+
+- `MemberQueryKind -> HbkTypeMemberKind` is already the snapshot adapter's
+  provider-query projection but was private;
+- callable `Constructor -> FactKind::Constructor`, otherwise
+  `FactKind::Callable`, plus stable `FactId` construction is already performed
+  by the snapshot adapter but was not part of the public projection handoff;
+- opaque `metadata.module-role.* -> ModuleContextKind` translation already
+  belongs to `context-resolver-core` but its existing function was private.
+
+Expose those existing behaviors as narrow functions on their current owners.
+The generic snapshot adapter and direct analyzer boundary must reuse them.
+Do not add a projection object, selector enum, adapter, trait, catalog method,
+DTO, cache, registry, storage/index, mapping module or compatibility facade.
+The callable identity function takes the existing catalog and borrowed
+`HbkCallable` and returns the existing core `FactId`; it is not a new identity
+model. The opaque selector function continues to return normal `None` for an
+unknown selector.
+
+The downstream DFG mapping remains a distinct analyzer invariant, but its input
+must first pass through the upstream HBK-to-core kind projection. Test fixtures
+must build the existing upstream model records directly through the existing
+index builder; a fixture-only field mirror or one-implementation pass-through
+trait is not an accepted seam.

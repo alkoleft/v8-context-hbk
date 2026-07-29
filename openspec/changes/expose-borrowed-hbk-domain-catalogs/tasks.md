@@ -353,3 +353,52 @@ Completion evidence (2026-07-29):
   description and acceptance baseline. Workspace patch version is `0.2.3`;
   the downstream analyzer may now delete its temporary exhaustive kind
   projections.
+
+## 8. Complete the final direct BSL projection handoff
+
+- [ ] 8.1 Make the existing private
+  `MemberQueryKind -> HbkTypeMemberKind` projection public on `mapping.rs`,
+  keep `PlatformSnapshotSource` delegating to it and add exhaustive parity.
+- [ ] 8.2 Add one narrow `project_hbk_callable_fact_id` function on
+  `mapping.rs` that reuses `project_hbk_fact_id`, classifies constructors as
+  `FactKind::Constructor` and all other callables as `FactKind::Callable`;
+  migrate `PlatformSnapshotSource` and add exhaustive identity/kind parity.
+- [ ] 8.3 Make the existing
+  `context-resolver-core::metadata_module_context_kind` function public,
+  retain its exact six opaque selectors and unknown-as-`None` behavior, and add
+  a guard rejecting a downstream selector table.
+- [ ] 8.4 Verify strict OpenSpec, formatting, focused and workspace tests,
+  reconcile Structure impact/codebase design, update patch versioning and
+  commit this upstream owner correction before the downstream analyzer fix.
+
+Task-local Structure impact for 8.1-8.4:
+
+- Search evidence found the existing owners in
+  `snapshot_adapter.rs::{member_query_kind_to_snapshot,map_callable}` and
+  `context-resolver-core::metadata_module_context_kind`. Downstream copies are
+  `context-provider::bsl::lookup`, `context-provider::bsl::effective`,
+  `context-provider::bsl::platform_module_context_kind` and
+  `analyze-project::bsl_dfg_context`.
+- Reusable behavior changed: two existing private projection behaviors become
+  public functions on the current `mapping.rs` owner; the existing core
+  selector function becomes public. Structures, enums, records, DTOs,
+  wrappers, modules, traits, registries, caches, readers, parsers,
+  storage/index/schema shapes, serialized contracts and alternate facades
+  added: none.
+- Real consumers are the retained generic snapshot adapter and the direct BSL
+  analyzer boundary. The callable identity result is the existing `FactId`;
+  the selector result is the existing `Option<ModuleContextKind>`.
+
+Reintroduction guard for 8.1-8.4:
+
+- Root cause: the earlier public projection handoff stopped at HBK-to-core
+  kind conversion and general fact-id construction, leaving inverse provider
+  query kind, callable fact-kind classification and the already-owned opaque
+  selector translation inaccessible to the direct consumer.
+- Single allowed owners are `context-resolver-search::mapping` for member query
+  kind and callable identity projection, and `context-resolver-core` for opaque
+  metadata module role translation. Generic and direct consumers delegate.
+- Structural tests reject the former private helper, a repeated constructor
+  classifier, a downstream exhaustive query-kind table, a downstream
+  `ModuleKind -> ModuleContextKind` table, projection holder and selector
+  wrapper. Seeded negative controls must prove each guard fires.
