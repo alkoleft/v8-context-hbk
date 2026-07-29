@@ -654,6 +654,15 @@ expose the narrow functions from the existing projection/mapping owner.
 `HbkBslContextCatalog` itself continues to return only typed HBK IDs/records and
 typed availability, never `ContextFact`, `Resolved*` or `HbkFactRef`.
 
+The analyzer integration also consumes typed member and callable kind evidence.
+The generic snapshot adapter already owns the exhaustive
+`HbkTypeMemberKind -> MemberKind` and `HbkCallableKind -> CallableKind`
+projections, including the established `LanguageFunction -> GlobalMethod`
+compatibility meaning. Those two existing functions are part of the same
+selected projection seam: they become public and are reused by the direct
+analyzer boundary. A downstream mapping table, analyzer-specific callable-kind
+exception or separate query-kind mapping is prohibited.
+
 The follow-up is one separately committed upstream stage before analyzer
 integration. Required parity covers platform types, generated-self
 members/callables, global properties/methods, module members/events,

@@ -276,3 +276,53 @@ Completion evidence (2026-07-29):
 - The completed handoff advances the workspace patch version to `0.2.2`. The
   durable follow-up is `T180`; `T179` remains the distinct completed
   member-enumeration/classification task.
+
+## 7. Complete downstream HBK kind projection handoff
+
+- [ ] 7.1 Expose the existing snapshot-adapter
+  `HbkTypeMemberKind -> MemberKind` and
+  `HbkCallableKind -> CallableKind` behavior as two selected public functions
+  on the current projection owner; retain the established
+  `LanguageFunction -> GlobalMethod` meaning and add no wrapper, DTO, module or
+  alternate facade.
+- [ ] 7.2 Keep `PlatformSnapshotSource` delegating to those functions and add
+  focused parity plus structural single-owner guards that reject a second
+  exhaustive mapping table in the upstream or downstream handoff.
+- [ ] 7.3 Verify strict OpenSpec, formatting, focused and workspace tests,
+  reconcile Structure impact/codebase design, update patch versioning and
+  commit this upstream owner correction before the downstream analyzer commit.
+
+Task-local Structure impact for 7.1-7.3:
+
+- Search evidence:
+  `snapshot_adapter.rs::{member_kind_from_snapshot,callable_kind_from_snapshot}`
+  are the existing generic projection owners. The downstream integration
+  temporarily added exact copies in
+  `context-provider::bsl::{effective,mod}`. The checked consumers are
+  `PlatformSnapshotSource`, direct analyzer selected/effective projection and
+  prepared point-key classification.
+- Reusable behavior changed: two existing private functions become selected
+  public projection functions because the retained generic adapter and direct
+  typed analyzer boundary both require the same exhaustive semantics.
+  Structures, enums, records, DTOs, wrappers, modules, registries, caches,
+  readers, parsers, storage/index/schema shapes and serialized contracts added:
+  none.
+- Downstream consumes `project_hbk_member_kind(kind).query_kind()` rather than
+  owning a third query-kind table. This task changes no HBK record, lookup,
+  availability, ordering or public serialized output.
+
+Reintroduction guard for 7.1-7.3:
+
+- Root cause: the first public projection handoff named identity, type
+  reference and signature conversion but omitted the existing member/callable
+  kind projections, forcing the direct consumer toward duplicate exhaustive
+  matches.
+- Single allowed owner:
+  `context-resolver-search::snapshot_adapter` projects HBK member/callable
+  kinds to `context-resolver-core`; both the generic adapter and direct
+  analyzer boundary reuse it.
+- Structural review rejects exhaustive
+  `HbkTypeMemberKind::{Property,Method,Event,EnumValue}` or
+  `HbkCallableKind::{Method,Constructor,GlobalMethod,Event,LanguageFunction}`
+  projection tables outside that owner, including a renamed analyzer
+  query-kind helper or language-function exception.
