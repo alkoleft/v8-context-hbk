@@ -1219,20 +1219,12 @@ mod tests {
             FactKind::Type,
             "platform_type:ОтборКомпоновкиДанных",
         ));
-        let catalog_callable_projection = |(id, callable): (
+        let catalog_callable_projection = |(_id, callable): (
             syntax_helper_search::HbkCallableId,
             &syntax_helper_search::HbkCallable,
         )| {
             (
-                project_hbk_fact_id(
-                    &catalog,
-                    if callable.kind == syntax_helper_search::HbkCallableKind::Constructor {
-                        FactKind::Constructor
-                    } else {
-                        FactKind::Callable
-                    },
-                    catalog.string(catalog.snapshot().callable(id).id),
-                ),
+                project_hbk_callable_fact_id(&catalog, callable),
                 catalog.string(callable.name.primary).to_string(),
                 callable.owner.map(|owner| {
                     project_hbk_fact_id(
@@ -1577,6 +1569,77 @@ mod tests {
         ] {
             assert_eq!(project_hbk_callable_kind(snapshot), expected);
         }
+    }
+
+    #[test]
+    fn project_hbk_member_query_kind_projects_all_core_query_variants() {
+        for (query, expected) in [
+            (MemberQueryKind::Property, HbkTypeMemberKind::Property),
+            (MemberQueryKind::Method, HbkTypeMemberKind::Method),
+            (MemberQueryKind::Event, HbkTypeMemberKind::Event),
+            (MemberQueryKind::EnumValue, HbkTypeMemberKind::EnumValue),
+        ] {
+            assert_eq!(project_hbk_member_query_kind(query), expected);
+        }
+    }
+
+    #[test]
+    fn project_hbk_callable_fact_id_classifies_all_snapshot_callable_variants() {
+        let source = fixture_source();
+        let index = fixture_index("hbk-callable-fact-id-projection.sqlite");
+        let snapshot =
+            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+        let catalog = HbkBslContextCatalog::with_source_id(snapshot, source.clone());
+        let (_, _, _, seed) = catalog
+            .global_methods()
+            .next()
+            .expect("fixture must expose a callable seed");
+        let local_id = catalog.string(seed.id).to_string();
+
+        for (kind, expected_fact_kind) in [
+            (HbkCallableKind::Method, FactKind::Callable),
+            (HbkCallableKind::Constructor, FactKind::Constructor),
+            (HbkCallableKind::GlobalMethod, FactKind::Callable),
+            (HbkCallableKind::Event, FactKind::Callable),
+            (HbkCallableKind::LanguageFunction, FactKind::Callable),
+        ] {
+            let callable = syntax_helper_search::HbkCallable {
+                kind,
+                ..(*seed).clone()
+            };
+            let id = project_hbk_callable_fact_id(&catalog, &callable);
+
+            assert_eq!(id.source, source, "{kind:?}");
+            assert_eq!(id.domain, LanguageDomain::PlatformApi, "{kind:?}");
+            assert_eq!(id.kind, expected_fact_kind, "{kind:?}");
+            assert_eq!(id.local_id, local_id, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn metadata_module_context_kind_is_public_and_preserves_exact_selectors() {
+        for (selector, expected) in [
+            ("metadata.module-role.common", ModuleContextKind::Common),
+            ("metadata.module-role.command", ModuleContextKind::Command),
+            ("metadata.module-role.object", ModuleContextKind::Object),
+            ("metadata.module-role.manager", ModuleContextKind::Manager),
+            ("metadata.module-role.form", ModuleContextKind::Form),
+            ("metadata.module-role.record-set", ModuleContextKind::RecordSet),
+        ] {
+            assert_eq!(
+                context_resolver_core::metadata_module_context_kind(selector),
+                Some(expected),
+                "{selector}"
+            );
+        }
+        assert_eq!(
+            context_resolver_core::metadata_module_context_kind("metadata.module-role.session"),
+            None
+        );
+        assert_eq!(
+            context_resolver_core::metadata_module_context_kind("unknown"),
+            None
+        );
     }
 
     #[test]
@@ -3441,6 +3504,7 @@ mod tests {
         let sdbl_catalog = include_str!("hbk_catalogs/sdbl.rs");
         let catalog_mod = include_str!("hbk_catalogs/mod.rs");
         let imports = include_str!("imports.rs");
+        let core = include_str!("../../context-resolver-core/src/lib.rs");
         let language_adapter = include_str!("language_adapter.rs");
         let mapping = include_str!("mapping.rs");
         let snapshot_adapter = include_str!("snapshot_adapter.rs");
@@ -3491,6 +3555,16 @@ mod tests {
             "HBK callable-kind projection must have one public owner"
         );
         assert_eq!(
+            count_occurrences(mapping, "pub fn project_hbk_member_query_kind("),
+            1,
+            "core member-query to HBK member-kind projection must have one public owner"
+        );
+        assert_eq!(
+            count_occurrences(mapping, "pub fn project_hbk_callable_fact_id("),
+            1,
+            "HBK callable FactId projection must have one public owner"
+        );
+        assert_eq!(
             count_occurrences(mapping, "pub fn project_hbk_type_ref("),
             1,
             "HBK type-reference projection must have one public owner"
@@ -3504,6 +3578,8 @@ mod tests {
             "project_hbk_fact_id",
             "project_hbk_member_kind",
             "project_hbk_callable_kind",
+            "project_hbk_member_query_kind",
+            "project_hbk_callable_fact_id",
             "project_hbk_type_ref",
             "project_hbk_signature",
         ] {
@@ -3522,16 +3598,91 @@ mod tests {
             "platform snapshot adapter must not retain a second HBK type-reference projection"
         );
         assert!(
-            !platform_snapshot_adapter.contains("fn member_kind_from_snapshot(")
-                && !platform_snapshot_adapter.contains("fn callable_kind_from_snapshot(")
-                && !platform_snapshot_adapter
-                    .contains("HbkCallableKind::LanguageFunction => CallableKind::GlobalMethod"),
+            !contains_hbk_kind_projection_duplicate(platform_snapshot_adapter),
             "platform snapshot adapter must not retain a second HBK kind projection"
+        );
+        assert!(
+            !contains_hbk_callable_fact_kind_classifier(platform_snapshot_adapter),
+            "platform snapshot adapter must not retain a second callable FactKind classifier"
+        );
+        assert!(
+            contains_hbk_kind_projection_duplicate(
+                r#"
+                fn member_query_kind_to_snapshot(kind: MemberQueryKind) -> HbkTypeMemberKind {
+                    match kind {
+                        MemberQueryKind::Property => HbkTypeMemberKind::Property,
+                        MemberQueryKind::Method => HbkTypeMemberKind::Method,
+                        MemberQueryKind::Event => HbkTypeMemberKind::Event,
+                        MemberQueryKind::EnumValue => HbkTypeMemberKind::EnumValue,
+                    }
+                }
+                "#,
+            ),
+            "projection guard must reject the former member-query helper"
+        );
+        assert!(
+            contains_hbk_callable_fact_kind_classifier(
+                r#"
+                let fact_kind = if callable.kind == HbkCallableKind::Constructor {
+                    FactKind::Constructor
+                } else {
+                    FactKind::Callable
+                };
+                "#,
+            ),
+            "projection guard must reject a repeated constructor classifier"
         );
         assert_eq!(
             count_occurrences(mapping, "fn availability_context_from_code("),
             1,
             "availability code decoding must keep one production owner"
+        );
+        assert_eq!(
+            count_occurrences(core, "pub fn metadata_module_context_kind("),
+            1,
+            "metadata module-role translation must have one public core owner"
+        );
+        assert!(
+            !contains_metadata_module_role_mapping(mapping)
+                && !contains_metadata_module_role_mapping(bsl_catalog)
+                && !contains_metadata_module_role_mapping(snapshot_adapter)
+                && !contains_metadata_module_role_mapping(language_adapter),
+            "search/catalog code must not duplicate core metadata module-role selector literals"
+        );
+        assert!(
+            !contains_section8_projection_holder_or_selector_wrapper(mapping)
+                && !contains_section8_projection_holder_or_selector_wrapper(bsl_catalog)
+                && !contains_section8_projection_holder_or_selector_wrapper(snapshot_adapter)
+                && !contains_section8_projection_holder_or_selector_wrapper(language_adapter)
+                && !contains_section8_projection_holder_or_selector_wrapper(lib),
+            "Section 8 must not introduce projection holders or selector wrappers"
+        );
+        assert!(
+            contains_metadata_module_role_mapping(
+                r#"
+                match selector {
+                    "metadata.module-role.object" => Some(ModuleContextKind::Object),
+                    _ => None,
+                }
+                "#,
+            ) && contains_metadata_module_role_mapping(
+                r#"
+                match module_kind {
+                    ModuleKind::Object => ModuleContextKind::Object,
+                    ModuleKind::Manager => ModuleContextKind::Manager,
+                    ModuleKind::Form => ModuleContextKind::Form,
+                }
+                "#,
+            ),
+            "metadata module-role guard must reject literal and ModuleKind tables"
+        );
+        assert!(
+            contains_section8_projection_holder_or_selector_wrapper(
+                "struct HbkProjectionOwner { source: SourceId }"
+            ) && contains_section8_projection_holder_or_selector_wrapper(
+                "struct MetadataModuleRoleSelector(String);"
+            ),
+            "Section 8 guard must reject projection holders and selector wrappers"
         );
 
         for (path, source) in [
@@ -5849,6 +6000,40 @@ mod tests {
 
     fn collapse_whitespace(source: &str) -> String {
         source.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn contains_hbk_kind_projection_duplicate(source: &str) -> bool {
+        source.contains("fn member_kind_from_snapshot(")
+            || source.contains("fn callable_kind_from_snapshot(")
+            || source.contains("fn member_query_kind_to_snapshot(")
+            || source.contains("HbkCallableKind::LanguageFunction => CallableKind::GlobalMethod")
+            || (source.contains("MemberQueryKind::Property => HbkTypeMemberKind::Property")
+                && source.contains("MemberQueryKind::Method => HbkTypeMemberKind::Method")
+                && source.contains("MemberQueryKind::Event => HbkTypeMemberKind::Event")
+                && source.contains("MemberQueryKind::EnumValue => HbkTypeMemberKind::EnumValue"))
+    }
+
+    fn contains_hbk_callable_fact_kind_classifier(source: &str) -> bool {
+        source.contains("let fact_kind =")
+            || (source.contains("HbkCallableKind::Constructor => FactKind::Constructor")
+                && source.contains("FactKind::Callable"))
+    }
+
+    fn contains_metadata_module_role_mapping(source: &str) -> bool {
+        source.contains("metadata.module-role.")
+            || (source.contains("ModuleKind::Object => ModuleContextKind::Object")
+                && source.contains("ModuleKind::Manager => ModuleContextKind::Manager"))
+    }
+
+    fn contains_section8_projection_holder_or_selector_wrapper(source: &str) -> bool {
+        let compact = collapse_whitespace(source);
+        compact.contains("struct HbkProjection")
+            || compact.contains("struct HbkBslProjection")
+            || compact.contains("struct ProjectionOwner")
+            || compact.contains("struct MetadataModuleRoleSelector")
+            || compact.contains("struct MetadataModuleContextSelector")
+            || compact.contains("enum MetadataModuleRoleSelector")
+            || compact.contains("enum MetadataModuleContextSelector")
     }
 
     fn count_occurrences(source: &str, needle: &str) -> usize {

@@ -356,18 +356,18 @@ Completion evidence (2026-07-29):
 
 ## 8. Complete the final direct BSL projection handoff
 
-- [ ] 8.1 Make the existing private
+- [x] 8.1 Make the existing private
   `MemberQueryKind -> HbkTypeMemberKind` projection public on `mapping.rs`,
   keep `PlatformSnapshotSource` delegating to it and add exhaustive parity.
-- [ ] 8.2 Add one narrow `project_hbk_callable_fact_id` function on
+- [x] 8.2 Add one narrow `project_hbk_callable_fact_id` function on
   `mapping.rs` that reuses `project_hbk_fact_id`, classifies constructors as
   `FactKind::Constructor` and all other callables as `FactKind::Callable`;
   migrate `PlatformSnapshotSource` and add exhaustive identity/kind parity.
-- [ ] 8.3 Make the existing
+- [x] 8.3 Make the existing
   `context-resolver-core::metadata_module_context_kind` function public,
   retain its exact six opaque selectors and unknown-as-`None` behavior, and add
   a guard rejecting a downstream selector table.
-- [ ] 8.4 Verify strict OpenSpec, formatting, focused and workspace tests,
+- [x] 8.4 Verify strict OpenSpec, formatting, focused and workspace tests,
   reconcile Structure impact/codebase design, update patch versioning and
   commit this upstream owner correction before the downstream analyzer fix.
 
@@ -402,3 +402,30 @@ Reintroduction guard for 8.1-8.4:
   classifier, a downstream exhaustive query-kind table, a downstream
   `ModuleKind -> ModuleContextKind` table, projection holder and selector
   wrapper. Seeded negative controls must prove each guard fires.
+
+Completion evidence (2026-07-29):
+
+- `project_hbk_member_query_kind` and `project_hbk_callable_fact_id` are public
+  functions on the existing `mapping.rs` owner. `PlatformSnapshotSource`
+  delegates to both, and the private inverse mapping plus local callable
+  `FactKind` classifier are deleted.
+- `context_resolver_core::metadata_module_context_kind` is public on its
+  existing owner with the exact six certified selectors and unknown-as-`None`
+  behavior. Direct downstream consumers can use the opaque provider selector
+  instead of inferring HBK context from analyzer `ModuleKind`.
+- Exhaustive tests cover every member-query and callable kind. The parity
+  fixture also reuses the callable identity owner. Structural predicates scan
+  the production sources and reject seeded former helpers, constructor
+  classifiers, module-role literal/`ModuleKind` tables, projection holders and
+  selector wrappers.
+- Strict OpenSpec validation, `cargo fmt --all --check`,
+  `cargo check --workspace`, `cargo test -p context-resolver-core` (`25`
+  passed), `cargo test -p context-resolver-search` (`45` passed, `2` ignored,
+  plus the external smoke test) and `cargo test --workspace` pass. The real
+  `shcntx_ru` extraction fixture completed in `95.24` seconds.
+- The fresh implementation review first found the remaining parity-fixture
+  classifier and ineffective seeded controls. Both were fixed; the follow-up
+  review returned `NO FINDINGS`. Final codebase-design/Structure impact
+  reconciliation found no new seam, wrapper, DTO, enum mirror, cache, reader,
+  parser, registry, storage/index, schema, serialized contract or alternate
+  facade. Workspace patch version is `0.2.4`.

@@ -172,12 +172,7 @@ impl PlatformSnapshotSource {
             return_types: self.map_type_refs(&callable.return_type_refs),
             description: None,
         };
-        let fact_kind = if matches!(kind, CallableKind::Constructor) {
-            FactKind::Constructor
-        } else {
-            FactKind::Callable
-        };
-        let id = CallableId(self.fact_id(fact_kind, snapshot.string(callable.id)));
+        let id = CallableId(project_hbk_callable_fact_id(&self.catalog, callable));
         let fact = ContextFact {
             id: id.0.clone(),
             name: self.map_name(&callable.name),
@@ -739,7 +734,7 @@ impl ContextSource for PlatformSnapshotSource {
         }
         let facts = if let Some((owner_id, _)) = self.catalog.platform_type_by_id(&owner.0.local_id)
         {
-            let member_kind = query.kind.map(member_query_kind_to_snapshot);
+            let member_kind = query.kind.map(project_hbk_member_query_kind);
             match query.name {
                 Some(name) => self
                     .catalog
@@ -1692,14 +1687,5 @@ impl ContextSource for QueryTableSnapshotSource {
             })
             .collect();
         Ok(ResolveResponse::ok(facts))
-    }
-}
-
-fn member_query_kind_to_snapshot(kind: MemberQueryKind) -> HbkTypeMemberKind {
-    match kind {
-        MemberQueryKind::Property => HbkTypeMemberKind::Property,
-        MemberQueryKind::Method => HbkTypeMemberKind::Method,
-        MemberQueryKind::Event => HbkTypeMemberKind::Event,
-        MemberQueryKind::EnumValue => HbkTypeMemberKind::EnumValue,
     }
 }

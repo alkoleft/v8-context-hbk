@@ -199,6 +199,29 @@ pub fn project_hbk_callable_kind(kind: HbkCallableKind) -> CallableKind {
     }
 }
 
+pub fn project_hbk_member_query_kind(kind: MemberQueryKind) -> HbkTypeMemberKind {
+    match kind {
+        MemberQueryKind::Property => HbkTypeMemberKind::Property,
+        MemberQueryKind::Method => HbkTypeMemberKind::Method,
+        MemberQueryKind::Event => HbkTypeMemberKind::Event,
+        MemberQueryKind::EnumValue => HbkTypeMemberKind::EnumValue,
+    }
+}
+
+pub fn project_hbk_callable_fact_id(
+    catalog: &HbkBslContextCatalog,
+    callable: &HbkCallable,
+) -> FactId {
+    let kind = match callable.kind {
+        HbkCallableKind::Constructor => FactKind::Constructor,
+        HbkCallableKind::Method
+        | HbkCallableKind::GlobalMethod
+        | HbkCallableKind::Event
+        | HbkCallableKind::LanguageFunction => FactKind::Callable,
+    };
+    project_hbk_fact_id(catalog, kind, catalog.string(callable.id))
+}
+
 pub fn project_hbk_type_ref(
     catalog: &HbkBslContextCatalog,
     type_ref: &HbkTypeRef,

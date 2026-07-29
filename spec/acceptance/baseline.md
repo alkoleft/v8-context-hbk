@@ -2672,6 +2672,26 @@ verification, and fresh review pass. No wrapper, DTO, enum mirror, module,
 cache, registry, reader, parser, storage/index, serialized shape, query-kind
 mapping or alternate facade was added. The workspace version is `0.2.3`.
 
+## T182 Durable Conclusion
+
+T182 completes the final direct BSL projection handoff without another model
+or seam. `project_hbk_member_query_kind` owns core-to-provider member lookup
+kind conversion, `project_hbk_callable_fact_id` owns constructor-versus-
+callable identity classification and source-qualified `FactId` construction,
+and the existing `context-resolver-core::metadata_module_context_kind` owner is
+public for direct typed consumers. `PlatformSnapshotSource` delegates to these
+owners and its former local copies are removed.
+
+Exhaustive tests cover all member-query and callable variants plus the exact
+six opaque metadata module-role selectors and unknown absence. Structural
+predicates scan production sources and reject seeded duplicate helper,
+constructor classifier, selector table, projection holder and selector wrapper
+examples. Strict OpenSpec validation, formatting, focused tests, workspace
+check/test and fresh re-review pass; the real `shcntx_ru` extraction fixture
+completed in 95.24 seconds. No wrapper, DTO, enum mirror, module, adapter,
+cache, registry, reader, parser, storage/index, schema, serialized shape or
+alternate facade was added. The workspace version is `0.2.4`.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

@@ -194,6 +194,37 @@ Progress:
   adds no semantic structure or new seam. Workspace version is `0.2.3`;
   downstream analyzer integration can remove its temporary kind mappings.
 
+### [x] T182. Complete final direct BSL projection handoff
+
+References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,
+`implementation/components.md`, ADR-0008, OpenSpec change
+`expose-borrowed-hbk-domain-catalogs`.
+
+Scope and guard:
+
+- Promote the existing inverse member-query projection and callable stable
+  identity construction to the current mapping owner, and make the existing
+  core metadata module-role translation callable by direct consumers.
+- Keep the generic snapshot adapter and downstream analyzer boundary on those
+  same owners. Preserve constructor identity, exact opaque selector behavior
+  and normal absence for unknown selectors.
+- Add no projection holder, selector wrapper, DTO/enum mirror, adapter, cache,
+  registry, storage/index, reader, parser or alternate facade.
+
+Progress:
+
+- `project_hbk_member_query_kind`, `project_hbk_callable_fact_id` and
+  `metadata_module_context_kind` are public functions on their existing
+  owners. `PlatformSnapshotSource` delegates and its private duplicate
+  mappings/classifier are removed.
+- Exhaustive parity and seeded structural guards cover all source variants and
+  reject the former helper, repeated constructor classifier, module-role
+  literal/`ModuleKind` table, projection holder and selector wrapper.
+- Strict OpenSpec validation, formatting, focused and workspace tests,
+  Structure impact/codebase-design reconciliation and fresh re-review pass.
+  Workspace version is `0.2.4`; the downstream analyzer can now remove the
+  remaining temporary HBK projection and selector copies.
+
 ### [x] T178. Expose borrowed HBK BSL and SDBL domain catalogs
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,

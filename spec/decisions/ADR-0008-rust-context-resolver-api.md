@@ -314,6 +314,14 @@ established `LanguageFunction -> GlobalMethod` compatibility meaning. A
 downstream kind table, analyzer-specific exception or separate query-kind
 mapping is not an accepted seam.
 
+The final direct handoff keeps inverse provider lookup and callable identity on
+that same owner: `MemberQueryKind` is projected to `HbkTypeMemberKind` once,
+and callable `FactId` construction classifies constructors separately while
+all other HBK callables remain callable facts. Direct consumers also call the
+existing `context-resolver-core` metadata module-role translator instead of
+deriving HBK module context from analyzer metadata kinds. The six opaque
+selectors and unknown-as-absence behavior remain unchanged.
+
 The accepted implementation contract and consumer inventory are recorded by
 OpenSpec change `expose-borrowed-hbk-domain-catalogs`.
 

@@ -887,6 +887,15 @@ owned-output boundaries. The established `LanguageFunction -> GlobalMethod`
 meaning remains unchanged; no downstream kind table, query-kind exception,
 projection holder or alternate adapter is introduced.
 
+T182 completes the final direct BSL projection handoff. The same mapping owner
+projects core `MemberQueryKind` into the provider member kind and constructs
+stable callable `FactId` values, classifying constructors separately from all
+other callables. The existing `context-resolver-core` metadata module-role
+translator is public for direct typed consumers, retains its six opaque
+selectors and returns normal absence for unknown values. Generic and direct
+consumers delegate to these owners; no selector wrapper, projection holder,
+adapter or parallel mapping is introduced.
+
 The same snapshot family exposes `HbkSdblQueryCatalog` for borrowed query tables, owner-scoped
 fields and parameters, query identifiers/syntax/type references and locale-aware metadata source
 selectors. `QueryTableSnapshotSource` owns this catalog handle and projects borrowed records into

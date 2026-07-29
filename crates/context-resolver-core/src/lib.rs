@@ -981,7 +981,7 @@ fn source_id_matches(source: &dyn ContextSource, expected: &SourceId) -> bool {
     }
 }
 
-fn metadata_module_context_kind(selector: &str) -> Option<ModuleContextKind> {
+pub fn metadata_module_context_kind(selector: &str) -> Option<ModuleContextKind> {
     match selector {
         "metadata.module-role.common" => Some(ModuleContextKind::Common),
         "metadata.module-role.command" => Some(ModuleContextKind::Command),
@@ -3383,6 +3383,35 @@ mod tests {
                 metadata_bsl_member_kind(selector),
                 None,
                 "only the accepted selector may have a BSL member classification",
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_module_context_kind_classifies_only_certified_module_roles() {
+        for (selector, expected) in [
+            ("metadata.module-role.common", ModuleContextKind::Common),
+            ("metadata.module-role.command", ModuleContextKind::Command),
+            ("metadata.module-role.object", ModuleContextKind::Object),
+            ("metadata.module-role.manager", ModuleContextKind::Manager),
+            ("metadata.module-role.form", ModuleContextKind::Form),
+            (
+                "metadata.module-role.record-set",
+                ModuleContextKind::RecordSet,
+            ),
+        ] {
+            assert_eq!(metadata_module_context_kind(selector), Some(expected));
+        }
+        for selector in [
+            "metadata.module-role.session",
+            "metadata.module-role.ordinary-application",
+            "metadata.module-role.unknown",
+            "metadata.module-role.object.command",
+        ] {
+            assert_eq!(
+                metadata_module_context_kind(selector),
+                None,
+                "unknown metadata module-role selectors are normal absence"
             );
         }
     }

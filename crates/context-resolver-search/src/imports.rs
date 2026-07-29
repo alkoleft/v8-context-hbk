@@ -15,7 +15,7 @@ use context_resolver_core::{
     TypeLookup, TypeRef, TypeRefTarget, TypeTemplateBinding,
 };
 use syntax_helper_search::{
-    HbkCallableId, HbkCallableKind, HbkEnumId, HbkEnumValueId, HbkFactRef, HbkFactSnapshot,
+    HbkCallable, HbkCallableId, HbkCallableKind, HbkEnumId, HbkEnumValueId, HbkFactRef, HbkFactSnapshot,
     HbkGlobalFactId, HbkName, HbkPlatformTypeId, HbkQueryFieldId, HbkQueryParameterId,
     HbkQueryTableId, HbkTypeMemberId, HbkTypeMemberKind,
     HbkTypeRef, HbkTypeRefTarget, RelatedHit, SearchDocument, SearchDocumentKind, SearchError,
