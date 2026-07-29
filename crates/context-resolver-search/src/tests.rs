@@ -22,6 +22,18 @@ mod tests {
 
     use super::*;
 
+    fn collect_catalog_availability<I>(
+        (contexts, since): (I, Option<&str>),
+    ) -> (Vec<AvailabilityContext>, Option<String>)
+    where
+        I: Iterator<Item = AvailabilityContext>,
+    {
+        (
+            contexts.collect(),
+            since.map(str::to_string),
+        )
+    }
+
     #[test]
     fn platform_adapter_opens_read_only_index_from_path() {
         let source = fixture_source();
@@ -1045,52 +1057,30 @@ mod tests {
         );
 
         assert_eq!(
-            catalog
-                .platform_type_availability(settings_id)
-                .0,
-            snapshot
-                .worker_handle()
-                .availability_contexts(syntax_helper_search::HbkFactRef::PlatformType(settings_id))
+            collect_catalog_availability(catalog.platform_type_availability(settings_id)),
+            (Vec::new(), None)
         );
         assert_eq!(
-            catalog.member_availability(member_id),
+            collect_catalog_availability(catalog.member_availability(member_id)),
+            (Vec::new(), None)
+        );
+        assert_eq!(
+            collect_catalog_availability(catalog.callable_availability(callable_id)),
+            (Vec::new(), None)
+        );
+        assert_eq!(
+            collect_catalog_availability(catalog.global_availability(global_property_id)),
+            (Vec::new(), None)
+        );
+        assert_eq!(
+            collect_catalog_availability(catalog.callable_availability(event_id)),
             (
-                snapshot
-                    .worker_handle()
-                    .availability_contexts(syntax_helper_search::HbkFactRef::TypeMember(member_id)),
-                snapshot
-                    .worker_handle()
-                    .available_since(syntax_helper_search::HbkFactRef::TypeMember(member_id))
+                vec![
+                    AvailabilityContext::ThinClient,
+                    AvailabilityContext::Server,
+                ],
+                Some("8.3.1".to_string()),
             )
-        );
-        assert_eq!(
-            catalog.callable_availability(callable_id),
-            (
-                snapshot
-                    .worker_handle()
-                    .availability_contexts(syntax_helper_search::HbkFactRef::Callable(callable_id)),
-                snapshot
-                    .worker_handle()
-                    .available_since(syntax_helper_search::HbkFactRef::Callable(callable_id))
-            )
-        );
-        assert_eq!(
-            catalog.global_availability(global_property_id),
-            (
-                snapshot
-                    .worker_handle()
-                    .availability_contexts(syntax_helper_search::HbkFactRef::Global(global_property_id)),
-                snapshot
-                    .worker_handle()
-                    .available_since(syntax_helper_search::HbkFactRef::Global(global_property_id))
-            )
-        );
-        assert_eq!(
-            catalog
-                .callable_availability(event_id)
-                .1
-                .map(|id| catalog.string(id)),
-            Some("8.3.1")
         );
     }
 
@@ -1109,12 +1099,12 @@ mod tests {
             &syntax_helper_search::HbkPlatformType,
         )| {
             (
-                catalog.string(ty.id).to_string(),
+                project_hbk_fact_id(&catalog, FactKind::Type, catalog.string(ty.id)),
                 catalog.string(ty.name.primary).to_string(),
             )
         };
         let adapter_type_projection = |ty: &ResolvedType| {
-            (ty.id.0.local_id.clone(), ty.fact.name.primary.clone())
+            (ty.id.0.clone(), ty.fact.name.primary.clone())
         };
         let expected_generated = catalog
             .generated_self_types("metadata.generated-self.catalog-manager")
@@ -1150,16 +1140,30 @@ mod tests {
             &syntax_helper_search::HbkTypeMember,
         )| {
             (
-                catalog.string(catalog.snapshot().type_member(id).id).to_string(),
+                project_hbk_fact_id(
+                    &catalog,
+                    FactKind::Member,
+                    catalog.string(catalog.snapshot().type_member(id).id),
+                ),
                 catalog.string(member.name.primary).to_string(),
-                catalog.string(catalog.snapshot().platform_type(member.owner).id).to_string(),
+                project_hbk_fact_id(
+                    &catalog,
+                    FactKind::Type,
+                    catalog.string(catalog.snapshot().platform_type(member.owner).id),
+                ),
+                member
+                    .type_refs
+                    .iter()
+                    .map(|type_ref| project_hbk_type_ref(&catalog, type_ref))
+                    .collect::<Vec<_>>(),
             )
         };
         let adapter_member_projection = |member: &ResolvedMember| {
             (
-                member.id.0.local_id.clone(),
+                member.id.0.clone(),
                 member.fact.name.primary.clone(),
-                member.owner.0.local_id.clone(),
+                member.owner.0.clone(),
+                member.info.types.clone(),
             )
         };
         let expected_members = catalog
@@ -1220,20 +1224,42 @@ mod tests {
             &syntax_helper_search::HbkCallable,
         )| {
             (
-                catalog.string(catalog.snapshot().callable(id).id).to_string(),
+                project_hbk_fact_id(
+                    &catalog,
+                    if callable.kind == syntax_helper_search::HbkCallableKind::Constructor {
+                        FactKind::Constructor
+                    } else {
+                        FactKind::Callable
+                    },
+                    catalog.string(catalog.snapshot().callable(id).id),
+                ),
                 catalog.string(callable.name.primary).to_string(),
                 callable.owner.map(|owner| {
-                    catalog
-                        .string(catalog.snapshot().platform_type(owner).id)
-                        .to_string()
+                    project_hbk_fact_id(
+                        &catalog,
+                        FactKind::Type,
+                        catalog.string(catalog.snapshot().platform_type(owner).id),
+                    )
                 }),
+                callable
+                    .signatures
+                    .iter()
+                    .map(|signature| project_hbk_signature(&catalog, signature))
+                    .collect::<Vec<_>>(),
+                callable
+                    .return_type_refs
+                    .iter()
+                    .map(|type_ref| project_hbk_type_ref(&catalog, type_ref))
+                    .collect::<Vec<_>>(),
             )
         };
         let adapter_callable_projection = |callable: &ResolvedCallable| {
             (
-                callable.id.0.local_id.clone(),
+                callable.id.0.clone(),
                 callable.fact.name.primary.clone(),
-                callable.owner.as_ref().map(|owner| owner.0.local_id.clone()),
+                callable.owner.as_ref().map(|owner| owner.0.clone()),
+                callable.info.signatures.clone(),
+                callable.info.return_types.clone(),
             )
         };
         let expected_callables = catalog
@@ -1258,6 +1284,71 @@ mod tests {
             .callable_by_name(filter_id, "Найти")
             .next()
             .expect("filter callable must resolve by name");
+
+        let (generated_id, generated_record) = catalog
+            .generated_self_types("metadata.generated-self.catalog-manager")
+            .next()
+            .expect("generated-self catalog manager must resolve");
+        let generated_type = TypeId(project_hbk_fact_id(
+            &catalog,
+            FactKind::Type,
+            catalog.string(generated_record.id),
+        ));
+        let expected_generated_members = catalog
+            .members(generated_id)
+            .map(catalog_member_projection)
+            .collect::<Vec<_>>();
+        let actual_generated_members = adapter
+            .members(
+                &generated_type,
+                MemberQuery {
+                    name: None,
+                    kind: None,
+                },
+                &ResolveContext::all(),
+            )
+            .expect("generated-self member enumeration must not fail")
+            .facts
+            .iter()
+            .map(adapter_member_projection)
+            .collect::<Vec<_>>();
+        assert_eq!(actual_generated_members, expected_generated_members);
+
+        let expected_generated_callables = catalog
+            .callables(generated_id)
+            .map(catalog_callable_projection)
+            .collect::<Vec<_>>();
+        let actual_generated_callables = catalog
+            .callables(generated_id)
+            .map(|(id, callable)| {
+                let name = catalog.string(callable.name.primary);
+                assert_eq!(
+                    catalog
+                        .callable_by_name(generated_id, name)
+                        .map(|(candidate, _)| candidate)
+                        .collect::<Vec<_>>(),
+                    vec![id],
+                    "generated-self callable point lookup must match enumeration"
+                );
+                adapter
+                    .callable(
+                        CallableLookup::OwnerName {
+                            owner: Some(&generated_type),
+                            name,
+                        },
+                        &ResolveContext::all(),
+                    )
+                    .expect("generated-self callable projection must not fail")
+                    .facts
+                    .first()
+                    .map(adapter_callable_projection)
+                    .expect("generated-self callable must resolve")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual_generated_callables,
+            expected_generated_callables
+        );
 
         let global_context = adapter
             .global_context(
@@ -1290,12 +1381,28 @@ mod tests {
             &syntax_helper_search::HbkGlobalFact,
         )| {
             (
-                catalog.string(catalog.snapshot().global_fact(id).id).to_string(),
+                project_hbk_fact_id(
+                    &catalog,
+                    FactKind::Global,
+                    catalog.string(catalog.snapshot().global_fact(id).id),
+                ),
                 catalog.string(global.name.primary).to_string(),
+                global
+                    .type_refs
+                    .iter()
+                    .map(|type_ref| project_hbk_type_ref(&catalog, type_ref))
+                    .collect::<Vec<_>>(),
             )
         };
         let adapter_global_projection = |global: &ContextFact| {
-            (global.id.local_id.clone(), global.name.primary.clone())
+            let FactDetails::Member(info) = &global.details else {
+                panic!("global property must expose member details");
+            };
+            (
+                global.id.clone(),
+                global.name.primary.clone(),
+                info.types.clone(),
+            )
         };
         let expected_global_properties = catalog
             .global_properties()
@@ -1387,18 +1494,6 @@ mod tests {
             .next()
             .expect("form module event must resolve by name");
 
-        let expected_availability = |(
-            contexts,
-            since,
-        ): (&[syntax_helper_search::StringId], Option<syntax_helper_search::StringId>)| {
-            (
-                contexts
-                    .iter()
-                    .filter_map(|context| availability_context_from_code(catalog.string(*context)))
-                    .collect::<Vec<_>>(),
-                since.map(|since| catalog.string(since).to_string()),
-            )
-        };
         let actual_availability = |id: &FactId| {
             let response = adapter
                 .availability(id, &ResolveContext::all())
@@ -1416,7 +1511,7 @@ mod tests {
         for (id, expected) in [
             (
                 settings.0.clone(),
-                expected_availability(catalog.platform_type_availability(settings_id)),
+                collect_catalog_availability(catalog.platform_type_availability(settings_id)),
             ),
             (
                 FactId::new(
@@ -1425,7 +1520,7 @@ mod tests {
                     FactKind::Member,
                     catalog.string(catalog.snapshot().type_member(member_id).id),
                 ),
-                expected_availability(catalog.member_availability(member_id)),
+                collect_catalog_availability(catalog.member_availability(member_id)),
             ),
             (
                 FactId::new(
@@ -1434,7 +1529,7 @@ mod tests {
                     FactKind::Callable,
                     catalog.string(catalog.snapshot().callable(callable_id).id),
                 ),
-                expected_availability(catalog.callable_availability(callable_id)),
+                collect_catalog_availability(catalog.callable_availability(callable_id)),
             ),
             (
                 FactId::new(
@@ -1443,7 +1538,7 @@ mod tests {
                     FactKind::Global,
                     catalog.string(catalog.snapshot().global_fact(global_property_id).id),
                 ),
-                expected_availability(catalog.global_availability(global_property_id)),
+                collect_catalog_availability(catalog.global_availability(global_property_id)),
             ),
             (
                 FactId::new(
@@ -1452,7 +1547,7 @@ mod tests {
                     FactKind::Callable,
                     catalog.string(catalog.snapshot().callable(event_id).id),
                 ),
-                expected_availability(catalog.callable_availability(event_id)),
+                collect_catalog_availability(catalog.callable_availability(event_id)),
             ),
         ] {
             assert_eq!(actual_availability(&id), expected, "{}", id.local_id);
@@ -1657,7 +1752,7 @@ mod tests {
         println!("direct_global_property_records={global_properties}");
         println!("direct_module_event_records={module_events}");
         println!("direct_exact_module_event_records={exact_module_events}");
-        println!("direct_availability_contexts={}", availability_contexts.len());
+        println!("direct_availability_contexts={}", availability_contexts.count());
         println!(
             "direct_availability_since_present={}",
             usize::from(available_since.is_some())
@@ -3324,6 +3419,10 @@ mod tests {
         let language_adapter = include_str!("language_adapter.rs");
         let mapping = include_str!("mapping.rs");
         let snapshot_adapter = include_str!("snapshot_adapter.rs");
+        let platform_snapshot_adapter = snapshot_adapter
+            .split("impl QueryTableSnapshotSource")
+            .next()
+            .expect("platform snapshot implementation must precede query snapshot implementation");
         let lib = include_str!("lib.rs");
 
         for (path, source) in [
@@ -3345,6 +3444,51 @@ mod tests {
                 );
             }
         }
+
+        assert!(
+            !bsl_catalog.contains("(&[StringId], Option<StringId>)")
+                && !bsl_catalog.contains("Option<StringId>)"),
+            "public BSL catalog availability must not expose raw context/version StringId values"
+        );
+        assert_eq!(
+            count_occurrences(mapping, "pub fn project_hbk_fact_id("),
+            1,
+            "stable HBK FactId projection must have one public owner"
+        );
+        assert_eq!(
+            count_occurrences(mapping, "pub fn project_hbk_type_ref("),
+            1,
+            "HBK type-reference projection must have one public owner"
+        );
+        assert_eq!(
+            count_occurrences(mapping, "pub fn project_hbk_signature("),
+            1,
+            "HBK signature projection must have one public owner"
+        );
+        for projection in [
+            "project_hbk_fact_id",
+            "project_hbk_type_ref",
+            "project_hbk_signature",
+        ] {
+            assert!(
+                platform_snapshot_adapter.contains(projection),
+                "snapshot compatibility adapter must reuse {projection}"
+            );
+            assert!(
+                !bsl_catalog.contains(projection),
+                "borrowed catalog must not emit generic projected payloads through {projection}"
+            );
+        }
+        assert!(
+            !platform_snapshot_adapter.contains("fn map_type_ref(")
+                && !platform_snapshot_adapter.contains("fn map_type_ref_target("),
+            "platform snapshot adapter must not retain a second HBK type-reference projection"
+        );
+        assert_eq!(
+            count_occurrences(mapping, "fn availability_context_from_code("),
+            1,
+            "availability code decoding must keep one production owner"
+        );
 
         for (path, source) in [
             ("hbk_catalogs/bsl.rs", bsl_catalog),
@@ -4842,6 +4986,23 @@ mod tests {
             .expect("property must sink");
         builder
             .type_property(model::PlatformProperty {
+                owner: name("СправочникМенеджер.<Имя справочника>", None),
+                owner_identity: Some(
+                    "platform_type:СправочникМенеджер.<Имя справочника>".to_string(),
+                ),
+                name: name("Метаданные", Some("Metadata")),
+                semantic: model::SemanticContext::default(),
+                usage: None,
+                type_refs: vec![model::TypeRef {
+                    name: "Структура".to_string(),
+                }],
+                description: Some("Метаданные справочника.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("catalog-manager-metadata"),
+            })
+            .expect("generated-self property must sink");
+        builder
+            .type_property(model::PlatformProperty {
                 owner: name("ОтборКомпоновкиДанных", None),
                 owner_identity: Some("platform_type:ОтборКомпоновкиДанных".to_string()),
                 name: name("Элементы", None),
@@ -4882,6 +5043,33 @@ mod tests {
                 source: source_ref("filter-find"),
             })
             .expect("method must sink");
+        builder
+            .type_method(model::PlatformMethod {
+                owner: name("СправочникМенеджер.<Имя справочника>", None),
+                owner_identity: Some(
+                    "platform_type:СправочникМенеджер.<Имя справочника>".to_string(),
+                ),
+                name: name("НайтиПоКоду", Some("FindByCode")),
+                semantic: model::SemanticContext::default(),
+                signatures: vec![model::Signature {
+                    text: "НайтиПоКоду(<Код>)".to_string(),
+                    parameters: vec![model::Parameter {
+                        name: "Код".to_string(),
+                        required: true,
+                        type_refs: vec![model::TypeRef {
+                            name: "Строка".to_string(),
+                        }],
+                        description: None,
+                    }],
+                    return_types: Vec::new(),
+                    variant: None,
+                }],
+                return_types: Vec::new(),
+                description: Some("Ищет справочник по коду.".to_string()),
+                facts: model::SectionFacts::default(),
+                source: source_ref("catalog-manager-find-by-code"),
+            })
+            .expect("generated-self method must sink");
         builder
             .global_method(model::GlobalMethod {
                 name: name("Сообщить", Some("Message")),
@@ -5411,7 +5599,10 @@ mod tests {
             description: Some("module event description".to_string()),
             facts: model::SectionFacts {
                 availability: model::Availability {
-                    contexts: Vec::new(),
+                    contexts: vec![
+                        model::AvailabilityContext::ThinClient,
+                        model::AvailabilityContext::Server,
+                    ],
                 },
                 examples: Vec::new(),
                 see_also: Vec::new(),

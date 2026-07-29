@@ -188,19 +188,19 @@ Verification and reconciliation evidence (2026-07-28):
 
 ## 6. Complete direct BSL analyzer handoff
 
-- [ ] 6.1 Change `HbkBslContextCatalog` availability operations to return
+- [x] 6.1 Change `HbkBslContextCatalog` availability operations to return
   existing typed `AvailabilityContext` values and borrowed available-since
   text, reusing the existing HBK availability decoder and exposing no raw
   availability `StringId`.
-- [ ] 6.2 Give stable `FactId`, `HbkTypeRef -> TypeRef` and
+- [x] 6.2 Give stable `FactId`, `HbkTypeRef -> TypeRef` and
   `HbkSignature -> Signature` projection one narrow public upstream owner;
   reuse it from `PlatformSnapshotSource` and expose no projection holder, DTO
   family or generic payload from `HbkBslContextCatalog`.
-- [ ] 6.3 Add catalog/generic-adapter parity for type, generated-self
+- [x] 6.3 Add catalog/generic-adapter parity for type, generated-self
   member/callable, global property/method, module member/event, availability
   contexts and available-since text; add structural guards for raw public
   availability IDs and duplicate projection/mapping owners.
-- [ ] 6.4 Run focused and workspace verification, reconcile the actual diff
+- [x] 6.4 Run focused and workspace verification, reconcile the actual diff
   against the Structure impact/Reintroduction guard, update durable spec,
   versioning and acceptance evidence, run a fresh review and commit this
   upstream stage before downstream analyzer integration.
@@ -241,3 +241,38 @@ Reintroduction guard for 6.1-6.4:
   a second availability decoder, duplicate type-ref/signature/fact-id mapping,
   a projection wrapper/DTO, `ContextFact`/`Resolved*`/`HbkFactRef` catalog
   output, a new arena/index/cache and SQL/SearchIndex fallback.
+
+Completion evidence (2026-07-29):
+
+- `HbkBslContextCatalog` now returns a lazy iterator of existing
+  `AvailabilityContext` values plus borrowed available-since text. The one
+  existing availability decoder remains in `mapping.rs`; raw availability or
+  version `StringId` values no longer escape the public catalog methods.
+- `project_hbk_fact_id`, `project_hbk_type_ref` and
+  `project_hbk_signature` are the only public projection functions.
+  `PlatformSnapshotSource` delegates to them and its former private
+  fact-id/type-reference/signature implementations were removed.
+- Existing snapshot/index fixtures now prove catalog/generic-adapter parity for
+  types, generated-self properties/methods, globals, module events,
+  availability contexts/version text, type references and signatures.
+  Structural guards reject a raw availability-ID signature, duplicate
+  projection functions, retained platform type-ref projection and generic
+  payload projection from the catalog.
+- Strict OpenSpec validation, `cargo fmt --all --check`,
+  `cargo test -p context-resolver-search` (`40` passed, `2` ignored plus the
+  external smoke test), `cargo check --workspace` and
+  `cargo test --workspace` pass; the real `shcntx_ru` extraction fixture
+  completed in `88.15` seconds. The package clippy command reaches only the existing
+  `syntax-helper-search/src/snapshot/memory.rs:450` `clippy::ptr_arg`
+  diagnostic; the implementation adds no lint finding.
+- Fresh review returned `NO FINDINGS`. Final codebase-design/Structure impact
+  reconciliation accounts for only the changed catalog availability signature
+  and three selected functions on the existing mapping owner. No record, DTO,
+  wrapper, module, cache, registry, reader, parser, resolver, storage/index,
+  SQL fallback, public `HbkFactRef`, serialized contract or alternate facade
+  was added. ADR-0008, the existing component owner, durable task and acceptance
+  baseline record the boundary; functional/non-functional requirements and use
+  cases already cover the behavior and need no duplicate requirement.
+- The completed handoff advances the workspace patch version to `0.2.2`. The
+  durable follow-up is `T180`; `T179` remains the distinct completed
+  member-enumeration/classification task.

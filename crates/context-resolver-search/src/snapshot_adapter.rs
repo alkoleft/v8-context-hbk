@@ -25,12 +25,7 @@ impl PlatformSnapshotSource {
     }
 
     fn fact_id(&self, kind: FactKind, local_id: impl Into<String>) -> FactId {
-        FactId::new(
-            self.catalog.source_id().clone(),
-            LanguageDomain::PlatformApi,
-            kind,
-            local_id,
-        )
+        project_hbk_fact_id(&self.catalog, kind, local_id)
     }
 
     fn type_id(&self, local_id: impl Into<String>) -> TypeId {
@@ -408,131 +403,40 @@ impl PlatformSnapshotSource {
 
     fn map_type_refs(&self, refs: &[HbkTypeRef]) -> Vec<TypeRef> {
         refs.iter()
-            .map(|type_ref| self.map_type_ref(type_ref))
+            .map(|type_ref| project_hbk_type_ref(&self.catalog, type_ref))
             .collect()
-    }
-
-    fn map_type_ref(&self, type_ref: &HbkTypeRef) -> TypeRef {
-        TypeRef {
-            name: self.catalog.snapshot().string(type_ref.name).to_string(),
-            target: self.map_type_ref_target(&type_ref.target),
-            template_binding: type_ref.template_binding.as_ref().map(|binding| {
-                TypeTemplateBinding {
-                    template_key: self.map_type_template_key(binding.template_key),
-                    arguments: binding
-                        .arguments
-                        .iter()
-                        .map(|argument| {
-                            match argument {
-                            syntax_helper_search::model::TemplateParameterBinding::OwnerParameter {
-                                owner_parameter_index,
-                                target_parameter_index,
-                            } => TemplateParameterBinding::OwnerParameter {
-                                owner_parameter_index: *owner_parameter_index,
-                                target_parameter_index: *target_parameter_index,
-                            },
-                        }
-                        })
-                        .collect(),
-                }
-            }),
-        }
-    }
-
-    fn map_type_ref_target(&self, target: &HbkTypeRefTarget) -> TypeRefTarget {
-        match target {
-            HbkTypeRefTarget::Ok(id) => {
-                TypeRefTarget::Ok(self.type_id(self.catalog.snapshot().string(*id)))
-            }
-            HbkTypeRefTarget::Unresolved => TypeRefTarget::Unresolved,
-            HbkTypeRefTarget::Ambiguous(candidates) => TypeRefTarget::Ambiguous(
-                candidates
-                    .iter()
-                    .map(|id| self.type_id(self.catalog.snapshot().string(*id)))
-                    .collect(),
-            ),
-        }
-    }
-
-    fn map_type_template_key(
-        &self,
-        key: syntax_helper_search::HbkPlatformTypeTemplateKey,
-    ) -> PlatformTypeTemplateKey {
-        snapshot_type_template_key(self.catalog.snapshot(), key)
     }
 
     fn map_signatures(&self, signatures: &[syntax_helper_search::HbkSignature]) -> Vec<Signature> {
         signatures
             .iter()
-            .map(|signature| Signature {
-                parameters: signature
-                    .parameters
-                    .iter()
-                    .map(|parameter| Parameter {
-                        name: self.catalog.snapshot().string(parameter.name).to_string(),
-                        required: parameter.required,
-                        types: self.map_type_refs(&parameter.type_refs),
-                        description: None,
-                    })
-                    .collect(),
-                return_types: self.map_type_refs(&signature.return_type_refs),
-                variadic: signature_text_is_variadic(
-                    self.catalog.snapshot().string(signature.text),
-                ),
-                title: Some(self.catalog.snapshot().string(signature.text).to_string()),
-                description: None,
-            })
+            .map(|signature| project_hbk_signature(&self.catalog, signature))
             .collect()
     }
 
-    fn map_availability(&self, id: &FactId, fact: HbkFactRef) -> AvailabilityFact {
-        AvailabilityFact {
-            id: id.clone(),
-            availability: AvailabilityInfo {
-                contexts: self
-                    .catalog
-                    .snapshot()
-                    .worker_handle()
-                    .availability_contexts(fact)
-                    .iter()
-                    .filter_map(|context| {
-                        availability_context_from_code(self.catalog.snapshot().string(*context))
-                    })
-                    .collect(),
-                since: self
-                    .catalog
-                    .snapshot()
-                    .worker_handle()
-                    .available_since(fact)
-                    .map(|since| self.catalog.snapshot().string(since).to_string()),
-            },
-        }
-    }
-
     fn catalog_availability(&self, id: &FactId) -> Option<AvailabilityFact> {
-        let (contexts, since) = match id.kind {
+        let fact = match id.kind {
             FactKind::Type => {
                 if let Some((typed_id, _)) = self.catalog.platform_type_by_id(&id.local_id) {
-                    self.catalog.platform_type_availability(typed_id)
+                    HbkFactRef::PlatformType(typed_id)
                 } else {
-                    let fact = HbkFactRef::Enum(
+                    HbkFactRef::Enum(
                         self.catalog
                             .snapshot()
                             .worker_handle()
                             .enum_by_id(&id.local_id)?,
-                    );
-                    return Some(self.map_availability(id, fact));
+                    )
                 }
             }
             FactKind::Member => {
                 if let Some((typed_id, _)) = self.catalog.member_by_id(&id.local_id) {
-                    self.catalog.member_availability(typed_id)
+                    HbkFactRef::TypeMember(typed_id)
                 } else {
                     let (typed_id, callable) = self.catalog.callable_by_id(&id.local_id)?;
                     if callable.kind != HbkCallableKind::Event {
                         return None;
                     }
-                    self.catalog.callable_availability(typed_id)
+                    HbkFactRef::Callable(typed_id)
                 }
             }
             FactKind::Callable | FactKind::Constructor => {
@@ -544,42 +448,32 @@ impl PlatformSnapshotSource {
                 if !matches_kind {
                     return None;
                 }
-                self.catalog.callable_availability(typed_id)
+                HbkFactRef::Callable(typed_id)
             }
             FactKind::Global => {
                 let (typed_id, _) = self.catalog.global_by_id(&id.local_id)?;
-                self.catalog.global_availability(typed_id)
+                HbkFactRef::Global(typed_id)
             }
-            FactKind::Enum => {
-                let fact = HbkFactRef::Enum(
-                    self.catalog
-                        .snapshot()
-                        .worker_handle()
-                        .enum_by_id(&id.local_id)?,
-                );
-                return Some(self.map_availability(id, fact));
-            }
-            FactKind::EnumValue => {
-                let fact = HbkFactRef::EnumValue(
-                    self.catalog
-                        .snapshot()
-                        .worker_handle()
-                        .enum_value_by_id(&id.local_id)?,
-                );
-                return Some(self.map_availability(id, fact));
-            }
+            FactKind::Enum => HbkFactRef::Enum(
+                self.catalog
+                    .snapshot()
+                    .worker_handle()
+                    .enum_by_id(&id.local_id)?,
+            ),
+            FactKind::EnumValue => HbkFactRef::EnumValue(
+                self.catalog
+                    .snapshot()
+                    .worker_handle()
+                    .enum_value_by_id(&id.local_id)?,
+            ),
             _ => return None,
         };
+        let (contexts, since) = self.catalog.availability(fact);
         Some(AvailabilityFact {
             id: id.clone(),
             availability: AvailabilityInfo {
-                contexts: contexts
-                    .iter()
-                    .filter_map(|context| {
-                        availability_context_from_code(self.catalog.snapshot().string(*context))
-                    })
-                    .collect(),
-                since: since.map(|since| self.catalog.snapshot().string(since).to_string()),
+                contexts: contexts.collect(),
+                since: since.map(str::to_string),
             },
         })
     }

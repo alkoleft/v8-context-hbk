@@ -2634,6 +2634,27 @@ holder, registry, schema, analyzer model, or second kind mapping was added.
 Core/search tests, the static-analysis consumer smoke test, workspace check,
 formatting, and fresh review pass for workspace version `0.2.1`.
 
+## T180 Durable Conclusion
+
+T180 completes the direct BSL catalog handoff without another model or storage
+owner. `HbkBslContextCatalog` availability operations now lend lazy existing
+`AvailabilityContext` values and borrowed available-since text; raw
+availability/version `StringId` protocol values stay inside the snapshot.
+Stable `FactId`, HBK type-reference and signature projection has one upstream
+owner reused by `PlatformSnapshotSource` and downstream concrete owned-output
+boundaries.
+
+Catalog/generic parity covers types, generated-self properties/methods,
+globals, module events, availability contexts/version text, type references and
+signatures. Structural guards reject raw public availability IDs, duplicate
+projection functions and retained adapter-local type-reference projection.
+Strict OpenSpec validation, focused search tests, the external smoke test,
+workspace check/test, formatting and fresh review pass; the real `shcntx_ru`
+extraction fixture completed in 88.15 seconds. Package clippy has only the
+pre-existing snapshot `ptr_arg` diagnostic. No wrapper, DTO, module, cache/index,
+fallback reader, generic catalog payload or serialized contract was added. The
+workspace version is `0.2.2`.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

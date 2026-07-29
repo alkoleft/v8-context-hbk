@@ -136,7 +136,7 @@ Completion notes:
   --workspace` pass. Fresh review completed with no findings. The additive
   provisional Rust contract advances the workspace patch version to `0.2.1`.
 
-### [ ] T179. Complete the direct BSL catalog handoff
+### [x] T180. Complete the direct BSL catalog handoff
 
 References: FR-CTX-RESOLVE-001, NFR-RESOLVE-001,
 `implementation/components.md`, ADR-0008, OpenSpec change
@@ -155,9 +155,15 @@ Scope and guard:
 
 Progress:
 
-- OpenSpec task 6 records the reviewed two-stage handoff plan. Implementation,
-  verification, versioning and fresh review remain pending before downstream
-  analyzer integration may start.
+- `HbkBslContextCatalog` now lends typed availability contexts and borrowed
+  available-since text. The generic snapshot adapter and downstream concrete
+  owned-output boundary share the one upstream fact-id/type-ref/signature
+  projection owner.
+- Catalog/generic parity, source-absence guards, focused tests, workspace
+  check/test, formatting and strict OpenSpec validation pass. Fresh review
+  returned no findings. The final Structure impact adds no wrapper, DTO,
+  storage/index, fallback or analyzer model. Workspace version is `0.2.2`;
+  downstream analyzer integration may now begin.
 
 ### [x] T178. Expose borrowed HBK BSL and SDBL domain catalogs
 

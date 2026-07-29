@@ -167,6 +167,99 @@ fn availability_context_from_code(value: &str) -> Option<AvailabilityContext> {
     }
 }
 
+pub fn project_hbk_fact_id(
+    catalog: &HbkBslContextCatalog,
+    kind: FactKind,
+    local_id: impl Into<String>,
+) -> FactId {
+    FactId::new(
+        catalog.source_id().clone(),
+        LanguageDomain::PlatformApi,
+        kind,
+        local_id,
+    )
+}
+
+pub fn project_hbk_type_ref(
+    catalog: &HbkBslContextCatalog,
+    type_ref: &HbkTypeRef,
+) -> TypeRef {
+    TypeRef {
+        name: catalog.string(type_ref.name).to_string(),
+        target: match &type_ref.target {
+            HbkTypeRefTarget::Ok(id) => TypeRefTarget::Ok(TypeId(project_hbk_fact_id(
+                catalog,
+                FactKind::Type,
+                catalog.string(*id),
+            ))),
+            HbkTypeRefTarget::Unresolved => TypeRefTarget::Unresolved,
+            HbkTypeRefTarget::Ambiguous(candidates) => TypeRefTarget::Ambiguous(
+                candidates
+                    .iter()
+                    .map(|id| {
+                        TypeId(project_hbk_fact_id(
+                            catalog,
+                            FactKind::Type,
+                            catalog.string(*id),
+                        ))
+                    })
+                    .collect(),
+            ),
+        },
+        template_binding: type_ref.template_binding.as_ref().map(|binding| {
+            TypeTemplateBinding {
+                template_key: PlatformTypeTemplateKey::new(
+                    catalog.string(binding.template_key.family),
+                    catalog.string(binding.template_key.variant),
+                ),
+                arguments: binding
+                    .arguments
+                    .iter()
+                    .map(|argument| match argument {
+                        syntax_helper_search::model::TemplateParameterBinding::OwnerParameter {
+                            owner_parameter_index,
+                            target_parameter_index,
+                        } => TemplateParameterBinding::OwnerParameter {
+                            owner_parameter_index: *owner_parameter_index,
+                            target_parameter_index: *target_parameter_index,
+                        },
+                    })
+                    .collect(),
+            }
+        }),
+    }
+}
+
+pub fn project_hbk_signature(
+    catalog: &HbkBslContextCatalog,
+    signature: &syntax_helper_search::HbkSignature,
+) -> Signature {
+    Signature {
+        parameters: signature
+            .parameters
+            .iter()
+            .map(|parameter| Parameter {
+                name: catalog.string(parameter.name).to_string(),
+                required: parameter.required,
+                types: parameter
+                    .type_refs
+                    .iter()
+                    .map(|type_ref| project_hbk_type_ref(catalog, type_ref))
+                    .collect(),
+                description: None,
+            })
+            .collect(),
+        return_types: signature
+            .return_type_refs
+            .iter()
+            .map(|type_ref| project_hbk_type_ref(catalog, type_ref))
+            .collect(),
+        variadic: signature_text_is_variadic(catalog.string(signature.text)),
+        title: Some(catalog.string(signature.text).to_string()),
+        description: None,
+    }
+}
+
 fn edge_from_relation_kind(kind: RelationKind) -> Option<&'static str> {
     match kind {
         RelationKind::HasType => Some("has_type"),

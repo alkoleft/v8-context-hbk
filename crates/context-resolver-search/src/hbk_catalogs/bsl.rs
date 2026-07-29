@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
-use context_resolver_core::{ModuleContextKind, SourceId};
+use context_resolver_core::{AvailabilityContext, ModuleContextKind, SourceId};
 use syntax_helper_search::{
     HbkCallable, HbkCallableId, HbkFactRef, HbkFactSnapshot, HbkGlobalFact, HbkGlobalFactId,
     HbkGlobalFactKind, HbkLanguageDomain, HbkPlatformType, HbkPlatformTypeId, HbkTypeMember,
     HbkTypeMemberId, HbkTypeMemberKind, StringId,
 };
 
-use crate::{DEFAULT_SOURCE_ID, template_key_parts_for_generated_self_role};
+use crate::{
+    DEFAULT_SOURCE_ID, availability_context_from_code, template_key_parts_for_generated_self_role,
+};
 
 pub struct HbkBslContextCatalog {
     source_id: SourceId,
@@ -286,19 +288,28 @@ impl HbkBslContextCatalog {
     pub fn platform_type_availability(
         &self,
         id: HbkPlatformTypeId,
-    ) -> (&[StringId], Option<StringId>) {
+    ) -> (impl Iterator<Item = AvailabilityContext> + '_, Option<&str>) {
         self.availability(HbkFactRef::PlatformType(id))
     }
 
-    pub fn member_availability(&self, id: HbkTypeMemberId) -> (&[StringId], Option<StringId>) {
+    pub fn member_availability(
+        &self,
+        id: HbkTypeMemberId,
+    ) -> (impl Iterator<Item = AvailabilityContext> + '_, Option<&str>) {
         self.availability(HbkFactRef::TypeMember(id))
     }
 
-    pub fn callable_availability(&self, id: HbkCallableId) -> (&[StringId], Option<StringId>) {
+    pub fn callable_availability(
+        &self,
+        id: HbkCallableId,
+    ) -> (impl Iterator<Item = AvailabilityContext> + '_, Option<&str>) {
         self.availability(HbkFactRef::Callable(id))
     }
 
-    pub fn global_availability(&self, id: HbkGlobalFactId) -> (&[StringId], Option<StringId>) {
+    pub fn global_availability(
+        &self,
+        id: HbkGlobalFactId,
+    ) -> (impl Iterator<Item = AvailabilityContext> + '_, Option<&str>) {
         self.availability(HbkFactRef::Global(id))
     }
 
@@ -306,10 +317,22 @@ impl HbkBslContextCatalog {
         &self.snapshot
     }
 
-    fn availability(&self, fact: HbkFactRef) -> (&[StringId], Option<StringId>) {
+    pub(crate) fn availability(
+        &self,
+        fact: HbkFactRef,
+    ) -> (impl Iterator<Item = AvailabilityContext> + '_, Option<&str>) {
         (
-            self.snapshot.worker_handle().availability_contexts(fact),
-            self.snapshot.worker_handle().available_since(fact),
+            self.snapshot
+                .worker_handle()
+                .availability_contexts(fact)
+                .iter()
+                .filter_map(|context| {
+                    availability_context_from_code(self.snapshot.string(*context))
+                }),
+            self.snapshot
+                .worker_handle()
+                .available_since(fact)
+                .map(|since| self.snapshot.string(since)),
         )
     }
 }

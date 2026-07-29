@@ -149,14 +149,14 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "context-resolver-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "context-resolver-search"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "context-resolver-core",
  "rusqlite",
@@ -363,7 +363,7 @@ dependencies = [
 
 [[package]]
 name = "hbk-book"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hbk-container",
  "thiserror",
@@ -373,7 +373,7 @@ dependencies = [
 
 [[package]]
 name = "hbk-book-export"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hbk-book",
  "hbk-docs",
@@ -385,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "hbk-container"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "memmap2",
  "thiserror",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "hbk-doc-site"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "fnv",
  "hbk-book",
@@ -406,7 +406,7 @@ dependencies = [
 
 [[package]]
 name = "hbk-docs"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hbk-book",
  "scraper",
@@ -415,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "hbk-syntax-export"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -942,7 +942,7 @@ dependencies = [
 
 [[package]]
 name = "syntax-helper-extract"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hbk-book",
  "hbk-docs",
@@ -954,7 +954,7 @@ dependencies = [
 
 [[package]]
 name = "syntax-helper-language"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "scraper",
  "serde",
@@ -963,14 +963,14 @@ dependencies = [
 
 [[package]]
 name = "syntax-helper-model"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "syntax-helper-search"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "rusqlite",
  "strsim",
@@ -1058,7 +1058,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "v8-context-hbk-cli"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clap",
  "hbk-book",
