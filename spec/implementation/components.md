@@ -1045,6 +1045,33 @@ or compressed bitmap indexes in the first slice. Evaluate `fst` for name/id maps
 `zerovec` for persisted zero-copy snapshots, and `roaring` for large set intersections only after
 the owned arena snapshot has concrete memory/latency measurements.
 
+### T183 Zero-Copy Candidate Isolation
+
+T183 authorizes only isolated comparison implementations defined by
+`hbk-zero-copy-snapshot-experiment.md`. It does not change the current
+provider-owned `HbkFactSnapshot`, binary-cache or resolver-adapter production
+contracts.
+
+The common release harness and parity oracle are fixed on an experiment base
+commit. H1 custom-flat and H3 archive candidates branch from that exact commit
+and may run in parallel worktrees. H2 branches from the measured H1 commit and
+changes only fixed-section access, so it is reported as “H1 layout + typed
+reader” rather than as an independent format. Candidate code, dependencies and
+generated artifacts remain branch-local until a later user decision and
+accepted durable design.
+
+Candidate writers may consume the same owned snapshot so format production can
+be compared without also changing extraction. SQL materialization,
+candidate encoding/write and total local rebuild are reported separately.
+Candidate readers expose only an internal experiment view/oracle boundary; T183
+must not stabilize a new public snapshot trait or migrate production catalogs.
+
+The H1 safe access path uses checked offsets/ranges and byte decoding. H2 must
+validate size, alignment and bit patterns before typed views. H3 remains an
+archive candidate until checked archive validation, schema/version/endianness
+handling and dependency review pass. No candidate may expose unchecked mapped
+or archived data to domain/catalog code.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

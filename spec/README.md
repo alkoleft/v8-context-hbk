@@ -29,6 +29,8 @@ Otherwise reconcile the specification files before implementing.
   post-baseline performance updates and current implementation direction.
 - `implementation/performance-variants.md`: saved performance/resource optimization variants and
   selection rules.
+- `implementation/hbk-zero-copy-snapshot-experiment.md`: T183 zero-copy snapshot hypothesis
+  registry, reproducible comparison protocol, branch/worktree isolation and decision boundary.
 - `implementation/syntax-helper-query-cli.md`: draft architecture for the separate Syntax
   Assistant query/search CLI and its index/relationship model.
 - `implementation/syntax-bsl-provider-plan.md`: ADR-0006 gap analysis, BSL/code-analysis use-case

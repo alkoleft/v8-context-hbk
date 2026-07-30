@@ -149,6 +149,49 @@ Provisional first-slice targets on the target developer workstation:
 If these targets cannot be met, the implementation task must record measured timings, source size
 and the limiting storage or translation component before adding broader optimization.
 
+## NFR-SNAPSHOT-001: Evidence-Gated File-Backed Snapshot Experiment
+
+The T183 zero-copy snapshot work is a bounded comparison experiment, not a
+production-format decision.
+
+Requirements:
+
+- SQLite-to-owned is the baseline and current-binary-cache-to-owned is the
+  control; every zero-copy construction approach is a separately identified
+  hypothesis measured by the same frozen release harness.
+- The common harness, exact corpus/checksums, process boundaries, cache stance,
+  run count, noise rule, raw-result schema and behavior oracle must be committed
+  before candidate branches are created. A harness change invalidates affected
+  comparisons until their baseline and candidate rows are rerun.
+- Baseline noise must be measured and task-local numerical benefit and
+  non-regression gates recorded before candidate implementation begins.
+- Performance evidence counts only after byte-for-byte logical-content and
+  lookup-transcript parity passes for the candidate. Numeric session-local IDs
+  are normalized through logical fact identity and text.
+- Startup measurements must distinguish snapshot production/rebuild,
+  process-start-to-ready open, first lookup, warm batched lookup and
+  post-workload steady state. Cold-best-effort and warm results are separate,
+  and an unverifiable advisory page-cache eviction must not be described as
+  true cold start.
+- Resource evidence must distinguish retained private heap from mapped/shared
+  pages and record allocations, peak RSS, steady RSS/PSS, aggregate
+  multi-process PSS, faults and artifact/section/index sizes where the host
+  tools support them.
+- Every mapped candidate must validate binary-layout version,
+  extraction-schema version, source identity, locale and exact platform
+  version. A platform mismatch invalidates the artifact.
+- Mapped candidate files are immutable. A reader keeps a shared
+  modification lock for its entire mapping lifetime; a writer that cannot
+  immediately obtain the exclusive logical-slot lock returns a typed
+  snapshot-in-use error without changing the active generation.
+- Candidate branches and dependencies are experimental. Passing gates does not
+  select a winner, change the canonical runtime path or authorize merge into
+  `master`; the user makes the selection after reviewing the unranked result
+  table.
+
+The full protocol and hypothesis registry are defined in
+`implementation/hbk-zero-copy-snapshot-experiment.md`.
+
 ## NFR-TEST-001: Testability
 
 - Test behavior, not implementation details.

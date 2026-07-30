@@ -34,7 +34,7 @@ type-reference conclusions live in
 `decisions/`. Detailed records for T165-T182 are in
 `archive/completed-tasks-t165-t182.md`.
 
-Current first unchecked task: none.
+Current first unchecked task: T183.
 
 ## Loop Rule
 
@@ -53,7 +53,36 @@ Current first unchecked task: none.
 
 ## Active Tasks
 
-No unchecked tasks remain. The next implementation scope must be added here before work starts.
+- [ ] **T183 — Compare isolated zero-copy snapshot hypotheses without
+  selecting a winner**
+  - Requirements:
+    [NFR-RESOLVE-001](requirements/non-functional.md#nfr-resolve-001-in-process-resolver-latency-and-determinism),
+    [NFR-SNAPSHOT-001](requirements/non-functional.md#nfr-snapshot-001-evidence-gated-file-backed-snapshot-experiment).
+  - Implementation:
+    [T183 experiment contract](implementation/hbk-zero-copy-snapshot-experiment.md),
+    [Provider-Owned HBK Fact Snapshot](implementation/components.md#provider-owned-hbk-fact-snapshot),
+    [T183 Zero-Copy Candidate Isolation](implementation/components.md#t183-zero-copy-candidate-isolation).
+  - OpenSpec:
+    `openspec/changes/establish-hbk-zero-copy-snapshot-cache`.
+  - Scope:
+    1. commit a standalone, versioned release benchmark/parity base for H0
+       SQLite-to-owned and C0 current-cache-to-owned;
+    2. capture baseline noise and freeze numerical gates before candidate code;
+    3. create isolated H1 custom-flat and H3 archive-candidate worktrees from
+       the frozen base, then H2 “H1 layout + typed reader” from measured H1;
+    4. require parity before accepting candidate performance evidence;
+    5. publish raw evidence plus one unranked comparison table with branch
+       ancestry and commit SHAs.
+  - Verification:
+    strict OpenSpec validation; format/check/test for the frozen base and each
+    candidate branch; exact corpus/checksum verification; versioned canonical
+    content and lookup transcripts; repeated median/MAD release measurements;
+    independent safety/performance review.
+  - Completion boundary:
+    update the durable acceptance baseline with all measured rows and gate
+    outcomes, but do not name a winner, merge a candidate into `master`, accept
+    a new production dependency or change the canonical runtime path without
+    the user's explicit selection.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their
