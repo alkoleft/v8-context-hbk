@@ -105,6 +105,14 @@ ALLOCATION_METRICS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+AGGREGATE_METRICS: dict[str, tuple[str, ...]] = {
+    "rss_kib": ("aggregate", "rss_kib"),
+    "pss_kib": ("aggregate", "pss_kib"),
+    "private_kib": ("aggregate", "private_kib"),
+    "shared_kib": ("aggregate", "shared_kib"),
+    "anonymous_kib": ("aggregate", "anonymous_kib"),
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -201,6 +209,17 @@ def summarize_allocation_group(records: list[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
+def summarize_aggregate_group(records: list[dict[str, Any]]) -> dict[str, Any]:
+    summary: dict[str, Any] = {"samples": len(records), "metrics": {}}
+    for name, path in AGGREGATE_METRICS.items():
+        metric = median_mad(
+            value for record in records if (value := nested(record, path)) is not None
+        )
+        if metric is not None:
+            summary["metrics"][name] = metric
+    return summary
+
+
 def relative_percent(value: float, baseline: float) -> float | None:
     if baseline == 0:
         return None
@@ -245,7 +264,7 @@ def render_markdown(
     harness_commit: str,
     groups: dict[str, dict[str, Any]],
     parity_records: list[dict[str, Any]],
-    aggregate_records: list[dict[str, Any]],
+    aggregate_groups: dict[str, dict[str, Any]],
     allocation_groups: dict[str, dict[str, Any]],
 ) -> str:
     lines = [
@@ -298,19 +317,22 @@ def render_markdown(
         lines.append("No parity record for this harness commit.")
 
     lines.extend(["", "## Aggregate four-reader PSS", ""])
-    if aggregate_records:
+    if aggregate_groups:
         lines.extend(
             [
-                "| Backend | Aggregate PSS MiB | Aggregate private MiB |",
-                "| --- | ---: | ---: |",
+                "| Backend | N | Aggregate PSS MiB (median ± MAD) | Aggregate private MiB (median ± MAD) |",
+                "| --- | ---: | ---: | ---: |",
             ]
         )
-        for record in aggregate_records:
-            aggregate = record["aggregate"]
+        for backend, group in sorted(aggregate_groups.items()):
+            pss = group["metrics"]["pss_kib"]
+            private = group["metrics"]["private_kib"]
             lines.append(
-                f"| {record['backend']} | "
-                f"{float(aggregate['pss_kib']) / 1024:.2f} | "
-                f"{float(aggregate['private_kib']) / 1024:.2f} |"
+                f"| {backend} | {group['samples']} | "
+                f"{float(pss['median']) / 1024:.2f} ± "
+                f"{float(pss['mad']) / 1024:.2f} | "
+                f"{float(private['median']) / 1024:.2f} ± "
+                f"{float(private['mad']) / 1024:.2f} |"
             )
     else:
         lines.append("No aggregate-reader record for this harness commit.")
@@ -388,6 +410,13 @@ def main() -> None:
         for record in records
         if record.get("scenario") == "aggregate-four-reader-pss"
     ]
+    grouped_aggregates: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in aggregate_records:
+        grouped_aggregates[record["backend"]].append(record)
+    aggregate_groups = {
+        backend: summarize_aggregate_group(group)
+        for backend, group in sorted(grouped_aggregates.items())
+    }
     allocation_records = [
         record
         for record in records
@@ -407,7 +436,7 @@ def main() -> None:
         "ranked": False,
         "groups": groups,
         "parity": parity_records,
-        "aggregate_four_reader": aggregate_records,
+        "aggregate_four_reader": aggregate_groups,
         "allocation_profiles": allocation_groups,
     }
     args.json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -421,7 +450,7 @@ def main() -> None:
             args.harness_commit,
             groups,
             parity_records,
-            aggregate_records,
+            aggregate_groups,
             allocation_groups,
         ),
         encoding="utf-8",
