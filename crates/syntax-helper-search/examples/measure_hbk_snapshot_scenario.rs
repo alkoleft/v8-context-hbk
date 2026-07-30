@@ -11,14 +11,14 @@ use syntax_helper_search::{
     HbkFactSnapshotCounts, HbkFactSnapshotStageTimings, HbkGlobalFactKind, HbkLanguageDomain,
     HbkPlatformTypeId, HbkQueryFieldId, HbkQueryTableId, HbkSnapshotExperimentAllocationDelta,
     HbkSnapshotExperimentAllocationSnapshot, HbkSnapshotExperimentAllocator, HbkTypeMemberKind,
-    experiment_allocation_snapshot,
+    StringId, experiment_allocation_snapshot,
 };
 
 #[global_allocator]
 static ALLOCATOR: HbkSnapshotExperimentAllocator = HbkSnapshotExperimentAllocator;
 
 const REPORT_SCHEMA_VERSION: &str = "hbk-snapshot-benchmark/v1";
-const WORKLOAD_VERSION: &str = "hbk-snapshot-warm-lookups/v1";
+const WORKLOAD_VERSION: &str = "hbk-snapshot-warm-lookups/v2";
 const PREPARE_PHASE_ORDER: &[&str] = &["open", "cache_write"];
 const LOADED_PHASE_ORDER: &[&str] = &[
     "entry_to_ready",
@@ -539,6 +539,7 @@ fn measure_loaded_snapshot(
 
 #[derive(Clone, Copy)]
 struct WorkloadAnchors {
+    dictionary_value: Option<StringId>,
     query_type: Option<HbkPlatformTypeId>,
     filter_type: Option<HbkPlatformTypeId>,
     query_table_with_field: Option<HbkQueryTableId>,
@@ -548,6 +549,7 @@ struct WorkloadAnchors {
 
 impl WorkloadAnchors {
     fn resolve(handle: HbkFactReadHandle<'_>) -> Self {
+        let dictionary_value = handle.experiment_string_id("Запрос");
         let query_type = handle.platform_type_by_id("platform_type:Запрос");
         let filter_type = handle.platform_type_by_id("platform_type:ОтборКомпоновкиДанных");
         let query_table_with_field = handle
@@ -562,6 +564,7 @@ impl WorkloadAnchors {
             .next()
             .and_then(|table| handle.query_fields_by_name(table, "Ссылка").next());
         Self {
+            dictionary_value,
             query_type,
             filter_type,
             query_table_with_field,
@@ -572,6 +575,7 @@ impl WorkloadAnchors {
 
     fn observed_count(self) -> u64 {
         [
+            self.dictionary_value.is_some(),
             self.query_type.is_some(),
             self.filter_type.is_some(),
             self.query_table_with_field.is_some(),
@@ -589,13 +593,31 @@ fn measure_workload(
     anchors: WorkloadAnchors,
     iterations: usize,
 ) -> WorkloadReport {
-    let mut operations = Vec::with_capacity(22);
+    let mut operations = Vec::with_capacity(25);
     macro_rules! operation {
         ($name:literal, $body:expr) => {
             operations.push(measure_operation($name, iterations, || $body));
         };
     }
 
+    operation!(
+        "dictionary_by_id",
+        anchors.dictionary_value.map_or(0, |id| {
+            usize::from(handle.experiment_string(id) == "Запрос")
+        })
+    );
+    operation!(
+        "dictionary_by_value",
+        usize::from(handle.experiment_string_id("Запрос").is_some())
+    );
+    operation!(
+        "dictionary_by_value_miss",
+        usize::from(
+            handle
+                .experiment_string_id("__hbk_benchmark_missing_string__")
+                .is_some(),
+        )
+    );
     operation!("exact_fact_id", handle.facts_by_id(FIRST_LOOKUP_ID).len());
     operation!(
         "type_by_name",

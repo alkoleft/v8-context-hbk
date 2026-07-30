@@ -128,6 +128,18 @@ impl HbkFactSnapshot {
 }
 
 impl<'a> HbkFactReadHandle<'a> {
+    #[cfg(feature = "snapshot-experiment")]
+    #[doc(hidden)]
+    pub fn experiment_string(self, id: StringId) -> &'a str {
+        self.snapshot.string(id)
+    }
+
+    #[cfg(feature = "snapshot-experiment")]
+    #[doc(hidden)]
+    pub fn experiment_string_id(self, value: &str) -> Option<StringId> {
+        self.snapshot.string_id(value)
+    }
+
     pub fn global_fact_ids(self) -> impl Iterator<Item = HbkGlobalFactId> + 'a {
         (0..self.snapshot.globals.len()).map(|index| HbkGlobalFactId(index as u32))
     }
