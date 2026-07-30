@@ -3,9 +3,25 @@ name = "syntax-helper-search"
 version.workspace = true
 edition.workspace = true
 
+[features]
+snapshot-experiment = []
+snapshot-experiment-alloc = ["snapshot-experiment"]
+
 [dependencies]
 rusqlite.workspace = true
 strsim.workspace = true
 syntax-helper-language.workspace = true
 syntax-helper-model.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[[example]]
+name = "measure_hbk_snapshot_scenario"
+required-features = ["snapshot-experiment"]
+
+[[example]]
+name = "dump_hbk_snapshot_oracle"
+required-features = ["snapshot-experiment"]

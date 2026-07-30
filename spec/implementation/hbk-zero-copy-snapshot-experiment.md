@@ -90,7 +90,12 @@ has a committed artifact/layout and measures the subtraction from H1.
 
 ## Frozen Measurement Boundary
 
-All timed paths run as separate release-profile processes. The harness exposes
+All timed paths run as separate release-profile processes. A parent timestamp
+is captured immediately before `/usr/bin/time` executes the child and the
+child reports parent-launch-to-ready plus earliest-`main`-entry-to-ready. The
+first lookup includes read-handle creation. Workload anchor resolution is a
+separate timed/fault/allocation phase before the reported warm-up and batched
+workload. The harness exposes
 separate commands for:
 
 - `prepare-cache`: produce a C0 artifact outside any measured open process;
@@ -129,9 +134,13 @@ Warm and cold-best-effort results are separate:
   `cold-best-effort`, never “true cold”;
 - all implementations use the same cache stance and interleaved run order.
 
-Timing samples run without heaptrack. Allocation profiling is a separate
-instrumented run because heaptrack changes timing. `/usr/bin/time -v` records
-process elapsed, maximum RSS and minor/major faults. The held process exposes
+Timing samples compile the experiment allocator as a direct `System`
+delegation with counters removed. Allocation profiling is a separate release
+binary with compile-time counting enabled; it reports calls, cumulative
+allocated/deallocated bytes, live bytes and peak live bytes by phase.
+`heaptrack` is an external cross-check rather than the source of timing
+evidence. `/usr/bin/time` records process elapsed, maximum RSS and minor/major
+faults. The held process exposes
 `/proc/<pid>/smaps_rollup` evidence for RSS, PSS, private/shared and anonymous
 memory. The four-reader scenario reports aggregate PSS. If a tool is
 unavailable or denied, the field is `unavailable` with the exact reason; it is

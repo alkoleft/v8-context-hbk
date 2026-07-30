@@ -973,6 +973,8 @@ name = "syntax-helper-search"
 version = "0.2.4"
 dependencies = [
  "rusqlite",
+ "serde",
+ "serde_json",
  "strsim",
  "syntax-helper-language",
  "syntax-helper-model",

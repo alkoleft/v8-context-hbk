@@ -1,6 +1,10 @@
 use super::*;
 
 mod binary_cache;
+#[cfg(feature = "snapshot-experiment")]
+mod experiment_allocator;
+#[cfg(feature = "snapshot-experiment")]
+mod experiment_oracle;
 mod indexes;
 mod materialize;
 mod memory;
@@ -13,6 +17,17 @@ use indexes::{
 };
 
 pub use binary_cache::{HbkFactSnapshotCacheLoadReport, HbkFactSnapshotCacheStatus};
+#[cfg(feature = "snapshot-experiment")]
+#[doc(hidden)]
+pub use experiment_allocator::{
+    HbkSnapshotExperimentAllocationDelta, HbkSnapshotExperimentAllocationSnapshot,
+    HbkSnapshotExperimentAllocator, experiment_allocation_snapshot,
+};
+#[cfg(feature = "snapshot-experiment")]
+#[doc(hidden)]
+pub use experiment_oracle::{
+    write_owned_snapshot_lookup_transcript_jsonl, write_owned_snapshot_oracle_jsonl,
+};
 pub use memory::{HbkFactSnapshotIndexMemory, HbkFactSnapshotMemory, HbkFactSnapshotMemoryEntry};
 pub use read::HbkFactSnapshotCounts;
 pub use types::*;
