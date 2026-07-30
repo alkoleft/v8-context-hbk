@@ -228,6 +228,7 @@ fn prepare_cache(
     build_report.write_binary_cache(&cache_path)?;
     let cache_write_elapsed = write_started_at.elapsed();
     let ready_elapsed = entry_started_at.elapsed();
+    let process_start_to_ready_ns = capture_process_start_to_ready_ns(parent_start_unix_ns);
     let ready_allocations = experiment_allocation_snapshot();
     let after_ready_faults = read_process_faults()?;
     let after_ready_smaps = read_smaps_rollup()?;
@@ -248,7 +249,7 @@ fn prepare_cache(
         cache_status: Some("written"),
         timings: TimingReport {
             phase_order: PREPARE_PHASE_ORDER,
-            process_start_to_ready_ns: process_start_to_ready_ns(parent_start_unix_ns),
+            process_start_to_ready_ns,
             entry_to_ready_ns: duration_ns(ready_elapsed),
             open: phase_report(open_elapsed, entry_faults.delta_to(after_open_faults)),
             cache_write: Some(phase_report(
@@ -290,6 +291,7 @@ fn measure_sql_owned(
     eprintln!("measuring SQL-owned snapshot from {}", index_path.display());
     let build_report = HbkFactSnapshot::from_path_with_stage_timings(&index_path)?;
     let ready_elapsed = entry_started_at.elapsed();
+    let process_start_to_ready_ns = capture_process_start_to_ready_ns(parent_start_unix_ns);
     let ready_allocations = experiment_allocation_snapshot();
     let ready_faults = read_process_faults()?;
     let after_open_smaps = read_smaps_rollup()?;
@@ -312,7 +314,7 @@ fn measure_sql_owned(
         cache_status: None,
         timings: TimingReport {
             phase_order: LOADED_PHASE_ORDER,
-            process_start_to_ready_ns: process_start_to_ready_ns(parent_start_unix_ns),
+            process_start_to_ready_ns,
             entry_to_ready_ns: duration_ns(ready_elapsed),
             open: phase_report(ready_elapsed, entry_faults.delta_to(ready_faults)),
             cache_write: None,
@@ -356,6 +358,7 @@ fn measure_cache_owned(
     );
     let load_report = HbkFactSnapshot::from_path_with_binary_cache(&index_path, &cache_path)?;
     let ready_elapsed = entry_started_at.elapsed();
+    let process_start_to_ready_ns = capture_process_start_to_ready_ns(parent_start_unix_ns);
     let ready_allocations = experiment_allocation_snapshot();
     let ready_faults = read_process_faults()?;
     let after_open_smaps = read_smaps_rollup()?;
@@ -384,7 +387,7 @@ fn measure_cache_owned(
         cache_status: Some("loaded"),
         timings: TimingReport {
             phase_order: LOADED_PHASE_ORDER,
-            process_start_to_ready_ns: process_start_to_ready_ns(parent_start_unix_ns),
+            process_start_to_ready_ns,
             entry_to_ready_ns: duration_ns(ready_elapsed),
             open: phase_report(ready_elapsed, entry_faults.delta_to(ready_faults)),
             cache_write: None,
@@ -809,7 +812,7 @@ fn parent_start_unix_ns() -> Option<u128> {
         .ok()
 }
 
-fn process_start_to_ready_ns(parent_start_unix_ns: Option<u128>) -> Option<u64> {
+fn capture_process_start_to_ready_ns(parent_start_unix_ns: Option<u128>) -> Option<u64> {
     let parent_start_unix_ns = parent_start_unix_ns?;
     let ready_unix_ns = SystemTime::now()
         .duration_since(UNIX_EPOCH)
