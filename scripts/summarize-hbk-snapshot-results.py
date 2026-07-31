@@ -170,6 +170,44 @@ def median_mad(values: Iterable[int | float]) -> dict[str, float | int] | None:
     }
 
 
+def summarize_machine_state(
+    records: list[dict[str, Any]],
+) -> dict[str, int | float] | None:
+    loads: list[float] = []
+    normalized_loads: list[float] = []
+    available_memory: list[int] = []
+    for record in records:
+        for key in (
+            "machine_state_before",
+            "machine_state_at_hold",
+            "machine_state_after",
+        ):
+            state = record.get(key)
+            if not isinstance(state, dict):
+                continue
+            load = nested(state, ("load_average", "one_minute"))
+            logical_cpus = nested(state, ("logical_cpus",))
+            memory = nested(state, ("memory", "available_kib"))
+            if load is not None:
+                loads.append(float(load))
+                if logical_cpus is not None and logical_cpus > 0:
+                    normalized_loads.append(float(load) / float(logical_cpus))
+            if memory is not None:
+                available_memory.append(int(memory))
+    if not loads and not available_memory:
+        return None
+    result: dict[str, int | float] = {
+        "snapshots": max(len(loads), len(available_memory)),
+    }
+    if loads:
+        result["max_one_minute_load"] = max(loads)
+    if normalized_loads:
+        result["max_one_minute_load_per_logical_cpu"] = max(normalized_loads)
+    if available_memory:
+        result["min_available_memory_kib"] = min(available_memory)
+    return result
+
+
 GroupIdentity = tuple[str, str, str, str, str]
 
 
@@ -209,6 +247,9 @@ def summarize_group(records: list[dict[str, Any]]) -> dict[str, Any]:
         "metrics": {},
         "operations": {},
     }
+    machine_state = summarize_machine_state(records)
+    if machine_state is not None:
+        summary["machine_state"] = machine_state
     for name, path in METRICS.items():
         metric = median_mad(
             value for record in records if (value := nested(record, path)) is not None
@@ -255,6 +296,9 @@ def summarize_allocation_group(records: list[dict[str, Any]]) -> dict[str, Any]:
         "samples": len(records),
         "metrics": {},
     }
+    machine_state = summarize_machine_state(records)
+    if machine_state is not None:
+        summary["machine_state"] = machine_state
     for name, path in ALLOCATION_METRICS.items():
         metric = median_mad(
             value for record in records if (value := nested(record, path)) is not None
@@ -273,6 +317,9 @@ def summarize_aggregate_group(records: list[dict[str, Any]]) -> dict[str, Any]:
         "samples": len(records),
         "metrics": {},
     }
+    machine_state = summarize_machine_state(records)
+    if machine_state is not None:
+        summary["machine_state"] = machine_state
     for name, path in AGGREGATE_METRICS.items():
         metric = median_mad(
             value for record in records if (value := nested(record, path)) is not None
@@ -494,6 +541,50 @@ def render_markdown(
             )
     else:
         lines.append("No allocation profile for this harness commit.")
+
+    lines.extend(["", "## Host pressure evidence", ""])
+    pressure_rows = [
+        ("runtime", group)
+        for group in sorted_groups
+        if "machine_state" in group
+    ]
+    pressure_rows.extend(
+        ("four-reader", group)
+        for group in sorted(
+            aggregate_groups.values(),
+            key=lambda value: tuple(value["identity"].values()),
+        )
+        if "machine_state" in group
+    )
+    pressure_rows.extend(
+        ("allocation", group)
+        for group in sorted(
+            allocation_groups.values(),
+            key=lambda value: tuple(value["identity"].values()),
+        )
+        if "machine_state" in group
+    )
+    if pressure_rows:
+        lines.extend(
+            [
+                "| Scenario | Backend | Branch | Samples | State snapshots | Max load1 / logical CPU | Min available memory GiB |",
+                "| --- | --- | --- | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for scenario, group in pressure_rows:
+            identity = group["identity"]
+            state = group["machine_state"]
+            normalized_load = state.get("max_one_minute_load_per_logical_cpu")
+            available_kib = state.get("min_available_memory_kib")
+            lines.append(
+                f"| {scenario} | "
+                f"{identity['backend']} | "
+                f"{identity['candidate_branch'] or '—'} | "
+                f"{group['samples']} | "
+                f"{state['snapshots']} | "
+                f"{'—' if normalized_load is None else f'{float(normalized_load):.4f}'} | "
+                f"{'—' if available_kib is None else f'{float(available_kib) / 1024 / 1024:.2f}'} |"
+            )
     lines.append("")
     return "\n".join(lines)
 

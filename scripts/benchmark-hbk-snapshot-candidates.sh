@@ -173,6 +173,97 @@ resident_json() {
     printf '%s\n' "$result"
 }
 
+machine_state_json() {
+    local load_one
+    local load_five
+    local load_fifteen
+    local scheduler_tasks
+    local last_pid
+    local runnable_tasks
+    local total_tasks
+    local uptime_seconds
+    local idle_seconds
+    local logical_cpus
+    local mem_available_kib
+    local mem_free_kib
+    local buffers_kib
+    local cached_kib
+    local swap_free_kib
+    local dirty_kib
+    local captured_unix_ns
+
+    read -r load_one load_five load_fifteen scheduler_tasks last_pid </proc/loadavg
+    runnable_tasks="${scheduler_tasks%/*}"
+    total_tasks="${scheduler_tasks#*/}"
+    read -r uptime_seconds idle_seconds </proc/uptime
+    logical_cpus="$(getconf _NPROCESSORS_ONLN)"
+    read -r \
+        mem_available_kib \
+        mem_free_kib \
+        buffers_kib \
+        cached_kib \
+        swap_free_kib \
+        dirty_kib < <(
+            awk '
+                $1 == "MemAvailable:" { available = $2 }
+                $1 == "MemFree:" { free = $2 }
+                $1 == "Buffers:" { buffers = $2 }
+                $1 == "Cached:" { cached = $2 }
+                $1 == "SwapFree:" { swap_free = $2 }
+                $1 == "Dirty:" { dirty = $2 }
+                END {
+                    printf "%d %d %d %d %d %d\n",
+                        available, free, buffers, cached, swap_free, dirty
+                }
+            ' /proc/meminfo
+        )
+    captured_unix_ns="$(date +%s%N)"
+
+    jq -cn \
+        --arg captured_unix_ns "$captured_unix_ns" \
+        --argjson logical_cpus "$logical_cpus" \
+        --argjson load_one "$load_one" \
+        --argjson load_five "$load_five" \
+        --argjson load_fifteen "$load_fifteen" \
+        --argjson runnable_tasks "$runnable_tasks" \
+        --argjson total_tasks "$total_tasks" \
+        --argjson last_pid "$last_pid" \
+        --argjson uptime_seconds "$uptime_seconds" \
+        --argjson idle_seconds "$idle_seconds" \
+        --argjson mem_available_kib "$mem_available_kib" \
+        --argjson mem_free_kib "$mem_free_kib" \
+        --argjson buffers_kib "$buffers_kib" \
+        --argjson cached_kib "$cached_kib" \
+        --argjson swap_free_kib "$swap_free_kib" \
+        --argjson dirty_kib "$dirty_kib" \
+        '{
+            captured_unix_ns: $captured_unix_ns,
+            logical_cpus: $logical_cpus,
+            load_average: {
+                one_minute: $load_one,
+                five_minutes: $load_five,
+                fifteen_minutes: $load_fifteen
+            },
+            scheduler: {
+                runnable_tasks: $runnable_tasks,
+                total_tasks: $total_tasks,
+                last_pid: $last_pid
+            },
+            uptime: {
+                uptime_seconds: $uptime_seconds,
+                idle_seconds: $idle_seconds
+            },
+            memory: {
+                available_kib: $mem_available_kib,
+                free_kib: $mem_free_kib,
+                buffers_kib: $buffers_kib,
+                cached_kib: $cached_kib,
+                swap_free_kib: $swap_free_kib,
+                dirty_kib: $dirty_kib
+            }
+        }'
+}
+
 harness_commit() {
     if [[ -n "${HBK_BENCH_HARNESS_COMMIT:-}" ]]; then
         printf '%s\n' "$HBK_BENCH_HARNESS_COMMIT"
@@ -235,6 +326,8 @@ run_command() {
     local rustc_version
     local cargo_version
     local parent_start_unix_ns
+    local machine_state_before
+    local machine_state_after
 
     prepare_stance "$stance" "$evict_paths"
     residency="$(resident_json "$evict_paths")"
@@ -248,6 +341,7 @@ run_command() {
     cargo_version="$(cargo --version)"
 
     set +e
+    machine_state_before="$(machine_state_json)"
     parent_start_unix_ns="$(date +%s%N)"
     HBK_BENCH_PARENT_START_UNIX_NS="$parent_start_unix_ns" \
         LC_ALL=C /usr/bin/time \
@@ -256,6 +350,7 @@ run_command() {
         -- "$@" >"$stdout_path" 2>"$stderr_path"
     local command_status=$?
     set -e
+    machine_state_after="$(machine_state_json)"
     residency_after="$(resident_json "$evict_paths")"
 
     if [[ "$command_status" -ne 0 ]]; then
@@ -278,6 +373,8 @@ run_command() {
             --arg candidate_commit "$candidate_sha" \
             --arg candidate_branch "$candidate_branch_name" \
             --argjson command "$command_json" \
+            --argjson machine_state_before "$machine_state_before" \
+            --argjson machine_state_after "$machine_state_after" \
             --argjson resident_bytes_before "$residency" \
             --argjson resident_bytes_after "$residency_after" \
             --argjson exit_status "$command_status" \
@@ -304,6 +401,8 @@ run_command() {
                 candidate_commit: $candidate_commit,
                 candidate_branch: $candidate_branch,
                 command: $command,
+                machine_state_before: $machine_state_before,
+                machine_state_after: $machine_state_after,
                 resident_bytes_before: $resident_bytes_before,
                 resident_bytes_after: $resident_bytes_after,
                 exit_status: $exit_status
@@ -337,6 +436,8 @@ run_command() {
         --arg candidate_commit "$candidate_sha" \
         --arg candidate_branch "$candidate_branch_name" \
         --argjson command "$command_json" \
+        --argjson machine_state_before "$machine_state_before" \
+        --argjson machine_state_after "$machine_state_after" \
         --argjson resident_bytes_before "$residency" \
         --argjson resident_bytes_after "$residency_after" \
         --argjson measurement "$inner" \
@@ -364,6 +465,8 @@ run_command() {
             candidate_commit: $candidate_commit,
             candidate_branch: $candidate_branch,
             command: $command,
+            machine_state_before: $machine_state_before,
+            machine_state_after: $machine_state_after,
             resident_bytes_before: $resident_bytes_before,
             resident_bytes_after: $resident_bytes_after,
             measurement: $measurement,
@@ -544,6 +647,9 @@ allocation_baseline() {
     local harness_sha
     local candidate_sha
     local candidate_branch_name
+    local machine_state_before
+    local machine_state_after
+    local command_status
 
     verify_inputs
     [[ -x "$ALLOCATION_EXAMPLE_BIN" ]] || build_allocation_harness
@@ -559,31 +665,75 @@ allocation_baseline() {
         case "$backend" in
             sql-owned)
                 warm_file "$SQLITE_PATH"
+                machine_state_before="$(machine_state_json)"
+                set +e
                 "$ALLOCATION_EXAMPLE_BIN" \
                     sql-owned "$SQLITE_PATH" "$iterations" \
                     >"$stdout_path" 2>"$stderr_path"
+                command_status=$?
+                set -e
                 ;;
             cache-owned)
                 cache_path="${RUN_DIR}/allocation-cache.${sample}.bin"
                 cp --reflink=auto --preserve=mode,timestamps -- "$PREPARED_CACHE" "$cache_path"
                 warm_file "$SQLITE_PATH"
                 warm_file "$cache_path"
+                machine_state_before="$(machine_state_json)"
+                set +e
                 "$ALLOCATION_EXAMPLE_BIN" \
                     cache-owned "$SQLITE_PATH" "$cache_path" "$iterations" \
                     >"$stdout_path" 2>"$stderr_path"
+                command_status=$?
+                set -e
                 ;;
             cache-owned-produce)
                 cache_path="${RUN_DIR}/allocation-cache-produce.${sample}.bin"
                 warm_file "$SQLITE_PATH"
+                machine_state_before="$(machine_state_json)"
+                set +e
                 "$ALLOCATION_EXAMPLE_BIN" \
                     prepare-cache "$SQLITE_PATH" "$cache_path" "$iterations" \
                     >"$stdout_path" 2>"$stderr_path"
+                command_status=$?
+                set -e
                 ;;
             *)
                 echo "unsupported allocation backend: ${backend}" >&2
                 exit 2
                 ;;
         esac
+        machine_state_after="$(machine_state_json)"
+        if [[ "$command_status" -ne 0 ]]; then
+            jq -cn \
+                --arg schema "hbk-snapshot-benchmark-raw-v1" \
+                --arg backend "$backend" \
+                --arg dataset "$DATASET_ID" \
+                --arg harness_commit "$harness_sha" \
+                --arg candidate_commit "$candidate_sha" \
+                --arg candidate_branch "$candidate_branch_name" \
+                --argjson sample "$sample" \
+                --argjson machine_state_before "$machine_state_before" \
+                --argjson machine_state_after "$machine_state_after" \
+                --argjson exit_status "$command_status" \
+                '{
+                    schema: $schema,
+                    backend: $backend,
+                    dataset: $dataset,
+                    cache_stance: "warm",
+                    scenario: "allocation-profile",
+                    instrumentation: "counting-system-global-allocator",
+                    sample: $sample,
+                    status: "failed",
+                    harness_commit: $harness_commit,
+                    candidate_commit: $candidate_commit,
+                    candidate_branch: $candidate_branch,
+                    machine_state_before: $machine_state_before,
+                    machine_state_after: $machine_state_after,
+                    exit_status: $exit_status
+                }' | tee -a "$RAW_RESULTS"
+            echo "allocation benchmark command failed; see ${stderr_path}" >&2
+            return "$command_status"
+        fi
         measurement="$(jq -e -c 'select(.allocations.enabled == true)' "$stdout_path")"
         jq -cn \
             --arg schema "hbk-snapshot-benchmark-raw-v1" \
@@ -593,6 +743,8 @@ allocation_baseline() {
             --arg candidate_commit "$candidate_sha" \
             --arg candidate_branch "$candidate_branch_name" \
             --argjson sample "$sample" \
+            --argjson machine_state_before "$machine_state_before" \
+            --argjson machine_state_after "$machine_state_after" \
             --argjson measurement "$measurement" \
             '{
                 schema: $schema,
@@ -606,6 +758,8 @@ allocation_baseline() {
                 harness_commit: $harness_commit,
                 candidate_commit: $candidate_commit,
                 candidate_branch: $candidate_branch,
+                machine_state_before: $machine_state_before,
+                machine_state_after: $machine_state_after,
                 measurement: $measurement
             }' | tee -a "$RAW_RESULTS"
     done
@@ -716,8 +870,13 @@ multi_reader_baseline_once() {
     local harness_sha
     local candidate_sha
     local candidate_branch_name
+    local machine_state_before
+    local machine_state_at_hold
+    local machine_state_after
     local -a pids=()
     local -a ready_files=()
+    local -a stdout_files=()
+    local -a wait_statuses=()
 
     verify_inputs
     [[ -x "$EXAMPLE_BIN" ]] || build_harness
@@ -736,11 +895,13 @@ multi_reader_baseline_once() {
         exit 2
     fi
 
+    machine_state_before="$(machine_state_json)"
     for ((process_index = 1; process_index <= 4; process_index++)); do
         local ready_file="${multi_dir}/ready.${process_index}"
         local stdout_file="${multi_dir}/stdout.${process_index}.json"
         local stderr_file="${multi_dir}/stderr.${process_index}.log"
         ready_files+=("$ready_file")
+        stdout_files+=("$stdout_file")
         if [[ -e "$ready_file" ]]; then
             rm -- "$ready_file"
         fi
@@ -779,6 +940,7 @@ multi_reader_baseline_once() {
         exit 1
     fi
 
+    machine_state_at_hold="$(machine_state_json)"
     for pid in "${pids[@]}"; do
         result="$(read_smaps_json "$pid")"
         per_process="$(jq -cn --argjson rows "$per_process" --argjson row "$result" '$rows + [$row]')"
@@ -792,6 +954,64 @@ multi_reader_baseline_once() {
     candidate_sha="$(candidate_commit)"
     candidate_branch_name="$(candidate_branch)"
 
+    set +e
+    for pid in "${pids[@]}"; do
+        wait "$pid"
+        wait_statuses+=("$?")
+    done
+    set -e
+    machine_state_after="$(machine_state_json)"
+
+    local exit_statuses='[]'
+    local child_status
+    local child_failed=0
+    for child_status in "${wait_statuses[@]}"; do
+        exit_statuses="$(jq -cn \
+            --argjson statuses "$exit_statuses" \
+            --argjson status "$child_status" \
+            '$statuses + [$status]')"
+        if [[ "$child_status" -ne 0 ]]; then
+            child_failed=1
+        fi
+    done
+
+    if [[ "$child_failed" -ne 0 ]]; then
+        jq -cn \
+            --arg schema "hbk-snapshot-benchmark-raw-v1" \
+            --arg backend "$backend" \
+            --arg dataset "$DATASET_ID" \
+            --arg harness_commit "$harness_sha" \
+            --arg candidate_commit "$candidate_sha" \
+            --arg candidate_branch "$candidate_branch_name" \
+            --argjson sample "$sample" \
+            --argjson machine_state_before "$machine_state_before" \
+            --argjson machine_state_at_hold "$machine_state_at_hold" \
+            --argjson machine_state_after "$machine_state_after" \
+            --argjson exit_statuses "$exit_statuses" \
+            '{
+                schema: $schema,
+                backend: $backend,
+                dataset: $dataset,
+                cache_stance: "warm",
+                scenario: "aggregate-four-reader-pss",
+                sample: $sample,
+                status: "failed",
+                harness_commit: $harness_commit,
+                candidate_commit: $candidate_commit,
+                candidate_branch: $candidate_branch,
+                machine_state_before: $machine_state_before,
+                machine_state_at_hold: $machine_state_at_hold,
+                machine_state_after: $machine_state_after,
+                exit_statuses: $exit_statuses
+            }' | tee -a "$RAW_RESULTS"
+        echo "multi-reader benchmark command failed; see ${multi_dir}" >&2
+        return 1
+    fi
+
+    for stdout_file in "${stdout_files[@]}"; do
+        jq -e -c . "$stdout_file" >/dev/null
+    done
+
     jq -cn \
         --arg schema "hbk-snapshot-benchmark-raw-v1" \
         --arg backend "$backend" \
@@ -800,6 +1020,10 @@ multi_reader_baseline_once() {
         --arg candidate_commit "$candidate_sha" \
         --arg candidate_branch "$candidate_branch_name" \
         --argjson sample "$sample" \
+        --argjson machine_state_before "$machine_state_before" \
+        --argjson machine_state_at_hold "$machine_state_at_hold" \
+        --argjson machine_state_after "$machine_state_after" \
+        --argjson exit_statuses "$exit_statuses" \
         --argjson per_process "$per_process" \
         --argjson total_pss_kib "$total_pss" \
         --argjson total_rss_kib "$total_rss" \
@@ -817,6 +1041,10 @@ multi_reader_baseline_once() {
             harness_commit: $harness_commit,
             candidate_commit: $candidate_commit,
             candidate_branch: $candidate_branch,
+            machine_state_before: $machine_state_before,
+            machine_state_at_hold: $machine_state_at_hold,
+            machine_state_after: $machine_state_after,
+            exit_statuses: $exit_statuses,
             per_process: $per_process,
             aggregate: {
                 rss_kib: $total_rss_kib,
@@ -827,9 +1055,6 @@ multi_reader_baseline_once() {
             }
         }' | tee -a "$RAW_RESULTS"
 
-    for pid in "${pids[@]}"; do
-        wait "$pid"
-    done
 }
 
 multi_reader_baselines() {
