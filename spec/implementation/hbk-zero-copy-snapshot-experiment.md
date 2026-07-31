@@ -682,6 +682,70 @@ MAD-конверта отдельной операции. Ни одного ис
 Ни одна строка не ранжируется, не рекомендуется, не выбирается, не сливается и
 не становится канонической.
 
+### Дополнительный workload S83-AV1: filtered enumeration по AvailabilityContext
+
+S83-AV1 — отдельная ревизия workload над тем же точным corpus S83 и
+зафиксированными коммитами H0/C0/F0/A0/L1/I1/D1/P1/R1. Она не изменяет
+исходный `hbk-snapshot-warm-lookups/v2`, его raw results или frozen gates.
+Новый harness, сырые результаты и сводка используют отдельные version и
+results namespace. H0 SQLite-to-owned является единственной baseline-строкой;
+C0 current-cache-to-owned сохраняется только как `decision_role = control`.
+
+Операция AV1 получает упорядоченные объекты глобальных BSL-методов и применяет
+только один входной фильтр — `AvailabilityContext`. `ModuleContextKind` не
+входит в query shape, SQL predicate, candidate metadata или фильтрацию
+результата. Каждая raw-запись обязана содержать
+`module_context_filter_used = false` и
+`empty_availability_rule = "universal"`.
+
+Матрица выполняет каждый контекст независимо:
+
+| Код workload | `AvailabilityContext` |
+| --- | --- |
+| `thin_client` | `ThinClient` |
+| `web_client` | `WebClient` |
+| `mobile_client` | `MobileClient` |
+| `server` | `Server` |
+| `thick_client` | `ThickClient` |
+| `external_connection` | `ExternalConnection` |
+| `mobile_application_client` | `MobileApplicationClient` |
+| `mobile_application_server` | `MobileApplicationServer` |
+| `mobile_standalone_server` | `MobileStandaloneServer` |
+
+Глобальный метод с пустым availability включается во все девять результатов.
+Глобальный метод с непустым availability включается только тогда, когда список
+содержит запрошенный контекст. Фильтр применяется к availability глобального
+факта; связанный callable является полезной нагрузкой того же документированного
+метода. Порядок соответствует `global_fact_ids()`/`global_methods()` H0 и не
+сортируется повторно специально для AV1.
+
+Версионированный transcript AV1 нормализует локальные ID в логические строки и
+для каждого возвращённого объекта сохраняет global id/kind/domain/name/alias,
+callable id/kind/name/alias, упорядоченные сигнатуры, параметры, requiredness,
+ссылки на типы параметров и возвращаемые типы. Кандидат проходит parity только
+при побайтном равенстве упорядоченного transcript H0 для каждого из девяти
+контекстов. На corpus S83 oracle дополнительно требует, чтобы каждый результат
+содержал метод с пустым availability и исключал хотя бы один метод с непустым
+несовпадающим availability.
+
+Performance probe вычисляет checksum при полном обходе тех же полей без
+создания resolver DTO. Для каждой строки и контекста отдельно записываются:
+
+- первая enumeration после ready и её page faults/аллокации;
+- один немеряемый прогрев;
+- batched warm enumeration;
+- total ns, ns на одну enumeration и ns на возвращённый объект;
+- количество возвращённых, universal и исключённых методов;
+- число и объём аллокаций измеряемых фаз.
+
+Каждая строка получает девять warm и девять cold-best-effort образцов;
+performance-прогоны выполняются последовательно. Итог содержит median и MAD,
+отношение к H0 и явные статусы parity/missing/noisy, но не содержит rank,
+winner, first place или автоматического pass/fail для выбора кандидата. AV1
+измеряет существующие варианты as-is: допускается только минимальный
+экспериментальный probe/adapter без нового индекса, изменения физического
+формата или стабилизации публичного API.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения

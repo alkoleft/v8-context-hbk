@@ -80,6 +80,10 @@ type-reference conclusions live in
        форматы и изменяющие по одной переменной гипотезы layout,
        отображённого индекса, динамического чтения с обязательными проверками и
        прямого формирования в собственных worktree.
+    7. до пользовательского решения выполнить отдельную ревизию S83-AV1:
+       проверить существующие строки на enumeration полных объектов глобальных
+       BSL-методов с фильтром только по каждому `AvailabilityContext`, без
+       `ModuleContextKind`, сохраняя пустой availability как universal.
   - Проверка:
     строгая валидация OpenSpec; format/check/test для зафиксированной базы и
     каждой ветви кандидата; проверка точных корпуса и checksum;
@@ -153,6 +157,11 @@ type-reference conclusions live in
     зафиксированному контракту пользователь может запросить повторный прогон
     или новую гипотезу, явно разрешить исключение из именованных критериев в
     устойчивом решении либо отклонить/остановить production-внедрение.
+    Пользователь подтвердил дополнительный workload S83-AV1 до такого решения:
+    H0 остаётся SQL baseline, C0 — не участвующий в решении контроль; каждый
+    `AvailabilityContext` измеряется независимо, `ModuleContextKind` запрещён,
+    пустой availability означает доступность во всех контекстах, а public API
+    resolver на этом этапе не проектируется.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their
