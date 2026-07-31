@@ -220,7 +220,18 @@ def smaps(pid: int) -> dict[str, int]:
         parts = line.split()
         if len(parts) < 2:
             continue
-        key, value = parts[0], int(parts[1])
+        key = parts[0]
+        if key not in {
+            "Rss:",
+            "Pss:",
+            "Private_Clean:",
+            "Private_Dirty:",
+            "Shared_Clean:",
+            "Shared_Dirty:",
+            "Anonymous:",
+        }:
+            continue
+        value = int(parts[1])
         if key == "Rss:":
             values["rss_kib"] = value
         elif key == "Pss:":
