@@ -543,6 +543,28 @@ These gates determine only whether an S83 row is eligible for the user's
 consideration. They do not rank candidates, select first place, authorize a
 merge or make a snapshot canonical.
 
+### S83 F0/A0 first measured pass
+
+The first complete S83 F0/A0 resource evidence is
+`target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-F0-A0-complete-360cbd9.jsonl`.
+It is accompanied by storage parity raws
+`raw-S83-F0-5eac531-parity-rerun-6aadd9b.jsonl` and
+`raw-S83-A0-2a14ed6-parity-6aadd9b.jsonl`, and semantic parity raws
+`raw-semantic-s83-f0-semantic-a9a98a1.jsonl` and
+`raw-semantic-s83-a0-semantic-36a41aa.jsonl`.
+
+Both S83-F0 (`a9a98a18ed2af21ba16573a00719c13edddac97b`) and S83-A0
+(`36a41aa74a9c6898576706f34a9a403918d452e4`) pass storage parity, semantic
+catalog/resolver transcript parity and workload observed-total equivalence.
+Neither passes every frozen numeric gate. F0 fails warm/cold ready,
+reverse-hit, forward-dictionary, open-major-fault, total rebuild and
+production allocation calls/bytes gates. A0 fails warm-ready, runtime
+allocation-call, reverse dictionary hit/miss, workload, per-operation,
+open-major-fault, total rebuild and production peak-RSS gates. The complete
+unranked table is in
+[T183 HBK Zero-Copy Snapshot Evidence](../acceptance/hbk-zero-copy-snapshot-evidence.md).
+No S83 candidate is selected or promoted by this result.
+
 ## Mandatory Behavioral Oracle
 
 Parity is an independent mandatory gate. Performance values remain recorded

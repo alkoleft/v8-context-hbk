@@ -261,6 +261,137 @@ required comparable or instrumented evidence is absent.
 | Production peak RSS ≤ 101,695 KiB | Fail: 115,436 | Fail: 101,716 | Pass: 87,992 |
 | Production allocation calls/bytes/peak | Not evaluated | Not evaluated | Not evaluated |
 
+## S83 F0/A0 Reference Evidence
+
+The S83 reference pass uses platform `8.3.27.1859`, HBK SHA-256
+`5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`,
+provider SQLite SHA-256
+`55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`,
+provider schema `16`, extraction schema `11` and frozen harness
+`28f29b5a262db362b6b58c8109e6df6c2afbbc44`.
+
+Generated service evidence is under
+`target/hbk-zero-copy-experiment-8.3.27.1859/results/`:
+
+- numeric resource raw:
+  `raw-S83-F0-A0-complete-360cbd9.jsonl`;
+- auxiliary numeric summary:
+  `summary-S83-F0-A0-complete-360cbd9.json` / `.md`;
+- diagnostic pre-merge resource raw:
+  `raw-S83-F0-A0-resource-061a242.jsonl`;
+- storage parity:
+  `raw-S83-F0-5eac531-parity-rerun-6aadd9b.jsonl`,
+  `raw-S83-A0-2a14ed6-parity-6aadd9b.jsonl`;
+- semantic parity:
+  `raw-semantic-s83-f0-semantic-a9a98a1.jsonl`,
+  `raw-semantic-s83-a0-semantic-36a41aa.jsonl`.
+
+All 72 records in `raw-S83-F0-A0-complete-360cbd9.jsonl` are successful:
+18 runtime timing rows, nine production timing rows, three runtime allocation
+profiles, three production allocation profiles and three aggregate four-reader
+rows for each of F0 and A0. The measured artifacts remain immutable files:
+
+| ID | Branch | Semantic commit | Artifact | Bytes | SHA-256 | Mode |
+| --- | --- | --- | --- | ---: | --- | --- |
+| `S83-F0` | `experiment/hbk-zero-copy-83-flat-f0-semantic` | `a9a98a18ed2af21ba16573a00719c13edddac97b` | `s83-f0.5eac531.h2` | 11,304,567 | `20bc6ff8bf922b129233cafdcb4abbec51496697ee086788aacaf1eb00bd74b2` | `0444` |
+| `S83-A0` | `experiment/hbk-zero-copy-83-archive-a0-semantic` | `36a41aa74a9c6898576706f34a9a403918d452e4` | `s83-a0.2a14ed6.a0` | 13,936,492 | `6fbd33ab0d58c2197e324b0b61193d873bc777def0087ae42b178cd8b53e00d1` | `0444` |
+
+### S83 Startup, Lookup And Runtime
+
+Values are median ± MAD over nine release processes.
+
+| Metric | S83-F0 | S83-A0 |
+| --- | ---: | ---: |
+| Warm ready, ms | 54.358 ± 0.618 | 39.174 ± 0.445 |
+| Cold-best-effort ready, ms | 67.899 ± 0.673 | 50.703 ± 0.121 |
+| Warm first lookup, µs | 3.902 ± 0.074 | 2.872 ± 0.165 |
+| Cold first lookup, µs | 4.149 ± 0.520 | 2.823 ± 0.174 |
+| Warm anchor resolution, µs | 14.007 ± 0.438 | 11.915 ± 0.381 |
+| Cold anchor resolution, µs | 14.750 ± 0.506 | 11.965 ± 0.412 |
+| Warm workload, ms | 358.243 ± 2.417 | 4,638.727 ± 14.339 |
+| Cold workload, ms | 356.781 ± 2.173 | 4,644.303 ± 13.769 |
+| Peak RSS warm/cold, KiB | 13,184 / 13,184 | 15,744 / 15,616 |
+| Warm post-workload PSS/private, KiB | 11,770 / 11,756 | 14,358 / 14,344 |
+| Cold post-workload PSS/private, KiB | 11,770 / 11,756 | 14,354 / 14,340 |
+| Open minor faults warm/cold | 182 / 182 | 216 / 216 |
+| Open major faults warm/cold | 0 / 1 | 0 / 1 |
+| Cold file-resident growth, bytes | 11,304,960 | 13,938,688 |
+
+Both candidates preserve all 25 S83-C0 workload observed totals in warm and
+cold-best-effort stances. Applying the frozen per-operation ceiling formula,
+F0 exceeds 20 of 25 operation ceilings in each stance. A0 exceeds 20 of 25
+warm ceilings and 19 of 25 cold ceilings.
+
+### S83 Memory, Sharing And Allocations
+
+| Metric | S83-F0 | S83-A0 |
+| --- | ---: | ---: |
+| Runtime allocation calls to ready | 66,266 | 151,855 |
+| Runtime allocated bytes to ready | 4,633,385 | 6,791,316 |
+| Final / peak live allocator bytes | 2,978 / 8,194 | 2,385 / 3,921 |
+| Aggregate four-reader PSS/private, KiB | 12,342 / 664 | 15,180 / 1,044 |
+| Aggregate four-reader RSS/shared/anonymous, KiB | 53,008 / 52,348 / 644 | 63,284 / 62,240 / 1,044 |
+
+### S83 Artifact Production
+
+| Metric | S83-F0 | S83-A0 |
+| --- | ---: | ---: |
+| Total local rebuild, ms | 3,272.623 ± 36.147 | 1,994.852 ± 23.196 |
+| Materialize, ms | 584.768 ± 10.213 | 586.432 ± 5.495 |
+| Write/publish, ms | 244.055 ± 32.800 | 258.073 ± 30.467 |
+| Production peak RSS, KiB | 100,900 | 100,996 |
+| Artifact bytes | 11,304,567 | 13,936,492 |
+| Production allocation calls | 2,291,021 | 1,582,041 |
+| Production allocated bytes | 281,173,378 | 203,711,633 |
+| Production peak live bytes | 63,694,157 | 63,018,740 |
+
+### S83 Behavioral And Safety Gates
+
+| Gate | S83-F0 | S83-A0 |
+| --- | --- | --- |
+| Storage content and lookup parity | Pass: content `5f66d205...`, lookup `9b17c710...`, sequential plus four-reader readers, sources hidden before open |
+| Semantic catalog/resolver parity | Pass: five transcripts, 742,872 records / 769,824,709 bytes, SHA-256 `1fe7f166...`, sources hidden before process and through replay |
+| Exact platform/source/schema/header identity | Pass: platform `8.3.27.1859`, provider schema `16`, extraction schema `11`, exact HBK/provider hashes |
+| No SQLite/HBK fallback after supplied-artifact open | Pass in storage and semantic gates with source-hidden probes |
+| No complete owned runtime mirror | Pass for measured runtime and semantic adapter; F0 still decodes variable fact records on access |
+| Immutable artifact and lock evidence | Pass: artifact mode `0444`, adjacent shared lock file |
+| Workload observed totals | Pass: 25 of 25 in both stances |
+
+### S83 Frozen Numeric Gate Matrix
+
+`Pass` below means only that the recorded numeric value is within that one
+frozen threshold. `Fail` means it is outside.
+
+| Gate | S83-F0 | S83-A0 |
+| --- | --- | --- |
+| Warm ready ≤ 33,991,352 ns | Fail: 54,357,920 | Fail: 39,173,528 |
+| Cold ready ≤ 59,020,968 ns | Fail: 67,899,017 | Pass: 50,703,490 |
+| Runtime allocation calls ≤ 68,018 | Pass: 66,266 | Fail: 151,855 |
+| Runtime allocated bytes ≤ 14,471,464 | Pass: 4,633,385 | Pass: 6,791,316 |
+| Peak RSS ≤ 29,593 KiB | Pass: 13,184 | Pass: 15,744 |
+| Warm PSS/private ≤ 17,712 / 17,696 KiB | Pass: 11,770 / 11,756 | Pass: 14,358 / 14,344 |
+| Cold PSS/private ≤ 17,681 / 17,664 KiB | Pass: 11,770 / 11,756 | Pass: 14,354 / 14,340 |
+| Four-reader PSS ≤ 64,913 KiB | Pass: 12,342 | Pass: 15,180 |
+| Reverse dictionary hit ≤ 458 ns | Fail: 961 / 975 | Fail: 2,245 / 2,213 |
+| Reverse dictionary miss ≤ 24,048 ns | Pass: 524 / 520 | Fail: 113,905 / 114,151 |
+| First lookup ≤ 25,000 ns, both stances | Pass: 3,902 / 4,149 | Pass: 2,872 / 2,823 |
+| Anchor resolution ≤ 25,000 ns, both stances | Pass: 14,007 / 14,750 | Pass: 11,915 / 11,965 |
+| Warm/cold workload ceiling | Pass: 358.243 / 356.781 ms | Fail: 4,638.727 / 4,644.303 ms |
+| Every per-operation ceiling | Fail: 20 of 25 in both stances | Fail: 20 warm / 19 cold of 25 |
+| Forward dictionary absolute ≤ 10 ns | Fail: 23 / 23 | Pass: 3 / 3 |
+| Open major faults remain zero | Fail: 0 / 1 | Fail: 0 / 1 |
+| Open minor faults ≤ 9,525 | Pass: 182 | Pass: 216 |
+| Cold file-resident growth ≤ 14,074,880 B | Pass: 11,304,960 | Pass: 13,938,688 |
+| Artifact ≤ 13,982,571 B | Pass: 11,304,567 | Pass: 13,936,492 |
+| Total local rebuild ≤ 803,548,621 ns | Fail: 3,272,622,772 | Fail: 1,994,852,136 |
+| Production peak RSS ≤ 100,975 KiB | Pass: 100,900 | Fail: 100,996 |
+| Production allocation calls ≤ 1,597,946 | Fail: 2,291,021 | Pass: 1,582,041 |
+| Production allocated bytes ≤ 229,823,958 | Fail: 281,173,378 | Pass: 203,711,633 |
+| Production peak live bytes ≤ 78,772,998 | Pass: 63,694,157 | Pass: 63,018,740 |
+
+No S83-F0 or S83-A0 row passes every frozen numeric gate. The table is not a
+ranking and does not select a candidate.
+
 ## Full Behavioral Equivalence Breakdown
 
 Full equivalence is not a single count check. It requires all of the following:

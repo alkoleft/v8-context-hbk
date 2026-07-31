@@ -2778,6 +2778,50 @@ material-benefit and non-regression gates are frozen in
 [T183 HBK Zero-Copy Snapshot Experiment](../implementation/hbk-zero-copy-snapshot-experiment.md#frozen-s83-h0c0-evidence-and-candidate-gates).
 These facts do not rank or select an S83 candidate.
 
+### S83 F0/A0 reference evidence
+
+The first complete S83 F0/A0 numeric pass is
+`target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-F0-A0-complete-360cbd9.jsonl`
+with auxiliary summary `summary-S83-F0-A0-complete-360cbd9.json`/`.md`.
+It contains 72 successful records: runtime warm/cold timing, production
+timing, runtime allocation, production allocation and aggregate four-reader
+PSS samples for both candidates. Storage parity and semantic parity are
+separate successful gates, recorded in
+`raw-S83-F0-5eac531-parity-rerun-6aadd9b.jsonl`,
+`raw-S83-A0-2a14ed6-parity-6aadd9b.jsonl`,
+`raw-semantic-s83-f0-semantic-a9a98a1.jsonl` and
+`raw-semantic-s83-a0-semantic-36a41aa.jsonl`.
+
+S83-F0 `a9a98a18ed2af21ba16573a00719c13edddac97b` uses immutable artifact
+`s83-f0.5eac531.h2` (`11,304,567` bytes, SHA-256
+`20bc6ff8bf922b129233cafdcb4abbec51496697ee086788aacaf1eb00bd74b2`).
+S83-A0 `36a41aa74a9c6898576706f34a9a403918d452e4` uses immutable artifact
+`s83-a0.2a14ed6.a0` (`13,936,492` bytes, SHA-256
+`6fbd33ab0d58c2197e324b0b61193d873bc777def0087ae42b178cd8b53e00d1`).
+Both artifacts are mode `0444` with adjacent lock files.
+
+S83-F0 warm/cold ready medians are `54.358 / 67.899 ms`, workload medians
+are `358.243 / 356.781 ms`, peak RSS is `13,184 KiB`, four-reader PSS is
+`12,342 KiB`, runtime allocation-to-ready is `66,266` calls /
+`4,633,385` bytes, and local rebuild is `3,272.623 ms`. F0 passes storage
+and semantic parity but fails the frozen warm/cold ready gates, reverse-hit
+and forward-dictionary operation gates, open-major-fault gate, total rebuild
+gate and production allocation calls/bytes gates.
+
+S83-A0 warm/cold ready medians are `39.174 / 50.703 ms`, workload medians
+are `4,638.727 / 4,644.303 ms`, peak RSS is `15,744 KiB`, four-reader PSS is
+`15,180 KiB`, runtime allocation-to-ready is `151,855` calls /
+`6,791,316` bytes, and local rebuild is `1,994.852 ms`. A0 passes storage
+and semantic parity but fails the frozen warm-ready, runtime allocation-call,
+reverse dictionary hit/miss, workload, per-operation, open-major-fault,
+total rebuild and production peak-RSS gates.
+
+Both F0 and A0 preserve all 25 workload observed totals in both cache
+stances. F0 exceeds 20 of 25 per-operation ceilings in each stance; A0
+exceeds 20 warm and 19 cold ceilings. The complete unranked S83 gate table is
+in [T183 HBK Zero-Copy Snapshot Evidence](hbk-zero-copy-snapshot-evidence.md).
+No S83 candidate is selected, ranked, promoted or made canonical.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

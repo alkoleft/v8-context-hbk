@@ -121,7 +121,16 @@ Current first unchecked task: T183.
     frozen in the experiment contract before F0/A0/L1/I1/D1/P1 candidate
     work. Parallel agents may implement separate worktrees, but all
     performance runs are serialized. No S83 candidate is created, ranked,
-    selected or merged yet.
+    selected or merged yet. S83-F0 (`a9a98a18ed2af21ba16573a00719c13edddac97b`)
+    and S83-A0 (`36a41aa74a9c6898576706f34a9a403918d452e4`) now have complete
+    numeric resource evidence plus successful storage and semantic parity
+    gates under `target/hbk-zero-copy-experiment-8.3.27.1859/results/`.
+    F0 fails the frozen warm/cold ready, reverse-hit, forward-dictionary,
+    open-major-fault, total rebuild and production allocation calls/bytes
+    gates. A0 fails the frozen warm-ready, runtime allocation-call, reverse
+    dictionary hit/miss, workload, per-operation, open-major-fault, total
+    rebuild and production peak-RSS gates. Both remain unranked and unselected;
+    the complete S83 table is in `acceptance/hbk-zero-copy-snapshot-evidence.md`.
     T183 remains open until the evidence is presented and the user explicitly
     selects an outcome or rejects production adoption.
 
