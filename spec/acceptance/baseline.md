@@ -2735,6 +2735,31 @@ The complete unranked startup-plus-first-lookup, operation, resource,
 production, relative-value and gate tables are in
 [T183 HBK Zero-Copy Snapshot Evidence](hbk-zero-copy-snapshot-evidence.md).
 
+### S83 comparison-set preparation
+
+The additional T183 comparison set uses the exact
+`/opt/1cv8/x86_64/8.3.27.1859/shcntx_ru.hbk` input (`40,744,845` bytes,
+SHA-256
+`5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`)
+and a separate service-data root
+`target/hbk-zero-copy-experiment-8.3.27.1859/`. It is not pooled with the
+8.5.1.1150 comparison.
+
+The release provider-index build produced
+`target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.release.sqlite`
+(`204,288,000` bytes, SHA-256
+`55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`)
+in `18.19 s` with `286,912 KiB` peak RSS. It contains `25,052` documents.
+The initial owned-snapshot smoke reports `69,695` strings, `1,749` platform
+types, `18,004` type members, `8,299` callables, `601` globals, `53` query
+tables, `498` query fields, `56` query parameters, zero language facts, `670`
+enums and `2,934` enum values. The current owned cache is `11,186,057` bytes.
+
+These are corpus/preparation facts, not candidate results or frozen numerical
+gates. The S83 harness, complete H0/C0 evidence and concrete gates must be
+committed before S83 candidate branches are created. No S83 candidate is
+ranked or selected.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

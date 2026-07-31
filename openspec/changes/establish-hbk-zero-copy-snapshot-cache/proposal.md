@@ -37,6 +37,10 @@ as a read-only base for later project/session symbol composition.
   as `rkyv`, and only the narrow on-disk indexes justified by measurements.
 - Treat each zero-copy construction approach as a falsifiable hypothesis with
   its own expected win, rejection rule and measured result row.
+- Compare organization independently from library/format choice: physical
+  hot/cold section placement, mapped lookup-index shape, checked lazy/dynamic
+  section access and formation/write strategy each receive an isolated
+  branch/result row over a common reference layout.
 - Compare SQLite-to-owned, current-cache-to-owned and zero-copy paths under one
   reproducible protocol covering production/rebuild, cold/warm ready-for-query
   startup, first lookup, batched warm lookup, allocations, RSS/PSS, page

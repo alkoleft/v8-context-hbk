@@ -1072,6 +1072,13 @@ archive candidate until checked archive validation, schema/version/endianness
 handling and dependency review pass. No candidate may expose unchecked mapped
 or archived data to domain/catalog code.
 
+The independent S83 comparison set additionally isolates physical organization
+from format choice. Its F0 typed-flat and A0 checked-archive rows are reference
+formats. F0-derived L1, I1, D1 and P1 change respectively only section
+placement, mapped lookup-index shape, checked dynamic section access and
+formation/write strategy. Each lives in a separate worktree; timed runs are
+serialized on the shared host even when implementation proceeds in parallel.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

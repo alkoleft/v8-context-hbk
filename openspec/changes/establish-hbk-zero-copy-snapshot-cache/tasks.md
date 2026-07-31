@@ -87,6 +87,22 @@ durable task ledger authorizes the bounded prototype work.
   acceptance, SQLite may remain only in its explicitly accepted private
   rebuild/index-production role. Retain every candidate branch and its evidence
   until the user decides, including candidates that fail a mandatory gate.
+- [ ] 1.16 Freeze the independent S83 comparison set for exact platform
+  `8.3.27.1859`: separate service-data root, exact HBK/provider identities,
+  parameterized harness commit, host-load evidence, H0/C0 noise and concrete
+  numerical gates. Do not reuse S85 values.
+- [ ] 1.17 Implement corrected S83-F0 typed-flat and S83-A0 checked-archive
+  format/lifecycle references in separate worktrees. Require exact platform
+  checks, immutable locked publication, rebuild-before-map, complete mapped
+  canonical parity, section footprints and producer allocation evidence.
+- [ ] 1.18 Implement S83-L1 page layout, S83-I1 mapped indexes, S83-D1 checked
+  dynamic reading and S83-P1 direct formation in separate F0-derived
+  branches/worktrees. Change only the registered primary variable in each
+  branch and implement in parallel while serializing all performance runs.
+- [ ] 1.19 Run the complete S83 parity/lifecycle/resource protocol and add the
+  rows to one unranked comparison table. Preserve every branch, record
+  incomplete/failed gates and wait for the user's selection before any merge,
+  deletion, dependency acceptance or canonical promotion.
 
 ## 2. Provider Prerequisites (Non-Executable Follow-Up)
 

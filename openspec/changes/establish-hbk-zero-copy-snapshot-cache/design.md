@@ -192,6 +192,22 @@ CSR and sorted lookup indexes
 Entity rows contain typed IDs and checked ranges into other sections rather
 than native pointers or owned `Vec` fields.
 
+An additional S83 comparison set separates the organization dimensions that
+the initial format comparison left coupled:
+
+| ID | Changed dimension | Fixed dimensions |
+| --- | --- | --- |
+| `S83-L1` | hot/cold page-clustered section order | F0 records, indexes, validation and writer semantics |
+| `S83-I1` | mapped open-address reverse/name indexes | F0 records, section order, validation timing and writer |
+| `S83-D1` | eager header/directory plus lazy safe section validation/access | F0 records, section order and index algorithms |
+| `S83-P1` | two-pass/direct formation without a monolithic output buffer | F0 runtime layout, reader and lookup algorithms |
+
+F0 typed-flat and A0 checked archive remain format/lifecycle references. A0
+does not satisfy the requirement to test the four organizational dimensions.
+Each derived hypothesis has its own branch/worktree and one primary variable.
+Implementation may run in parallel, while measurements on the shared host run
+serially with recorded load/memory state and cache stance.
+
 ### 5. Treat file immutability and change locking as safety invariants
 
 Mapped bytes must never be modified in place. The writer creates a new

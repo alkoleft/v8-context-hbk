@@ -37,6 +37,17 @@ downstream workloads.
 - **AND** behavior, candidate ordering and lookup results SHALL match the
   current snapshot contract.
 
+#### Scenario: Organization hypotheses are compared
+
+- **WHEN** discovery evaluates layout, lookup indexes, checked dynamic access
+  or snapshot formation independently from the storage-library choice
+- **THEN** each hypothesis SHALL use a separate branch/worktree and change one
+  primary organizational dimension over a recorded reference commit
+- **AND** all candidates SHALL use the exact same corpus, harness, query
+  manifest and canonical content/lookup baseline
+- **AND** implementation MAY proceed in parallel but performance measurements
+  on one host SHALL run serially with cache stance and host load recorded.
+
 #### Scenario: Candidate fails its resource gate
 
 - **WHEN** a candidate retains a parallel provider model, has no material

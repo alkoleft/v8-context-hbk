@@ -188,6 +188,18 @@ Requirements:
   select a winner, change the canonical runtime path or authorize merge into
   `master`; the user makes the selection after reviewing the unranked result
   table.
+- A second corpus or harness revision is a separate comparison set. Its raw
+  results, parity files, prepared artifacts, baselines and numerical gates
+  must use a separate namespace and must not be pooled with an earlier set.
+- Organization experiments must isolate one primary variable per derived
+  branch: physical section order/layout, mapped lookup-index shape,
+  eager-versus-lazy checked access, or snapshot-formation strategy. Format
+  references may be reported beside them, but do not substitute for these
+  organization hypotheses.
+- Candidate implementation may run in parallel worktrees, but timed
+  measurements on one host must run serially. Each sample records the exact
+  corpus and harness identity plus host load/memory state so interference and
+  drift remain visible.
 
 The full protocol and hypothesis registry are defined in
 `implementation/hbk-zero-copy-snapshot-experiment.md`.
@@ -213,6 +225,10 @@ Verification tiers:
 ## NFR-COMPAT-001: Compatibility Policy
 
 - First supported platform baseline is `8.5.1.1150`.
+- A bounded comparison experiment may use an older explicitly identified
+  corpus, including `8.3.27.1859`, without advertising that platform version
+  as a supported production baseline. Its artifact must still carry and check
+  the exact experimental platform version before mapping.
 - Parser logic should avoid assumptions that are only true for one HTML filename when TOC carries a
   more reliable relationship.
 - Syntax Assistant reading must remain TOC-aware for classification, semantic ownership and

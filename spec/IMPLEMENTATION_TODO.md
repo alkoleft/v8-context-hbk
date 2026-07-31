@@ -73,6 +73,10 @@ Current first unchecked task: T183.
     4. require parity before accepting candidate performance evidence;
     5. publish raw evidence plus one unranked comparison table with branch
        ancestry and commit SHAs.
+    6. run an independent S83 comparison set on exact platform
+       `8.3.27.1859`, adding separate typed-flat/archive references and
+       one-variable layout, mapped-index, checked-dynamic-read and
+       direct-formation hypotheses in their own worktrees.
   - Verification:
     strict OpenSpec validation; format/check/test for the frozen base and each
     candidate branch; exact corpus/checksum verification; versioned canonical
@@ -103,6 +107,16 @@ Current first unchecked task: T183.
     production allocations and per-section/dictionary/index byte footprints
     remain uninstrumented. The complete unranked gate table is in
     `acceptance/hbk-zero-copy-snapshot-evidence.md`.
+    The user requested a second independent comparison set for
+    `/opt/1cv8/x86_64/8.3.27.1859/shcntx_ru.hbk`. Its HBK identity is
+    `40,744,845` bytes /
+    `5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`;
+    its schema-16 provider SQLite identity is `204,288,000` bytes /
+    `55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`.
+    S83 uses a separate target root and will freeze new H0/C0 noise/gates
+    before F0/A0/L1/I1/D1/P1 candidate work. Parallel agents may implement
+    separate worktrees, but all performance runs are serialized. No S83
+    candidate is created, ranked, selected or merged yet.
     T183 remains open until the evidence is presented and the user explicitly
     selects an outcome or rejects production adoption.
 

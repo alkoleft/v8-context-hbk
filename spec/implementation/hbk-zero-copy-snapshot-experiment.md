@@ -21,7 +21,7 @@ HBK remains the authoritative documentation input. A zero-copy artifact may
 become the canonical runtime context only after a separate accepted
 specification or ADR decision.
 
-## Exact Initial Corpus
+## Comparison Set S85
 
 The mandatory real-corpus row is:
 
@@ -51,6 +51,43 @@ facts, ambiguity and unsupported outcomes. Those fixtures are parity evidence,
 not substitutes for real-corpus performance measurements. Any additional real
 corpus must be recorded with the same identity fields and reported as a
 separate dataset rather than pooled silently with this row.
+
+## Comparison Set S83
+
+The user requested an additional, independent comparison set over:
+
+- dataset ID: `shcntx_ru-8.3.27.1859-schema16-extraction11`;
+- platform HBK:
+  `/opt/1cv8/x86_64/8.3.27.1859/shcntx_ru.hbk`;
+- platform version: `8.3.27.1859`;
+- locale/source locale: `ru`;
+- HBK size: `40,744,845` bytes;
+- HBK SHA-256:
+  `5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`;
+- provider SQLite:
+  `target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.release.sqlite`;
+- SQLite size: `204,288,000` bytes;
+- SQLite SHA-256:
+  `55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`;
+- provider schema: `16`;
+- extraction schema: `11`;
+- service-data root:
+  `target/hbk-zero-copy-experiment-8.3.27.1859/`.
+
+S83 does not change the first supported production platform baseline. It tests
+whether the hypotheses survive an older, smaller real corpus and requires the
+artifact to reject every platform version other than `8.3.27.1859` for this
+set. S83 raw/parity/prepared files and numerical gates are independent from
+S85. No value or threshold is pooled or copied between the sets.
+
+The release provider-index build completed in `18.19 s` at `286,912 KiB` peak
+RSS and produced `25,052` documents. The initial owned snapshot contains
+`69,695` strings, `1,749` platform types, `18,004` type members, `8,299`
+callables, `601` globals, `53` query tables, `498` query fields, `56` query
+parameters, zero language facts, `670` enums and `2,934` enum values. These
+counts establish corpus identity; candidate parity still uses the full
+canonical content and lookup files plus deterministic language/ambiguity/
+unsupported fixtures.
 
 ## Hypothesis Registry And Branch Ancestry
 
@@ -87,6 +124,30 @@ experiment/hbk-zero-copy-base
 
 H1 and H3 may be implemented in parallel worktrees. H2 starts only after H1
 has a committed artifact/layout and measures the subtraction from H1.
+
+### S83 organization registry
+
+S83 keeps format references separate from the organization hypotheses:
+
+| ID | Role / isolated variable | Falsifiable claim |
+| --- | --- | --- |
+| `S83-H0` | SQLite-to-owned baseline | Establishes S83 semantic, startup, lookup and resource denominators. |
+| `S83-C0` | Current-cache-to-owned control | Establishes the cost left after avoiding SQLite while retaining full deserialization. |
+| `S83-F0` | Corrected typed-flat format/lifecycle reference | A fully validated typed flat mapping can supply the common reference layout and complete mapped oracle without an owned runtime mirror. |
+| `S83-A0` | Checked archive format/lifecycle reference | A checked archive provides a second format/safety reference; it is not a substitute for the organization hypotheses below. |
+| `S83-L1` | F0 with only hot/cold page-clustered section order changed | Co-locating the sections touched together by the frozen workload reduces first-touch faults/latency or resident pages without changing lookup algorithms. |
+| `S83-I1` | F0 with only mapped open-address reverse/name indexes changed | A stable checked hash/probe layout reduces limiting exact/reverse lookups enough to justify its artifact and validation overhead. |
+| `S83-D1` | F0 with only lazy safe per-section validation/access changed | Header/directory validation plus checked first-use section validation reduces ready time/page touches without returning corrupt data or shifting unacceptable cost into first lookup. |
+| `S83-P1` | F0 with only two-pass/direct formation changed | Writing the same runtime semantics without a monolithic output buffer reduces formation allocations/peak RSS or write amplification. |
+
+Every candidate has its own branch and worktree. `S83-L1`, `S83-I1`,
+`S83-D1` and `S83-P1` branch from the exact measured `S83-F0` commit.
+Implementation work may run in parallel. Performance commands are serialized
+by the coordinator; agents must not benchmark concurrently on the shared host.
+
+S83 candidate timing is inadmissible until the candidate records the exact S83
+HBK/SQLite/harness/query-manifest/oracle identities and its complete mapped
+content and lookup files compare byte-for-byte with `S83-H0`/`S83-C0`.
 
 ## Frozen Measurement Boundary
 
@@ -426,3 +487,7 @@ The final durable table has one row per dataset/backend/variant and contains:
 
 The table contains no automatic score, rank, “winner” or first-place marker.
 The user receives the evidence and makes the selection decision.
+
+For S83, `production` in result fields means release-profile snapshot
+formation/rebuild measurement only. It does not mean deployment, production
+adoption or canonical-runtime promotion.
