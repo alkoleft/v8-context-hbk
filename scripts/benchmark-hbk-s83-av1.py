@@ -499,14 +499,13 @@ def runtime_artifacts(
                 "S83-C0 runtime artifact contract requires index + loaded cache"
             )
         return [index, cache]
-    if isinstance(cache, dict):
-        if cache_status != "loaded":
-            raise EvidenceError(
-                f"{backend.backend} runtime artifact contract requires loaded candidate cache"
-            )
+    if isinstance(cache, dict) and cache_status == "loaded":
         return [cache]
+    if cache is None and isinstance(index, dict) and cache_status == "mapped-checked":
+        return [index]
     raise EvidenceError(
-        f"{backend.backend} runtime artifact contract requires one loaded candidate cache"
+        f"{backend.backend} runtime artifact contract requires one loaded cache "
+        "or one checked mapped index"
     )
 
 

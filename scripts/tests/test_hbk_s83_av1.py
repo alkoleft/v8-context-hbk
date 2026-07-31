@@ -391,6 +391,14 @@ class BenchmarkContractTests(unittest.TestCase):
                 report, backend(), "server", 3, require_allocations=True
             )
 
+    def test_report_accepts_checked_mapped_candidate_index(self) -> None:
+        report = probe_report("S83-A0")
+        report["cache_status"] = "mapped-checked"
+        transcript, _stripped = benchmark.validate_report(
+            report, backend("S83-A0"), "server", 3, require_allocations=True
+        )
+        self.assertTrue(transcript)
+
     def test_report_rejects_candidate_only_timing_schema_field(self) -> None:
         report = probe_report()
         report["timings"]["validation_ns"] = 7
@@ -509,6 +517,15 @@ class SummaryContractTests(unittest.TestCase):
         record = raw_record("S83-C0", "server", "warm", 1, 2)
         record["declared_files"].reverse()
         record["preparation"]["declared_files"].reverse()
+        summarizer.validate_record(record)
+
+    def test_raw_checked_mapped_candidate_index_is_bound(self) -> None:
+        record = raw_record("S83-A0", "server", "warm", 1, 2)
+        record["backend_registry"] = ["S83-H0", "S83-C0", "S83-A0"]
+        candidate_artifact = record["measurement"]["cache"]
+        record["measurement"]["index"] = candidate_artifact
+        record["measurement"]["cache"] = None
+        record["measurement"]["cache_status"] = "mapped-checked"
         summarizer.validate_record(record)
 
     def test_raw_measurement_rejects_candidate_only_timing_schema_field(self) -> None:

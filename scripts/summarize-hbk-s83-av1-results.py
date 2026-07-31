@@ -438,10 +438,12 @@ def validate_runtime_artifact_binding(
         if not isinstance(index, dict) or not isinstance(cache, dict) or cache_status != "loaded":
             raise SummaryError(f"{source}: C0 runtime artifact contract mismatch")
         runtime_values = [index, cache]
-    else:
-        if not isinstance(cache, dict) or cache_status != "loaded":
-            raise SummaryError(f"{source}: candidate runtime artifact contract mismatch")
+    elif isinstance(cache, dict) and cache_status == "loaded":
         runtime_values = [cache]
+    elif cache is None and isinstance(index, dict) and cache_status == "mapped-checked":
+        runtime_values = [index]
+    else:
+        raise SummaryError(f"{source}: candidate runtime artifact contract mismatch")
     runtime = {
         normalized_artifact(value, source, f"runtime_artifacts[{index}]", worktree)
         for index, value in enumerate(runtime_values)
