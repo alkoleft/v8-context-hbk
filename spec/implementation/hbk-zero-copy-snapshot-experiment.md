@@ -563,9 +563,12 @@ owner/domain/kind, ambiguity and unsupported outcomes through
 
 Sequential and concurrent transcripts must be byte-identical. The full
 canonical files are compared byte-for-byte; SHA-256 is only a compact table
-field. After a candidate opens, the parity probe makes SQLite and HBK
-unavailable to that running probe and repeats covered lookups to exclude a
-hidden fallback.
+field. The source-hidden probe makes SQLite and HBK unavailable for the whole
+candidate replay to exclude a hidden fallback. For a self-contained mapped
+candidate it hides both sources before the candidate process starts, which
+also proves that they remain unavailable after the artifact opens and avoids
+an unobservable transition race. The SQL-owned baseline is exempt because
+SQLite is its declared source.
 
 The catalog/resolver transcript uses a minimal `pub(crate)` generic
 semantic-read engine with statically dispatched owned/F0/A0 adapters. Its
@@ -610,11 +613,22 @@ template bindings, availability and relations. Fact and string IDs are
 normalized as defined above.
 
 The owned baseline transcript is generated from the frozen S83 provider.
-Candidate transcripts are compared byte-for-byte sequentially, with four
-concurrent readers, and again in the source-hidden probe after open. Storage
-oracle and catalog/resolver transcript are independent gates. Until both pass,
-F0/A0 resource measurements are labeled structural-only and are ineligible
-for full behavior acceptance.
+Candidate transcripts are compared byte-for-byte sequentially and with four
+concurrent readers in a sandbox where the HBK and SQLite sources are hidden
+before process start and throughout replay. The driver waits for every writer
+to exit before inspecting, hashing or comparing any output. Storage oracle and
+catalog/resolver transcript are independent gates. Until both pass, F0/A0
+resource measurements are labeled structural-only and are ineligible for full
+behavior acceptance.
+
+`scripts/verify-hbk-s83-semantic-parity.py` is the external S83 semantic gate.
+It rejects dirty driver and candidate worktrees; verifies exact commit, binary,
+artifact, manifest and owned-transcript identities; independently reads the
+candidate header to check the separate format/layout versions, provider and
+extraction schemas, platform version and source identities; exposes only the
+exact immutable artifact plus its adjacent writable lock file to the sandbox;
+and appends a pass or failure record under the fixed S83 results root. The
+source-hidden sandbox does not mount the host `/home` or `/opt` trees.
 
 The downstream unified semantic entity change currently depends only on the
 provider-owned immutable HBK base dictionary and generation-local IDs. This
