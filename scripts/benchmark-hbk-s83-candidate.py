@@ -316,6 +316,7 @@ def allocation(args: argparse.Namespace, evidence: Evidence) -> None:
         try:
             for path in warm_paths:
                 warm_file(path)
+            record["machine_state_before"] = machine_state()
             completed = subprocess.run(command, text=True, capture_output=True, check=False)
         except (OSError, RuntimeError) as error:
             record.update(
