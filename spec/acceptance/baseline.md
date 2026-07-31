@@ -2881,6 +2881,39 @@ SQL baseline, контрольного текущего cache, матрица lo
 Ни одна строка не выбрана, не рекомендована, не объединена, не продвинута и не
 сделана канонической.
 
+### Дополнительные свидетельства S83-AV1
+
+Отдельный workload S83-AV1 завершён на harness-коммите
+`37d968b868caa4f47bea4292d7f9424735b06c01`. Манифест имеет SHA-256
+`81f1128a0d42cae0e307260d80aa2debd67c99a49158b6dde3235b35ed65d7bc`.
+Все 81 parity-запись и 1,458 measurement-записей успешны; raw SHA-256 —
+`c16fc9d5935e429e6b4684ed2348140521433f1157a938429f2d288c0efd984e`,
+summary SHA-256 —
+`a1b362b4d7e65a8233a6cde3736095287dd9c90bf1f0b152b558a907d78ab8d6`.
+
+H0 остаётся единственным SQL-to-owned baseline, C0 — control. Во всех девяти
+`AvailabilityContext` строки C0/F0/A0/L1/I1/D1/P1/R1 имеют точное побайтовое
+равенство полного ordered global/callable/signature/parameter/return
+transcript H0. `ModuleContextKind` не использован; один глобальный метод с
+пустым availability включён во все результаты. По контекстам возвращено от 261
+до 485 из 500 глобальных BSL-методов, исключено от 15 до 239.
+
+Измеренные профили различаются: C0 и A0 имеют first enumeration быстрее H0 во
+всех девяти контекстах; steady enumeration A0 находится в диапазоне
+1.045–1.065× H0 warm и 1.050–1.062× cold без аллокаций измеряемой enumeration.
+R1 также не аллоцирует, но steady enumeration составляет 2.462–2.719× H0 warm.
+F0/L1/I1/P1 выполняют 2,710 allocation calls / 200,012 bytes на одну
+enumeration; D1 переносит проверку в первый проход и имеет 40,756 calls /
+3,597,844 bytes в first enumeration. Эти факты не образуют рейтинг и не меняют
+`eligibility_state = no-candidate-passes-all-frozen-gates`.
+
+Полная неранжированная русская таблица с каждым контекстом, warm/cold startup,
+first/steady enumeration, page faults, аллокациями, median/MAD и отношениями к
+H0 находится в [свидетельствах S83-AV1](hbk-s83-av1-evidence.md). Сырые JSONL,
+логи и сгенерированные summary остаются service data в
+`target/hbk-s83-av1/run-37d968b-9x1000/`. Ни один кандидат не выбран и не стал
+каноническим.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

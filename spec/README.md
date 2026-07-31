@@ -34,6 +34,8 @@ Otherwise reconcile the specification files before implementing.
 - `acceptance/hbk-zero-copy-snapshot-evidence.md`: неранжированные измерения кандидатов T183,
   полный разбор поведенческой эквивалентности, результаты отдельных операций и итоги
   зафиксированных критериев.
+- `acceptance/hbk-s83-av1-evidence.md`: дополнительный неранжированный проход T183 для
+  полной enumeration глобальных BSL-методов с фильтром только по `AvailabilityContext`.
 - `implementation/syntax-helper-query-cli.md`: draft architecture for the separate Syntax
   Assistant query/search CLI and its index/relationship model.
 - `implementation/syntax-bsl-provider-plan.md`: ADR-0006 gap analysis, BSL/code-analysis use-case

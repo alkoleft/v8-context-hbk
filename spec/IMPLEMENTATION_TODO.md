@@ -162,6 +162,17 @@ type-reference conclusions live in
     `AvailabilityContext` измеряется независимо, `ModuleContextKind` запрещён,
     пустой availability означает доступность во всех контекстах, а public API
     resolver на этом этапе не проектируется.
+    S83-AV1 завершён на harness-коммите
+    `37d968b868caa4f47bea4292d7f9424735b06c01`: 81/81 parity-комбинаций и
+    1,458/1,458 последовательных measurement-записей прошли для девяти
+    `AvailabilityContext`, девяти warm и девяти cold-best-effort образцов по
+    1,000 enumeration. Raw SHA-256 —
+    `c16fc9d5935e429e6b4684ed2348140521433f1157a938429f2d288c0efd984e`,
+    summary SHA-256 —
+    `a1b362b4d7e65a8233a6cde3736095287dd9c90bf1f0b152b558a907d78ab8d6`.
+    Полная русская неранжированная таблица находится в
+    `acceptance/hbk-s83-av1-evidence.md`. T183 остаётся открытой до решения
+    пользователя; ни один вариант не выбран и не назначен каноническим.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their
