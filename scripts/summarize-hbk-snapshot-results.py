@@ -13,6 +13,13 @@ from typing import Any, Iterable
 
 METRICS: dict[str, tuple[str, ...]] = {
     "ready_ns": ("measurement", "timings", "process_start_to_ready_ns"),
+    "materialize_ns": ("measurement", "timings", "open", "elapsed_ns"),
+    "artifact_write_ns": (
+        "measurement",
+        "timings",
+        "cache_write",
+        "elapsed_ns",
+    ),
     "first_lookup_ns": ("measurement", "timings", "first_lookup", "elapsed_ns"),
     "anchor_resolution_ns": (
         "measurement",
@@ -182,6 +189,21 @@ def summarize_group(records: list[dict[str, Any]]) -> dict[str, Any]:
         )
         if metric is not None:
             summary["metrics"][name] = metric
+    resident_growth = []
+    for record in records:
+        before = record.get("resident_bytes_before")
+        after = record.get("resident_bytes_after")
+        if not isinstance(before, dict) or not isinstance(after, dict):
+            continue
+        resident_growth.append(
+            sum(
+                max(0, int(after.get(path, 0)) - int(bytes_before))
+                for path, bytes_before in before.items()
+            )
+        )
+    resident_metric = median_mad(resident_growth)
+    if resident_metric is not None:
+        summary["metrics"]["file_resident_growth_bytes"] = resident_metric
 
     operations: dict[str, list[int | float]] = defaultdict(list)
     observations: dict[str, set[int | float]] = defaultdict(set)
@@ -298,6 +320,30 @@ def render_markdown(
             )
             + " |"
         )
+
+    production_keys = [key for key in sorted(groups) if key.split("|", 1)[0].endswith("-produce")]
+    lines.extend(["", "## Artifact production", ""])
+    if production_keys:
+        lines.extend(
+            [
+                "| Backend | N | Total local rebuild ms | Materialize ms | Artifact write ms | Artifact MiB | Peak RSS MiB |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for key in production_keys:
+            backend, _ = key.split("|", 1)
+            group = groups[key]
+            artifact_bytes = metric_median(group, "artifact_bytes")
+            lines.append(
+                f"| {backend} | {group['samples']} | "
+                f"{format_ms(metric_median(group, 'ready_ns'))} | "
+                f"{format_ms(metric_median(group, 'materialize_ns'))} | "
+                f"{format_ms(metric_median(group, 'artifact_write_ns'))} | "
+                f"{'—' if artifact_bytes is None else f'{float(artifact_bytes) / 1024 / 1024:.2f}'} | "
+                f"{format_mib(metric_median(group, 'peak_rss_kib'))} |"
+            )
+    else:
+        lines.append("No artifact-production record for this harness commit.")
 
     lines.extend(["", "## Parity evidence", ""])
     if parity_records:

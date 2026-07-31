@@ -31,9 +31,10 @@ usage() {
         echo "  $0 verify"
         echo "  $0 build"
         echo "  $0 prepare-cache [iterations]"
+        echo "  $0 production-baseline [runs] [iterations]"
         echo "  $0 parity-baseline"
         echo "  $0 record-parity <backend> <content.jsonl> <lookups.jsonl>"
-        echo "  $0 allocation-baseline <sql-owned|cache-owned> [runs] [iterations]"
+        echo "  $0 allocation-baseline <sql-owned|cache-owned|cache-owned-produce> [runs] [iterations]"
         echo "  $0 baseline <warm|cold-best-effort> [runs] [iterations]"
         echo "  $0 run-command <backend> <warm|cold-best-effort> <sample> <evict-paths-or--> -- <command> [args...]"
         echo "  $0 multi-reader-baseline <sql-owned|cache-owned> [runs] [iterations]"
@@ -224,6 +225,7 @@ run_command() {
     local stderr_path="${LOG_DIR}/${run_id}.stderr.log"
     local time_path="${RUN_DIR}/${run_id}.time.json"
     local residency
+    local residency_after
     local command_json
     local harness_sha
     local candidate_sha
@@ -254,6 +256,7 @@ run_command() {
         -- "$@" >"$stdout_path" 2>"$stderr_path"
     local command_status=$?
     set -e
+    residency_after="$(resident_json "$evict_paths")"
 
     if [[ "$command_status" -ne 0 ]]; then
         jq -cn \
@@ -276,6 +279,7 @@ run_command() {
             --arg candidate_branch "$candidate_branch_name" \
             --argjson command "$command_json" \
             --argjson resident_bytes_before "$residency" \
+            --argjson resident_bytes_after "$residency_after" \
             --argjson exit_status "$command_status" \
             '{
                 schema: $schema,
@@ -301,6 +305,7 @@ run_command() {
                 candidate_branch: $candidate_branch,
                 command: $command,
                 resident_bytes_before: $resident_bytes_before,
+                resident_bytes_after: $resident_bytes_after,
                 exit_status: $exit_status
             }' | tee -a "$RAW_RESULTS"
         echo "benchmark command failed; see ${stderr_path}" >&2
@@ -333,6 +338,7 @@ run_command() {
         --arg candidate_branch "$candidate_branch_name" \
         --argjson command "$command_json" \
         --argjson resident_bytes_before "$residency" \
+        --argjson resident_bytes_after "$residency_after" \
         --argjson measurement "$inner" \
         --argjson process "$outer" \
         '{
@@ -359,6 +365,7 @@ run_command() {
             candidate_branch: $candidate_branch,
             command: $command,
             resident_bytes_before: $resident_bytes_before,
+            resident_bytes_after: $resident_bytes_after,
             measurement: $measurement,
             process: $process
         }' | tee -a "$RAW_RESULTS"
@@ -373,6 +380,28 @@ prepare_cache() {
         jq -e -c .
     [[ -f "$PREPARED_CACHE" ]]
     sha256sum -- "$PREPARED_CACHE" >"${PREPARED_CACHE}.sha256"
+}
+
+production_baseline() {
+    local runs="${1:-$DEFAULT_RUNS}"
+    local iterations="${2:-$DEFAULT_ITERATIONS}"
+    local sample
+    local output
+
+    verify_inputs
+    [[ -x "$EXAMPLE_BIN" ]] || build_harness
+    mkdir -p "$RUN_DIR"
+    for ((sample = 1; sample <= WARMUP_RUNS; sample++)); do
+        output="${RUN_DIR}/current-cache-produce.warmup.${sample}.bin"
+        prepare_stance warm "$SQLITE_PATH"
+        "$EXAMPLE_BIN" prepare-cache "$SQLITE_PATH" "$output" "$iterations" >/dev/null
+    done
+    for ((sample = 1; sample <= runs; sample++)); do
+        output="${RUN_DIR}/current-cache-produce.${sample}.bin"
+        run_command \
+            "cache-owned-produce" warm "$sample" "$SQLITE_PATH" -- \
+            "$EXAMPLE_BIN" prepare-cache "$SQLITE_PATH" "$output" "$iterations"
+    done
 }
 
 parity_baseline() {
@@ -541,6 +570,13 @@ allocation_baseline() {
                 warm_file "$cache_path"
                 "$ALLOCATION_EXAMPLE_BIN" \
                     cache-owned "$SQLITE_PATH" "$cache_path" "$iterations" \
+                    >"$stdout_path" 2>"$stderr_path"
+                ;;
+            cache-owned-produce)
+                cache_path="${RUN_DIR}/allocation-cache-produce.${sample}.bin"
+                warm_file "$SQLITE_PATH"
+                "$ALLOCATION_EXAMPLE_BIN" \
+                    prepare-cache "$SQLITE_PATH" "$cache_path" "$iterations" \
                     >"$stdout_path" 2>"$stderr_path"
                 ;;
             *)
@@ -834,6 +870,10 @@ main() {
         prepare-cache)
             shift
             prepare_cache "$@"
+            ;;
+        production-baseline)
+            shift
+            production_baseline "$@"
             ;;
         parity-baseline)
             parity_baseline
