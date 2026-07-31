@@ -87,8 +87,24 @@ Current first unchecked task: T183.
     frozen benchmark/parity base `051df7979e3cf5f6431b4d13829f436c98c47054`;
     H0/C0 protocol, noise, production lifecycle, owned-cache inventory,
     behavior oracle and predeclared numerical gates are recorded in the T183
-    experiment contract. Candidate branches have not yet been selected,
-    ranked or merged.
+    experiment contract. Candidate branches `experiment/hbk-zero-copy-flat-h1`
+    (`a2431254ee5d90a6e77c877e329bbb8d0ca50e84`),
+    `experiment/hbk-zero-copy-flat-typed-h2`
+    (`826991395a508e36b7a684dc987ead218ef27184`) and
+    `experiment/hbk-zero-copy-rkyv-h3`
+    (`497afa52344fb318a4f27c94762cc7eafa1126ca`) have generated unranked
+    evidence. All remain unselected and unmerged. H1 is ineligible due parity,
+    validation and workload-equivalence blockers; H2 and H3 preserve the
+    representative workload totals but still lack full mapped canonical parity
+    and complete first-use lifecycle proof. H2 releases its writer lock before
+    post-publication self-validation, and its `ModuleEventNames` validation
+    orders owner IDs differently from the owned text-order contract. H3 does
+    not prove sorted order for every binary-searched name/id array. Candidate
+    production allocations and per-section/dictionary/index byte footprints
+    remain uninstrumented. The complete unranked gate table is in
+    `acceptance/hbk-zero-copy-snapshot-evidence.md`.
+    T183 remains open until the evidence is presented and the user explicitly
+    selects an outcome or rejects production adoption.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

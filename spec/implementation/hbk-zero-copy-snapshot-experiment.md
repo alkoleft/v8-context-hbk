@@ -210,6 +210,23 @@ and
 The full files are byte-identical, including four concurrent-reader
 transcripts.
 
+## Candidate Evidence Collected
+
+The committed H1, H2 and H3 branches have been measured, but no candidate
+completes the mandatory mapped parity and integrated rebuild-before-map
+lifecycle gates. The full unranked runtime, startup-plus-first-lookup,
+operation, allocation, memory, production, relative-value and gate tables are
+in
+[T183 HBK Zero-Copy Snapshot Evidence](../acceptance/hbk-zero-copy-snapshot-evidence.md).
+
+That evidence also freezes the provisional downstream handoff: immutable
+provider-owned HBK strings may be exposed through generation-scoped,
+session-local IDs, while the project/request overlay remains outside HBK.
+The physical snapshot representation remains unselected. The downstream
+unified semantic entity change must not treat a memory-mapped base dictionary
+or compact materialization as accepted production architecture before the
+user's decision.
+
 ## Current Owned-Cache Inventory
 
 The current writer first materializes the complete owned snapshot, serializes
@@ -336,8 +353,9 @@ branch or selecting another candidate without the user's decision.
 
 ## Mandatory Behavioral Oracle
 
-Parity is an independent mandatory gate. Performance values do not count for a
-candidate until its parity status is `pass`.
+Parity is an independent mandatory gate. Performance values remain recorded
+evidence, but they cannot support accepting a candidate until its parity status
+is `pass`.
 
 The versioned canonical JSONL oracle compares logical content, not layout or
 session-local numeric IDs. Every string ID is resolved to text and every typed

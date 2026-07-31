@@ -45,21 +45,23 @@ durable task ledger authorizes the bounded prototype work.
   control, H1 custom flat mapped sections, H2 “H1 layout + typed reader” with
   `zerocopy` only if H1 exposes decoding cost, H3 archive candidate such as
   `rkyv`/`bytecheck`, and separate reverse-index sub-variants.
-- [ ] 1.8 Prototype H1 as a custom flat, sectioned snapshot with checked
+- [x] 1.8 Prototype H1 as a custom flat, sectioned snapshot with checked
   offsets, flat arenas, ranges, sorted lookup indexes and an interned HBK string
   dictionary.
-- [ ] 1.9 Prototype H2 from the exact measured H1 commit only when H1
+- [x] 1.9 Prototype H2 from the exact measured H1 commit only when H1
   measurements justify isolating fixed-record decode overhead; report it as
   “H1 layout + typed reader”, otherwise record the no-go evidence instead of
   adding the dependency.
-- [ ] 1.10 Prototype H3 as an archive candidate, including
+- [x] 1.10 Prototype H3 as an archive candidate, including
   `rkyv`/`bytecheck` or an equivalent format, against the same catalog and
   lookup contracts. Do not call it validated until the checked safe-access
   boundary and compatibility proof pass.
 - [ ] 1.11 Evaluate reverse string lookup implementations for the immutable
   HBK dictionary, starting with sorted indexes, then mapped hash indexes, and
   adding FST only when the simpler variants leave a measured lookup or size
-  problem.
+  problem. The sorted H1/H2 variants and linear H3 variant are measured; H2
+  still misses the reverse-hit gate, so a mapped-hash follow-up remains
+  unresolved. FST remains unjustified until that simpler follow-up is measured.
 - [x] 1.12 Specify snapshot binary-layout and extraction-schema compatibility,
   exact platform-version/source checks, structural validation, immutable
   publication, shared session-long reader locks, fail-fast exclusive writer
@@ -73,8 +75,10 @@ durable task ledger authorizes the bounded prototype work.
   warm lookup, page faults/bytes touched, allocations, peak/steady RSS, PSS,
   aggregate multi-process PSS, file/section/index sizes and post-workload
   retained state. Record harness/candidate commit SHAs and branch ancestry, and
-  do not rank or name a winner.
-- [ ] 1.14 Define the ownership boundary between the provider-owned immutable
+  do not rank or name a winner. The consolidated table is recorded, but
+  candidate production allocations and per-section/dictionary/index byte
+  footprints were not instrumented and remain evidence gaps.
+- [x] 1.14 Define the ownership boundary between the provider-owned immutable
   HBK base dictionary and a downstream request/project-scoped overlay for BSL
   and metadata strings; do not add the overlay to HBK.
 - [ ] 1.15 Present the unranked evidence to the user. Only after the user

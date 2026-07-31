@@ -31,6 +31,8 @@ Otherwise reconcile the specification files before implementing.
   selection rules.
 - `implementation/hbk-zero-copy-snapshot-experiment.md`: T183 zero-copy snapshot hypothesis
   registry, reproducible comparison protocol, branch/worktree isolation and decision boundary.
+- `acceptance/hbk-zero-copy-snapshot-evidence.md`: unranked T183 candidate measurements,
+  full behavioral-equivalence breakdown, per-operation results and frozen gate outcomes.
 - `implementation/syntax-helper-query-cli.md`: draft architecture for the separate Syntax
   Assistant query/search CLI and its index/relationship model.
 - `implementation/syntax-bsl-provider-plan.md`: ADR-0006 gap analysis, BSL/code-analysis use-case

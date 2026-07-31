@@ -2692,6 +2692,49 @@ completed in 95.24 seconds. No wrapper, DTO, enum mirror, module, adapter,
 cache, registry, reader, parser, storage/index, schema, serialized shape or
 alternate facade was added. The workspace version is `0.2.4`.
 
+## T183 Interim Zero-Copy Snapshot Evidence
+
+T183 has a frozen comparison harness at
+`051df7979e3cf5f6431b4d13829f436c98c47054` for the real
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` corpus and the provider SQLite
+artifact `cc9b2b8aaf31f64c880b92cc3a02fd3166541f10f8d209faf8c7a7c22cac0d55`.
+The SQL-owned row is the baseline and the current binary cache is the runtime
+control.
+
+Candidate branches were measured but not ranked or selected:
+
+- H1 `experiment/hbk-zero-copy-flat-h1`
+  `a2431254ee5d90a6e77c877e329bbb8d0ca50e84`: ineligible because full mapped
+  parity, workload equivalence, full structural validation, exact provider
+  SQLite identity and typed producer lock behavior are incomplete.
+- H2 `experiment/hbk-zero-copy-flat-typed-h2`
+  `826991395a508e36b7a684dc987ead218ef27184`: representative workload totals
+  match C0, but full mapped canonical parity, integrated first-use lifecycle
+  proof, locked publication self-validation and the reviewed module-event
+  ordering validation are incomplete.
+- H3 `experiment/hbk-zero-copy-rkyv-h3`
+  `497afa52344fb318a4f27c94762cc7eafa1126ca`: owned-adapter oracle digests
+  match C0, but borrowed mapped-view canonical parity and first-use lifecycle
+  proof are incomplete, and not every binary-searched name/id array has an
+  open-time sorted-order proof.
+
+Key medians against C0: C0 warm/cold ready is 41.764 / 73.475 ms, workload is
+2,125.346 ms, peak RSS is 35,200 KiB and artifact size is 11,325,758 bytes.
+H2 warm/cold ready is 55.195 / 66.979 ms, workload is 370.613 ms, peak RSS is
+13,312 KiB, four-reader PSS is 12,848 KiB and artifact size is 11,445,079
+bytes. H3 warm/cold ready is 35.167 / 48.908 ms, workload is 4,729.164 ms,
+peak RSS is 15,872 KiB, four-reader PSS is 15,300 KiB and artifact size is
+14,097,196 bytes. H2 exceeds 20 of 25 frozen per-operation ceilings in each
+cache stance; H3 exceeds 19 warm and 20 cold ceilings. H1's operation timings
+are not comparable because three observed totals differ from C0.
+
+No candidate currently passes the mandatory parity/lifecycle gates. The
+accepted runtime path remains the current owned snapshot/cache path until the
+user selects an outcome and a durable decision accepts production adoption.
+The complete unranked startup-plus-first-lookup, operation, resource,
+production, relative-value and gate tables are in
+[T183 HBK Zero-Copy Snapshot Evidence](hbk-zero-copy-snapshot-evidence.md).
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,
