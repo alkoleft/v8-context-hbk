@@ -415,9 +415,9 @@ branch or selecting another candidate without the user's decision.
 ## Frozen S83 H0/C0 Evidence And Candidate Gates
 
 S83 uses harness commit
-`39a289f4831eead604a510cf6545d84b0e5d6b24` and workload
+`28f29b5a262db362b6b58c8109e6df6c2afbbc44` and workload
 `hbk-snapshot-warm-lookups/v2`. Its service evidence is
-`target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-39a289f.jsonl`.
+`target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-28f29b5.jsonl`.
 The file contains 61 records: 45 runtime/formation timing samples, nine
 allocation profiles, six aggregate four-reader samples and one parity record.
 Every record is successful and carries the same harness, corpus and provider
@@ -434,13 +434,14 @@ The timing and memory medians are:
 
 | Backend/scenario | N | Ready median ± MAD | Workload median ± MAD | Peak RSS | Post-workload PSS/private |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| S83-H0 SQL-owned warm | 9 | 590.720 ± 2.755 ms | 2,174.324 ± 4.468 ms | 74,948 KiB | 67,984 / 67,964 KiB |
-| S83-H0 SQL-owned cold-best-effort | 9 | 1,646.667 ± 12.824 ms | 2,178.464 ± 5.525 ms | 74,628 KiB | 67,989 / 67,968 KiB |
-| S83-C0 cache-owned warm | 9 | 42.080 ± 0.912 ms | 2,076.422 ± 13.548 ms | 34,944 KiB | 22,140 / 22,120 KiB |
-| S83-C0 cache-owned cold-best-effort | 9 | 72.451 ± 2.158 ms | 2,092.576 ± 8.534 ms | 34,816 KiB | 22,132 / 22,112 KiB |
+| S83-H0 SQL-owned warm | 9 | 588.217 ± 4.898 ms | 2,179.371 ± 6.546 ms | 74,948 KiB | 67,992 / 67,972 KiB |
+| S83-H0 SQL-owned cold-best-effort | 9 | 1,631.261 ± 7.871 ms | 2,173.222 ± 7.407 ms | 74,664 KiB | 67,989 / 67,968 KiB |
+| S83-C0 cache-owned warm | 9 | 42.489 ± 0.388 ms | 2,071.101 ± 9.079 ms | 34,816 KiB | 22,141 / 22,120 KiB |
+| S83-C0 cache-owned cold-best-effort | 9 | 73.776 ± 1.699 ms | 2,091.371 ± 3.571 ms | 34,816 KiB | 22,102 / 22,080 KiB |
 
-S83-C0 local production takes 653.431 ± 12.924 ms total, including
-581.674 ± 4.026 ms materialization and 72.859 ± 13.429 ms artifact writing.
+S83-C0 local production takes 642.839 ± 19.106 ms total, including a
+582.161 ± 1.910 ms owned-snapshot open/materialize phase and
+56.912 ± 11.701 ms artifact writing.
 Its peak RSS is 80,780 KiB and its artifact is 11,186,057 bytes. The
 write-only phase is noisy and remains reported evidence; the non-regression
 gate applies to the combined local-production time.
@@ -452,19 +453,19 @@ The allocation and concurrent-reader baselines are:
 | S83-H0 SQL-owned allocation profile | 3 | 1,278,346 | 156,058,238 | 22,262,899 / 63,018,253 |
 | S83-C0 cache-owned allocation profile | 3 | 136,036 | 28,942,929 | 17,746,497 / 28,939,398 |
 | S83-C0 local-production allocation profile | 3 | 1,278,357 | 183,859,167 | 22,261,991 / 63,018,399 |
-| S83-H0 aggregate four-reader | 3 | — | — | 263,979 KiB PSS / 261,220 KiB private |
-| S83-C0 aggregate four-reader | 3 | — | — | 81,170 KiB PSS / 78,496 KiB private |
+| S83-H0 aggregate four-reader | 3 | — | — | 263,954 KiB PSS / 261,196 KiB private |
+| S83-C0 aggregate four-reader | 3 | — | — | 81,142 KiB PSS / 78,548 KiB private |
 
 Across the 126 captured before/hold/after machine-state snapshots, maximum
-one-minute load was 0.275 per logical CPU, minimum available memory was
-12,014,308 KiB and the maximum instantaneous runnable-task count was 11
+one-minute load was 0.205 per logical CPU, minimum available memory was
+11,924,664 KiB and the maximum instantaneous runnable-task count was 3
 during the explicit concurrent-reader checks. Candidate timing remains
 serialized and must record the same fields.
 
-S83 first-lookup medians are single-shot 2.681–3.137 microsecond observations
+S83 first-lookup medians are single-shot 2.614–3.461 microsecond observations
 and exceed the five-percent MAD ratio in every runtime group. The same
 relative-noise effect applies to a few 100–250 ns batched operations, while
-their absolute MAD remains 8–16 ns. These cases use the already declared
+their absolute MAD remains 10–16 ns. These cases use the already declared
 absolute first-lookup budget and the per-operation noise envelope below rather
 than a fractional speed comparison. No candidate threshold is derived from a
 candidate result.
@@ -489,25 +490,25 @@ Mandatory material benefit against S83-C0:
 
 | Metric | Required candidate median |
 | --- | ---: |
-| warm process-start-to-ready | at most 33,664,168 ns (20% reduction) |
-| cold-best-effort process-start-to-ready | at most 57,961,178 ns (20% reduction) |
+| warm process-start-to-ready | at most 33,991,352 ns (20% reduction) |
+| cold-best-effort process-start-to-ready | at most 59,020,968 ns (20% reduction) |
 | runtime allocation calls to ready | at most 68,018 (50% reduction) |
 | runtime allocated bytes to ready | at most 14,471,464 (50% reduction) |
 | peak runtime RSS in either stance | at most 29,593 KiB (at least 15% reduction in both stances) |
 | warm post-workload PSS | at most 17,712 KiB (20% reduction) |
 | warm post-workload private | at most 17,696 KiB (20% reduction) |
-| cold post-workload PSS | at most 17,705 KiB (20% reduction) |
-| cold post-workload private | at most 17,689 KiB (20% reduction) |
-| aggregate four-reader PSS | at most 64,936 KiB (20% reduction) |
-| reverse dictionary hit | at most 456 ns (50% reduction) |
-| reverse dictionary miss | at most 24,101 ns (50% reduction) |
+| cold post-workload PSS | at most 17,681 KiB (20% reduction) |
+| cold post-workload private | at most 17,664 KiB (20% reduction) |
+| aggregate four-reader PSS | at most 64,913 KiB (20% reduction) |
+| reverse dictionary hit | at most 458 ns (50% reduction) |
+| reverse dictionary miss | at most 24,048 ns (50% reduction) |
 
 Mandatory non-regression and resource ceilings:
 
 - first lookup and anchor resolution medians are each at most 25,000 ns in
   each cache stance;
-- total warm workload is at most 2,387,885,427 ns and cold-best-effort
-  workload at most 2,406,462,956 ns;
+- total warm workload is at most 2,381,766,522 ns and cold-best-effort
+  workload at most 2,405,076,745 ns;
 - every individual batched operation preserves observed totals and its median
   is no greater than `S83-C0 median + max(25% of S83-C0 median,
   3 × S83-C0 MAD, 3 × candidate MAD)`; forward dictionary lookup additionally
@@ -515,7 +516,7 @@ Mandatory non-regression and resource ceilings:
 - open major faults remain zero and open minor faults are at most 9,525;
 - cold-best-effort file-resident growth is at most 14,074,880 bytes;
 - artifact size is at most 13,982,571 bytes;
-- total local production is at most 816,788,485 ns, production peak RSS at
+- total local production is at most 803,548,621 ns, production peak RSS at
   most 100,975 KiB, production allocation calls at most 1,597,946,
   production allocated bytes at most 229,823,958 and production peak live
   bytes at most 78,772,998;

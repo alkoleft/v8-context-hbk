@@ -114,7 +114,7 @@ Current first unchecked task: T183.
     its schema-16 provider SQLite identity is `204,288,000` bytes /
     `55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`.
     S83 uses a separate target root. Harness
-    `39a289f4831eead604a510cf6545d84b0e5d6b24` now has a complete successful
+    `28f29b5a262db362b6b58c8109e6df6c2afbbc44` now has a complete successful
     61-record H0/C0 set: 45 runtime/formation samples, nine allocation
     profiles, six aggregate four-reader samples and one full parity record.
     Concrete S83-only gates, host-pressure evidence and parity digests are

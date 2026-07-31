@@ -2756,18 +2756,18 @@ tables, `498` query fields, `56` query parameters, zero language facts, `670`
 enums and `2,934` enum values. The current owned cache is `11,186,057` bytes.
 
 The frozen S83 harness is
-`39a289f4831eead604a510cf6545d84b0e5d6b24`. Its 61-record service evidence
+`28f29b5a262db362b6b58c8109e6df6c2afbbc44`. Its 61-record service evidence
 contains 45 runtime/formation samples, nine allocation profiles, six
 four-reader samples and one full parity record, all successful. Maximum
-recorded load1 was 0.275 per logical CPU and minimum available memory was
-12,014,308 KiB.
+recorded load1 was 0.205 per logical CPU and minimum available memory was
+11,924,664 KiB.
 
-H0 SQL-owned warm/cold ready medians are 590.720 / 1,646.667 ms with
-74,948 / 74,628 KiB peak RSS. C0 cache-owned warm/cold ready medians are
-42.080 / 72.451 ms with 34,944 / 34,816 KiB peak RSS and
-22,140 / 22,132 KiB post-workload PSS. The C0 artifact is 11,186,057 bytes;
-local production takes 653.431 ms at 80,780 KiB peak RSS; aggregate
-four-reader PSS is 81,170 KiB.
+H0 SQL-owned warm/cold ready medians are 588.217 / 1,631.261 ms with
+74,948 / 74,664 KiB peak RSS. C0 cache-owned warm/cold ready medians are
+42.489 / 73.776 ms with 34,816 KiB peak RSS and
+22,141 / 22,102 KiB post-workload PSS. The C0 artifact is 11,186,057 bytes;
+local production takes 642.839 ms at 80,780 KiB peak RSS; aggregate
+four-reader PSS is 81,142 KiB.
 
 The canonical H0/C0 content file has 176,793 records and SHA-256
 `5f66d20509877ac29a83ede2d5178368ed3fd78d7dab0ffbc12df506acc3b1fd`.
