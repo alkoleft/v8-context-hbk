@@ -567,6 +567,32 @@ field. After a candidate opens, the parity probe makes SQLite and HBK
 unavailable to that running probe and repeats covered lookups to exclude a
 hidden fallback.
 
+The catalog/resolver transcript uses a narrow internal semantic-read seam for
+only the methods needed by `HbkBslContextCatalog`, `HbkSdblQueryCatalog`,
+`PlatformSnapshotSource` and `QueryTableSnapshotSource`. Existing public
+owned-snapshot constructors and concrete public types remain source-compatible
+wrappers. Candidate constructors stay experiment-only and cannot expose layout
+sections, archive offsets or mutable cache hooks as downstream API.
+
+The seam must first prove a compile-time shape that can represent owned
+snapshot views, F0 decoded-on-access values and later R1 borrowed
+range-linked records without unsound lifetimes. F0 decoded record views remain
+classified as owned decoded values consumed synchronously by the transcript or
+catalog engine; only R1 claims borrowed variable fact records. The timed
+lookup path does not allocate a boxed/dynamic iterator or collect IDs merely
+to cross the seam. Owned public response vectors remain allowed where the
+existing public API already requires them and are covered by allocation
+counters.
+
+The transcript schema explicitly records source identity, locale, string
+resolution, BSL type/member/callable/constructor/global/module-event behavior,
+availability and relations, SDBL table/field/parameter behavior, and
+`PlatformSnapshotSource`/`QueryTableSnapshotSource` statuses and ordered
+payloads for hit, miss/not-found, ambiguity and unsupported outcomes. F0/A0
+measurements taken before this seam transcript passes may be reported only as
+structural storage evidence and are inadmissible for the full
+behavioral-equivalence gate.
+
 Documentation parity includes only fields already observable through the
 current snapshot/catalog contracts. Full HTML, long descriptions and
 search/export payloads are outside T183.

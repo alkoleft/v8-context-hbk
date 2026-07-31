@@ -172,7 +172,13 @@ durable task ledger authorizes the bounded prototype work.
 - 6.4 Run parity through `HbkFactReadHandle`, the borrowed BSL/SDBL
   catalogs, `PlatformSnapshotSource` and `QueryTableSnapshotSource`; repeat
   sequentially and concurrently; then make the SQLite/HBK sources unavailable
-  to the running probe and prove there is no hidden runtime fallback.
+  to the running probe and prove there is no hidden runtime fallback. Use a
+  narrow internal semantic-read seam for only the methods those catalogs and
+  adapters call; keep existing public owned-snapshot wrappers source-compatible;
+  prove the owned/F0/R1 view shape compiles without unsound lifetimes; and do
+  not add boxed/dynamic iterator or collect-before-map allocation to the timed
+  lookup path except where an existing public response already requires owned
+  `Vec` output.
 - 6.5 Re-run the frozen comparison protocol for production/rebuild,
   cold/warm startup, first lookup, batched warm lookup, page faults/bytes
   touched, allocation count/bytes, peak/steady RSS, PSS, aggregate
