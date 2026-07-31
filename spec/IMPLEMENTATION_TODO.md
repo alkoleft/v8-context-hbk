@@ -113,10 +113,15 @@ Current first unchecked task: T183.
     `5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`;
     its schema-16 provider SQLite identity is `204,288,000` bytes /
     `55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`.
-    S83 uses a separate target root and will freeze new H0/C0 noise/gates
-    before F0/A0/L1/I1/D1/P1 candidate work. Parallel agents may implement
-    separate worktrees, but all performance runs are serialized. No S83
-    candidate is created, ranked, selected or merged yet.
+    S83 uses a separate target root. Harness
+    `39a289f4831eead604a510cf6545d84b0e5d6b24` now has a complete successful
+    61-record H0/C0 set: 45 runtime/formation samples, nine allocation
+    profiles, six aggregate four-reader samples and one full parity record.
+    Concrete S83-only gates, host-pressure evidence and parity digests are
+    frozen in the experiment contract before F0/A0/L1/I1/D1/P1 candidate
+    work. Parallel agents may implement separate worktrees, but all
+    performance runs are serialized. No S83 candidate is created, ranked,
+    selected or merged yet.
     T183 remains open until the evidence is presented and the user explicitly
     selects an outcome or rejects production adoption.
 

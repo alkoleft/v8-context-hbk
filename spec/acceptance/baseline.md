@@ -2755,10 +2755,28 @@ types, `18,004` type members, `8,299` callables, `601` globals, `53` query
 tables, `498` query fields, `56` query parameters, zero language facts, `670`
 enums and `2,934` enum values. The current owned cache is `11,186,057` bytes.
 
-These are corpus/preparation facts, not candidate results or frozen numerical
-gates. The S83 harness, complete H0/C0 evidence and concrete gates must be
-committed before S83 candidate branches are created. No S83 candidate is
-ranked or selected.
+The frozen S83 harness is
+`39a289f4831eead604a510cf6545d84b0e5d6b24`. Its 61-record service evidence
+contains 45 runtime/formation samples, nine allocation profiles, six
+four-reader samples and one full parity record, all successful. Maximum
+recorded load1 was 0.275 per logical CPU and minimum available memory was
+12,014,308 KiB.
+
+H0 SQL-owned warm/cold ready medians are 590.720 / 1,646.667 ms with
+74,948 / 74,628 KiB peak RSS. C0 cache-owned warm/cold ready medians are
+42.080 / 72.451 ms with 34,944 / 34,816 KiB peak RSS and
+22,140 / 22,132 KiB post-workload PSS. The C0 artifact is 11,186,057 bytes;
+local production takes 653.431 ms at 80,780 KiB peak RSS; aggregate
+four-reader PSS is 81,170 KiB.
+
+The canonical H0/C0 content file has 176,793 records and SHA-256
+`5f66d20509877ac29a83ede2d5178368ed3fd78d7dab0ffbc12df506acc3b1fd`.
+The lookup file has 276,415 records and SHA-256
+`9b17c7100cd368fe0880e679d66ab8eb7d8505ee617d9fc80b1a9a9d8aa5c5c8`;
+four concurrent readers reproduce both files byte-for-byte. Concrete S83-only
+material-benefit and non-regression gates are frozen in
+[T183 HBK Zero-Copy Snapshot Experiment](../implementation/hbk-zero-copy-snapshot-experiment.md#frozen-s83-h0c0-evidence-and-candidate-gates).
+These facts do not rank or select an S83 candidate.
 
 Baseline update rule:
 

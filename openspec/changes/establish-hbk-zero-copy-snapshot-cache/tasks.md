@@ -87,7 +87,7 @@ durable task ledger authorizes the bounded prototype work.
   acceptance, SQLite may remain only in its explicitly accepted private
   rebuild/index-production role. Retain every candidate branch and its evidence
   until the user decides, including candidates that fail a mandatory gate.
-- [ ] 1.16 Freeze the independent S83 comparison set for exact platform
+- [x] 1.16 Freeze the independent S83 comparison set for exact platform
   `8.3.27.1859`: separate service-data root, exact HBK/provider identities,
   parameterized harness commit, host-load evidence, H0/C0 noise and concrete
   numerical gates. Do not reuse S85 values.

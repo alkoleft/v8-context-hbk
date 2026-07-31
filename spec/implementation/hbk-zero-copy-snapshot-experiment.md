@@ -412,6 +412,121 @@ Passing all gates means “eligible for user consideration”, not first place.
 Failing a gate remains an evidence row and does not authorize deleting its
 branch or selecting another candidate without the user's decision.
 
+## Frozen S83 H0/C0 Evidence And Candidate Gates
+
+S83 uses harness commit
+`39a289f4831eead604a510cf6545d84b0e5d6b24` and workload
+`hbk-snapshot-warm-lookups/v2`. Its service evidence is
+`target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-39a289f.jsonl`.
+The file contains 61 records: 45 runtime/formation timing samples, nine
+allocation profiles, six aggregate four-reader samples and one parity record.
+Every record is successful and carries the same harness, corpus and provider
+identity.
+
+The complete H0/C0 canonical files compare byte-for-byte. The content oracle
+contains 176,793 records / 57,486,556 bytes with SHA-256
+`5f66d20509877ac29a83ede2d5178368ed3fd78d7dab0ffbc12df506acc3b1fd`.
+The lookup transcript contains 276,415 records / 88,520,585 bytes with SHA-256
+`9b17c7100cd368fe0880e679d66ab8eb7d8505ee617d9fc80b1a9a9d8aa5c5c8`.
+Four concurrent C0 oracle processes reproduce both files exactly.
+
+The timing and memory medians are:
+
+| Backend/scenario | N | Ready median ± MAD | Workload median ± MAD | Peak RSS | Post-workload PSS/private |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| S83-H0 SQL-owned warm | 9 | 590.720 ± 2.755 ms | 2,174.324 ± 4.468 ms | 74,948 KiB | 67,984 / 67,964 KiB |
+| S83-H0 SQL-owned cold-best-effort | 9 | 1,646.667 ± 12.824 ms | 2,178.464 ± 5.525 ms | 74,628 KiB | 67,989 / 67,968 KiB |
+| S83-C0 cache-owned warm | 9 | 42.080 ± 0.912 ms | 2,076.422 ± 13.548 ms | 34,944 KiB | 22,140 / 22,120 KiB |
+| S83-C0 cache-owned cold-best-effort | 9 | 72.451 ± 2.158 ms | 2,092.576 ± 8.534 ms | 34,816 KiB | 22,132 / 22,112 KiB |
+
+S83-C0 local production takes 653.431 ± 12.924 ms total, including
+581.674 ± 4.026 ms materialization and 72.859 ± 13.429 ms artifact writing.
+Its peak RSS is 80,780 KiB and its artifact is 11,186,057 bytes. The
+write-only phase is noisy and remains reported evidence; the non-regression
+gate applies to the combined local-production time.
+
+The allocation and concurrent-reader baselines are:
+
+| Backend/scenario | N | Allocations to ready | Allocated bytes to ready | Final / peak live bytes |
+| --- | ---: | ---: | ---: | ---: |
+| S83-H0 SQL-owned allocation profile | 3 | 1,278,346 | 156,058,238 | 22,262,899 / 63,018,253 |
+| S83-C0 cache-owned allocation profile | 3 | 136,036 | 28,942,929 | 17,746,497 / 28,939,398 |
+| S83-C0 local-production allocation profile | 3 | 1,278,357 | 183,859,167 | 22,261,991 / 63,018,399 |
+| S83-H0 aggregate four-reader | 3 | — | — | 263,979 KiB PSS / 261,220 KiB private |
+| S83-C0 aggregate four-reader | 3 | — | — | 81,170 KiB PSS / 78,496 KiB private |
+
+Across the 126 captured before/hold/after machine-state snapshots, maximum
+one-minute load was 0.275 per logical CPU, minimum available memory was
+12,014,308 KiB and the maximum instantaneous runnable-task count was 11
+during the explicit concurrent-reader checks. Candidate timing remains
+serialized and must record the same fields.
+
+S83 first-lookup medians are single-shot 2.681–3.137 microsecond observations
+and exceed the five-percent MAD ratio in every runtime group. The same
+relative-noise effect applies to a few 100–250 ns batched operations, while
+their absolute MAD remains 8–16 ns. These cases use the already declared
+absolute first-lookup budget and the per-operation noise envelope below rather
+than a fractional speed comparison. No candidate threshold is derived from a
+candidate result.
+
+The following S83 gates are frozen before F0/A0/L1/I1/D1/P1 code. They use
+S83-C0 only and are not copied from S85. Fractional ceilings are rounded down.
+
+Mandatory correctness and safety:
+
+- content and lookup files are byte-identical to the S83 digests and full files
+  above, including sequential and four-reader transcripts;
+- exact HBK/provider identity, platform `8.3.27.1859`, locale, provider schema,
+  extraction schema, layout and section structure are validated before access;
+- supplied-artifact open performs no SQLite/HBK fallback and keeps no complete
+  owned snapshot mirror;
+- immutable-generation publication, rebuild-before-map, session-long shared
+  lock, fail-fast writer lock and mapping lifetime tests pass;
+- every candidate records section/dictionary/index sizes and producer
+  allocation evidence.
+
+Mandatory material benefit against S83-C0:
+
+| Metric | Required candidate median |
+| --- | ---: |
+| warm process-start-to-ready | at most 33,664,168 ns (20% reduction) |
+| cold-best-effort process-start-to-ready | at most 57,961,178 ns (20% reduction) |
+| runtime allocation calls to ready | at most 68,018 (50% reduction) |
+| runtime allocated bytes to ready | at most 14,471,464 (50% reduction) |
+| peak runtime RSS in either stance | at most 29,593 KiB (at least 15% reduction in both stances) |
+| warm post-workload PSS | at most 17,712 KiB (20% reduction) |
+| warm post-workload private | at most 17,696 KiB (20% reduction) |
+| cold post-workload PSS | at most 17,705 KiB (20% reduction) |
+| cold post-workload private | at most 17,689 KiB (20% reduction) |
+| aggregate four-reader PSS | at most 64,936 KiB (20% reduction) |
+| reverse dictionary hit | at most 456 ns (50% reduction) |
+| reverse dictionary miss | at most 24,101 ns (50% reduction) |
+
+Mandatory non-regression and resource ceilings:
+
+- first lookup and anchor resolution medians are each at most 25,000 ns in
+  each cache stance;
+- total warm workload is at most 2,387,885,427 ns and cold-best-effort
+  workload at most 2,406,462,956 ns;
+- every individual batched operation preserves observed totals and its median
+  is no greater than `S83-C0 median + max(25% of S83-C0 median,
+  3 × S83-C0 MAD, 3 × candidate MAD)`; forward dictionary lookup additionally
+  has an absolute 10 ns average ceiling;
+- open major faults remain zero and open minor faults are at most 9,525;
+- cold-best-effort file-resident growth is at most 14,074,880 bytes;
+- artifact size is at most 13,982,571 bytes;
+- total local production is at most 816,788,485 ns, production peak RSS at
+  most 100,975 KiB, production allocation calls at most 1,597,946,
+  production allocated bytes at most 229,823,958 and production peak live
+  bytes at most 78,772,998;
+- write time, every section/dictionary/index size, private/shared/anonymous
+  memory, machine pressure and H0-relative results remain reported even where
+  the gate applies only to a combined or C0-relative value.
+
+These gates determine only whether an S83 row is eligible for the user's
+consideration. They do not rank candidates, select first place, authorize a
+merge or make a snapshot canonical.
+
 ## Mandatory Behavioral Oracle
 
 Parity is an independent mandatory gate. Performance values remain recorded
