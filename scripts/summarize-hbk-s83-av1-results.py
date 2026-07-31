@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 import sys
 from collections import defaultdict
@@ -37,6 +38,7 @@ AVAILABILITY_CONTEXTS = (
 CACHE_STANCES = ("warm", "cold-best-effort")
 DEFAULT_EXPECTED_SAMPLES = 9
 NOISE_LIMIT = 0.05
+FORBIDDEN_METADATA_KEY = re.compile(r"module_?context_?kind", re.IGNORECASE)
 
 METRICS: dict[str, tuple[str, ...]] = {
     "entry_to_ready_ns": ("measurement", "timings", "entry_to_ready_ns"),
@@ -187,6 +189,37 @@ def number(value: Any, path: str) -> int | float:
     return value
 
 
+def forbidden_metadata_paths(value: Any, prefix: str = "") -> list[str]:
+    matches: list[str] = []
+    if isinstance(value, dict):
+        for key, nested_value in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            if (
+                key != "module_context_filter_used"
+                and FORBIDDEN_METADATA_KEY.search(str(key))
+            ):
+                matches.append(path)
+            matches.extend(forbidden_metadata_paths(nested_value, path))
+    elif isinstance(value, list):
+        for index, nested_value in enumerate(value):
+            matches.extend(forbidden_metadata_paths(nested_value, f"{prefix}[{index}]"))
+    return matches
+
+
+def validate_artifact_identity(value: Any, source: str, field: str) -> None:
+    if not isinstance(value, dict):
+        raise SummaryError(f"{source}: {field} must be an object")
+    path = value.get("path")
+    bytes_value = value.get("bytes")
+    sha256 = value.get("sha256")
+    if not isinstance(path, str) or not path:
+        raise SummaryError(f"{source}: {field}.path must be a non-empty string")
+    if isinstance(bytes_value, bool) or not isinstance(bytes_value, int) or bytes_value < 0:
+        raise SummaryError(f"{source}: {field}.bytes must be a non-negative integer")
+    if not isinstance(sha256, str) or len(sha256) != 64:
+        raise SummaryError(f"{source}: {field}.sha256 must be a digest")
+
+
 def metric(values: Sequence[int | float]) -> dict[str, Any]:
     median = statistics.median(values)
     mad = statistics.median(abs(value - median) for value in values)
@@ -231,6 +264,9 @@ def identity(record: dict[str, Any]) -> str:
 
 def validate_record(record: dict[str, Any]) -> None:
     source = f"{record.get('_source_path')}:{record.get('_source_line')}"
+    forbidden = forbidden_metadata_paths(record)
+    if forbidden:
+        raise SummaryError(f"{source}: ModuleContextKind metadata is forbidden: {forbidden}")
     expected = {
         "schema": RAW_SCHEMA,
         "dataset": DATASET,
@@ -309,6 +345,11 @@ def validate_record(record: dict[str, Any]) -> None:
             raise SummaryError(f"{source}: missing {key} argv metadata")
     if not isinstance(record.get("host"), dict):
         raise SummaryError(f"{source}: missing host metadata")
+    declared_identity = record.get("declared_file_identity")
+    if not isinstance(declared_identity, list) or not declared_identity:
+        raise SummaryError(f"{source}: missing declared_file_identity")
+    for index, value in enumerate(declared_identity):
+        validate_artifact_identity(value, source, f"declared_file_identity[{index}]")
     if record.get("availability_context_registry") != list(AVAILABILITY_CONTEXTS):
         raise SummaryError(f"{source}: wrong availability context registry")
     if record.get("cache_stance_registry") != list(CACHE_STANCES):

@@ -39,6 +39,13 @@ def backend(name: str = "S83-H0") -> Any:
         worktree=Path("/tmp/example"),
         command=("probe", "{context}", "{iterations}"),
         declared_files=(Path("/tmp/input"),),
+        declared_file_identity=(
+            {
+                "path": "/provider",
+                "bytes": benchmark.PROVIDER_BYTES,
+                "sha256": benchmark.PROVIDER_SHA256,
+            },
+        ),
         commit="a" * 40,
         branch="experiment/example",
     )
@@ -76,6 +83,12 @@ def probe_report(
                 "sha256": benchmark.PROVIDER_SHA256,
             },
         },
+        "index": {
+            "path": "/provider",
+            "bytes": benchmark.PROVIDER_BYTES,
+            "sha256": benchmark.PROVIDER_SHA256,
+        },
+        "cache": None,
         "counts": {
             "scanned_globals": 4,
             "candidate_methods": 3,
@@ -170,6 +183,13 @@ def raw_record(
         "machine_state_before": {"load": 0},
         "machine_state_after": {"load": 0},
         "preparation": {"method": stance},
+        "declared_file_identity": [
+            {
+                "path": "/provider",
+                "bytes": benchmark.PROVIDER_BYTES,
+                "sha256": summarizer.PROVIDER_SHA256,
+            }
+        ],
         "transcript": {
             "sha256": digest,
             "baseline_sha256": digest,
@@ -268,6 +288,15 @@ class BenchmarkContractTests(unittest.TestCase):
                 report, backend(), "server", 3, require_allocations=True
             )
 
+    def test_report_rejects_declared_file_absent_from_runtime_artifacts(self) -> None:
+        report = probe_report()
+        report["input_identity"]["provider"] = {"path": "/wrong", "bytes": 1, "sha256": "f" * 64}
+        report["index"] = {"path": "/wrong", "bytes": 1, "sha256": "f" * 64}
+        with self.assertRaisesRegex(benchmark.EvidenceError, "declared file"):
+            benchmark.validate_report(
+                report, backend(), "server", 3, require_allocations=True
+            )
+
     def test_command_template_substitutes_context_and_iterations(self) -> None:
         self.assertEqual(
             benchmark.command_for(("probe", "{context}", "{iterations}"), "thin_client", 9),
@@ -332,6 +361,12 @@ class SummaryContractTests(unittest.TestCase):
         records = complete_records()
         records[0]["measurement"]["transcript"] = []
         with self.assertRaisesRegex(summarizer.SummaryError, "retained the large transcript"):
+            summarizer.build_summary(records, expected_samples=2)
+
+    def test_raw_module_context_kind_metadata_is_rejected(self) -> None:
+        records = complete_records()
+        records[0]["measurement"]["module_context_kind"] = "server"
+        with self.assertRaisesRegex(summarizer.SummaryError, "ModuleContextKind"):
             summarizer.build_summary(records, expected_samples=2)
 
     def test_summary_has_no_candidate_ordering_fields(self) -> None:

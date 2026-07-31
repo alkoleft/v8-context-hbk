@@ -93,6 +93,7 @@ class Backend:
     worktree: Path
     command: tuple[str, ...]
     declared_files: tuple[Path, ...]
+    declared_file_identity: tuple[dict[str, Any], ...]
     commit: str
     branch: str
 
@@ -138,6 +139,15 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def artifact_identity(path: Path) -> dict[str, Any]:
+    resolved = path.resolve()
+    return {
+        "path": str(resolved),
+        "bytes": resolved.stat().st_size,
+        "sha256": sha256_file(resolved),
+    }
+
+
 def canonical_json_bytes(value: Any) -> bytes:
     return json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -157,6 +167,15 @@ def command_for(template: Sequence[str], context: str, iterations: int) -> list[
 def resolve_path(worktree: Path, raw: str) -> Path:
     path = Path(raw)
     return path if path.is_absolute() else worktree / path
+
+
+def command_file_arguments(backend: Backend, context: str, iterations: int) -> list[Path]:
+    files: list[Path] = []
+    for raw in command_for(backend.command, context, iterations)[1:]:
+        path = resolve_path(backend.worktree, raw).resolve()
+        if path.is_file():
+            files.append(path)
+    return files
 
 
 def load_backends(manifest_path: Path) -> tuple[list[Backend], str]:
@@ -215,6 +234,7 @@ def load_backends(manifest_path: Path) -> tuple[list[Backend], str]:
         for path in files:
             if not path.is_file():
                 raise EvidenceError(f"{backend}: declared file does not exist: {path}")
+        file_identity = tuple(artifact_identity(path) for path in files)
         backends.append(
             Backend(
                 backend=backend,
@@ -222,6 +242,7 @@ def load_backends(manifest_path: Path) -> tuple[list[Backend], str]:
                 worktree=worktree,
                 command=tuple(command),
                 declared_files=files,
+                declared_file_identity=file_identity,
                 commit=git_text(worktree, "rev-parse", "HEAD"),
                 branch=git_text(worktree, "branch", "--show-current"),
             )
@@ -341,6 +362,64 @@ def forbidden_metadata_paths(value: Any, prefix: str = "") -> list[str]:
     return matches
 
 
+def report_artifacts(report: dict[str, Any]) -> list[dict[str, Any]]:
+    artifacts: list[dict[str, Any]] = []
+    identity = report.get("input_identity")
+    if isinstance(identity, dict):
+        for key in ("hbk", "provider"):
+            value = identity.get(key)
+            if isinstance(value, dict):
+                artifacts.append(value)
+    for key in ("index", "cache"):
+        value = report.get(key)
+        if isinstance(value, dict):
+            artifacts.append(value)
+    runtime = report.get("runtime_artifacts")
+    if isinstance(runtime, list):
+        artifacts.extend(value for value in runtime if isinstance(value, dict))
+    return artifacts
+
+
+def normalize_artifact(value: dict[str, Any]) -> tuple[str, int, str]:
+    raw_path = value.get("path")
+    raw_bytes = value.get("bytes")
+    raw_sha256 = value.get("sha256")
+    if not isinstance(raw_path, str):
+        raise EvidenceError("runtime artifact path must be a string")
+    if isinstance(raw_bytes, bool) or not isinstance(raw_bytes, int) or raw_bytes < 0:
+        raise EvidenceError(f"runtime artifact bytes must be a non-negative integer: {raw_path}")
+    if not isinstance(raw_sha256, str) or len(raw_sha256) != 64:
+        raise EvidenceError(f"runtime artifact sha256 must be a digest: {raw_path}")
+    return (str(Path(raw_path).resolve()), raw_bytes, raw_sha256)
+
+
+def validate_declared_artifact_binding(
+    report: dict[str, Any],
+    backend: Backend,
+    context: str,
+    iterations: int,
+) -> None:
+    declared = {normalize_artifact(value) for value in backend.declared_file_identity}
+    observed = {normalize_artifact(value) for value in report_artifacts(report)}
+    missing = declared - observed
+    if missing:
+        raise EvidenceError(
+            f"{backend.backend}/{context}: declared file(s) are absent from runtime report: "
+            f"{sorted(path for path, _bytes, _sha in missing)}"
+        )
+    declared_paths = {Path(path) for path, _bytes, _sha in declared}
+    extra_file_args = [
+        str(path)
+        for path in command_file_arguments(backend, context, iterations)
+        if path not in declared_paths
+    ]
+    if extra_file_args:
+        raise EvidenceError(
+            f"{backend.backend}/{context}: command references file(s) outside declared_files: "
+            f"{extra_file_args}"
+        )
+
+
 def require_integer(value: Any, path: str, *, positive: bool = False) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise EvidenceError(f"{path} must be an integer")
@@ -364,6 +443,7 @@ def validate_report(
     require_allocations: bool,
 ) -> tuple[bytes, dict[str, Any]]:
     report = require_object(report, "report")
+    validate_declared_artifact_binding(report, backend, context, iterations)
     expected = {
         "schema_version": REPORT_SCHEMA,
         "workload_version": WORKLOAD_VERSION,
@@ -599,6 +679,7 @@ def parity_phase(
                 "iterations": parity_iterations,
                 "command_template": list(backend.command),
                 "command": command_for(backend.command, context, parity_iterations),
+                "declared_file_identity": list(backend.declared_file_identity),
                 "stdout_log": str(stdout_path),
                 "stderr_log": str(stderr_path),
                 "transcript": evidence,
@@ -674,6 +755,7 @@ def measurement_phase(
                         "command_template": list(backend.command),
                         "command": command_for(backend.command, context, iterations),
                         "declared_files": [str(path) for path in backend.declared_files],
+                        "declared_file_identity": list(backend.declared_file_identity),
                         "preparation": preparation,
                         "machine_state_before": before,
                         "machine_state_after": after,
