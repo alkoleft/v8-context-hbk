@@ -56,19 +56,22 @@ durable task ledger authorizes the bounded prototype work.
   `rkyv`/`bytecheck` or an equivalent format, against the same catalog and
   lookup contracts. Do not call it validated until the checked safe-access
   boundary and compatibility proof pass.
-- [ ] 1.11 Evaluate reverse string lookup implementations for the immutable
+- [x] 1.11 Evaluate reverse string lookup implementations for the immutable
   HBK dictionary, starting with sorted indexes, then mapped hash indexes, and
   adding FST only when the simpler variants leave a measured lookup or size
-  problem. The sorted H1/H2 variants and linear H3 variant are measured; H2
-  still misses the reverse-hit gate, so a mapped-hash follow-up remains
-  unresolved. FST remains unjustified until that simpler follow-up is measured.
+  problem. The sorted F0/L1/D1/P1/R1, archived A0 and mapped-hash I1 variants
+  are measured. I1 records 65/66 ns reverse-hit and 47/47 ns reverse-miss
+  medians inside the frozen gates, together with its artifact/startup/resource
+  cost. FST is not added because the simpler mapped-hash hypothesis no longer
+  leaves the reverse lookup itself outside the gate; no candidate selection is
+  implied.
 - [x] 1.12 Specify snapshot binary-layout and extraction-schema compatibility,
   exact platform-version/source checks, structural validation, immutable
   publication, shared session-long reader locks, fail-fast exclusive writer
   locking, the stable logical snapshot-slot lock key and protected discovery
   metadata/current-pointer operations, mapping lifetime and the invariant that
   a mapped snapshot is never modified.
-- [ ] 1.13 Measure every viable candidate against the frozen protocol and produce
+- [x] 1.13 Measure every viable candidate against the frozen protocol and produce
   one comparison table with SQL-to-owned as baseline, current-cache-to-owned as
   control and each zero-copy hypothesis as a separate row. Report
   production/rebuild, cold/warm ready-for-query startup, first lookup, batched
@@ -76,8 +79,9 @@ durable task ledger authorizes the bounded prototype work.
   aggregate multi-process PSS, file/section/index sizes and post-workload
   retained state. Record harness/candidate commit SHAs and branch ancestry, and
   do not rank or name a winner. The consolidated table is recorded, but
-  candidate production allocations and per-section/dictionary/index byte
-  footprints were not instrumented and remain evidence gaps.
+  the earlier S85 rows that fail parity/lifecycle retain their recorded
+  evidence gaps. Every parity-complete S83 row now includes producer
+  allocations and per-section/dictionary/index byte footprints.
 - [x] 1.14 Define the ownership boundary between the provider-owned immutable
   HBK base dictionary and a downstream request/project-scoped overlay for BSL
   and metadata strings; do not add the overlay to HBK.
@@ -87,17 +91,19 @@ durable task ledger authorizes the bounded prototype work.
   acceptance, SQLite may remain only in its explicitly accepted private
   rebuild/index-production role. Retain every candidate branch and its evidence
   until the user decides, including candidates that fail a mandatory gate.
+  The current packet explicitly records
+  `no-candidate-passes-all-frozen-gates`; no waiver or selection exists.
 - [x] 1.16 Freeze the independent S83 comparison set for exact platform
   `8.3.27.1859`: separate service-data root, exact HBK/provider identities,
   parameterized harness commit, host-load evidence, H0/C0 noise and concrete
   numerical gates. Do not reuse S85 values.
-- [ ] 1.17 Implement corrected S83-F0 sectioned-mapping and S83-A0
+- [x] 1.17 Implement corrected S83-F0 sectioned-mapping and S83-A0
   checked-archive format/lifecycle references in separate worktrees. Record
   that F0 maps the dictionary/indexes but decodes variable fact records on
   access; do not call that fact path fully zero-copy. Require exact platform
   checks, immutable locked publication, rebuild-before-map, complete mapped
   canonical parity, section footprints and producer allocation evidence.
-- [ ] 1.17a Prototype the minimal `pub(crate)` statically dispatched
+- [x] 1.17a Prototype the minimal `pub(crate)` statically dispatched
   semantic-read seam before refactoring catalogs/adapters. Prove at compile
   time that one associated record projection can represent the owned
   reference, F0 owned-per-access, A0 archived-view and R1 borrowed-range
@@ -110,15 +116,17 @@ durable task ledger authorizes the bounded prototype work.
   `QueryTableSnapshotSource::{new,with_source_ids}`. Add the versioned full
   transcript and allocation guards defined by the implementation
   specification.
-- [ ] 1.18 Implement S83-L1 page layout, S83-I1 mapped indexes, S83-D1 checked
+- [x] 1.18 Implement S83-L1 page layout, S83-I1 mapped indexes, S83-D1 checked
   dynamic reading, S83-P1 direct formation and S83-R1 fixed-head/range-linked
   borrowed fact records in separate F0-derived branches/worktrees. Change only
   the registered primary variable in each branch and implement in parallel
   while serializing all performance runs.
-- [ ] 1.19 Run the complete S83 parity/lifecycle/resource protocol and add the
+- [x] 1.19 Run the complete S83 parity/lifecycle/resource protocol and add the
   rows to one unranked comparison table. Preserve every branch, record
   incomplete/failed gates and wait for the user's selection before any merge,
-  deletion, dependency acceptance or canonical promotion.
+  deletion, dependency acceptance or canonical promotion. The exact-commit
+  parity and 252 resource records are complete; every branch remains
+  preserved and no row is selected, eligible, merged or promoted.
 
 ## 2. Provider Prerequisites (Non-Executable Follow-Up)
 

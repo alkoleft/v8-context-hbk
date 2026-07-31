@@ -448,6 +448,10 @@ class S83CandidateSummaryTests(unittest.TestCase):
             self.assertTrue(summary["unranked"])
             self.assertFalse(summary["ranked"])
             self.assertEqual(summary["selection"], "pending-user-decision")
+            self.assertEqual(
+                summary["eligibility_state"],
+                "no-candidate-passes-all-frozen-gates",
+            )
             self.assertEqual([c["backend"] for c in summary["candidates"]], ["s83-f0", "s83-a0"])
             a0 = summary["candidates"][1]
             self.assertIn("serialize_ns", a0["production"]["metrics"])
@@ -475,6 +479,24 @@ class S83CandidateSummaryTests(unittest.TestCase):
             completed = self.run_script(directory, raw)
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("expected 9", completed.stderr)
+
+    def test_rejects_duplicate_or_missing_sample_ids_at_expected_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            raw = directory / "raw.jsonl"
+            records = complete_candidate("s83-f0", "f0" * 20)
+            warm_runtime = [
+                record
+                for record in records
+                if record.get("backend") == "s83-f0"
+                and record.get("cache_stance") == "warm"
+                and record.get("scenario") is None
+            ]
+            warm_runtime[-1]["sample"] = 1
+            write_jsonl(raw, records)
+            completed = self.run_script(directory, raw)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("expected unique sample ids", completed.stderr)
 
     def test_rejects_failed_official_record(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -565,6 +587,47 @@ class S83CandidateSummaryTests(unittest.TestCase):
             self.assertEqual(gate["status"], "pass")
             self.assertTrue(gate["noisy"])
 
+    def test_noisy_non_exempt_gate_is_inconclusive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            raw = directory / "raw.jsonl"
+            records = complete_candidate("s83-f0", "f0" * 20)
+            noisy_values = [
+                10_000_000,
+                20_000_000,
+                30_000_000,
+                40_000_000,
+                50_000_000,
+                60_000_000,
+                70_000_000,
+                80_000_000,
+                90_000_000,
+            ]
+            for record, value in zip(
+                (
+                    item
+                    for item in records
+                    if item.get("backend") == "s83-f0"
+                    and item.get("cache_stance") == "warm"
+                    and item.get("scenario") is None
+                ),
+                noisy_values,
+            ):
+                record["measurement"]["timings"]["process_start_to_ready_ns"] = value
+            write_jsonl(raw, records)
+            completed = self.run_script(directory, raw)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
+            candidate = summary["candidates"][0]
+            self.assertEqual(
+                candidate["gates"]["warm_ready_ns"]["status"],
+                "inconclusive-noisy",
+            )
+            self.assertIn(
+                "warm_ready_ns",
+                candidate["eligibility"]["inconclusive_noisy_gates"],
+            )
+
     def test_derived_backend_registry_mapping(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
@@ -576,6 +639,85 @@ class S83CandidateSummaryTests(unittest.TestCase):
             summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["candidates"][0]["backend"], "s83-l1")
             self.assertEqual(summary["candidates"][0]["registry_presentation_order"], 2)
+
+    def test_preserves_hypothesis_specific_footprint_and_direct_formation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            raw = directory / "raw.jsonl"
+            records = complete_candidate("s83-p1", "p1" * 20)
+            production = [
+                record
+                for record in records
+                if record["backend"] == "s83-p1-produce"
+                and record.get("scenario") is None
+            ]
+            for record in production:
+                timings = record["measurement"]["timings"]
+                del timings["write_publish_ns"]
+                del timings["in_memory_validation_ns"]
+                timings.update(
+                    {
+                        "direct_formation_ns": 11,
+                        "temp_create_setup_ns": 1,
+                        "section_write_ns": 2,
+                        "header_directory_write_ns": 3,
+                        "temp_sync_ns": 4,
+                        "file_validation_ns": 5,
+                        "publish_ns": 6,
+                    }
+                )
+                record["measurement"]["footprint"].update(
+                    {
+                        "mapped_hash_bytes": 123,
+                        "mapped_hash_bucket_bytes": 120,
+                        "mapped_hash_tables": 26,
+                        "mapped_hash_groups": 10,
+                        "mapped_hash_buckets": 20,
+                        "mapped_hash_max_probe": 3,
+                        "record_head_bytes": 456,
+                        "nested_arena_bytes": 789,
+                    }
+                )
+                record["measurement"]["formation"] = {
+                    "strategy": "direct-sections-with-header-backpatch",
+                    "retains_monolithic_artifact_buffer": False,
+                    "retains_at_most_one_completed_section_buffer": True,
+                    "logical_bytes_written": 11_000_000,
+                    "write_amplification_scope": "userspace-logical-bytes",
+                    "write_amplification_numerator": 11_000_000,
+                    "write_amplification_denominator": 11_000_000,
+                    "peak_section_buffer_bytes": 4_000_000,
+                    "peak_working_buffer_bytes": 9_000_000,
+                    "peak_working_buffer_scope": "tracked-owned-vec-capacity",
+                }
+            write_jsonl(raw, records)
+            completed = self.run_script(directory, raw)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
+            candidate = summary["candidates"][0]
+            self.assertEqual(candidate["production"]["metrics"]["write_ns"]["median"], 16)
+            self.assertEqual(
+                candidate["production"]["metrics"]["serialize_ns"]["median"], 11
+            )
+            self.assertEqual(
+                candidate["production"]["metrics"]["validate_ns"]["median"], 5
+            )
+            self.assertEqual(
+                candidate["production"]["footprint"]["mapped_hash_tables"]["median"], 26
+            )
+            self.assertEqual(
+                candidate["production"]["footprint"]["nested_arena_bytes"]["median"], 789
+            )
+            self.assertEqual(
+                candidate["production"]["formation"]["strategy"],
+                "direct-sections-with-header-backpatch",
+            )
+            self.assertEqual(
+                candidate["production"]["formation"]["write_amplification_ratio"], 1.0
+            )
+            markdown = (directory / "summary.md").read_text(encoding="utf-8")
+            self.assertIn("Hypothesis-specific Footprint", markdown)
+            self.assertIn("Direct Formation", markdown)
 
     def test_parity_backend_maps_all_registry_derived_labels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -661,6 +803,45 @@ class S83CandidateSummaryTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             summary = json.loads((directory / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["candidates"][0]["storage_parity"]["status"], "fail")
+
+    def test_rejects_duplicate_parity_proofs_independent_of_order(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            raw = directory / "raw.jsonl"
+            first = directory / "storage-first.jsonl"
+            second = directory / "storage-second.jsonl"
+            records = complete_candidate("s83-f0", "f0" * 20)
+            write_jsonl(raw, records)
+            write_jsonl(first, [storage_parity("s83-f0", "f0" * 20)])
+            write_jsonl(second, [storage_parity("s83-f0", "f0" * 20)])
+            for ordered in ((first, second), (second, first)):
+                completed = self.run_script(
+                    directory,
+                    raw,
+                    "--storage-parity-raw",
+                    str(ordered[0]),
+                    "--storage-parity-raw",
+                    str(ordered[1]),
+                )
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn("duplicate storage parity proof", completed.stderr)
+
+    def test_rejects_storage_parity_from_another_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            raw = directory / "raw.jsonl"
+            storage = directory / "storage.jsonl"
+            records = complete_candidate("s83-f0", "f0" * 20)
+            write_jsonl(raw, records)
+            write_jsonl(storage, [storage_parity("s83-f0", "ab" * 20)])
+            completed = self.run_script(
+                directory,
+                raw,
+                "--storage-parity-raw",
+                str(storage),
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("does not match resource commit", completed.stderr)
 
     def test_rejects_bad_semantic_raw_proof(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

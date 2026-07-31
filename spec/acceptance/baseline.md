@@ -2822,6 +2822,44 @@ exceeds 20 warm and 19 cold ceilings. The complete unranked S83 gate table is
 in [T183 HBK Zero-Copy Snapshot Evidence](hbk-zero-copy-snapshot-evidence.md).
 No S83 candidate is selected, ranked, promoted or made canonical.
 
+### S83 consolidated candidate evidence
+
+The derived resource raw
+`target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-derived-resource-0219685.jsonl`
+contains 180/180 successful records and has SHA-256
+`fe9e800f32d129c3c82b7281a3f9be9bc5b607493ba692e53654a85e99d91351`.
+Together with the 72-record F0/A0 raw it produces
+`summary-S83-all-candidates-0219685.json` / `.md`.
+
+Every F0/A0/L1/I1/D1/P1/R1 row passes storage parity at the exact measured
+commit and semantic catalog/resolver parity: 176,793 content records,
+276,415 lookup records and 742,872 semantic records compare byte-for-byte in
+one sequential plus four concurrent source-hidden replays. F0/A0 exact-commit
+storage proofs are
+`raw-S83-F0-a9a98a1-parity-exact-0219685.jsonl` and
+`raw-S83-A0-36a41aa-parity-exact-0219685.jsonl`.
+
+The principal unranked medians are:
+
+| ID | Warm/cold ready, ms | Warm/cold workload, ms | Four-reader PSS, KiB | Artifact bytes | Production total, ms | Frozen eligibility |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `S83-F0` | 54.358 / 67.899 | 358.243 / 356.781 | 12,342 | 11,304,567 | 3,272.623 | false |
+| `S83-A0` | 39.174 / 50.703 | 4,638.727 / 4,644.303 | 15,180 | 13,936,492 | 1,994.852 | false |
+| `S83-L1` | 54.781 / 65.887 | 360.233 / 359.028 | 12,729 | 11,304,567 | 3,251.808 | false |
+| `S83-I1` | 267.971 / 287.740 | 135.916 / 134.760 | 24,915 | 23,694,119 | 4,573.844 | false |
+| `S83-D1` | 15.468 / 28.296 | 356.764 / 357.536 | 12,347 | 11,304,567 | 3,296.207 | false |
+| `S83-P1` | 54.986 / 64.242 | 353.585 / 356.805 | 12,346 | 11,304,567 | 3,101.216 | false |
+| `S83-R1` | 53.317 / 63.633 | 359.604 / 361.455 | 12,993 | 12,061,887 | 3,315.699 | false |
+
+The summary explicitly records
+`eligibility_state = no-candidate-passes-all-frozen-gates`. Non-exempt noisy
+gates are inconclusive rather than pass/fail, and no waiver is recorded. The
+complete SQL baseline, current-cache control, 25-operation lookup matrix,
+memory/allocation/footprint evidence and exact failed/inconclusive gate sets
+are in
+[T183 HBK Zero-Copy Snapshot Evidence](hbk-zero-copy-snapshot-evidence.md).
+No row is selected, recommended, merged, promoted or made canonical.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

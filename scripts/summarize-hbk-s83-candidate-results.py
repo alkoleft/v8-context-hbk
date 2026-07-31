@@ -224,6 +224,23 @@ def require_metric_exact(
     return require_metric(values, name)
 
 
+def require_sample_ids(
+    records: list[dict[str, Any]], expected: int, name: str
+) -> None:
+    sample_ids = [record.get("sample") for record in records]
+    expected_ids = list(range(1, expected + 1))
+    if (
+        any(
+            isinstance(sample_id, bool) or not isinstance(sample_id, int)
+            for sample_id in sample_ids
+        )
+        or sorted(sample_ids) != expected_ids
+    ):
+        raise SummaryError(
+            f"{name}: expected unique sample ids {expected_ids}, got {sample_ids}"
+        )
+
+
 def candidate_key(record: dict[str, Any]) -> tuple[str, str, str]:
     return (
         str(record.get("backend", "")),
@@ -393,16 +410,34 @@ def production_materialize_ns(measurement: dict[str, Any]) -> int | float | None
 
 
 def production_write_ns(measurement: dict[str, Any]) -> int | float | None:
+    direct_write_phases = (
+        "temp_create_setup_ns",
+        "section_write_ns",
+        "header_directory_write_ns",
+        "temp_sync_ns",
+        "publish_ns",
+    )
+    direct_values = [
+        number(nested(measurement, "timings", phase)) for phase in direct_write_phases
+    ]
+    direct_write_ns = (
+        sum(value for value in direct_values if value is not None)
+        if all(value is not None for value in direct_values)
+        else None
+    )
     return (
         number(nested(measurement, "timings", "write_publish_ns"))
         or number(nested(measurement, "timings", "write_ns"))
+        or direct_write_ns
         or number(measurement.get("write_ns"))
     )
 
 
 def production_serialize_ns(measurement: dict[str, Any]) -> int | float | None:
-    return number(nested(measurement, "timings", "serialize_ns")) or number(
-        measurement.get("serialize_ns")
+    return (
+        number(nested(measurement, "timings", "serialize_ns"))
+        or number(nested(measurement, "timings", "direct_formation_ns"))
+        or number(measurement.get("serialize_ns"))
     )
 
 
@@ -410,6 +445,7 @@ def production_validate_ns(measurement: dict[str, Any]) -> int | float | None:
     return (
         number(nested(measurement, "timings", "in_memory_validation_ns"))
         or number(nested(measurement, "timings", "validate_ns"))
+        or number(nested(measurement, "timings", "file_validation_ns"))
         or number(measurement.get("validate_ns"))
     )
 
@@ -432,6 +468,14 @@ def footprint(measurements: list[dict[str, Any]]) -> dict[str, Any]:
         "section_bytes": (("footprint", "section_bytes"),),
         "dictionary_bytes": (("footprint", "dictionary_bytes"),),
         "index_bytes": (("footprint", "index_bytes"),),
+        "mapped_hash_bytes": (("footprint", "mapped_hash_bytes"),),
+        "mapped_hash_bucket_bytes": (("footprint", "mapped_hash_bucket_bytes"),),
+        "mapped_hash_tables": (("footprint", "mapped_hash_tables"),),
+        "mapped_hash_groups": (("footprint", "mapped_hash_groups"),),
+        "mapped_hash_buckets": (("footprint", "mapped_hash_buckets"),),
+        "mapped_hash_max_probe": (("footprint", "mapped_hash_max_probe"),),
+        "record_head_bytes": (("footprint", "record_head_bytes"),),
+        "nested_arena_bytes": (("footprint", "nested_arena_bytes"),),
         "dictionary_text_bytes": (("archive_footprint", "dictionary_text_bytes"), ("snapshot", "archive_footprint", "dictionary_text_bytes")),
         "sorted_index_estimated_fixed_bytes": (("archive_footprint", "sorted_index_estimated_fixed_bytes"), ("snapshot", "archive_footprint", "sorted_index_estimated_fixed_bytes")),
     }
@@ -448,8 +492,64 @@ def footprint(measurements: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def stable_formation_value(
+    measurements: list[dict[str, Any]], name: str
+) -> str | bool | None:
+    values = [
+        nested(measurement, "formation", name)
+        for measurement in measurements
+        if nested(measurement, "formation", name) is not None
+    ]
+    if not values:
+        return None
+    if len(values) != len(measurements):
+        raise SummaryError(f"production.formation.{name}: missing sample value")
+    first = values[0]
+    if any(value != first for value in values[1:]):
+        raise SummaryError(f"production.formation.{name}: unstable sample values")
+    if not isinstance(first, (str, bool)):
+        raise SummaryError(f"production.formation.{name}: expected string or boolean")
+    return first
+
+
+def formation_summary(measurements: list[dict[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for name in (
+        "strategy",
+        "retains_monolithic_artifact_buffer",
+        "retains_at_most_one_completed_section_buffer",
+        "write_amplification_scope",
+        "peak_working_buffer_scope",
+    ):
+        value = stable_formation_value(measurements, name)
+        if value is not None:
+            result[name] = value
+    for name in (
+        "logical_bytes_written",
+        "write_amplification_numerator",
+        "write_amplification_denominator",
+        "peak_section_buffer_bytes",
+        "peak_working_buffer_bytes",
+    ):
+        values = [
+            value
+            for measurement in measurements
+            if (value := number(nested(measurement, "formation", name))) is not None
+        ]
+        if values:
+            result[name] = require_metric_exact(
+                values, len(measurements), f"production.formation.{name}"
+            )
+    numerator = result.get("write_amplification_numerator", {}).get("median")
+    denominator = result.get("write_amplification_denominator", {}).get("median")
+    if numerator is not None and denominator:
+        result["write_amplification_ratio"] = float(numerator) / float(denominator)
+    return result
+
+
 def runtime_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     expected = len(records)
+    require_sample_ids(records, expected, "runtime")
     measurements = [record["measurement"] for record in records]
     result = {
         "samples": len(records),
@@ -587,6 +687,7 @@ def runtime_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 def production_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     expected = len(records)
+    require_sample_ids(records, expected, "production")
     measurements = [record["measurement"] for record in records]
     result = {
         "samples": len(records),
@@ -625,6 +726,7 @@ def production_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
             ),
         },
         "footprint": footprint(measurements),
+        "formation": formation_summary(measurements),
     }
     optional = {
         "serialize_ns": [production_serialize_ns(m) for m in measurements],
@@ -653,6 +755,11 @@ def final_allocation(measurement: dict[str, Any]) -> dict[str, Any] | None:
 
 def allocation_summary(records: list[dict[str, Any]], producer: bool) -> dict[str, Any]:
     expected = len(records)
+    require_sample_ids(
+        records,
+        expected,
+        "producer allocation" if producer else "runtime allocation",
+    )
     phases = []
     finals = []
     for record in records:
@@ -708,6 +815,7 @@ def allocation_summary(records: list[dict[str, Any]], producer: bool) -> dict[st
 
 def four_reader_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     expected = len(records)
+    require_sample_ids(records, expected, "four reader")
     return {
         "samples": len(records),
         "sample_ids": [record.get("sample") for record in records],
@@ -898,8 +1006,13 @@ def fixed_operation_gate(
     candidate: dict[str, Any], stance: str, operation: str, threshold: int
 ) -> dict[str, Any]:
     item = candidate["runtime"][stance]["operations"][operation]
+    status = (
+        "inconclusive-noisy"
+        if item["noisy"]
+        else ("pass" if item["median"] <= threshold else "fail")
+    )
     return {
-        "status": "pass" if item["median"] <= threshold else "fail",
+        "status": status,
         "median": item["median"],
         "threshold": threshold,
         "noisy": item["noisy"],
@@ -908,6 +1021,10 @@ def fixed_operation_gate(
 
 def add_gates(candidate: dict[str, Any], baselines: dict[str, Any]) -> None:
     gates = {}
+    noise_exceptions = {
+        "warm_first_lookup_ns": "predeclared-absolute-first-lookup-budget",
+        "cold_first_lookup_ns": "predeclared-absolute-first-lookup-budget",
+    }
     for name, (area, stance, metric_name, threshold) in GATES.items():
         if area == "runtime_max":
             metrics = [
@@ -927,13 +1044,18 @@ def add_gates(candidate: dict[str, Any], baselines: dict[str, Any]) -> None:
                 continue
             value = item["median"]
             noisy = item["noisy"]
-        status = "pass" if value <= threshold else "fail"
+        if noisy and name not in noise_exceptions:
+            status = "inconclusive-noisy"
+        else:
+            status = "pass" if value <= threshold else "fail"
         gates[name] = {
             "status": status,
             "median": value,
             "threshold": threshold,
             "noisy": noisy,
         }
+        if name in noise_exceptions:
+            gates[name]["noise_policy"] = noise_exceptions[name]
     for stance in ("warm", "cold-best-effort"):
         gates[f"{stance}_forward_dictionary_ns"] = {
             "status": (
@@ -944,6 +1066,7 @@ def add_gates(candidate: dict[str, Any], baselines: dict[str, Any]) -> None:
             "median": candidate["runtime"][stance]["operations"]["dictionary_by_id"]["median"],
             "threshold": 10,
             "noisy": candidate["runtime"][stance]["operations"]["dictionary_by_id"]["noisy"],
+            "noise_policy": "predeclared-per-operation-mad-envelope",
         }
         gates[f"{stance}_reverse_dictionary_hit_ns"] = fixed_operation_gate(
             candidate, stance, "dictionary_by_value", S83_REVERSE_DICTIONARY_HIT_NS
@@ -958,6 +1081,7 @@ def add_gates(candidate: dict[str, Any], baselines: dict[str, Any]) -> None:
             "status": candidate["operation_ceiling"][stance]["status"],
             "failed_count": candidate["operation_ceiling"][stance]["failed_count"],
             "failed_operations": candidate["operation_ceiling"][stance]["failed_operations"],
+            "noise_policy": "predeclared-per-operation-mad-envelope",
         }
     for parity_name in ("storage_parity", "semantic_parity"):
         status = candidate.get(parity_name, {}).get("status", "missing")
@@ -966,6 +1090,27 @@ def add_gates(candidate: dict[str, Any], baselines: dict[str, Any]) -> None:
             "source": "supplied" if status != "missing" else "not supplied",
         }
     candidate["gates"] = gates
+    candidate["eligibility"] = {
+        "eligible": all(gate.get("status") == "pass" for gate in gates.values()),
+        "failed_gates": sorted(
+            name for name, gate in gates.items() if gate.get("status") == "fail"
+        ),
+        "inconclusive_noisy_gates": sorted(
+            name
+            for name, gate in gates.items()
+            if gate.get("status") == "inconclusive-noisy"
+        ),
+        "missing_gates": sorted(
+            name for name, gate in gates.items() if gate.get("status") == "missing"
+        ),
+        "other_blocking_gates": sorted(
+            name
+            for name, gate in gates.items()
+            if gate.get("status")
+            not in {"pass", "fail", "inconclusive-noisy", "missing"}
+        ),
+        "waiver_status": "none",
+    }
 
 
 def parse_status_arguments(values: list[str]) -> dict[str, dict[str, Any]]:
@@ -978,7 +1123,12 @@ def parse_status_arguments(values: list[str]) -> dict[str, dict[str, Any]]:
             raise SummaryError(
                 "explicit parity status cannot claim pass; provide parity raw proof"
             )
-        result[parity_backend(backend)] = {"status": status, "source": "explicit"}
+        normalized_backend = parity_backend(backend)
+        if normalized_backend in result:
+            raise SummaryError(
+                f"duplicate explicit parity status for {normalized_backend}"
+            )
+        result[normalized_backend] = {"status": status, "source": "explicit"}
     return result
 
 
@@ -990,6 +1140,11 @@ def parity_records(paths: list[Path], kind: str) -> dict[str, dict[str, Any]]:
             if status not in {"ok", "pass"}:
                 raise SummaryError(f"{kind} parity failure in {path}: {status}")
             backend = parity_backend(str(record.get("backend", "")))
+            if backend in result:
+                raise SummaryError(
+                    f"duplicate {kind} parity proof for {backend}: "
+                    f"{result[backend]['source']} and {path}"
+                )
             if kind == "storage":
                 passed = (
                     status == "pass"
@@ -1070,14 +1225,20 @@ def build_summary(records: list[dict[str, Any]], args: argparse.Namespace) -> di
     unknown = [backend for backend in runtime_backends if backend not in REGISTRY_ORDER]
     if unknown:
         raise SummaryError(f"unknown S83 resource backend(s): {unknown}")
-    storage = {
-        **parity_records(args.storage_parity_raw, "storage"),
-        **parse_status_arguments(args.storage_parity_status),
-    }
-    semantic = {
-        **parity_records(args.semantic_parity_raw, "semantic"),
-        **parse_status_arguments(args.semantic_parity_status),
-    }
+    storage = parity_records(args.storage_parity_raw, "storage")
+    storage_status = parse_status_arguments(args.storage_parity_status)
+    semantic = parity_records(args.semantic_parity_raw, "semantic")
+    semantic_status = parse_status_arguments(args.semantic_parity_status)
+    for kind, proofs, statuses in (
+        ("storage", storage, storage_status),
+        ("semantic", semantic, semantic_status),
+    ):
+        duplicate = sorted(set(proofs) & set(statuses))
+        if duplicate:
+            raise SummaryError(
+                f"duplicate {kind} parity proof/status for backend(s): {duplicate}"
+            )
+        proofs.update(statuses)
 
     candidates = []
     for backend in runtime_backends:
@@ -1144,26 +1305,33 @@ def build_summary(records: list[dict[str, Any]], args: argparse.Namespace) -> di
             "semantic_parity": semantic.get(backend, {"status": "missing"}),
         }
         semantic_commit = candidate["semantic_parity"].get("candidate_commit")
-        if semantic_commit is not None and semantic_commit != commit:
+        if (
+            candidate["semantic_parity"].get("status") == "pass"
+            and semantic_commit != commit
+        ):
             raise SummaryError(
                 f"{backend}: semantic parity commit {semantic_commit} does not match "
                 f"resource commit {commit}"
             )
         storage_commit = candidate["storage_parity"].get("candidate_commit")
-        if storage_commit is not None:
-            relation = "equal" if storage_commit == commit else "ancestor"
-            if storage_commit != commit and not git_is_ancestor(storage_commit, commit):
+        if candidate["storage_parity"].get("status") == "pass":
+            if storage_commit != commit:
                 raise SummaryError(
-                    f"{backend}: storage parity commit {storage_commit} is neither "
-                    f"equal to nor a git ancestor of resource commit {commit}"
+                    f"{backend}: storage parity commit {storage_commit} does not "
+                    f"match resource commit {commit}"
                 )
-            candidate["storage_parity"]["resource_commit_relation"] = relation
+            candidate["storage_parity"]["resource_commit_relation"] = "equal"
         validate_operations(candidate, baselines)
         operation_ceiling(candidate, baselines)
         add_relatives(candidate, baselines)
         add_gates(candidate, baselines)
         candidates.append(candidate)
 
+    eligibility_state = (
+        "eligible-candidate-present"
+        if any(candidate["eligibility"]["eligible"] for candidate in candidates)
+        else "no-candidate-passes-all-frozen-gates"
+    )
     return {
         "schema": "hbk-s83-candidate-summary-v1",
         "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -1180,6 +1348,7 @@ def build_summary(records: list[dict[str, Any]], args: argparse.Namespace) -> di
         "unranked": True,
         "ranked": False,
         "selection": "pending-user-decision",
+        "eligibility_state": eligibility_state,
         "baseline_summary": baselines,
         "expected_counts": EXPECTED_COUNTS,
         "candidates": candidates,
@@ -1199,19 +1368,6 @@ def git_state() -> dict[str, Any]:
         return {"commit": commit, "working_tree_dirty": dirty}
     except (OSError, subprocess.CalledProcessError):
         return {"commit": None, "working_tree_dirty": None}
-
-
-def git_is_ancestor(ancestor: str, descendant: str) -> bool:
-    try:
-        completed = subprocess.run(
-            ("git", "merge-base", "--is-ancestor", ancestor, descendant),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        return completed.returncode == 0
-    except OSError:
-        return False
 
 
 def median_at(group: dict[str, Any], *path: str) -> Any:
@@ -1245,6 +1401,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "",
         "Rows are evidence only. This report records no ordering or canonical choice.",
         "Registry presentation order is fixed by the hypothesis registry and is not a rank.",
+        f"Eligibility state: `{summary['eligibility_state']}`.",
         "",
         "| Backend | Commit | Warm ready ms | Cold ready ms | Warm first lookup us | Warm workload ms | Warm PSS MiB | Cold PSS MiB |",
         "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -1323,6 +1480,69 @@ def render_markdown(summary: dict[str, Any]) -> str:
             f"{fmt_mib_from_bytes(median_at({'metrics': fp}, 'metrics', 'index_bytes'))} | "
             f"{fmt_mib_from_bytes(median_at({'metrics': fp}, 'metrics', 'dictionary_text_bytes'))} | "
             f"{fmt_mib_from_bytes(median_at({'metrics': fp}, 'metrics', 'sorted_index_estimated_fixed_bytes'))} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Hypothesis-specific Footprint",
+            "",
+            "| Backend | Mapped hash MiB | Hash bucket MiB | Hash tables | Hash groups | Hash buckets | Max probe | Record head MiB | Nested arena MiB |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for candidate in summary["candidates"]:
+        fp = candidate["production"]["footprint"] or candidate["runtime"]["warm"]["footprint"]
+        wrapped = {"metrics": fp}
+        lines.append(
+            f"| {candidate['backend']} | "
+            f"{fmt_mib_from_bytes(median_at(wrapped, 'metrics', 'mapped_hash_bytes'))} | "
+            f"{fmt_mib_from_bytes(median_at(wrapped, 'metrics', 'mapped_hash_bucket_bytes'))} | "
+            f"{median_at(wrapped, 'metrics', 'mapped_hash_tables') or 'n/a'} | "
+            f"{median_at(wrapped, 'metrics', 'mapped_hash_groups') or 'n/a'} | "
+            f"{median_at(wrapped, 'metrics', 'mapped_hash_buckets') or 'n/a'} | "
+            f"{median_at(wrapped, 'metrics', 'mapped_hash_max_probe') or 'n/a'} | "
+            f"{fmt_mib_from_bytes(median_at(wrapped, 'metrics', 'record_head_bytes'))} | "
+            f"{fmt_mib_from_bytes(median_at(wrapped, 'metrics', 'nested_arena_bytes'))} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Direct Formation",
+            "",
+            "| Backend | Strategy | Monolithic artifact buffer | At most one completed section | Logical MiB written | Peak section MiB | Peak tracked working MiB | Write amplification |",
+            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for candidate in summary["candidates"]:
+        formation = candidate["production"].get("formation", {})
+        lines.append(
+            f"| {candidate['backend']} | "
+            f"{formation.get('strategy', 'n/a')} | "
+            f"{formation.get('retains_monolithic_artifact_buffer', 'n/a')} | "
+            f"{formation.get('retains_at_most_one_completed_section_buffer', 'n/a')} | "
+            f"{fmt_mib_from_bytes(median_at({'metrics': formation}, 'metrics', 'logical_bytes_written'))} | "
+            f"{fmt_mib_from_bytes(median_at({'metrics': formation}, 'metrics', 'peak_section_buffer_bytes'))} | "
+            f"{fmt_mib_from_bytes(median_at({'metrics': formation}, 'metrics', 'peak_working_buffer_bytes'))} | "
+            f"{formation.get('write_amplification_ratio', 'n/a')} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Eligibility",
+            "",
+            "| Backend | Eligible | Failed gates | Inconclusive noisy gates | Missing gates | Other blockers | Waiver |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for candidate in summary["candidates"]:
+        eligibility = candidate["eligibility"]
+        lines.append(
+            f"| {candidate['backend']} | {eligibility['eligible']} | "
+            f"{', '.join(eligibility['failed_gates']) or 'none'} | "
+            f"{', '.join(eligibility['inconclusive_noisy_gates']) or 'none'} | "
+            f"{', '.join(eligibility['missing_gates']) or 'none'} | "
+            f"{', '.join(eligibility['other_blocking_gates']) or 'none'} | "
+            f"{eligibility['waiver_status']} |"
         )
     lines.extend(
         [

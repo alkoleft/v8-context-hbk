@@ -392,6 +392,205 @@ frozen threshold. `Fail` means it is outside.
 No S83-F0 or S83-A0 row passes every frozen numeric gate. The table is not a
 ranking and does not select a candidate.
 
+## S83 Consolidated Unranked Evidence
+
+The derived-candidate resource raw
+`target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-derived-resource-0219685.jsonl`
+contains 180 successful records and has SHA-256
+`fe9e800f32d129c3c82b7281a3f9be9bc5b607493ba692e53654a85e99d91351`.
+For each of L1/I1/D1/P1/R1 it contains exactly nine warm runtime, nine
+cold-best-effort runtime, nine production, three runtime-allocation, three
+producer-allocation and three aggregate-four-reader records. Performance
+processes were serialized; candidate order was rotated between runtime
+samples. The complete machine-readable summary is
+`summary-S83-all-candidates-0219685.json` and its rendered evidence table is
+`summary-S83-all-candidates-0219685.md`. Both explicitly record
+`ranked: false` and `selection: pending-user-decision`.
+
+The five derived artifacts are deterministic, immutable files with adjacent
+slot lock files:
+
+| ID | Branch | Commit | Artifact bytes | SHA-256 | Mode |
+| --- | --- | --- | ---: | --- | --- |
+| `S83-L1` | `experiment/hbk-zero-copy-83-layout-l1` | `98f8b3bfadeeb40585fb4792aacfcc2f83b52bfc` | 11,304,567 | `cd0bfd19ae7592232f0eafb300a3f61c356ebdadaa600573245ff2144f14bc73` | `0444` |
+| `S83-I1` | `experiment/hbk-zero-copy-83-index-i1` | `b7a674806a086ba40aaa617eca461238e23615dc` | 23,694,119 | `991b9e056c09defb8e12632cd83a709df5873b4383dbaea284c5f5dc64438c85` | `0444` |
+| `S83-D1` | `experiment/hbk-zero-copy-83-dynamic-d1` | `a7ae5304b702759de92ed82847bf8be1f64eac22` | 11,304,567 | `20bc6ff8bf922b129233cafdcb4abbec51496697ee086788aacaf1eb00bd74b2` | `0444` |
+| `S83-P1` | `experiment/hbk-zero-copy-83-produce-p1` | `b0d2523d06268f27eb36fcdfb601d0444bd372fc` | 11,304,567 | `20bc6ff8bf922b129233cafdcb4abbec51496697ee086788aacaf1eb00bd74b2` | `0444` |
+| `S83-R1` | `experiment/hbk-zero-copy-83-record-r1` | `ffcb990cbd3c4e6c3e95e31ebb6b35cf716ad625` | 12,061,887 | `7bd06fd9bd0388b1d157c3fd38374c93654084cef7193b9f637abfb3cf8702d9` | `0444` |
+
+D1 changes validation timing only and P1 changes formation only, so both
+intentionally reproduce the exact F0 bytes. L1 changes only physical section
+order. I1 adds one mapped-hash section. R1 changes record and nested-arena
+representation. L1/I1/D1/P1/R1 are isolated-variable experiments against F0,
+not standalone production preferences; their measurements establish the cost
+and effect of the registered variable only.
+
+### Consolidated Startup And Lookup
+
+The following cells are `median ± MAD`; ready/workload use milliseconds and
+first/anchor use microseconds. H0 is the SQL-to-owned baseline. C0 is the
+current-cache-to-owned control. Registry row order is presentation order, not
+a rank.
+
+| ID | Warm ready, ms | Cold ready, ms | Warm first, µs | Cold first, µs | Warm anchor, µs | Cold anchor, µs | Warm workload, ms | Cold workload, ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `S83-H0` | 588.217 ± 4.898 | 1,631.261 ± 7.871 | 2.614 ± 0.187 | 2.994 ± 0.220 | 15.236 ± 0.597 | 15.341 ± 0.310 | 2,179.371 ± 6.546 | 2,173.222 ± 7.407 |
+| `S83-C0` | 42.489 ± 0.388 | 73.776 ± 1.699 | 2.721 ± 0.307 | 3.461 ± 0.380 | 14.275 ± 0.160 | 15.108 ± 0.438 | 2,071.101 ± 9.079 | 2,091.371 ± 3.571 |
+| `S83-F0` | 54.358 ± 0.618 | 67.899 ± 0.673 | 3.902 ± 0.074 | 4.149 ± 0.520 | 14.007 ± 0.438 | 14.750 ± 0.506 | 358.243 ± 2.417 | 356.781 ± 2.173 |
+| `S83-A0` | 39.174 ± 0.445 | 50.703 ± 0.121 | 2.872 ± 0.165 | 2.823 ± 0.174 | 11.915 ± 0.381 | 11.965 ± 0.412 | 4,638.727 ± 14.339 | 4,644.303 ± 13.769 |
+| `S83-L1` | 54.781 ± 1.201 | 65.887 ± 0.772 | 4.770 ± 0.459 | 4.024 ± 0.426 | 15.320 ± 0.269 | 13.918 ± 0.764 | 360.233 ± 1.534 | 359.028 ± 1.144 |
+| `S83-I1` | 267.971 ± 6.043 | 287.740 ± 4.727 | 1.654 ± 0.040 | 1.802 ± 0.128 | 6.560 ± 0.241 | 6.855 ± 0.405 | 135.916 ± 1.907 | 134.760 ± 1.558 |
+| `S83-D1` | 15.468 ± 0.930 | 28.296 ± 0.359 | 12,818.287 ± 246.196 | 11,800.780 ± 391.194 | 6,052.949 ± 85.231 | 6,143.532 ± 489.988 | 356.764 ± 0.896 | 357.536 ± 2.492 |
+| `S83-P1` | 54.986 ± 1.266 | 64.242 ± 0.291 | 4.052 ± 0.222 | 4.249 ± 0.426 | 14.806 ± 0.940 | 15.878 ± 1.665 | 353.585 ± 1.452 | 356.805 ± 2.990 |
+| `S83-R1` | 53.317 ± 1.049 | 63.633 ± 0.364 | 3.573 ± 0.065 | 3.497 ± 0.345 | 13.473 ± 0.648 | 13.454 ± 0.312 | 359.604 ± 1.508 | 361.455 ± 1.051 |
+
+D1 makes ready time measure only eager validation and deliberately moves
+typed section validation into first use; its first-lookup and anchor cells show
+that shifted cost. I1 validates and maps 12,389,536 additional hash-index bytes
+at open; its ready and memory cells include that cost.
+
+All candidates preserve the exact 25 observed totals in both stances. Warm
+per-operation medians in nanoseconds are:
+
+| Operation | C0 | F0 | A0 | L1 | I1 | D1 | P1 | R1 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `availability_by_fact` | 111 | 250 | 105 | 248 | 246 | 253 | 247 | 256 |
+| `callable_by_owner_name` | 323 | 596 | 499 | 589 | 359 | 594 | 606 | 595 |
+| `constructors_by_type` | 15 | 51 | 15 | 52 | 51 | 51 | 52 | 52 |
+| `dictionary_by_id` | 0 | 23 | 3 | 24 | 23 | 24 | 23 | 23 |
+| `dictionary_by_value` | 917 | 961 | 2,245 | 974 | 65 | 942 | 924 | 955 |
+| `dictionary_by_value_miss` | 48,096 | 524 | 113,905 | 514 | 47 | 524 | 532 | 530 |
+| `enum_by_name` | 208 | 504 | 404 | 527 | 202 | 508 | 507 | 504 |
+| `enum_by_name_miss` | 345 | 652 | 602 | 666 | 349 | 635 | 639 | 637 |
+| `exact_fact_id` | 99 | 1,294 | 394 | 1,288 | 108 | 1,274 | 1,231 | 1,255 |
+| `exact_fact_id_miss` | 72 | 1,948 | 433 | 1,990 | 53 | 2,003 | 1,973 | 1,987 |
+| `global_by_domain_name_kind` | 315 | 938 | 552 | 923 | 337 | 930 | 945 | 944 |
+| `language_by_name` | 183 | 194 | 229 | 192 | 215 | 191 | 191 | 191 |
+| `language_by_name_miss` | 349 | 363 | 393 | 360 | 414 | 359 | 361 | 361 |
+| `member_by_owner_name_kind` | 232 | 597 | 358 | 613 | 241 | 599 | 592 | 763 |
+| `members_by_owner` | 19 | 94 | 19 | 95 | 94 | 95 | 95 | 96 |
+| `module_context_by_kind` | 577 | 1,774 | 476 | 1,796 | 424 | 1,747 | 1,750 | 1,760 |
+| `query_field_by_table_name` | 222 | 444 | 348 | 449 | 256 | 442 | 449 | 438 |
+| `query_param_by_table_name` | 335 | 500 | 432 | 503 | 407 | 509 | 504 | 497 |
+| `query_table_by_identifier` | 329 | 782 | 489 | 842 | 394 | 803 | 788 | 780 |
+| `query_table_by_name` | 523 | 1,081 | 730 | 1,085 | 616 | 1,099 | 1,048 | 1,054 |
+| `query_table_by_syntax` | 682 | 1,279 | 919 | 1,282 | 783 | 1,281 | 1,285 | 1,297 |
+| `relation_by_source_kind` | 48,965 | 858 | 106,148 | 847 | 290 | 857 | 841 | 853 |
+| `type_by_name` | 246 | 975 | 494 | 963 | 248 | 965 | 970 | 1,000 |
+| `type_by_name_miss` | 349 | 702 | 650 | 681 | 349 | 695 | 707 | 694 |
+| `type_template_by_key` | 109 | 377 | 223 | 380 | 102 | 388 | 379 | 383 |
+
+Cold-best-effort operation medians and every operation-specific
+`median + max(25%, 3 × C0 MAD, 3 × candidate MAD)` ceiling are retained in
+the generated JSON/Markdown summary. No operation is omitted from that proof.
+
+### Consolidated Memory And Sharing
+
+Medians are shown below; allocation MAD is zero for every listed candidate
+sample.
+
+| ID | Peak RSS warm/cold, KiB | PSS warm/cold, KiB | Private warm/cold, KiB | Minor faults warm/cold | Major faults warm/cold | Cold resident growth, B | Four-reader PSS, KiB | Runtime alloc calls / bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `S83-H0` | 74,948 / 74,664 | 67,992 / 67,989 | 67,972 / 67,968 | 18,452 / 18,452 | 0 / 0 | 116,178,944 | 263,954 | 1,278,346 / 156,058,238 |
+| `S83-C0` | 34,816 / 34,816 | 22,141 / 22,102 | 22,120 / 22,080 | 7,620 / 7,620 | 0 / 0 | 11,259,904 | 81,142 | 136,036 / 28,942,929 |
+| `S83-F0` | 13,184 / 13,184 | 11,770 / 11,770 | 11,756 / 11,756 | 182 / 182 | 0 / 1 | 11,304,960 | 12,342 | 66,266 / 4,633,385 |
+| `S83-A0` | 15,744 / 15,616 | 14,358 / 14,354 | 14,344 / 14,340 | 216 / 216 | 0 / 1 | 13,938,688 | 15,180 | 151,855 / 6,791,316 |
+| `S83-L1` | 13,312 / 13,312 | 11,894 / 11,894 | 11,880 / 11,880 | 181 / 182 | 0 / 1 | 11,304,960 | 12,729 | 66,266 / 4,633,364 |
+| `S83-I1` | 25,472 / 25,344 | 24,098 / 24,098 | 24,084 / 24,084 | 372 / 372 | 0 / 1 | 23,695,360 | 24,915 | 66,266 / 4,633,374 |
+| `S83-D1` | 13,184 / 13,184 | 11,798 / 11,766 | 11,784 / 11,752 | 177 / 177 | 0 / 1 | 11,304,960 | 12,347 | 10 / 4,552 |
+| `S83-P1` | 13,184 / 13,184 | 11,770 / 11,802 | 11,756 / 11,788 | 182 / 181 | 0 / 1 | 11,304,960 | 12,346 | 66,266 / 4,633,365 |
+| `S83-R1` | 13,952 / 13,952 | 12,506 / 12,514 | 12,492 / 12,500 | 188 / 187 | 0 / 1 | 12,062,720 | 12,993 | 10 / 4,676 |
+
+The frozen major-fault gate remains zero. H0/C0 recorded zero in both stances;
+every mapped candidate recorded a warm median of zero and cold-best-effort
+median of one, so that gate fails for every candidate. The result is retained
+rather than normalized away.
+
+### Consolidated Production And Footprint
+
+Cells are `median ± MAD`. Time is milliseconds; bytes and KiB retain their
+native units. H0 has no separate cache-production row because SQL
+materialization is its declared runtime baseline.
+
+| ID | Total, ms | Materialize, ms | Serialize/formation, ms | Validate, ms | Write/publish, ms | Artifact bytes | Peak RSS, KiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `S83-C0` | 642.839 ± 19.106 | 582.161 ± 18.629 | n/a | n/a | 56.912 ± 5.536 | 11,186,057 ± 0 | 80,780 ± 0 |
+| `S83-F0` | 3,272.623 ± 36.147 | 584.768 ± 10.213 | n/a | 96.983 ± 0.296 | 244.055 ± 32.800 | 11,304,567 ± 0 | 100,900 ± 52 |
+| `S83-A0` | 1,994.852 ± 23.196 | 586.432 ± 5.495 | 17.462 ± 0.078 | 18.026 ± 0.269 | 258.073 ± 30.467 | 13,936,492 ± 0 | 100,996 ± 4 |
+| `S83-L1` | 3,251.808 ± 13.793 | 597.935 ± 6.658 | n/a | 48.461 ± 0.431 | 256.748 ± 21.375 | 11,304,567 ± 0 | 100,908 ± 44 |
+| `S83-I1` | 4,573.844 ± 49.268 | 604.127 ± 12.648 | n/a | 506.733 ± 4.500 | 683.438 ± 28.552 | 23,694,119 ± 0 | 137,332 ± 4 |
+| `S83-D1` | 3,296.207 ± 38.794 | 589.986 ± 15.162 | n/a | 97.229 ± 1.123 | 260.224 ± 22.228 | 11,304,567 ± 0 | 100,912 ± 104 |
+| `S83-P1` | 3,101.216 ± 20.611 | 584.968 ± 4.049 | 70.593 ± 1.966 | 79.676 ± 2.628 | 210.733 ± 8.070 | 11,304,567 ± 0 | 89,588 ± 112 |
+| `S83-R1` | 3,315.699 ± 15.749 | 599.949 ± 15.847 | n/a | 95.561 ± 0.267 | 283.741 ± 19.060 | 12,061,887 ± 0 | 102,456 ± 0 |
+
+| ID | Producer alloc calls | Producer allocated bytes | Producer peak-live bytes | Section bytes | Dictionary bytes | Index bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `S83-C0` | 1,278,357 | 183,859,167 | 63,018,399 | n/a | n/a | n/a |
+| `S83-F0` | 2,291,021 | 281,173,378 | 63,694,157 | 11,303,343 | 4,913,114 | 3,558,899 |
+| `S83-A0` | 1,582,041 | 203,711,633 | 63,018,740 | n/a | 4,039,645 text | 2,238,408 estimated fixed |
+| `S83-L1` | 2,224,762 | 276,546,222 | 63,695,496 | 11,303,343 | 4,913,114 | 3,558,899 |
+| `S83-I1` | 2,291,073 | 367,802,030 | 107,009,264 | 23,692,879 | 4,913,114 | 15,948,435 |
+| `S83-D1` | 2,291,021 | 281,173,406 | 63,694,164 | 11,303,343 | 4,913,114 | 3,558,899 |
+| `S83-P1` | 2,025,983 | 218,911,208 | 63,018,773 | 11,303,343 | 4,913,114 | 3,558,899 |
+| `S83-R1` | 2,146,274 | 275,969,710 | 70,567,980 | 12,060,397 | 4,913,164 | 3,924,922 |
+
+I1's index total includes 12,389,536 mapped-hash bytes:
+12,388,896 bucket bytes, 26 tables, 226,354 groups, 774,306 buckets and
+maximum observed probe 23. R1 adds 1,078,791 record-head bytes and 2,143,520
+nested-arena bytes. P1 retains no monolithic artifact buffer, retains at most
+one completed section buffer, writes 11,304,567 logical bytes with measured
+userspace write-amplification ratio 1.0, and reports 4,633,993 peak section
+buffer bytes / 9,763,449 peak tracked working-buffer bytes.
+
+### Consolidated Behavioral And Gate State
+
+Every F0/A0/L1/I1/D1/P1/R1 row passes all of the following independent
+behavioral proofs:
+
+- storage content: 176,793 canonical records / 57,486,556 bytes /
+  SHA-256 `5f66d20509877ac29a83ede2d5178368ed3fd78d7dab0ffbc12df506acc3b1fd`;
+- storage lookup behavior: 276,415 canonical records / 88,520,585 bytes /
+  SHA-256 `9b17c7100cd368fe0880e679d66ab8eb7d8505ee617d9fc80b1a9a9d8aa5c5c8`;
+- catalog/resolver semantics: 742,872 records / 769,824,709 bytes /
+  SHA-256 `1fe7f166caad8e8573b809a97f7104caf85301370f1d34017376bc82ee893a29`;
+- one sequential plus four concurrent byte-identical storage replays and the
+  corresponding five semantic transcripts;
+- sources hidden before candidate process start and throughout replay;
+- exact platform `8.3.27.1859`, HBK/provider identity, provider schema `16`,
+  extraction schema `11`, registered artifact layout and immutable mode.
+
+The F0 and A0 storage proofs were rerun at the exact measured semantic/resource
+commits in `raw-S83-F0-a9a98a1-parity-exact-0219685.jsonl` and
+`raw-S83-A0-36a41aa-parity-exact-0219685.jsonl`. The final summary rejects an
+ancestor-only storage proof.
+
+Thus full equivalence for T183 means identical logical content, ordering,
+lookup statuses/results and public catalog/resolver behavior, not stable
+numeric IDs or equal physical bytes. Numeric string/fact IDs remain valid only
+inside the current mapped generation.
+
+No row passes every frozen numeric gate, so
+`eligibility_state = no-candidate-passes-all-frozen-gates`. No waiver is
+recorded. A noisy gate is `inconclusive-noisy` rather than pass/fail unless it
+uses the predeclared first-lookup absolute-budget or per-operation MAD-envelope
+exception.
+
+| ID | Failed frozen gates | Inconclusive noisy gates |
+| --- | --- | --- |
+| `S83-F0` | warm/cold ready; cold major fault; total rebuild; producer allocation calls/bytes; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | none |
+| `S83-A0` | warm ready; runtime allocation calls; warm/cold workload; cold major fault; total rebuild; production peak RSS; warm/cold reverse hit/miss; warm/cold per-operation ceiling | none |
+| `S83-L1` | warm/cold ready; cold major fault; total rebuild; producer allocation calls/bytes; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | cold anchor |
+| `S83-I1` | warm/cold ready; warm/cold PSS/private; cold major fault; cold resident growth; artifact size; total rebuild; production peak RSS; producer allocation calls/bytes/peak; warm/cold forward dictionary; warm/cold per-operation ceiling | cold anchor |
+| `S83-D1` | warm/cold first lookup; warm anchor; cold major fault; total rebuild; producer allocation calls/bytes; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | warm ready; cold anchor |
+| `S83-P1` | warm/cold ready; cold major fault; total rebuild; producer allocation calls; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | warm/cold anchor |
+| `S83-R1` | warm/cold ready; cold major fault; total rebuild; production peak RSS; producer allocation calls/bytes; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | none |
+
+This is a threshold matrix, not a score. It neither orders the rows nor
+chooses an acceptable trade-off. Under the frozen contract, the user can ask
+for a new experiment/rerun, explicitly waive named gates with a durable
+owner/date/rationale, or reject/stop production adoption; the evidence alone
+does not authorize selecting an ineligible row.
+
 ## Full Behavioral Equivalence Breakdown
 
 Full equivalence is not a single count check. It requires all of the following:
@@ -421,11 +620,17 @@ H1 proves none of the complete logical/adapter layers and also fails the
 25-operation smoke. H2 proves the 25-operation manifest and broad mapped-file
 validation, but not the full content/catalog/adapter/concurrency oracle, and
 one reviewed module-event ordering check does not match the owned text-order
-contract. H3
-proves the complete normalized files only through a reconstructed owned
-adapter, not through the mapped read surface, and does not yet validate sorted
-order for every lookup array used by binary search. Therefore no candidate has
-established full behavioral equivalence.
+contract. H3 proves the complete normalized files only through a reconstructed
+owned adapter, not through the mapped read surface, and does not yet validate
+sorted order for every lookup array used by binary search. Those earlier S85
+rows therefore remain behaviorally incomplete.
+
+The independent S83 F0/A0/L1/I1/D1/P1/R1 rows all pass the complete storage
+and catalog/resolver equivalence protocol above. This establishes behavioral
+equivalence for the current snapshot/catalog scope; it does not establish that
+every row satisfies the independent performance/resource gates, and it does
+not extend the scope to full HTML, long descriptions or search/export
+payloads.
 
 Numeric string and fact IDs are deliberately absent from equivalence. They are
 generation-scoped and session-local. Replacing the HBK source creates new IDs;
@@ -455,7 +660,10 @@ until the user makes a selection and a durable HBK decision accepts it.
 
 ## Decision State
 
-No candidate is currently eligible under all frozen gates. No candidate branch
-is merged, deleted, promoted or marked first. The current owned snapshot/cache
-path remains canonical only because the experiment has not produced an
-accepted replacement and the user has not selected an outcome.
+No candidate satisfies every frozen numeric gate, and no waiver exists;
+therefore no S83 row is currently eligible under the frozen contract. All
+seven S83 rows pass the mandatory behavioral-equivalence gates, so parity is
+not the blocker. No candidate branch is merged, deleted, promoted,
+recommended or marked first. The current owned snapshot/cache path remains
+canonical because the user has not selected an outcome and no durable
+production decision has accepted a replacement.

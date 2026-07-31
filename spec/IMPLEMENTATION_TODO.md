@@ -118,21 +118,26 @@ Current first unchecked task: T183.
     61-record H0/C0 set: 45 runtime/formation samples, nine allocation
     profiles, six aggregate four-reader samples and one full parity record.
     Concrete S83-only gates, host-pressure evidence and parity digests are
-    frozen in the experiment contract before F0/A0/L1/I1/D1/P1 candidate
+    frozen in the experiment contract before F0/A0/L1/I1/D1/P1/R1 candidate
     work. Parallel agents may implement separate worktrees, but all
-    performance runs are serialized. No S83 candidate is created, ranked,
-    selected or merged yet. S83-F0 (`a9a98a18ed2af21ba16573a00719c13edddac97b`)
-    and S83-A0 (`36a41aa74a9c6898576706f34a9a403918d452e4`) now have complete
-    numeric resource evidence plus successful storage and semantic parity
-    gates under `target/hbk-zero-copy-experiment-8.3.27.1859/results/`.
-    F0 fails the frozen warm/cold ready, reverse-hit, forward-dictionary,
-    open-major-fault, total rebuild and production allocation calls/bytes
-    gates. A0 fails the frozen warm-ready, runtime allocation-call, reverse
-    dictionary hit/miss, workload, per-operation, open-major-fault, total
-    rebuild and production peak-RSS gates. Both remain unranked and unselected;
-    the complete S83 table is in `acceptance/hbk-zero-copy-snapshot-evidence.md`.
-    T183 remains open until the evidence is presented and the user explicitly
-    selects an outcome or rejects production adoption.
+    performance runs are serialized. Separate branches now contain F0
+    (`a9a98a1`), A0 (`36a41aa`), L1 (`98f8b3b`), I1 (`b7a6748`), D1
+    (`a7ae530`), P1 (`b0d2523`) and R1 (`ffcb990`). The 72-record F0/A0 and
+    180-record derived resource raws are complete. Every candidate passes
+    exact-commit storage parity and the five-way source-hidden semantic
+    catalog/resolver transcript gate. The strict summarizer requires unique
+    sample IDs, rejects duplicate/order-dependent or ancestor-only parity
+    proofs, preserves hypothesis-specific footprint/formation evidence and
+    records noisy non-exempt gates as inconclusive.
+    The consolidated summary records
+    `eligibility_state = no-candidate-passes-all-frozen-gates`; no waiver
+    exists. No S83 row is ranked, selected, recommended, merged or promoted.
+    The complete SQL-baseline/current-control/candidate startup, lookup,
+    operation, memory, production, allocation, footprint and gate tables are
+    in `acceptance/hbk-zero-copy-snapshot-evidence.md`.
+    T183 remains open at the user-decision gate. Under the frozen contract the
+    user may request a rerun/new hypothesis, explicitly waive named gates in a
+    durable decision, or reject/stop production adoption.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

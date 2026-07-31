@@ -1076,8 +1076,12 @@ The independent S83 comparison set additionally isolates physical organization
 from format choice. Its F0 typed-flat and A0 checked-archive rows are reference
 formats. F0-derived L1, I1, D1 and P1 change respectively only section
 placement, mapped lookup-index shape, checked dynamic section access and
-formation/write strategy. Each lives in a separate worktree; timed runs are
-serialized on the shared host even when implementation proceeds in parallel.
+formation/write strategy; R1 replaces variable fact records with fixed heads
+and checked ranges into mapped nested arenas. Each lives in a separate
+worktree; timed runs are serialized on the shared host even when implementation
+proceeds in parallel. All seven S83 rows pass the complete behavior oracle, but
+none passes every frozen numeric gate, so this component boundary remains
+experimental and no implementation is promoted.
 
 ## Implementation Dependencies
 

@@ -543,6 +543,14 @@ These gates determine only whether an S83 row is eligible for the user's
 consideration. They do not rank candidates, select first place, authorize a
 merge or make a snapshot canonical.
 
+An S83 row is eligible only when every mandatory correctness/safety,
+material-benefit and non-regression/resource gate passes, with no missing or
+unexplained noisy gate. A user may explicitly waive a named numeric gate only
+through a durable decision that records owner, date and rationale; a waiver is
+not inferred from selecting or discussing a row. When no row is eligible, the
+decision packet must say so explicitly and limit the next action to a
+rerun/new experiment, an explicit waiver decision or rejection/stop.
+
 ### S83 F0/A0 first measured pass
 
 The first complete S83 F0/A0 resource evidence is
@@ -564,6 +572,37 @@ open-major-fault, total rebuild and production peak-RSS gates. The complete
 unranked table is in
 [T183 HBK Zero-Copy Snapshot Evidence](../acceptance/hbk-zero-copy-snapshot-evidence.md).
 No S83 candidate is selected or promoted by this result.
+
+### S83 consolidated measured pass
+
+The derived L1/I1/D1/P1/R1 resource raw is
+`target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-derived-resource-0219685.jsonl`
+(180 successful records, SHA-256
+`fe9e800f32d129c3c82b7281a3f9be9bc5b607493ba692e53654a85e99d91351`).
+Together with the 72-record F0/A0 raw, the final unranked summary is
+`summary-S83-all-candidates-0219685.json` / `.md`.
+
+Every candidate has exact storage parity at its measured resource commit and
+exact semantic catalog/resolver parity at that commit. F0 and A0 were rerun
+at `a9a98a18ed2af21ba16573a00719c13edddac97b` and
+`36a41aa74a9c6898576706f34a9a403918d452e4`; the final summarizer rejects an
+ancestor-only proof. The summarizer also requires exact unique sample IDs,
+rejects duplicate/order-dependent parity proofs and retains every
+hypothesis-specific footprint field.
+
+The consolidated result has
+`eligibility_state = no-candidate-passes-all-frozen-gates`. A gate whose
+`MAD / median` exceeds five percent is `inconclusive-noisy`, not pass/fail,
+unless it is covered by the predeclared first-lookup absolute-budget or
+per-operation MAD-envelope exception. No waiver is recorded. The result packet
+therefore supports only a rerun/new hypothesis, explicit named-gate waiver
+with durable owner/date/rationale, or rejection/stop; it does not make an
+ineligible row eligible by presentation.
+
+The complete startup/lookup, 25-operation, memory, sharing, production,
+allocation, footprint, behavioral and failed/inconclusive gate tables are in
+[T183 HBK Zero-Copy Snapshot Evidence](../acceptance/hbk-zero-copy-snapshot-evidence.md).
+No row is ranked, recommended, selected, merged or made canonical.
 
 ## Mandatory Behavioral Oracle
 
