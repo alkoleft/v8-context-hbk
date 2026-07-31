@@ -310,6 +310,17 @@ requires a new benchmark-base commit and rerunning all affected H0, C0 and
 candidate rows. Candidate performance evidence is ignored until the
 independent versioned parity oracle passes.
 
+Candidate commands that already emit the frozen measurement envelope use the
+immutable harness `run-command` and `record-parity` entry points directly.
+Candidate allocation and four-reader collection use a thin outer
+orchestration driver because the frozen baseline helpers hard-code the H0/C0
+binaries. That driver may substitute only the candidate executable and
+artifact path, must emit the same raw JSON identities, machine-state and
+resource fields, and must record both the frozen harness commit and exact
+candidate commit. The driver is candidate-side orchestration rather than a
+change to the timing/parity harness; it must not transform measured values or
+change cache-stance rules.
+
 The following lifecycle scenarios are distinct measurements:
 
 - production/rebuild time, peak RSS and allocations;

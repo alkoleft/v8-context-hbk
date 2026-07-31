@@ -217,6 +217,17 @@ status is recorded and invalidates the comparison group, which is rerun in
 full. `MAD / median > 5%` marks a metric noisy and prevents a gate conclusion
 until the noise is explained or the group is rerun.
 
+The frozen harness `run-command` and `record-parity` entry points accept
+candidate runtime, production and oracle executables directly. Its allocation
+and four-reader helpers remain H0/C0-specific. S83 candidate rows for those two
+scenarios therefore use a thin outer driver that substitutes only the
+candidate executable/artifact, emits the same raw identity, machine-state and
+resource envelope, and records frozen harness SHA
+`28f29b5a262db362b6b58c8109e6df6c2afbbc44` plus the exact candidate SHA.
+This driver is orchestration outside the frozen timing/parity harness; it does
+not transform measurements, alter cache stance or justify changing H0/C0
+baselines.
+
 Task-local numeric material-benefit and non-regression gates are derived from
 the H0/C0 noise runs and written into this document before any candidate code
 is implemented. Candidate results may not be inspected to choose or adjust
