@@ -580,7 +580,9 @@ projection shapes. The refactor then replaces every direct snapshot access
 used by the BSL/SDBL catalogs, `PlatformSnapshotSource` and
 `QueryTableSnapshotSource`, not merely their constructors. Existing public
 owned constructors/types and their current call sites must compile unchanged;
-candidate constructors remain experiment-only.
+candidate constructors remain experiment-only. A dedicated public API compile
+smoke constructs `PlatformSnapshotSource` through `new` and `with_source_id`
+and `QueryTableSnapshotSource` through `new` and `with_source_ids`.
 
 The timed path has no `dyn`/boxed iterator, no collected ID vector used only
 to cross the port, and no storage-boundary clone of strings or nested children

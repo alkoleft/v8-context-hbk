@@ -105,8 +105,11 @@ durable task ledger authorizes the bounded prototype work.
   the exact BSL/SDBL catalog methods plus every direct `catalog.snapshot()` /
   `HbkFactSnapshot` access in `PlatformSnapshotSource` and
   `QueryTableSnapshotSource`; preserve existing public owned constructors and
-  source compatibility. Add the versioned full transcript and allocation
-  guards defined by the implementation specification.
+  source compatibility. Add a public API compile smoke for
+  `PlatformSnapshotSource::{new,with_source_id}` and
+  `QueryTableSnapshotSource::{new,with_source_ids}`. Add the versioned full
+  transcript and allocation guards defined by the implementation
+  specification.
 - [ ] 1.18 Implement S83-L1 page layout, S83-I1 mapped indexes, S83-D1 checked
   dynamic reading, S83-P1 direct formation and S83-R1 fixed-head/range-linked
   borrowed fact records in separate F0-derived branches/worktrees. Change only
