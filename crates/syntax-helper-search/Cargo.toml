@@ -27,5 +27,9 @@ name = "measure_hbk_s83_av1"
 required-features = ["snapshot-experiment"]
 
 [[example]]
+name = "measure_hbk_s83_av2"
+required-features = ["snapshot-experiment"]
+
+[[example]]
 name = "dump_hbk_snapshot_oracle"
 required-features = ["snapshot-experiment"]
