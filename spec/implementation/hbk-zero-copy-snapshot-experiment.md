@@ -228,7 +228,9 @@ resource envelope, and records frozen harness SHA
 `28f29b5a262db362b6b58c8109e6df6c2afbbc44` plus the exact candidate SHA.
 This driver is orchestration outside the frozen timing/parity harness; it does
 not transform measurements, alter cache stance or justify changing H0/C0
-baselines.
+baselines. Its allocation preflight accepts the instrumentation flag from the
+candidate-native `allocations.enabled` or `allocation_phases.enabled` report
+object and stores the original measurement object unchanged.
 
 Task-local numeric material-benefit and non-regression gates are derived from
 the H0/C0 noise runs and written into this document before any candidate code

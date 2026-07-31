@@ -292,6 +292,14 @@ def substitute_sample(command: Sequence[str], sample: int) -> list[str]:
     return [part.replace("{sample}", str(sample)) for part in command]
 
 
+def allocation_instrumentation_enabled(measurement: dict[str, Any]) -> bool:
+    for field in ("allocations", "allocation_phases"):
+        evidence = measurement.get(field)
+        if isinstance(evidence, dict) and evidence.get("enabled") is True:
+            return True
+    return False
+
+
 def allocation(args: argparse.Namespace, evidence: Evidence) -> None:
     if not args.command:
         raise RuntimeError("allocation requires a command after --")
@@ -348,7 +356,7 @@ def allocation(args: argparse.Namespace, evidence: Evidence) -> None:
             record.update({"status": "failed", "error": f"invalid measurement JSON: {error}"})
             evidence.append(record)
             raise
-        if measurement.get("allocations", {}).get("enabled") is not True:
+        if not allocation_instrumentation_enabled(measurement):
             record.update(
                 {
                     "status": "failed",
