@@ -310,12 +310,12 @@ def allocation(args: argparse.Namespace, evidence: Evidence) -> None:
                 "cache_stance": "warm",
                 "instrumentation": "counting-system-global-allocator",
                 "command": command,
+                "machine_state_before": machine_state(),
             }
         )
         try:
             for path in warm_paths:
                 warm_file(path)
-            record["machine_state_before"] = machine_state()
             completed = subprocess.run(command, text=True, capture_output=True, check=False)
         except (OSError, RuntimeError) as error:
             record.update(
@@ -562,7 +562,22 @@ def parity(args: argparse.Namespace, evidence: Evidence) -> None:
         evidence.append(record)
         raise
     output_dir = baseline_dir / f"{evidence.backend}.{evidence.candidate_commit[:7]}"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        record.update(
+            {
+                "status": "fail",
+                "command": None,
+                "machine_state_before": preflight_before,
+                "machine_state_after": machine_state(),
+                "error": f"failed to prepare parity output directory: {error}",
+                "concurrent_readers": 4,
+                "fallback_probe": "sources-hidden-with-bwrap-before-open",
+            }
+        )
+        evidence.append(record)
+        raise
     pairs = [
         (
             output_dir / f"reader-{index}.content-v1.jsonl",
