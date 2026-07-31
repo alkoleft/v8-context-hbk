@@ -715,6 +715,7 @@ impl PreparedManifest {
             });
             let members = handle.members_of_type(owner);
             let mut owner_members = Vec::with_capacity(members.len());
+            let mut owner_member_kinds = Vec::with_capacity(members.len());
             for member_id in members.iter().copied() {
                 let locator = *member_locator_by_id.entry(member_id).or_insert_with(|| {
                     let locator = Av2MemberLocator(member_ids.len() as u32);
@@ -722,11 +723,13 @@ impl PreparedManifest {
                     locator
                 });
                 owner_members.push(locator);
+                owner_member_kinds.push(snapshot.type_member(member_id).kind);
             }
             owners.push(PreparedOwner {
                 logical_id: ty.logical_id.clone(),
                 owner,
                 members: owner_members,
+                member_kinds: owner_member_kinds,
             });
             type_payloads.push(PreparedTypePayload { owner });
         }
@@ -1137,14 +1140,24 @@ fn resolve_operation_anchor(
             Ok(OperationAnchor::MethodPayload { member, callables })
         }
         Operation::MembersByOwnerAvailabilityBorrowed
-        | Operation::MembersByOwnerAvailabilityCollect => Ok(OperationAnchor::MemberOwner {
-            owner: resolve_type_by_logical_id(
+        | Operation::MembersByOwnerAvailabilityCollect => {
+            let owner = resolve_type_by_logical_id(
                 snapshot,
                 handle,
                 &manifest.anchors.enumeration_owner,
                 "",
-            )?,
-        }),
+            )?;
+            let member_kinds = handle
+                .members_of_type(owner)
+                .iter()
+                .copied()
+                .map(|member| snapshot.type_member(member).kind)
+                .collect();
+            Ok(OperationAnchor::MemberOwner {
+                owner,
+                member_kinds,
+            })
+        }
         Operation::FilteredMembersPayload => {
             let context =
                 context.ok_or_else(|| io::Error::other("missing availability context"))?;
@@ -1331,7 +1344,10 @@ fn run_first_operation(
             Operation::MembersByOwnerAvailabilityBorrowed
             | Operation::MembersByOwnerAvailabilityCollect
             | Operation::FilteredMembersPayload => match anchor {
-                OperationAnchor::MemberOwner { owner } => {
+                OperationAnchor::MemberOwner {
+                    owner,
+                    member_kinds,
+                } => {
                     let context = context.ok_or_else(|| {
                         io::Error::other("missing first-operation availability context")
                     })?;
@@ -1344,7 +1360,17 @@ fn run_first_operation(
                     }
                     for (index, member) in native_members.iter().copied().enumerate() {
                         sample.scanned_count += 1;
-                        if record_filtered_member(&mut sample, snapshot, handle, member, context) {
+                        let kind = member_kinds.get(index).copied().ok_or_else(|| {
+                            io::Error::other("first-operation member kind range is too short")
+                        })?;
+                        if record_filtered_member(
+                            &mut sample,
+                            snapshot,
+                            handle,
+                            member,
+                            kind,
+                            context,
+                        ) {
                             sample.checksum = hash_locator(sample.checksum, index as u32);
                             if let Some(collected) = &mut collected {
                                 collected.push(Av2MemberLocator(index as u32));
@@ -1559,7 +1585,11 @@ fn run_operation(
                     let locator = owner.members.get(index).ok_or_else(|| {
                         io::Error::other("native member range longer than prepared owner range")
                     })?;
-                    if record_filtered_member(&mut sample, snapshot, handle, member, context) {
+                    let kind = owner.member_kinds.get(index).copied().ok_or_else(|| {
+                        io::Error::other("prepared member kind range is shorter than native range")
+                    })?;
+                    if record_filtered_member(&mut sample, snapshot, handle, member, kind, context)
+                    {
                         sample.checksum = hash_locator(sample.checksum, locator.0);
                     }
                 }
@@ -1583,7 +1613,11 @@ fn run_operation(
                     let locator = owner.members.get(index).ok_or_else(|| {
                         io::Error::other("native member range longer than prepared owner range")
                     })?;
-                    if record_filtered_member(&mut sample, snapshot, handle, member, context) {
+                    let kind = owner.member_kinds.get(index).copied().ok_or_else(|| {
+                        io::Error::other("prepared member kind range is shorter than native range")
+                    })?;
+                    if record_filtered_member(&mut sample, snapshot, handle, member, kind, context)
+                    {
                         sample.checksum = hash_locator(sample.checksum, locator.0);
                         collected.push(*locator);
                     }
@@ -1677,6 +1711,7 @@ struct PreparedOwner {
     logical_id: String,
     owner: syntax_helper_search::HbkPlatformTypeId,
     members: Vec<Av2MemberLocator>,
+    member_kinds: Vec<HbkTypeMemberKind>,
 }
 
 struct PreparedTypeQuery {
@@ -1735,6 +1770,7 @@ enum OperationAnchor {
     },
     MemberOwner {
         owner: syntax_helper_search::HbkPlatformTypeId,
+        member_kinds: Vec<HbkTypeMemberKind>,
     },
     TypePayload {
         type_id: syntax_helper_search::HbkPlatformTypeId,
@@ -1758,7 +1794,9 @@ impl OperationAnchor {
             OperationAnchor::TypeByName { query_name } => fnv1a(seed, query_name.as_bytes()),
             OperationAnchor::PropertyLookup { name, .. }
             | OperationAnchor::MethodLikeLookup { name, .. } => fnv1a(seed, name.as_bytes()),
-            OperationAnchor::MemberOwner { .. } => fnv1a(seed, b"member-owner"),
+            OperationAnchor::MemberOwner { member_kinds, .. } => {
+                fnv1a(seed, &(member_kinds.len() as u64).to_le_bytes())
+            }
             OperationAnchor::TypePayload { .. } => fnv1a(seed, b"type-payload"),
             OperationAnchor::MethodPayload { callables, .. } => {
                 fnv1a(seed, &(callables.len() as u64).to_le_bytes())
@@ -1861,6 +1899,7 @@ fn record_filtered_member(
     snapshot: &HbkFactSnapshot,
     handle: HbkFactReadHandle<'_>,
     member_id: HbkTypeMemberId,
+    kind: HbkTypeMemberKind,
     context: AvailabilityContext,
 ) -> bool {
     let availability = handle.availability_contexts(HbkFactRef::TypeMember(member_id));
@@ -1873,16 +1912,19 @@ fn record_filtered_member(
             return false;
         }
     }
-    let member = snapshot.type_member(member_id);
     sample.returned_count += 1;
-    match member.kind {
+    count_member_kind(sample, kind);
+    sample.objects += 1;
+    true
+}
+
+fn count_member_kind(sample: &mut OperationSample, kind: HbkTypeMemberKind) {
+    match kind {
         HbkTypeMemberKind::Property => sample.property_count += 1,
         HbkTypeMemberKind::Method => sample.method_count += 1,
         HbkTypeMemberKind::Event => sample.event_count += 1,
         HbkTypeMemberKind::EnumValue => sample.enum_value_count += 1,
     }
-    sample.objects += 1;
-    true
 }
 
 fn operation_data(operation: Operation, sample: OperationSample) -> OperationData {
