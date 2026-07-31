@@ -201,12 +201,16 @@ the initial format comparison left coupled:
 | `S83-I1` | mapped open-address reverse/name indexes | F0 records, section order, validation timing and writer |
 | `S83-D1` | eager header/directory plus lazy safe section validation/access | F0 records, section order and index algorithms |
 | `S83-P1` | two-pass/direct formation without a monolithic output buffer | F0 runtime layout, reader and lookup algorithms |
+| `S83-R1` | fixed fact heads plus checked ranges into mapped signature/parameter/type-reference and other nested arenas | F0 indexes, section-order policy, eager validation and writer semantics |
 
-F0 typed-flat and A0 checked archive remain format/lifecycle references. A0
-does not satisfy the requirement to test the four organizational dimensions.
-Each derived hypothesis has its own branch/worktree and one primary variable.
-Implementation may run in parallel, while measurements on the shared host run
-serially with recorded load/memory state and cache stance.
+F0 is the sectioned mapping/lifecycle reference: its dictionary and indexes
+are mapped, while variable fact records are decoded on access and therefore
+are not described as a fully borrowed fact representation. A0 is the checked
+archive format/lifecycle reference. Neither substitutes for the five
+organization hypotheses. Each derived hypothesis has its own branch/worktree
+and one primary variable. Implementation may run in parallel, while
+measurements on the shared host run serially with recorded load/memory state
+and cache stance.
 
 ### 5. Treat file immutability and change locking as safety invariants
 

@@ -133,17 +133,19 @@ S83 keeps format references separate from the organization hypotheses:
 | --- | --- | --- |
 | `S83-H0` | SQLite-to-owned baseline | Establishes S83 semantic, startup, lookup and resource denominators. |
 | `S83-C0` | Current-cache-to-owned control | Establishes the cost left after avoiding SQLite while retaining full deserialization. |
-| `S83-F0` | Corrected typed-flat format/lifecycle reference | A fully validated typed flat mapping can supply the common reference layout and complete mapped oracle without an owned runtime mirror. |
+| `S83-F0` | Corrected sectioned mapping/lifecycle reference: mapped dictionary and indexes, decoded-on-access variable fact records | A validated sectioned mapping can remove the complete owned runtime mirror and establish the common lifecycle/index reference; its per-record decoding cost and non-borrowed nested fact fields remain explicit evidence rather than being called fully zero-copy. |
 | `S83-A0` | Checked archive format/lifecycle reference | A checked archive provides a second format/safety reference; it is not a substitute for the organization hypotheses below. |
 | `S83-L1` | F0 with only hot/cold page-clustered section order changed | Co-locating the sections touched together by the frozen workload reduces first-touch faults/latency or resident pages without changing lookup algorithms. |
 | `S83-I1` | F0 with only mapped open-address reverse/name indexes changed | A stable checked hash/probe layout reduces limiting exact/reverse lookups enough to justify its artifact and validation overhead. |
 | `S83-D1` | F0 with only lazy safe per-section validation/access changed | Header/directory validation plus checked first-use section validation reduces ready time/page touches without returning corrupt data or shifting unacceptable cost into first lookup. |
 | `S83-P1` | F0 with only two-pass/direct formation changed | Writing the same runtime semantics without a monolithic output buffer reduces formation allocations/peak RSS or write amplification. |
+| `S83-R1` | F0 with only variable fact-record representation replaced by fixed heads plus checked ranges into mapped nested arenas | Borrowed fact, signature, parameter and type-reference projections remove decoded-on-access owned vectors and make the complete catalog/resolver path zero-copy without changing F0 lookup algorithms, section-order policy or publication semantics. |
 
 Every candidate has its own branch and worktree. `S83-L1`, `S83-I1`,
-`S83-D1` and `S83-P1` branch from the exact measured `S83-F0` commit.
-Implementation work may run in parallel. Performance commands are serialized
-by the coordinator; agents must not benchmark concurrently on the shared host.
+`S83-D1`, `S83-P1` and `S83-R1` branch from the exact measured `S83-F0`
+commit. Implementation work may run in parallel. Performance commands are
+serialized by the coordinator; agents must not benchmark concurrently on the
+shared host.
 
 S83 candidate timing is inadmissible until the candidate records the exact S83
 HBK/SQLite/harness/query-manifest/oracle identities and its complete mapped

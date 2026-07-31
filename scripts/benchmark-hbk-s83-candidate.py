@@ -38,8 +38,26 @@ PROVIDER_RELATIVE_PATH = Path(
 PROVIDER_SHA256 = (
     "55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab"
 )
+BASELINE_CONTENT_SHA256 = (
+    "5f66d20509877ac29a83ede2d5178368ed3fd78d7dab0ffbc12df506acc3b1fd"
+)
+BASELINE_LOOKUP_SHA256 = (
+    "9b17c7100cd368fe0880e679d66ab8eb7d8505ee617d9fc80b1a9a9d8aa5c5c8"
+)
+BASELINE_CONTENT_BYTES = 57_486_556
+BASELINE_LOOKUP_BYTES = 88_520_585
+BASELINE_CONTENT_RECORDS = 176_793
+BASELINE_LOOKUP_RECORDS = 276_415
 RAW_SCHEMA = "hbk-snapshot-benchmark-raw-v1"
 BACKEND_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+FROZEN_HARNESS_PATHS = (
+    "scripts/benchmark-hbk-snapshot-candidates.sh",
+    "scripts/summarize-hbk-snapshot-results.py",
+    "crates/syntax-helper-search/examples/measure_hbk_snapshot_scenario.rs",
+    "crates/syntax-helper-search/examples/dump_hbk_snapshot_oracle.rs",
+    "crates/syntax-helper-search/src/snapshot/experiment_allocator.rs",
+    "crates/syntax-helper-search/src/snapshot/experiment_oracle.rs",
+)
 
 
 def run_text(command: Sequence[str], cwd: Path | None = None) -> str:
@@ -66,17 +84,15 @@ def verify_harness_commit(repo: Path) -> None:
         "-1",
         "--format=%H",
         "--",
-        "scripts/benchmark-hbk-snapshot-candidates.sh",
-        "scripts/summarize-hbk-snapshot-results.py",
-        "crates/syntax-helper-search/examples/measure_hbk_snapshot_scenario.rs",
-        "crates/syntax-helper-search/examples/dump_hbk_snapshot_oracle.rs",
-        "crates/syntax-helper-search/src/snapshot/experiment_allocator.rs",
-        "crates/syntax-helper-search/src/snapshot/experiment_oracle.rs",
+        *FROZEN_HARNESS_PATHS,
     )
     if actual != HARNESS_COMMIT:
         raise RuntimeError(
             f"frozen harness mismatch: expected {HARNESS_COMMIT}, got {actual}"
         )
+    dirty = git_text(repo, "status", "--porcelain", "--", *FROZEN_HARNESS_PATHS)
+    if dirty:
+        raise RuntimeError(f"frozen harness files have uncommitted changes:\n{dirty}")
 
 
 def sha256(path: Path) -> str:
@@ -99,6 +115,40 @@ def verify_frozen_inputs(repo: Path) -> Path:
                 f"expected {expected}, got {actual}"
             )
     return provider
+
+
+def verify_no_candidate_provider(candidate_worktree: Path) -> None:
+    candidate_provider = candidate_worktree / PROVIDER_RELATIVE_PATH
+    if candidate_provider.exists():
+        raise RuntimeError(
+            "candidate worktree contains a fallback SQLite provider path: "
+            f"{candidate_provider}"
+        )
+
+
+def verify_baseline_file(
+    path: Path, expected_sha: str, expected_bytes: int, expected_records: int
+) -> None:
+    if not path.is_file():
+        raise RuntimeError(f"frozen S83 parity file is missing: {path}")
+    actual_bytes = path.stat().st_size
+    if actual_bytes != expected_bytes:
+        raise RuntimeError(
+            f"frozen S83 parity byte-size mismatch for {path}: "
+            f"expected {expected_bytes}, got {actual_bytes}"
+        )
+    actual_records = count_lines(path)
+    if actual_records != expected_records:
+        raise RuntimeError(
+            f"frozen S83 parity record-count mismatch for {path}: "
+            f"expected {expected_records}, got {actual_records}"
+        )
+    actual_sha = sha256(path)
+    if actual_sha != expected_sha:
+        raise RuntimeError(
+            f"frozen S83 parity checksum mismatch for {path}: "
+            f"expected {expected_sha}, got {actual_sha}"
+        )
 
 
 def host_environment() -> dict[str, str]:
@@ -132,10 +182,10 @@ def machine_state() -> dict[str, Any]:
     return {
         "captured_unix_ns": str(time.time_ns()),
         "logical_cpus": os.cpu_count(),
-        "load": {
-            "one": float(load_one),
-            "five": float(load_five),
-            "fifteen": float(load_fifteen),
+        "load_average": {
+            "one_minute": float(load_one),
+            "five_minutes": float(load_five),
+            "fifteen_minutes": float(load_fifteen),
         },
         "scheduler": {
             "runnable_tasks": int(runnable),
@@ -251,11 +301,34 @@ def allocation(args: argparse.Namespace, evidence: Evidence) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     for sample in range(1, args.runs + 1):
         command = substitute_sample(args.command, sample)
-        warm_paths = [Path(value.replace("{sample}", str(sample))) for value in args.warm_path]
-        for path in warm_paths:
-            warm_file(path)
-        before = machine_state()
-        completed = subprocess.run(command, text=True, capture_output=True, check=False)
+        warm_paths = [
+            Path(value.replace("{sample}", str(sample))) for value in args.warm_path
+        ]
+        record = evidence.base("allocation-profile", sample)
+        record.update(
+            {
+                "cache_stance": "warm",
+                "instrumentation": "counting-system-global-allocator",
+                "command": command,
+            }
+        )
+        try:
+            for path in warm_paths:
+                warm_file(path)
+            record["machine_state_before"] = machine_state()
+            completed = subprocess.run(command, text=True, capture_output=True, check=False)
+        except (OSError, RuntimeError) as error:
+            record.update(
+                {
+                    "status": "failed",
+                    "error": f"allocation orchestration failed: {error}",
+                    "machine_state_after": machine_state(),
+                }
+            )
+            evidence.append(record)
+            raise RuntimeError(
+                f"allocation orchestration failed for sample {sample}: {error}"
+            ) from error
         after = machine_state()
         (run_dir / f"allocation.{evidence.backend}.{sample}.json").write_text(
             completed.stdout, encoding="utf-8"
@@ -263,16 +336,7 @@ def allocation(args: argparse.Namespace, evidence: Evidence) -> None:
         (log_dir / f"allocation.{evidence.backend}.{sample}.stderr.log").write_text(
             completed.stderr, encoding="utf-8"
         )
-        record = evidence.base("allocation-profile", sample)
-        record.update(
-            {
-                "cache_stance": "warm",
-                "instrumentation": "counting-system-global-allocator",
-                "command": command,
-                "machine_state_before": before,
-                "machine_state_after": after,
-            }
-        )
+        record["machine_state_after"] = after
         if completed.returncode:
             record.update({"status": "failed", "exit_status": completed.returncode})
             evidence.append(record)
@@ -437,6 +501,8 @@ def isolated_oracle_command(
         "/dev",
         "--proc",
         "/proc",
+        "--chdir",
+        "/",
         "--bind",
         str(content.parent),
         str(content.parent),
@@ -462,11 +528,39 @@ def count_lines(path: Path) -> int:
 def parity(args: argparse.Namespace, evidence: Evidence) -> None:
     oracle = args.oracle_bin.resolve()
     artifact = args.artifact.resolve()
+    record = evidence.base("full-snapshot-parity")
+    preflight_before = machine_state()
     baseline_dir = evidence.results_root / "parity"
     baseline_content = baseline_dir / "sql-owned.content-v1.jsonl"
     baseline_lookups = baseline_dir / "sql-owned.lookups-v1.jsonl"
-    if not baseline_content.is_file() or not baseline_lookups.is_file():
-        raise RuntimeError("frozen S83 SQL parity files are missing")
+    try:
+        verify_no_candidate_provider(evidence.candidate_worktree)
+        verify_baseline_file(
+            baseline_content,
+            BASELINE_CONTENT_SHA256,
+            BASELINE_CONTENT_BYTES,
+            BASELINE_CONTENT_RECORDS,
+        )
+        verify_baseline_file(
+            baseline_lookups,
+            BASELINE_LOOKUP_SHA256,
+            BASELINE_LOOKUP_BYTES,
+            BASELINE_LOOKUP_RECORDS,
+        )
+    except (OSError, RuntimeError) as error:
+        record.update(
+            {
+                "status": "fail",
+                "command": None,
+                "machine_state_before": preflight_before,
+                "machine_state_after": machine_state(),
+                "error": f"parity preflight failed: {error}",
+                "concurrent_readers": 4,
+                "fallback_probe": "sources-hidden-with-bwrap-before-open",
+            }
+        )
+        evidence.append(record)
+        raise
     output_dir = baseline_dir / f"{evidence.backend}.{evidence.candidate_commit[:7]}"
     output_dir.mkdir(parents=True, exist_ok=True)
     pairs = [
@@ -477,20 +571,58 @@ def parity(args: argparse.Namespace, evidence: Evidence) -> None:
         for index in range(5)
     ]
     before = machine_state()
-    commands = [
-        isolated_oracle_command(
-            oracle, artifact, content, lookups, evidence.provider
+    commands: list[list[str]] = []
+    processes: list[subprocess.Popen[str]] = []
+    try:
+        commands = [
+            isolated_oracle_command(
+                oracle, artifact, content, lookups, evidence.provider
+            )
+            for content, lookups in pairs
+        ]
+        first = subprocess.run(
+            commands[0], text=True, capture_output=True, check=False
         )
-        for content, lookups in pairs
-    ]
-    first = subprocess.run(commands[0], text=True, capture_output=True, check=False)
-    (output_dir / "reader-0.stdout.log").write_text(first.stdout)
-    (output_dir / "reader-0.stderr.log").write_text(first.stderr)
-    processes = [
-        subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        for command in commands[1:]
-    ]
-    concurrent = [process.communicate() + (process.returncode,) for process in processes]
+        (output_dir / "reader-0.stdout.log").write_text(first.stdout)
+        (output_dir / "reader-0.stderr.log").write_text(first.stderr)
+        processes = [
+            subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for command in commands[1:]
+        ]
+        concurrent = [
+            process.communicate() + (process.returncode,) for process in processes
+        ]
+    except (OSError, RuntimeError) as error:
+        for process in processes:
+            if process.poll() is None:
+                process.terminate()
+        for process in processes:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        record.update(
+            {
+                "status": "fail",
+                "command": commands[0] if commands else None,
+                "machine_state_before": before,
+                "machine_state_after": machine_state(),
+                "error": f"failed to launch parity command: {error}",
+                "concurrent_readers": 4,
+                "fallback_probe": "sources-hidden-with-bwrap-before-open",
+            }
+        )
+        evidence.append(record)
+        raise
+    for index, (stdout, stderr, _status) in enumerate(concurrent, start=1):
+        (output_dir / f"reader-{index}.stdout.log").write_text(stdout)
+        (output_dir / f"reader-{index}.stderr.log").write_text(stderr)
     after = machine_state()
     statuses = [first.returncode, *(row[2] for row in concurrent)]
     files_match = all(
@@ -499,7 +631,6 @@ def parity(args: argparse.Namespace, evidence: Evidence) -> None:
         for content, lookups in pairs
         if content.is_file() and lookups.is_file()
     ) and all(content.is_file() and lookups.is_file() for content, lookups in pairs)
-    record = evidence.base("full-snapshot-parity")
     record.update(
         {
             "status": "pass" if all(status == 0 for status in statuses) and files_match else "fail",
