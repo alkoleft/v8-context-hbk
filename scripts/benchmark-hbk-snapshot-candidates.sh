@@ -264,6 +264,20 @@ machine_state_json() {
         }'
 }
 
+host_environment_json() {
+    jq -cn \
+        --arg kernel "$(uname -sr)" \
+        --arg architecture "$(uname -m)" \
+        --arg rustc "$(rustc --version)" \
+        --arg cargo "$(cargo --version)" \
+        '{
+            kernel: $kernel,
+            architecture: $architecture,
+            rustc: $rustc,
+            cargo: $cargo
+        }'
+}
+
 harness_commit() {
     if [[ -n "${HBK_BENCH_HARNESS_COMMIT:-}" ]]; then
         printf '%s\n' "$HBK_BENCH_HARNESS_COMMIT"
@@ -518,6 +532,7 @@ parity_baseline() {
     local harness_sha
     local candidate_sha
     local candidate_branch_name
+    local host_environment
     local process_index
     local concurrent_content
     local concurrent_lookups
@@ -557,12 +572,19 @@ parity_baseline() {
     harness_sha="$(harness_commit)"
     candidate_sha="$(candidate_commit)"
     candidate_branch_name="$(candidate_branch)"
+    host_environment="$(host_environment_json)"
     jq -cn \
         --arg schema "hbk-snapshot-benchmark-raw-v1" \
         --arg dataset "$DATASET_ID" \
+        --arg platform_version "$PLATFORM_VERSION" \
+        --argjson provider_schema_version "$PROVIDER_SCHEMA_VERSION" \
+        --argjson extraction_schema_version "$EXTRACTION_SCHEMA_VERSION" \
+        --arg sqlite_sha256 "$SQLITE_SHA256" \
+        --arg hbk_sha256 "$HBK_SHA256" \
         --arg harness_commit "$harness_sha" \
         --arg candidate_commit "$candidate_sha" \
         --arg candidate_branch "$candidate_branch_name" \
+        --argjson host "$host_environment" \
         --arg content_sha256 "$content_sha" \
         --arg lookup_sha256 "$lookup_sha" \
         --argjson content_bytes "$(stat -c %s -- "$sql_content")" \
@@ -573,6 +595,13 @@ parity_baseline() {
             schema: $schema,
             backend: "H0-vs-C0",
             dataset: $dataset,
+            platform_version: $platform_version,
+            provider_schema_version: $provider_schema_version,
+            extraction_schema_version: $extraction_schema_version,
+            sqlite_sha256: $sqlite_sha256,
+            hbk_sha256: $hbk_sha256,
+            build_profile: "release",
+            host: $host,
             scenario: "full-snapshot-parity",
             status: "pass",
             harness_commit: $harness_commit,
@@ -599,6 +628,7 @@ record_parity() {
     local harness_sha
     local candidate_sha
     local candidate_branch_name
+    local host_environment
 
     [[ -f "$baseline_content" && -f "$baseline_lookups" ]] || parity_baseline >/dev/null
     jq -e -c . <"$content" >/dev/null
@@ -610,20 +640,34 @@ record_parity() {
     harness_sha="$(harness_commit)"
     candidate_sha="$(candidate_commit)"
     candidate_branch_name="$(candidate_branch)"
+    host_environment="$(host_environment_json)"
     jq -cn \
         --arg schema "hbk-snapshot-benchmark-raw-v1" \
         --arg backend "$backend" \
         --arg dataset "$DATASET_ID" \
+        --arg platform_version "$PLATFORM_VERSION" \
+        --argjson provider_schema_version "$PROVIDER_SCHEMA_VERSION" \
+        --argjson extraction_schema_version "$EXTRACTION_SCHEMA_VERSION" \
+        --arg sqlite_sha256 "$SQLITE_SHA256" \
+        --arg hbk_sha256 "$HBK_SHA256" \
         --arg status "$status" \
         --arg harness_commit "$harness_sha" \
         --arg candidate_commit "$candidate_sha" \
         --arg candidate_branch "$candidate_branch_name" \
+        --argjson host "$host_environment" \
         --arg content_sha256 "$(sha256sum -- "$content" | awk '{print $1}')" \
         --arg lookup_sha256 "$(sha256sum -- "$lookups" | awk '{print $1}')" \
         '{
             schema: $schema,
             backend: $backend,
             dataset: $dataset,
+            platform_version: $platform_version,
+            provider_schema_version: $provider_schema_version,
+            extraction_schema_version: $extraction_schema_version,
+            sqlite_sha256: $sqlite_sha256,
+            hbk_sha256: $hbk_sha256,
+            build_profile: "release",
+            host: $host,
             scenario: "full-snapshot-parity",
             status: $status,
             harness_commit: $harness_commit,
@@ -650,6 +694,7 @@ allocation_baseline() {
     local machine_state_before
     local machine_state_after
     local command_status
+    local host_environment
 
     verify_inputs
     [[ -x "$ALLOCATION_EXAMPLE_BIN" ]] || build_allocation_harness
@@ -658,6 +703,7 @@ allocation_baseline() {
     harness_sha="$(harness_commit)"
     candidate_sha="$(candidate_commit)"
     candidate_branch_name="$(candidate_branch)"
+    host_environment="$(host_environment_json)"
 
     for ((sample = 1; sample <= runs; sample++)); do
         stdout_path="${RUN_DIR}/allocation.${backend}.${sample}.json"
@@ -708,9 +754,15 @@ allocation_baseline() {
                 --arg schema "hbk-snapshot-benchmark-raw-v1" \
                 --arg backend "$backend" \
                 --arg dataset "$DATASET_ID" \
+                --arg platform_version "$PLATFORM_VERSION" \
+                --argjson provider_schema_version "$PROVIDER_SCHEMA_VERSION" \
+                --argjson extraction_schema_version "$EXTRACTION_SCHEMA_VERSION" \
+                --arg sqlite_sha256 "$SQLITE_SHA256" \
+                --arg hbk_sha256 "$HBK_SHA256" \
                 --arg harness_commit "$harness_sha" \
                 --arg candidate_commit "$candidate_sha" \
                 --arg candidate_branch "$candidate_branch_name" \
+                --argjson host "$host_environment" \
                 --argjson sample "$sample" \
                 --argjson machine_state_before "$machine_state_before" \
                 --argjson machine_state_after "$machine_state_after" \
@@ -719,6 +771,13 @@ allocation_baseline() {
                     schema: $schema,
                     backend: $backend,
                     dataset: $dataset,
+                    platform_version: $platform_version,
+                    provider_schema_version: $provider_schema_version,
+                    extraction_schema_version: $extraction_schema_version,
+                    sqlite_sha256: $sqlite_sha256,
+                    hbk_sha256: $hbk_sha256,
+                    build_profile: "release",
+                    host: $host,
                     cache_stance: "warm",
                     scenario: "allocation-profile",
                     instrumentation: "counting-system-global-allocator",
@@ -739,9 +798,15 @@ allocation_baseline() {
             --arg schema "hbk-snapshot-benchmark-raw-v1" \
             --arg backend "$backend" \
             --arg dataset "$DATASET_ID" \
+            --arg platform_version "$PLATFORM_VERSION" \
+            --argjson provider_schema_version "$PROVIDER_SCHEMA_VERSION" \
+            --argjson extraction_schema_version "$EXTRACTION_SCHEMA_VERSION" \
+            --arg sqlite_sha256 "$SQLITE_SHA256" \
+            --arg hbk_sha256 "$HBK_SHA256" \
             --arg harness_commit "$harness_sha" \
             --arg candidate_commit "$candidate_sha" \
             --arg candidate_branch "$candidate_branch_name" \
+            --argjson host "$host_environment" \
             --argjson sample "$sample" \
             --argjson machine_state_before "$machine_state_before" \
             --argjson machine_state_after "$machine_state_after" \
@@ -750,6 +815,13 @@ allocation_baseline() {
                 schema: $schema,
                 backend: $backend,
                 dataset: $dataset,
+                platform_version: $platform_version,
+                provider_schema_version: $provider_schema_version,
+                extraction_schema_version: $extraction_schema_version,
+                sqlite_sha256: $sqlite_sha256,
+                hbk_sha256: $hbk_sha256,
+                build_profile: "release",
+                host: $host,
                 cache_stance: "warm",
                 scenario: "allocation-profile",
                 instrumentation: "counting-system-global-allocator",
@@ -873,6 +945,7 @@ multi_reader_baseline_once() {
     local machine_state_before
     local machine_state_at_hold
     local machine_state_after
+    local host_environment
     local -a pids=()
     local -a ready_files=()
     local -a stdout_files=()
@@ -953,6 +1026,7 @@ multi_reader_baseline_once() {
     harness_sha="$(harness_commit)"
     candidate_sha="$(candidate_commit)"
     candidate_branch_name="$(candidate_branch)"
+    host_environment="$(host_environment_json)"
 
     set +e
     for pid in "${pids[@]}"; do
@@ -980,9 +1054,15 @@ multi_reader_baseline_once() {
             --arg schema "hbk-snapshot-benchmark-raw-v1" \
             --arg backend "$backend" \
             --arg dataset "$DATASET_ID" \
+            --arg platform_version "$PLATFORM_VERSION" \
+            --argjson provider_schema_version "$PROVIDER_SCHEMA_VERSION" \
+            --argjson extraction_schema_version "$EXTRACTION_SCHEMA_VERSION" \
+            --arg sqlite_sha256 "$SQLITE_SHA256" \
+            --arg hbk_sha256 "$HBK_SHA256" \
             --arg harness_commit "$harness_sha" \
             --arg candidate_commit "$candidate_sha" \
             --arg candidate_branch "$candidate_branch_name" \
+            --argjson host "$host_environment" \
             --argjson sample "$sample" \
             --argjson machine_state_before "$machine_state_before" \
             --argjson machine_state_at_hold "$machine_state_at_hold" \
@@ -992,6 +1072,13 @@ multi_reader_baseline_once() {
                 schema: $schema,
                 backend: $backend,
                 dataset: $dataset,
+                platform_version: $platform_version,
+                provider_schema_version: $provider_schema_version,
+                extraction_schema_version: $extraction_schema_version,
+                sqlite_sha256: $sqlite_sha256,
+                hbk_sha256: $hbk_sha256,
+                build_profile: "release",
+                host: $host,
                 cache_stance: "warm",
                 scenario: "aggregate-four-reader-pss",
                 sample: $sample,
@@ -1016,9 +1103,15 @@ multi_reader_baseline_once() {
         --arg schema "hbk-snapshot-benchmark-raw-v1" \
         --arg backend "$backend" \
         --arg dataset "$DATASET_ID" \
+        --arg platform_version "$PLATFORM_VERSION" \
+        --argjson provider_schema_version "$PROVIDER_SCHEMA_VERSION" \
+        --argjson extraction_schema_version "$EXTRACTION_SCHEMA_VERSION" \
+        --arg sqlite_sha256 "$SQLITE_SHA256" \
+        --arg hbk_sha256 "$HBK_SHA256" \
         --arg harness_commit "$harness_sha" \
         --arg candidate_commit "$candidate_sha" \
         --arg candidate_branch "$candidate_branch_name" \
+        --argjson host "$host_environment" \
         --argjson sample "$sample" \
         --argjson machine_state_before "$machine_state_before" \
         --argjson machine_state_at_hold "$machine_state_at_hold" \
@@ -1034,6 +1127,13 @@ multi_reader_baseline_once() {
             schema: $schema,
             backend: $backend,
             dataset: $dataset,
+            platform_version: $platform_version,
+            provider_schema_version: $provider_schema_version,
+            extraction_schema_version: $extraction_schema_version,
+            sqlite_sha256: $sqlite_sha256,
+            hbk_sha256: $hbk_sha256,
+            build_profile: "release",
+            host: $host,
             cache_stance: "warm",
             scenario: "aggregate-four-reader-pss",
             sample: $sample,
