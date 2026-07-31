@@ -426,34 +426,37 @@ IDs, offsets, archive internals or mutable cache hooks. Existing public
 owned-snapshot constructors and concrete public types remain source-compatible
 wrappers.
 
-The seam implementation must start from the current callers and prove a
-compile-time shape before it is used as a gate. Owned storage may return
-borrowed views over `HbkFactSnapshot`. F0 may return synchronous
-decoded-on-access view variants consumed immediately by the transcript or
-catalog engine, but those variants remain classified as owned decoded data and
-cannot be reported as borrowed zero-copy facts. R1 is the hypothesis that
-replaces those variants with fixed-head/range-linked borrowed projections.
+The seam implementation starts from the current callers and proves its shape
+before any broad refactor. Its associated record projection may be
+`&HbkPlatformType`-shaped owned-snapshot data, an F0 decoded value returned by
+value, an A0 archived view or an R1 fixed-head/range-linked borrowed view. The
+generic engine consumes the projection synchronously; it never returns a
+reference to an F0 temporary. The refactor includes every direct
+`catalog.snapshot()` and concrete `HbkFactSnapshot` access in both
+snapshot-backed resolver adapters, not just the catalog constructors.
 
-The catalog/resolver transcript through this seam must be byte-stable and
-explicit. It covers at least:
+The exact byte-stable catalog/resolver transcript matrix is fixed in the
+implementation specification. It covers all public BSL/SDBL catalog methods
+and every `ContextSource` method on both snapshot adapters, including default
+unsupported methods, every query enum variant, all relation kinds,
+availability and exact diagnostics. Storage-level oracle parity remains a
+separate gate. F0/A0 measurements taken before both gates pass may be recorded
+only as structural storage evidence; they are inadmissible for the full
+behavioral-equivalence gate.
 
-- source identity, locale and string resolution;
-- BSL type lookup by point/name/template and generated self type;
-- members, callables, constructors, global methods/properties and module
-  events;
-- availability, available-since and supported relations;
-- SDBL table enumeration and lookup by name, syntax and identifier;
-- SDBL field and parameter enumeration and lookup;
-- `PlatformSnapshotSource` and `QueryTableSnapshotSource` statuses and
-  ordered payloads for hit, miss/not-found, ambiguity and unsupported outcomes.
+The timed storage/lookup path must not allocate a boxed/dynamic iterator,
+collect IDs merely to emulate an iterator/range across the seam, or clone
+strings/nested children merely to cross the seam for a borrowed-capable
+candidate. Owned public response vectors and sorting/dedup required by the
+existing resolver API remain allowed and measured. F0 decoded records and
+nested vectors remain explicit F0 allocations; the seam does not make them
+zero-copy. R1 is the hypothesis that removes them.
 
-Storage-level oracle parity remains a separate gate. F0/A0 measurements taken
-before this catalog/resolver seam passes may be recorded only as structural
-storage evidence; they are inadmissible for the full behavioral-equivalence
-gate. The timed lookup path must not allocate a boxed/dynamic iterator or
-collect IDs merely to cross the seam; owned public response `Vec`s are allowed
-only where the existing public API already requires owned results and must be
-covered by allocation counters.
+For the downstream unified semantic entity change, the only closed inputs at
+this stage are the provider-owned immutable HBK base dictionary and
+generation-local IDs. Its concrete source-record/read API remains an open
+downstream decision. This experiment does not silently promote its internal
+port to that public contract before the user selects an outcome.
 
 The exact documentation payload covered by the snapshot remains a discovery
 decision. Until that decision is accepted, “documentation parity” means only

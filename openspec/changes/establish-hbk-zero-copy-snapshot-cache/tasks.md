@@ -97,6 +97,16 @@ durable task ledger authorizes the bounded prototype work.
   access; do not call that fact path fully zero-copy. Require exact platform
   checks, immutable locked publication, rebuild-before-map, complete mapped
   canonical parity, section footprints and producer allocation evidence.
+- [ ] 1.17a Prototype the minimal `pub(crate)` statically dispatched
+  semantic-read seam before refactoring catalogs/adapters. Prove at compile
+  time that one associated record projection can represent the owned
+  reference, F0 owned-per-access, A0 archived-view and R1 borrowed-range
+  shapes without an escaping temporary or dispatch allocation. Then migrate
+  the exact BSL/SDBL catalog methods plus every direct `catalog.snapshot()` /
+  `HbkFactSnapshot` access in `PlatformSnapshotSource` and
+  `QueryTableSnapshotSource`; preserve existing public owned constructors and
+  source compatibility. Add the versioned full transcript and allocation
+  guards defined by the implementation specification.
 - [ ] 1.18 Implement S83-L1 page layout, S83-I1 mapped indexes, S83-D1 checked
   dynamic reading, S83-P1 direct formation and S83-R1 fixed-head/range-linked
   borrowed fact records in separate F0-derived branches/worktrees. Change only
@@ -175,10 +185,10 @@ durable task ledger authorizes the bounded prototype work.
   to the running probe and prove there is no hidden runtime fallback. Use a
   narrow internal semantic-read seam for only the methods those catalogs and
   adapters call; keep existing public owned-snapshot wrappers source-compatible;
-  prove the owned/F0/R1 view shape compiles without unsound lifetimes; and do
-  not add boxed/dynamic iterator or collect-before-map allocation to the timed
-  lookup path except where an existing public response already requires owned
-  `Vec` output.
+  replace every direct snapshot access in both adapters; prove the
+  owned/F0/A0/R1 projection shapes compile without unsound lifetimes; and use
+  allocation counters to reject boxed/dynamic iterators or ID collection used
+  only to cross the seam. Existing public response `Vec`s remain allowed.
 - 6.5 Re-run the frozen comparison protocol for production/rebuild,
   cold/warm startup, first lookup, batched warm lookup, page faults/bytes
   touched, allocation count/bytes, peak/steady RSS, PSS, aggregate

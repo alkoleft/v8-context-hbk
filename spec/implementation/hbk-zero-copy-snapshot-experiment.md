@@ -567,31 +567,58 @@ field. After a candidate opens, the parity probe makes SQLite and HBK
 unavailable to that running probe and repeats covered lookups to exclude a
 hidden fallback.
 
-The catalog/resolver transcript uses a narrow internal semantic-read seam for
-only the methods needed by `HbkBslContextCatalog`, `HbkSdblQueryCatalog`,
-`PlatformSnapshotSource` and `QueryTableSnapshotSource`. Existing public
-owned-snapshot constructors and concrete public types remain source-compatible
-wrappers. Candidate constructors stay experiment-only and cannot expose layout
-sections, archive offsets or mutable cache hooks as downstream API.
+The catalog/resolver transcript uses a minimal `pub(crate)` generic
+semantic-read engine with statically dispatched owned/F0/A0 adapters. Its
+associated record projection may be an owned-snapshot reference, an F0
+decoded record by value, an A0 archived view or an R1 borrowed
+fixed-head/range view. The engine consumes the projection immediately; no
+reference to an F0 temporary may escape. Candidate layout offsets are not part
+of the port.
 
-The seam must first prove a compile-time shape that can represent owned
-snapshot views, F0 decoded-on-access values and later R1 borrowed
-range-linked records without unsound lifetimes. F0 decoded record views remain
-classified as owned decoded values consumed synchronously by the transcript or
-catalog engine; only R1 claims borrowed variable fact records. The timed
-lookup path does not allocate a boxed/dynamic iterator or collect IDs merely
-to cross the seam. Owned public response vectors remain allowed where the
-existing public API already requires them and are covered by allocation
-counters.
+Before the catalog refactor, a compile-only prototype must express all four
+projection shapes. The refactor then replaces every direct snapshot access
+used by the BSL/SDBL catalogs, `PlatformSnapshotSource` and
+`QueryTableSnapshotSource`, not merely their constructors. Existing public
+owned constructors/types and their current call sites must compile unchanged;
+candidate constructors remain experiment-only.
 
-The transcript schema explicitly records source identity, locale, string
-resolution, BSL type/member/callable/constructor/global/module-event behavior,
-availability and relations, SDBL table/field/parameter behavior, and
-`PlatformSnapshotSource`/`QueryTableSnapshotSource` statuses and ordered
-payloads for hit, miss/not-found, ambiguity and unsupported outcomes. F0/A0
-measurements taken before this seam transcript passes may be reported only as
-structural storage evidence and are inadmissible for the full
-behavioral-equivalence gate.
+The timed path has no `dyn`/boxed iterator, no collected ID vector used only
+to cross the port, and no storage-boundary clone of strings or nested children
+for a borrowed-capable candidate. Resolver output vectors and sorting/dedup
+required by the observable API remain permitted and measured. F0
+decoded-on-access allocations remain explicit F0 evidence; only R1 claims
+borrowed variable fact records.
+
+The versioned `catalog-resolver-transcript-v1.jsonl` matrix is:
+
+| Surface | Operations included |
+| --- | --- |
+| BSL catalog | source ID/locale/string; type by ID, name/alias, template and generated-self role; member/callable/global by ID; member enumeration and owner/name/optional-kind lookup; callable enumeration, owner/name and constructors; global properties/methods and exact-name lookup; module-context event enumeration/exact lookup; availability contexts and available-since |
+| SDBL catalog | source/platform-source ID, locale/string; table by ID and enumeration; table by name/syntax/identifier; field and parameter by ID, enumeration and table/name; every metadata-source selector and unknown-selector miss |
+| `PlatformSnapshotSource` | descriptor/source/capabilities; `resolve` ID and exact-name; every `TypeLookup` variant; member enumeration/name and every member kind; callable ID plus owner/name with and without owner; BSL global context; every supported and unsupported module-context kind; exact and enumerated module properties/methods/events/enum-value request; every relation kind; availability |
+| `QueryTableSnapshotSource` | descriptor/source/capabilities; `resolve` table/field/parameter ID and exact-name name/syntax/identifier union; every unsupported type/member/callable/module-context/availability operation; SDBL global context; every relation kind |
+
+Every applicable operation includes corpus-derived hits plus fixed
+miss/inactive-source/wrong-source/wrong-domain/wrong-kind cases. Ambiguity and
+multiple-candidate cases use deterministic fixtures when the real corpus does
+not provide them. Each JSONL result records the surface, operation/query case,
+status, ordered facts, ordered candidates, exact diagnostics, and every typed
+payload field including nested signatures, parameters, type references,
+template bindings, availability and relations. Fact and string IDs are
+normalized as defined above.
+
+The owned baseline transcript is generated from the frozen S83 provider.
+Candidate transcripts are compared byte-for-byte sequentially, with four
+concurrent readers, and again in the source-hidden probe after open. Storage
+oracle and catalog/resolver transcript are independent gates. Until both pass,
+F0/A0 resource measurements are labeled structural-only and are ineligible
+for full behavior acceptance.
+
+The downstream unified semantic entity change currently depends only on the
+provider-owned immutable HBK base dictionary and generation-local IDs. This
+experiment does not stabilize its internal port as a downstream public API;
+the downstream source-record/locator shape remains undecided until the user
+selects an outcome.
 
 Documentation parity includes only fields already observable through the
 current snapshot/catalog contracts. Full HTML, long descriptions and
