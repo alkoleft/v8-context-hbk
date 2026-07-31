@@ -63,16 +63,45 @@ OWNED_TRANSCRIPT_SHA256 = (
 SAFE_LABEL = re.compile(r"^[A-Za-z0-9._-]+$")
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 HEX_COMMIT = re.compile(r"^[0-9a-f]{40}$")
-ARTIFACT_CONTRACTS: dict[str, dict[str, str | int]] = {
+ARTIFACT_CONTRACTS: dict[str, dict[str, object]] = {
     "flat-h2": {
-        "backend": "s83-f0-semantic",
+        "backends": (
+            "s83-f0-semantic",
+            "s83-d1-semantic",
+            "s83-p1-semantic",
+        ),
         "format_version": "not-separate",
         "layout_version": 2,
+        "layout_flags": 0,
+        "section_count": 63,
+    },
+    "flat-l1": {
+        "backends": ("s83-l1-semantic",),
+        "format_version": "not-separate",
+        "layout_version": 3,
+        "layout_flags": 1,
+        "section_count": 63,
+    },
+    "flat-i1": {
+        "backends": ("s83-i1-semantic",),
+        "format_version": "not-separate",
+        "layout_version": 3,
+        "layout_flags": 1,
+        "section_count": 64,
+    },
+    "flat-r1": {
+        "backends": ("s83-r1-semantic",),
+        "format_version": "not-separate",
+        "layout_version": 1,
+        "layout_flags": 1,
+        "section_count": 71,
     },
     "rkyv-a0": {
-        "backend": "s83-a0-semantic",
+        "backends": ("s83-a0-semantic",),
         "format_version": "1",
         "layout_version": 1,
+        "layout_flags": "not-applicable",
+        "section_count": "archive-root",
     },
 }
 
@@ -139,11 +168,31 @@ def artifact_header_metadata(path: Path) -> dict[str, Any]:
         raise RuntimeError(f"candidate artifact header is truncated: {path}")
 
     magic = header[:8]
-    if magic == b"HBKFH2\0\0":
+    if magic in (b"HBKFH2\0\0", b"HBKFI1\0\0", b"HBKFR1\0\0"):
+        layout_version = struct.unpack_from("<I", header, 8)[0]
+        layout_flags = struct.unpack_from("<I", header, 20)[0]
+        section_count = struct.unpack_from("<I", header, 24)[0]
+        kind_by_identity = {
+            (b"HBKFH2\0\0", 2, 0, 63): "flat-h2",
+            (b"HBKFH2\0\0", 3, 1, 63): "flat-l1",
+            (b"HBKFI1\0\0", 3, 1, 64): "flat-i1",
+            (b"HBKFR1\0\0", 1, 1, 71): "flat-r1",
+        }
+        kind = kind_by_identity.get(
+            (magic, layout_version, layout_flags, section_count)
+        )
+        if kind is None:
+            raise RuntimeError(
+                "unsupported flat artifact identity "
+                f"magic={magic!r}, layout={layout_version}, "
+                f"flags={layout_flags}, sections={section_count}: {path}"
+            )
         metadata = {
-            "kind": "flat-h2",
+            "kind": kind,
             "format_version": "not-separate",
-            "layout_version": struct.unpack_from("<I", header, 8)[0],
+            "layout_version": layout_version,
+            "layout_flags": layout_flags,
+            "section_count": section_count,
             "extraction_schema_version": struct.unpack_from("<I", header, 12)[0],
             "provider_schema_version": struct.unpack_from("<I", header, 16)[0],
             "source_hbk_bytes": struct.unpack_from("<Q", header, 48)[0],
@@ -160,6 +209,8 @@ def artifact_header_metadata(path: Path) -> dict[str, Any]:
             "kind": "rkyv-a0",
             "format_version": str(struct.unpack_from("<I", header, 8)[0]),
             "layout_version": struct.unpack_from("<I", header, 12)[0],
+            "layout_flags": "not-applicable",
+            "section_count": "archive-root",
             "provider_schema_version": struct.unpack_from("<I", header, 16)[0],
             "extraction_schema_version": struct.unpack_from("<I", header, 20)[0],
             "source_hbk_sha256": header[48:80].hex(),
@@ -521,6 +572,8 @@ def execute(args: argparse.Namespace) -> None:
         "artifact_kind": args.artifact_kind,
         "artifact_format_version": None,
         "artifact_layout_version": None,
+        "artifact_layout_flags": None,
+        "artifact_section_count": None,
         "artifact_header": None,
         "slot_lock_path": str(slot_lock),
         "slot_lock_mode": None,
@@ -699,12 +752,21 @@ def execute(args: argparse.Namespace) -> None:
                 f"expected {args.artifact_kind!r}, "
                 f"header has {header_metadata['kind']!r}"
             )
-        if args.backend != contract["backend"]:
+        allowed_backends = contract["backends"]
+        if (
+            not isinstance(allowed_backends, tuple)
+            or args.backend not in allowed_backends
+        ):
             raise RuntimeError(
                 f"backend does not match {args.artifact_kind}: "
-                f"expected {contract['backend']!r}, got {args.backend!r}"
+                f"expected one of {allowed_backends!r}, got {args.backend!r}"
             )
-        for field in ("format_version", "layout_version"):
+        for field in (
+            "format_version",
+            "layout_version",
+            "layout_flags",
+            "section_count",
+        ):
             if header_metadata[field] != contract[field]:
                 raise RuntimeError(
                     f"unsupported {args.artifact_kind} {field}: "
@@ -713,6 +775,8 @@ def execute(args: argparse.Namespace) -> None:
                 )
         record["artifact_format_version"] = header_metadata["format_version"]
         record["artifact_layout_version"] = header_metadata["layout_version"]
+        record["artifact_layout_flags"] = header_metadata["layout_flags"]
+        record["artifact_section_count"] = header_metadata["section_count"]
         expected_artifact_mode = int(args.artifact_mode, 8)
         record.update(
             {

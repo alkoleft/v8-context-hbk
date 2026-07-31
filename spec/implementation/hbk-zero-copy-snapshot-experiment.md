@@ -641,7 +641,7 @@ Candidate transcripts are compared byte-for-byte sequentially and with four
 concurrent readers in a sandbox where the HBK and SQLite sources are hidden
 before process start and throughout replay. The driver waits for every writer
 to exit before inspecting, hashing or comparing any output. Storage oracle and
-catalog/resolver transcript are independent gates. Until both pass, F0/A0
+catalog/resolver transcript are independent gates. Until both pass, candidate
 resource measurements are labeled structural-only and are ineligible for full
 behavior acceptance.
 
@@ -653,6 +653,15 @@ extraction schemas, platform version and source identities; exposes only the
 exact immutable artifact plus its adjacent writable lock file to the sandbox;
 and appends a pass or failure record under the fixed S83 results root. The
 source-hidden sandbox does not mount the host `/home` or `/opt` trees.
+
+The gate predeclares the complete S83 artifact registry instead of accepting
+arbitrary layout labels after measurements: F0/D1/P1 use `HBKFH2`, layout
+`2`, flags `0`, 63 sections; L1 uses `HBKFH2`, layout `3`, flags `1`,
+63 sections; I1 uses `HBKFI1`, layout `3`, flags `1`, 64 sections; R1 uses
+`HBKFR1`, layout `1`, flags `1`, 71 sections; and A0 uses the existing
+`HBKRKYV` archive format/layout `1`. The semantic backend label must match the
+registered artifact identity. D1 and P1 deliberately share the F0 identity
+because D1 changes validation timing only and P1 changes formation only.
 
 The downstream unified semantic entity change currently depends only on the
 provider-owned immutable HBK base dictionary and generation-local IDs. This
