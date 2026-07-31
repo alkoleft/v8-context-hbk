@@ -345,11 +345,11 @@ def validate_record(record: dict[str, Any]) -> None:
             raise SummaryError(f"{source}: missing {key} argv metadata")
     if not isinstance(record.get("host"), dict):
         raise SummaryError(f"{source}: missing host metadata")
-    declared_identity = record.get("declared_file_identity")
-    if not isinstance(declared_identity, list) or not declared_identity:
-        raise SummaryError(f"{source}: missing declared_file_identity")
-    for index, value in enumerate(declared_identity):
-        validate_artifact_identity(value, source, f"declared_file_identity[{index}]")
+    declared_artifacts = record.get("declared_file_artifacts")
+    if not isinstance(declared_artifacts, list) or not declared_artifacts:
+        raise SummaryError(f"{source}: missing declared_file_artifacts")
+    for index, value in enumerate(declared_artifacts):
+        validate_artifact_identity(value, source, f"declared_file_artifacts[{index}]")
     if record.get("availability_context_registry") != list(AVAILABILITY_CONTEXTS):
         raise SummaryError(f"{source}: wrong availability context registry")
     if record.get("cache_stance_registry") != list(CACHE_STANCES):

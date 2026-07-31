@@ -39,7 +39,7 @@ def backend(name: str = "S83-H0") -> Any:
         worktree=Path("/tmp/example"),
         command=("probe", "{context}", "{iterations}"),
         declared_files=(Path("/tmp/input"),),
-        declared_file_identity=(
+        declared_file_artifacts=(
             {
                 "path": "/provider",
                 "bytes": benchmark.PROVIDER_BYTES,
@@ -89,6 +89,7 @@ def probe_report(
             "sha256": benchmark.PROVIDER_SHA256,
         },
         "cache": None,
+        "cache_status": None,
         "counts": {
             "scanned_globals": 4,
             "candidate_methods": 3,
@@ -102,6 +103,10 @@ def probe_report(
         "timings": {
             "phase_order": ["entry_to_ready", "first_enumeration", "warmup", "workload"],
             "entry_to_ready_ns": 10,
+            "open": {
+                "elapsed_ns": 10,
+                "faults": {"minor": 1, "major": 0},
+            },
             "first_enumeration": {
                 "elapsed_ns": 20,
                 "ns_per_object": 10,
@@ -183,7 +188,7 @@ def raw_record(
         "machine_state_before": {"load": 0},
         "machine_state_after": {"load": 0},
         "preparation": {"method": stance},
-        "declared_file_identity": [
+        "declared_file_artifacts": [
             {
                 "path": "/provider",
                 "bytes": benchmark.PROVIDER_BYTES,
@@ -292,7 +297,7 @@ class BenchmarkContractTests(unittest.TestCase):
         report = probe_report()
         report["input_identity"]["provider"] = {"path": "/wrong", "bytes": 1, "sha256": "f" * 64}
         report["index"] = {"path": "/wrong", "bytes": 1, "sha256": "f" * 64}
-        with self.assertRaisesRegex(benchmark.EvidenceError, "declared file"):
+        with self.assertRaisesRegex(benchmark.EvidenceError, "declared artifacts"):
             benchmark.validate_report(
                 report, backend(), "server", 3, require_allocations=True
             )
@@ -367,6 +372,12 @@ class SummaryContractTests(unittest.TestCase):
         records = complete_records()
         records[0]["measurement"]["module_context_kind"] = "server"
         with self.assertRaisesRegex(summarizer.SummaryError, "ModuleContextKind"):
+            summarizer.build_summary(records, expected_samples=2)
+
+    def test_raw_declared_file_artifacts_are_required(self) -> None:
+        records = complete_records()
+        del records[0]["declared_file_artifacts"]
+        with self.assertRaisesRegex(summarizer.SummaryError, "declared_file_artifacts"):
             summarizer.build_summary(records, expected_samples=2)
 
     def test_summary_has_no_candidate_ordering_fields(self) -> None:

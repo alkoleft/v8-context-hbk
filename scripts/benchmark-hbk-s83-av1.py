@@ -80,6 +80,50 @@ HARNESS_PATHS = (
     "scripts/benchmark-hbk-s83-av1.py",
     "scripts/summarize-hbk-s83-av1-results.py",
 )
+REPORT_KEYS = frozenset(
+    {
+        "schema_version",
+        "workload_version",
+        "mode",
+        "backend",
+        "decision_role",
+        "baseline_role",
+        "module_context_filter_used",
+        "empty_availability_rule",
+        "availability_context",
+        "iterations",
+        "input_identity",
+        "index",
+        "cache",
+        "cache_status",
+        "counts",
+        "timings",
+        "allocations",
+        "transcript",
+    }
+)
+COUNT_KEYS = frozenset(
+    {
+        "scanned_globals",
+        "candidate_methods",
+        "returned_objects",
+        "universal_objects",
+        "explicit_context_objects",
+        "excluded_objects",
+        "universal_assertion",
+        "excluded_assertion",
+    }
+)
+TIMING_KEYS = frozenset(
+    {
+        "phase_order",
+        "entry_to_ready_ns",
+        "open",
+        "first_enumeration",
+        "warmup",
+        "workload",
+    }
+)
 
 
 class EvidenceError(RuntimeError):
@@ -93,7 +137,7 @@ class Backend:
     worktree: Path
     command: tuple[str, ...]
     declared_files: tuple[Path, ...]
-    declared_file_identity: tuple[dict[str, Any], ...]
+    declared_file_artifacts: tuple[dict[str, Any], ...]
     commit: str
     branch: str
 
@@ -231,10 +275,12 @@ def load_backends(manifest_path: Path) -> tuple[list[Backend], str]:
         if git_text(worktree, "status", "--porcelain"):
             raise EvidenceError(f"backend worktree is dirty: {worktree}")
         files = tuple(resolve_path(worktree, path).resolve() for path in raw_files)
+        if len(files) != len(set(files)):
+            raise EvidenceError(f"{backend}: declared_files contains duplicate paths")
         for path in files:
             if not path.is_file():
                 raise EvidenceError(f"{backend}: declared file does not exist: {path}")
-        file_identity = tuple(artifact_identity(path) for path in files)
+        file_artifacts = tuple(artifact_identity(path) for path in files)
         backends.append(
             Backend(
                 backend=backend,
@@ -242,7 +288,7 @@ def load_backends(manifest_path: Path) -> tuple[list[Backend], str]:
                 worktree=worktree,
                 command=tuple(command),
                 declared_files=files,
-                declared_file_identity=file_identity,
+                declared_file_artifacts=file_artifacts,
                 commit=git_text(worktree, "rev-parse", "HEAD"),
                 branch=git_text(worktree, "branch", "--show-current"),
             )
@@ -362,35 +408,58 @@ def forbidden_metadata_paths(value: Any, prefix: str = "") -> list[str]:
     return matches
 
 
-def report_artifacts(report: dict[str, Any]) -> list[dict[str, Any]]:
-    artifacts: list[dict[str, Any]] = []
-    identity = report.get("input_identity")
-    if isinstance(identity, dict):
-        for key in ("hbk", "provider"):
-            value = identity.get(key)
-            if isinstance(value, dict):
-                artifacts.append(value)
-    for key in ("index", "cache"):
-        value = report.get(key)
-        if isinstance(value, dict):
-            artifacts.append(value)
-    runtime = report.get("runtime_artifacts")
-    if isinstance(runtime, list):
-        artifacts.extend(value for value in runtime if isinstance(value, dict))
-    return artifacts
-
-
-def normalize_artifact(value: dict[str, Any]) -> tuple[str, int, str]:
+def normalize_artifact(
+    value: dict[str, Any], worktree: Path, label: str
+) -> tuple[str, int, str]:
     raw_path = value.get("path")
     raw_bytes = value.get("bytes")
     raw_sha256 = value.get("sha256")
     if not isinstance(raw_path, str):
-        raise EvidenceError("runtime artifact path must be a string")
-    if isinstance(raw_bytes, bool) or not isinstance(raw_bytes, int) or raw_bytes < 0:
-        raise EvidenceError(f"runtime artifact bytes must be a non-negative integer: {raw_path}")
-    if not isinstance(raw_sha256, str) or len(raw_sha256) != 64:
-        raise EvidenceError(f"runtime artifact sha256 must be a digest: {raw_path}")
-    return (str(Path(raw_path).resolve()), raw_bytes, raw_sha256)
+        raise EvidenceError(f"{label}.path must be a string")
+    if isinstance(raw_bytes, bool) or not isinstance(raw_bytes, int) or raw_bytes <= 0:
+        raise EvidenceError(f"{label}.bytes must be a positive integer: {raw_path}")
+    if (
+        not isinstance(raw_sha256, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", raw_sha256)
+    ):
+        raise EvidenceError(f"{label}.sha256 must be a lowercase SHA-256: {raw_path}")
+    path = resolve_path(worktree, raw_path).resolve()
+    return (str(path), raw_bytes, raw_sha256)
+
+
+def runtime_artifacts(
+    report: dict[str, Any], backend: Backend
+) -> list[dict[str, Any]]:
+    index = report.get("index")
+    cache = report.get("cache")
+    cache_status = report.get("cache_status")
+    if backend.backend == "S83-H0":
+        if not isinstance(index, dict) or cache is not None or cache_status is not None:
+            raise EvidenceError(
+                "S83-H0 runtime artifact contract requires index only"
+            )
+        return [index]
+    if backend.backend == "S83-C0":
+        if (
+            not isinstance(index, dict)
+            or not isinstance(cache, dict)
+            or cache_status != "loaded"
+        ):
+            raise EvidenceError(
+                "S83-C0 runtime artifact contract requires index + loaded cache"
+            )
+        return [index, cache]
+    if isinstance(cache, dict):
+        if cache_status != "loaded":
+            raise EvidenceError(
+                f"{backend.backend} runtime artifact contract requires loaded candidate cache"
+            )
+        return [cache]
+    if isinstance(index, dict) and cache is None and cache_status is None:
+        return [index]
+    raise EvidenceError(
+        f"{backend.backend} runtime artifact contract requires one candidate artifact"
+    )
 
 
 def validate_declared_artifact_binding(
@@ -399,13 +468,24 @@ def validate_declared_artifact_binding(
     context: str,
     iterations: int,
 ) -> None:
-    declared = {normalize_artifact(value) for value in backend.declared_file_identity}
-    observed = {normalize_artifact(value) for value in report_artifacts(report)}
-    missing = declared - observed
-    if missing:
+    declared_values = [
+        normalize_artifact(value, backend.worktree, "declared_file_artifacts")
+        for value in backend.declared_file_artifacts
+    ]
+    observed_values = [
+        normalize_artifact(value, backend.worktree, "runtime artifact")
+        for value in runtime_artifacts(report, backend)
+    ]
+    if len(declared_values) != len(set(declared_values)):
+        raise EvidenceError(f"{backend.backend}: duplicate declared runtime artifacts")
+    if len(observed_values) != len(set(observed_values)):
+        raise EvidenceError(f"{backend.backend}: duplicate reported runtime artifacts")
+    declared = set(declared_values)
+    observed = set(observed_values)
+    if declared != observed:
         raise EvidenceError(
-            f"{backend.backend}/{context}: declared file(s) are absent from runtime report: "
-            f"{sorted(path for path, _bytes, _sha in missing)}"
+            f"{backend.backend}/{context}: declared artifacts do not exactly match "
+            f"runtime artifacts: declared={sorted(declared)}, observed={sorted(observed)}"
         )
     declared_paths = {Path(path) for path, _bytes, _sha in declared}
     extra_file_args = [
@@ -434,6 +514,17 @@ def require_object(value: Any, path: str) -> dict[str, Any]:
     return value
 
 
+def require_exact_keys(
+    value: dict[str, Any], expected: frozenset[str], path: str
+) -> None:
+    actual = set(value)
+    if actual != expected:
+        raise EvidenceError(
+            f"{path} schema keys differ: missing={sorted(expected - actual)}, "
+            f"unexpected={sorted(actual - expected)}"
+        )
+
+
 def validate_report(
     report: Any,
     backend: Backend,
@@ -443,6 +534,12 @@ def validate_report(
     require_allocations: bool,
 ) -> tuple[bytes, dict[str, Any]]:
     report = require_object(report, "report")
+    forbidden = forbidden_metadata_paths({key: value for key, value in report.items() if key != "transcript"})
+    if forbidden:
+        raise EvidenceError(
+            f"{backend.backend}/{context}: ModuleContextKind metadata is forbidden: {forbidden}"
+        )
+    require_exact_keys(report, REPORT_KEYS, "report")
     validate_declared_artifact_binding(report, backend, context, iterations)
     expected = {
         "schema_version": REPORT_SCHEMA,
@@ -461,12 +558,6 @@ def validate_report(
                 f"{backend.backend}/{context}: {key} expected {expected_value!r}, "
                 f"got {report.get(key)!r}"
             )
-    forbidden = forbidden_metadata_paths({key: value for key, value in report.items() if key != "transcript"})
-    if forbidden:
-        raise EvidenceError(
-            f"{backend.backend}/{context}: ModuleContextKind metadata is forbidden: {forbidden}"
-        )
-
     identity = require_object(report.get("input_identity"), "input_identity")
     identity_expected = {
         "platform_version": PLATFORM_VERSION,
@@ -486,6 +577,7 @@ def validate_report(
             raise EvidenceError(f"input_identity.{key} does not identify frozen S83")
 
     counts = require_object(report.get("counts"), "counts")
+    require_exact_keys(counts, COUNT_KEYS, "counts")
     for field in (
         "scanned_globals",
         "candidate_methods",
@@ -512,6 +604,7 @@ def validate_report(
         )
 
     timings = require_object(report.get("timings"), "timings")
+    require_exact_keys(timings, TIMING_KEYS, "timings")
     if timings.get("phase_order") != ["entry_to_ready", "first_enumeration", "warmup", "workload"]:
         raise EvidenceError("unexpected timing phase order")
     require_integer(timings.get("entry_to_ready_ns"), "timings.entry_to_ready_ns", positive=True)
@@ -611,6 +704,9 @@ def identity_fields(
         "manifest_sha256": manifest_sha256,
         "host": host,
         "orchestration_version": ORCHESTRATION_VERSION,
+        "declared_file_artifacts": [
+            dict(artifact) for artifact in backend.declared_file_artifacts
+        ],
     }
 
 
@@ -679,7 +775,7 @@ def parity_phase(
                 "iterations": parity_iterations,
                 "command_template": list(backend.command),
                 "command": command_for(backend.command, context, parity_iterations),
-                "declared_file_identity": list(backend.declared_file_identity),
+                "declared_file_artifacts": list(backend.declared_file_artifacts),
                 "stdout_log": str(stdout_path),
                 "stderr_log": str(stderr_path),
                 "transcript": evidence,
@@ -755,7 +851,6 @@ def measurement_phase(
                         "command_template": list(backend.command),
                         "command": command_for(backend.command, context, iterations),
                         "declared_files": [str(path) for path in backend.declared_files],
-                        "declared_file_identity": list(backend.declared_file_identity),
                         "preparation": preparation,
                         "machine_state_before": before,
                         "machine_state_after": after,
