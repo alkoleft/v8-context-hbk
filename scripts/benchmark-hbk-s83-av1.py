@@ -124,6 +124,57 @@ TIMING_KEYS = frozenset(
         "workload",
     }
 )
+FAULT_KEYS = frozenset({"minor", "major"})
+PHASE_KEYS = frozenset({"elapsed_ns", "faults"})
+ENUMERATION_PHASE_KEYS = frozenset(
+    {"elapsed_ns", "ns_per_object", "faults", "returned_objects", "checksum"}
+)
+WORKLOAD_KEYS = frozenset(
+    {
+        "elapsed_ns",
+        "average_ns",
+        "ns_per_object",
+        "faults",
+        "iterations",
+        "returned_total",
+        "checksum",
+    }
+)
+ALLOCATIONS_KEYS = frozenset(
+    {
+        "enabled",
+        "entry_to_ready",
+        "first_enumeration",
+        "warmup",
+        "workload",
+        "final_snapshot",
+    }
+)
+ALLOCATION_DELTA_KEYS = frozenset(
+    {
+        "allocation_calls",
+        "reallocation_calls",
+        "deallocation_calls",
+        "allocated_bytes",
+        "deallocated_bytes",
+        "live_bytes_before",
+        "live_bytes_after",
+        "peak_live_bytes_before",
+        "peak_live_bytes_after",
+        "peak_live_bytes_growth",
+    }
+)
+ALLOCATION_SNAPSHOT_KEYS = frozenset(
+    {
+        "allocation_calls",
+        "reallocation_calls",
+        "deallocation_calls",
+        "allocated_bytes",
+        "deallocated_bytes",
+        "current_live_bytes",
+        "peak_live_bytes",
+    }
+)
 
 
 class EvidenceError(RuntimeError):
@@ -308,18 +359,17 @@ def verify_harness(repo: Path) -> tuple[str, str, dict[str, str]]:
     dirty = git_text(repo, "status", "--porcelain", "--", *HARNESS_PATHS)
     if dirty:
         raise EvidenceError(f"S83-AV1 harness has uncommitted changes:\n{dirty}")
-    commits: dict[str, str] = {}
     hashes: dict[str, str] = {}
     for relative in HARNESS_PATHS:
         path = repo / relative
         if not path.is_file():
             raise EvidenceError(f"missing S83-AV1 harness file: {path}")
-        commits[relative] = git_text(repo, "log", "-1", "--format=%H", "--", relative)
         hashes[relative] = sha256_file(path)
-    unique_commits = set(commits.values())
-    if len(unique_commits) != 1 or "" in unique_commits:
-        raise EvidenceError(f"S83-AV1 harness paths do not share one frozen commit: {commits}")
-    return unique_commits.pop(), git_text(repo, "branch", "--show-current"), hashes
+    # The HEAD tree freezes the complete harness even when its files were
+    # introduced by more than one preparatory commit. Per-file hashes make the
+    # exact executable/script set explicit in every raw record.
+    harness_commit = git_text(repo, "rev-parse", "HEAD")
+    return harness_commit, git_text(repo, "branch", "--show-current"), hashes
 
 
 def host_environment() -> dict[str, Any]:
@@ -455,10 +505,8 @@ def runtime_artifacts(
                 f"{backend.backend} runtime artifact contract requires loaded candidate cache"
             )
         return [cache]
-    if isinstance(index, dict) and cache is None and cache_status is None:
-        return [index]
     raise EvidenceError(
-        f"{backend.backend} runtime artifact contract requires one candidate artifact"
+        f"{backend.backend} runtime artifact contract requires one loaded candidate cache"
     )
 
 
@@ -523,6 +571,71 @@ def require_exact_keys(
             f"{path} schema keys differ: missing={sorted(expected - actual)}, "
             f"unexpected={sorted(actual - expected)}"
         )
+
+
+def validate_faults(value: Any, path: str) -> dict[str, Any]:
+    faults = require_object(value, path)
+    require_exact_keys(faults, FAULT_KEYS, path)
+    require_integer(faults.get("minor"), f"{path}.minor")
+    require_integer(faults.get("major"), f"{path}.major")
+    return faults
+
+
+def validate_phase(value: Any, path: str) -> dict[str, Any]:
+    phase = require_object(value, path)
+    require_exact_keys(phase, PHASE_KEYS, path)
+    require_integer(phase.get("elapsed_ns"), f"{path}.elapsed_ns", positive=True)
+    validate_faults(phase.get("faults"), f"{path}.faults")
+    return phase
+
+
+def validate_enumeration_phase(
+    value: Any, path: str, expected_returned_objects: int
+) -> dict[str, Any]:
+    phase = require_object(value, path)
+    require_exact_keys(phase, ENUMERATION_PHASE_KEYS, path)
+    require_integer(phase.get("elapsed_ns"), f"{path}.elapsed_ns", positive=True)
+    ns_per_object = phase.get("ns_per_object")
+    if ns_per_object is not None:
+        require_integer(ns_per_object, f"{path}.ns_per_object")
+    validate_faults(phase.get("faults"), f"{path}.faults")
+    if phase.get("returned_objects") != expected_returned_objects:
+        raise EvidenceError(f"{path}.returned_objects differs from transcript")
+    require_integer(phase.get("checksum"), f"{path}.checksum")
+    return phase
+
+
+def validate_workload(
+    value: Any, path: str, iterations: int, returned_objects: int
+) -> dict[str, Any]:
+    workload = require_object(value, path)
+    require_exact_keys(workload, WORKLOAD_KEYS, path)
+    require_integer(workload.get("elapsed_ns"), f"{path}.elapsed_ns", positive=True)
+    require_integer(workload.get("average_ns"), f"{path}.average_ns", positive=True)
+    ns_per_object = workload.get("ns_per_object")
+    if ns_per_object is not None:
+        require_integer(ns_per_object, f"{path}.ns_per_object")
+    validate_faults(workload.get("faults"), f"{path}.faults")
+    if workload.get("iterations") != iterations:
+        raise EvidenceError("workload iteration count differs from command")
+    if workload.get("returned_total") != iterations * returned_objects:
+        raise EvidenceError("workload returned total is inconsistent")
+    require_integer(workload.get("checksum"), f"{path}.checksum")
+    return workload
+
+
+def validate_allocation_delta(value: Any, path: str) -> None:
+    delta = require_object(value, path)
+    require_exact_keys(delta, ALLOCATION_DELTA_KEYS, path)
+    for key in ALLOCATION_DELTA_KEYS:
+        require_integer(delta.get(key), f"{path}.{key}")
+
+
+def validate_allocation_snapshot(value: Any, path: str) -> None:
+    snapshot = require_object(value, path)
+    require_exact_keys(snapshot, ALLOCATION_SNAPSHOT_KEYS, path)
+    for key in ALLOCATION_SNAPSHOT_KEYS:
+        require_integer(snapshot.get(key), f"{path}.{key}")
 
 
 def validate_report(
@@ -608,26 +721,33 @@ def validate_report(
     if timings.get("phase_order") != ["entry_to_ready", "first_enumeration", "warmup", "workload"]:
         raise EvidenceError("unexpected timing phase order")
     require_integer(timings.get("entry_to_ready_ns"), "timings.entry_to_ready_ns", positive=True)
-    first = require_object(timings.get("first_enumeration"), "timings.first_enumeration")
-    workload = require_object(timings.get("workload"), "timings.workload")
-    require_integer(first.get("elapsed_ns"), "timings.first_enumeration.elapsed_ns", positive=True)
-    require_integer(workload.get("elapsed_ns"), "timings.workload.elapsed_ns", positive=True)
-    if first.get("returned_objects") != counts["returned_objects"]:
-        raise EvidenceError("first enumeration returned count differs from transcript")
-    if workload.get("iterations") != iterations:
-        raise EvidenceError("workload iteration count differs from command")
-    if workload.get("returned_total") != iterations * counts["returned_objects"]:
-        raise EvidenceError("workload returned total is inconsistent")
+    validate_phase(timings.get("open"), "timings.open")
+    validate_enumeration_phase(
+        timings.get("first_enumeration"),
+        "timings.first_enumeration",
+        counts["returned_objects"],
+    )
+    validate_enumeration_phase(
+        timings.get("warmup"),
+        "timings.warmup",
+        counts["returned_objects"],
+    )
+    validate_workload(
+        timings.get("workload"),
+        "timings.workload",
+        iterations,
+        counts["returned_objects"],
+    )
 
     allocations = require_object(report.get("allocations"), "allocations")
+    require_exact_keys(allocations, ALLOCATIONS_KEYS, "allocations")
     if require_allocations and allocations.get("enabled") is not True:
         raise EvidenceError("timed S83-AV1 evidence requires allocation instrumentation")
     if not isinstance(allocations.get("enabled"), bool):
         raise EvidenceError("allocations.enabled must be boolean")
-    for phase in ("first_enumeration", "workload"):
-        allocation = require_object(allocations.get(phase), f"allocations.{phase}")
-        require_integer(allocation.get("allocation_calls"), f"allocations.{phase}.allocation_calls")
-        require_integer(allocation.get("allocated_bytes"), f"allocations.{phase}.allocated_bytes")
+    for phase in ("entry_to_ready", "first_enumeration", "warmup", "workload"):
+        validate_allocation_delta(allocations.get(phase), f"allocations.{phase}")
+    validate_allocation_snapshot(allocations.get("final_snapshot"), "allocations.final_snapshot")
 
     transcript_bytes = canonical_json_bytes(transcript)
     stripped = dict(report)

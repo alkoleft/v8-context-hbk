@@ -39,6 +39,100 @@ CACHE_STANCES = ("warm", "cold-best-effort")
 DEFAULT_EXPECTED_SAMPLES = 9
 NOISE_LIMIT = 0.05
 FORBIDDEN_METADATA_KEY = re.compile(r"module_?context_?kind", re.IGNORECASE)
+MEASUREMENT_KEYS = frozenset(
+    {
+        "schema_version",
+        "workload_version",
+        "mode",
+        "backend",
+        "decision_role",
+        "baseline_role",
+        "module_context_filter_used",
+        "empty_availability_rule",
+        "availability_context",
+        "iterations",
+        "input_identity",
+        "index",
+        "cache",
+        "cache_status",
+        "counts",
+        "timings",
+        "allocations",
+    }
+)
+COUNT_KEYS = frozenset(
+    {
+        "scanned_globals",
+        "candidate_methods",
+        "returned_objects",
+        "universal_objects",
+        "explicit_context_objects",
+        "excluded_objects",
+        "universal_assertion",
+        "excluded_assertion",
+    }
+)
+TIMING_KEYS = frozenset(
+    {
+        "phase_order",
+        "entry_to_ready_ns",
+        "open",
+        "first_enumeration",
+        "warmup",
+        "workload",
+    }
+)
+FAULT_KEYS = frozenset({"minor", "major"})
+PHASE_KEYS = frozenset({"elapsed_ns", "faults"})
+ENUMERATION_PHASE_KEYS = frozenset(
+    {"elapsed_ns", "ns_per_object", "faults", "returned_objects", "checksum"}
+)
+WORKLOAD_KEYS = frozenset(
+    {
+        "elapsed_ns",
+        "average_ns",
+        "ns_per_object",
+        "faults",
+        "iterations",
+        "returned_total",
+        "checksum",
+    }
+)
+ALLOCATIONS_KEYS = frozenset(
+    {
+        "enabled",
+        "entry_to_ready",
+        "first_enumeration",
+        "warmup",
+        "workload",
+        "final_snapshot",
+    }
+)
+ALLOCATION_DELTA_KEYS = frozenset(
+    {
+        "allocation_calls",
+        "reallocation_calls",
+        "deallocation_calls",
+        "allocated_bytes",
+        "deallocated_bytes",
+        "live_bytes_before",
+        "live_bytes_after",
+        "peak_live_bytes_before",
+        "peak_live_bytes_after",
+        "peak_live_bytes_growth",
+    }
+)
+ALLOCATION_SNAPSHOT_KEYS = frozenset(
+    {
+        "allocation_calls",
+        "reallocation_calls",
+        "deallocation_calls",
+        "allocated_bytes",
+        "deallocated_bytes",
+        "current_live_bytes",
+        "peak_live_bytes",
+    }
+)
 
 METRICS: dict[str, tuple[str, ...]] = {
     "entry_to_ready_ns": ("measurement", "timings", "entry_to_ready_ns"),
@@ -214,10 +308,165 @@ def validate_artifact_identity(value: Any, source: str, field: str) -> None:
     sha256 = value.get("sha256")
     if not isinstance(path, str) or not path:
         raise SummaryError(f"{source}: {field}.path must be a non-empty string")
-    if isinstance(bytes_value, bool) or not isinstance(bytes_value, int) or bytes_value < 0:
-        raise SummaryError(f"{source}: {field}.bytes must be a non-negative integer")
-    if not isinstance(sha256, str) or len(sha256) != 64:
-        raise SummaryError(f"{source}: {field}.sha256 must be a digest")
+    if isinstance(bytes_value, bool) or not isinstance(bytes_value, int) or bytes_value <= 0:
+        raise SummaryError(f"{source}: {field}.bytes must be a positive integer")
+    if not isinstance(sha256, str) or re.fullmatch(r"[0-9a-f]{64}", sha256) is None:
+        raise SummaryError(f"{source}: {field}.sha256 must be a lowercase SHA-256")
+
+
+def require_exact_keys(
+    value: dict[str, Any], expected: frozenset[str], source: str, field: str
+) -> None:
+    actual = set(value)
+    if actual != expected:
+        raise SummaryError(
+            f"{source}: {field} schema keys differ: "
+            f"missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}"
+        )
+
+
+def normalized_artifact(
+    value: Any, source: str, field: str, worktree: Path
+) -> tuple[str, int, str]:
+    validate_artifact_identity(value, source, field)
+    path = Path(value["path"])
+    resolved = path.resolve() if path.is_absolute() else (worktree / path).resolve()
+    return (str(resolved), value["bytes"], value["sha256"])
+
+
+def require_object(value: Any, source: str, field: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise SummaryError(f"{source}: {field} must be an object")
+    return value
+
+
+def require_integer(value: Any, source: str, field: str, *, positive: bool = False) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SummaryError(f"{source}: {field} must be an integer")
+    if positive and value <= 0:
+        raise SummaryError(f"{source}: {field} must be greater than zero")
+    return value
+
+
+def validate_faults(value: Any, source: str, field: str) -> None:
+    faults = require_object(value, source, field)
+    require_exact_keys(faults, FAULT_KEYS, source, field)
+    require_integer(faults.get("minor"), source, f"{field}.minor")
+    require_integer(faults.get("major"), source, f"{field}.major")
+
+
+def validate_phase(value: Any, source: str, field: str) -> None:
+    phase = require_object(value, source, field)
+    require_exact_keys(phase, PHASE_KEYS, source, field)
+    require_integer(phase.get("elapsed_ns"), source, f"{field}.elapsed_ns", positive=True)
+    validate_faults(phase.get("faults"), source, f"{field}.faults")
+
+
+def validate_enumeration_phase(
+    value: Any, source: str, field: str, returned_objects: int
+) -> None:
+    phase = require_object(value, source, field)
+    require_exact_keys(phase, ENUMERATION_PHASE_KEYS, source, field)
+    require_integer(phase.get("elapsed_ns"), source, f"{field}.elapsed_ns", positive=True)
+    ns_per_object = phase.get("ns_per_object")
+    if ns_per_object is not None:
+        require_integer(ns_per_object, source, f"{field}.ns_per_object")
+    validate_faults(phase.get("faults"), source, f"{field}.faults")
+    if phase.get("returned_objects") != returned_objects:
+        raise SummaryError(f"{source}: {field}.returned_objects differs from measurement counts")
+    require_integer(phase.get("checksum"), source, f"{field}.checksum")
+
+
+def validate_workload(
+    value: Any, source: str, field: str, iterations: int, returned_objects: int
+) -> None:
+    workload = require_object(value, source, field)
+    require_exact_keys(workload, WORKLOAD_KEYS, source, field)
+    require_integer(workload.get("elapsed_ns"), source, f"{field}.elapsed_ns", positive=True)
+    require_integer(workload.get("average_ns"), source, f"{field}.average_ns", positive=True)
+    ns_per_object = workload.get("ns_per_object")
+    if ns_per_object is not None:
+        require_integer(ns_per_object, source, f"{field}.ns_per_object")
+    validate_faults(workload.get("faults"), source, f"{field}.faults")
+    if workload.get("iterations") != iterations:
+        raise SummaryError(f"{source}: {field}.iterations differs from raw metadata")
+    if workload.get("returned_total") != iterations * returned_objects:
+        raise SummaryError(f"{source}: {field}.returned_total is inconsistent")
+    require_integer(workload.get("checksum"), source, f"{field}.checksum")
+
+
+def validate_allocation_delta(value: Any, source: str, field: str) -> None:
+    delta = require_object(value, source, field)
+    require_exact_keys(delta, ALLOCATION_DELTA_KEYS, source, field)
+    for key in ALLOCATION_DELTA_KEYS:
+        require_integer(delta.get(key), source, f"{field}.{key}")
+
+
+def validate_allocation_snapshot(value: Any, source: str, field: str) -> None:
+    snapshot = require_object(value, source, field)
+    require_exact_keys(snapshot, ALLOCATION_SNAPSHOT_KEYS, source, field)
+    for key in ALLOCATION_SNAPSHOT_KEYS:
+        require_integer(snapshot.get(key), source, f"{field}.{key}")
+
+
+def validate_runtime_artifact_binding(
+    record: dict[str, Any], measurement: dict[str, Any], source: str
+) -> None:
+    worktree_value = record.get("worktree")
+    if not isinstance(worktree_value, str) or not Path(worktree_value).is_absolute():
+        raise SummaryError(f"{source}: worktree must be an absolute path")
+    worktree = Path(worktree_value)
+    declared_values = record.get("declared_file_artifacts")
+    if not isinstance(declared_values, list) or not declared_values:
+        raise SummaryError(f"{source}: missing declared_file_artifacts")
+    declared = {
+        normalized_artifact(value, source, f"declared_file_artifacts[{index}]", worktree)
+        for index, value in enumerate(declared_values)
+    }
+    if len(declared) != len(declared_values):
+        raise SummaryError(f"{source}: duplicate declared_file_artifacts")
+
+    backend = record.get("backend")
+    index = measurement.get("index")
+    cache = measurement.get("cache")
+    cache_status = measurement.get("cache_status")
+    if backend == "S83-H0":
+        if not isinstance(index, dict) or cache is not None or cache_status is not None:
+            raise SummaryError(f"{source}: H0 runtime artifact contract mismatch")
+        runtime_values = [index]
+    elif backend == "S83-C0":
+        if not isinstance(index, dict) or not isinstance(cache, dict) or cache_status != "loaded":
+            raise SummaryError(f"{source}: C0 runtime artifact contract mismatch")
+        runtime_values = [index, cache]
+    else:
+        if not isinstance(cache, dict) or cache_status != "loaded":
+            raise SummaryError(f"{source}: candidate runtime artifact contract mismatch")
+        runtime_values = [cache]
+    runtime = {
+        normalized_artifact(value, source, f"runtime_artifacts[{index}]", worktree)
+        for index, value in enumerate(runtime_values)
+    }
+    if declared != runtime:
+        raise SummaryError(f"{source}: declared_file_artifacts differ from runtime artifacts")
+
+    declared_paths = {path for path, _bytes, _sha256 in declared}
+    raw_declared_files = record.get("declared_files")
+    if (
+        not isinstance(raw_declared_files, list)
+        or any(not isinstance(path, str) for path in raw_declared_files)
+        or len(raw_declared_files) != len(declared_paths)
+        or set(raw_declared_files) != declared_paths
+    ):
+        raise SummaryError(f"{source}: declared_files differ from artifact provenance")
+    preparation = record.get("preparation")
+    prepared_files = preparation.get("declared_files") if isinstance(preparation, dict) else None
+    if (
+        not isinstance(prepared_files, list)
+        or any(not isinstance(path, str) for path in prepared_files)
+        or len(prepared_files) != len(declared_paths)
+        or set(prepared_files) != declared_paths
+    ):
+        raise SummaryError(f"{source}: prepared files differ from runtime artifacts")
 
 
 def metric(values: Sequence[int | float]) -> dict[str, Any]:
@@ -316,6 +565,7 @@ def validate_record(record: dict[str, Any]) -> None:
     if "transcript" in record["measurement"]:
         raise SummaryError(f"{source}: raw measurement retained the large transcript")
     measurement = record["measurement"]
+    require_exact_keys(measurement, MEASUREMENT_KEYS, source, "measurement")
     measurement_expected = {
         "schema_version": REPORT_SCHEMA,
         "workload_version": WORKLOAD_VERSION,
@@ -330,11 +580,50 @@ def validate_record(record: dict[str, Any]) -> None:
     for key, expected_value in measurement_expected.items():
         if measurement.get(key) != expected_value:
             raise SummaryError(f"{source}: measurement.{key} differs from raw metadata")
+    counts = measurement.get("counts")
+    timings = measurement.get("timings")
+    if not isinstance(counts, dict) or not isinstance(timings, dict):
+        raise SummaryError(f"{source}: measurement counts/timings must be objects")
+    require_exact_keys(counts, COUNT_KEYS, source, "measurement.counts")
+    require_exact_keys(timings, TIMING_KEYS, source, "measurement.timings")
+    validate_runtime_artifact_binding(record, measurement, source)
     returned_objects = nested(measurement, ("counts", "returned_objects"))
     if transcript.get("item_count") != returned_objects:
         raise SummaryError(f"{source}: transcript item count differs from measurement")
+    iterations = record.get("iterations")
+    if isinstance(iterations, bool) or not isinstance(iterations, int) or iterations <= 0:
+        raise SummaryError(f"{source}: iterations must be positive")
+    validate_phase(timings.get("open"), source, "measurement.timings.open")
+    validate_enumeration_phase(
+        timings.get("first_enumeration"),
+        source,
+        "measurement.timings.first_enumeration",
+        returned_objects,
+    )
+    validate_enumeration_phase(
+        timings.get("warmup"),
+        source,
+        "measurement.timings.warmup",
+        returned_objects,
+    )
+    validate_workload(
+        timings.get("workload"),
+        source,
+        "measurement.timings.workload",
+        iterations,
+        returned_objects,
+    )
     if nested(measurement, ("allocations", "enabled")) is not True:
         raise SummaryError(f"{source}: allocation instrumentation is not enabled")
+    allocations = require_object(measurement.get("allocations"), source, "measurement.allocations")
+    require_exact_keys(allocations, ALLOCATIONS_KEYS, source, "measurement.allocations")
+    for phase in ("entry_to_ready", "first_enumeration", "warmup", "workload"):
+        validate_allocation_delta(
+            allocations.get(phase), source, f"measurement.allocations.{phase}"
+        )
+    validate_allocation_snapshot(
+        allocations.get("final_snapshot"), source, "measurement.allocations.final_snapshot"
+    )
     for key in ("candidate_commit", "candidate_branch", "harness_commit"):
         value = record.get(key)
         if not isinstance(value, str) or not value:
@@ -345,11 +634,6 @@ def validate_record(record: dict[str, Any]) -> None:
             raise SummaryError(f"{source}: missing {key} argv metadata")
     if not isinstance(record.get("host"), dict):
         raise SummaryError(f"{source}: missing host metadata")
-    declared_artifacts = record.get("declared_file_artifacts")
-    if not isinstance(declared_artifacts, list) or not declared_artifacts:
-        raise SummaryError(f"{source}: missing declared_file_artifacts")
-    for index, value in enumerate(declared_artifacts):
-        validate_artifact_identity(value, source, f"declared_file_artifacts[{index}]")
     if record.get("availability_context_registry") != list(AVAILABILITY_CONTEXTS):
         raise SummaryError(f"{source}: wrong availability context registry")
     if record.get("cache_stance_registry") != list(CACHE_STANCES):
@@ -391,6 +675,12 @@ def build_summary(records: list[dict[str, Any]], expected_samples: int) -> dict[
             record.get("candidate_commit"),
             record.get("candidate_branch"),
             record.get("harness_commit"),
+            json.dumps(
+                record.get("declared_file_artifacts"),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
         )
         previous = backend_metadata.setdefault(backend, metadata)
         if previous != metadata:

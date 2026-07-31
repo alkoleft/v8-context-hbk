@@ -55,7 +55,27 @@ def probe_report(
     name: str = "S83-H0", context: str = "server", iterations: int = 3
 ) -> dict[str, Any]:
     role = "baseline" if name == "S83-H0" else "control" if name == "S83-C0" else "candidate"
-    allocation = {"allocation_calls": 1, "allocated_bytes": 8}
+    allocation_delta = {
+        "allocation_calls": 1,
+        "reallocation_calls": 0,
+        "deallocation_calls": 0,
+        "allocated_bytes": 8,
+        "deallocated_bytes": 0,
+        "live_bytes_before": 0,
+        "live_bytes_after": 8,
+        "peak_live_bytes_before": 0,
+        "peak_live_bytes_after": 8,
+        "peak_live_bytes_growth": 8,
+    }
+    allocation_snapshot = {
+        "allocation_calls": 1,
+        "reallocation_calls": 0,
+        "deallocation_calls": 0,
+        "allocated_bytes": 8,
+        "deallocated_bytes": 0,
+        "current_live_bytes": 8,
+        "peak_live_bytes": 8,
+    }
     return {
         "schema_version": benchmark.REPORT_SCHEMA,
         "workload_version": benchmark.WORKLOAD_VERSION,
@@ -133,8 +153,11 @@ def probe_report(
         },
         "allocations": {
             "enabled": True,
-            "first_enumeration": dict(allocation),
-            "workload": dict(allocation),
+            "entry_to_ready": dict(allocation_delta),
+            "first_enumeration": dict(allocation_delta),
+            "warmup": dict(allocation_delta),
+            "workload": dict(allocation_delta),
+            "final_snapshot": dict(allocation_snapshot),
         },
         "transcript": [{"id": "universal"}, {"id": "explicit"}],
     }
@@ -154,6 +177,50 @@ def raw_record(
     role = "baseline" if name == "S83-H0" else "control" if name == "S83-C0" else "candidate"
     digest = digest_for(context)
     value = multiplier * (100 + sample)
+    provider_artifact = {
+        "path": "/provider",
+        "bytes": benchmark.PROVIDER_BYTES,
+        "sha256": summarizer.PROVIDER_SHA256,
+    }
+    cache_artifact = {
+        "path": "/cache",
+        "bytes": 12,
+        "sha256": "c" * 64,
+    }
+    if name == "S83-H0":
+        declared_artifacts = [dict(provider_artifact)]
+        cache = None
+        cache_status = None
+    elif name == "S83-C0":
+        declared_artifacts = [dict(provider_artifact), dict(cache_artifact)]
+        cache = dict(cache_artifact)
+        cache_status = "loaded"
+    else:
+        declared_artifacts = [dict(cache_artifact)]
+        cache = dict(cache_artifact)
+        cache_status = "loaded"
+    declared_paths = sorted(artifact["path"] for artifact in declared_artifacts)
+    allocation_delta = {
+        "allocation_calls": value,
+        "reallocation_calls": 0,
+        "deallocation_calls": 0,
+        "allocated_bytes": value,
+        "deallocated_bytes": 0,
+        "live_bytes_before": 0,
+        "live_bytes_after": value,
+        "peak_live_bytes_before": 0,
+        "peak_live_bytes_after": value,
+        "peak_live_bytes_growth": value,
+    }
+    allocation_snapshot = {
+        "allocation_calls": value,
+        "reallocation_calls": 0,
+        "deallocation_calls": 0,
+        "allocated_bytes": value,
+        "deallocated_bytes": 0,
+        "current_live_bytes": value,
+        "peak_live_bytes": value,
+    }
     return {
         "schema": summarizer.RAW_SCHEMA,
         "dataset": summarizer.DATASET,
@@ -167,6 +234,7 @@ def raw_record(
         "baseline_role": "h0",
         "candidate_commit": ("a" if name == "S83-H0" else "b") * 40,
         "candidate_branch": "experiment/base" if name == "S83-H0" else "experiment/control",
+        "worktree": "/tmp/example",
         "harness_commit": "c" * 40,
         "harness_file_sha256": {"probe": "e" * 64},
         "manifest_sha256": "d" * 64,
@@ -187,14 +255,9 @@ def raw_record(
         "command": ["probe", context, "10"],
         "machine_state_before": {"load": 0},
         "machine_state_after": {"load": 0},
-        "preparation": {"method": stance},
-        "declared_file_artifacts": [
-            {
-                "path": "/provider",
-                "bytes": benchmark.PROVIDER_BYTES,
-                "sha256": summarizer.PROVIDER_SHA256,
-            }
-        ],
+        "preparation": {"method": stance, "declared_files": declared_paths},
+        "declared_files": declared_paths,
+        "declared_file_artifacts": declared_artifacts,
         "transcript": {
             "sha256": digest,
             "baseline_sha256": digest,
@@ -205,6 +268,7 @@ def raw_record(
         "measurement": {
             "schema_version": summarizer.REPORT_SCHEMA,
             "workload_version": summarizer.WORKLOAD_VERSION,
+            "mode": "test",
             "backend": name,
             "decision_role": role,
             "baseline_role": "h0",
@@ -212,6 +276,21 @@ def raw_record(
             "empty_availability_rule": "universal",
             "availability_context": context,
             "iterations": 10,
+            "input_identity": {
+                "platform_version": summarizer.PLATFORM_VERSION,
+                "source_locale": "ru",
+                "provider_schema_version": summarizer.PROVIDER_SCHEMA_VERSION,
+                "extraction_schema_version": summarizer.EXTRACTION_SCHEMA_VERSION,
+                "hbk": {
+                    "path": "/hbk",
+                    "bytes": benchmark.HBK_BYTES,
+                    "sha256": summarizer.HBK_SHA256,
+                },
+                "provider": dict(provider_artifact),
+            },
+            "index": dict(provider_artifact),
+            "cache": cache,
+            "cache_status": cache_status,
             "counts": {
                 "scanned_globals": 4,
                 "candidate_methods": 3,
@@ -223,33 +302,43 @@ def raw_record(
                 "excluded_assertion": True,
             },
             "timings": {
+                "phase_order": ["entry_to_ready", "first_enumeration", "warmup", "workload"],
                 "entry_to_ready_ns": value,
+                "open": {
+                    "elapsed_ns": value,
+                    "faults": {"minor": value, "major": 0},
+                },
                 "first_enumeration": {
                     "elapsed_ns": value,
                     "ns_per_object": value,
                     "faults": {"minor": value, "major": 0},
+                    "returned_objects": 2,
+                    "checksum": 1,
+                },
+                "warmup": {
+                    "elapsed_ns": value,
+                    "ns_per_object": value,
+                    "faults": {"minor": value, "major": 0},
+                    "returned_objects": 2,
+                    "checksum": 1,
                 },
                 "workload": {
                     "elapsed_ns": value,
                     "average_ns": value,
                     "ns_per_object": value,
                     "faults": {"minor": value, "major": 0},
+                    "iterations": 10,
+                    "returned_total": 20,
+                    "checksum": 1,
                 },
             },
             "allocations": {
                 "enabled": True,
-                "first_enumeration": {
-                    "allocation_calls": value,
-                    "allocated_bytes": value,
-                },
-                "workload": {
-                    "allocation_calls": value,
-                    "allocated_bytes": value,
-                },
-                "final_snapshot": {
-                    "current_live_bytes": value,
-                    "peak_live_bytes": value,
-                },
+                "entry_to_ready": dict(allocation_delta),
+                "first_enumeration": dict(allocation_delta),
+                "warmup": dict(allocation_delta),
+                "workload": dict(allocation_delta),
+                "final_snapshot": dict(allocation_snapshot),
             },
         },
     }
@@ -298,6 +387,30 @@ class BenchmarkContractTests(unittest.TestCase):
         report["input_identity"]["provider"] = {"path": "/wrong", "bytes": 1, "sha256": "f" * 64}
         report["index"] = {"path": "/wrong", "bytes": 1, "sha256": "f" * 64}
         with self.assertRaisesRegex(benchmark.EvidenceError, "declared artifacts"):
+            benchmark.validate_report(
+                report, backend(), "server", 3, require_allocations=True
+            )
+
+    def test_report_rejects_candidate_only_timing_schema_field(self) -> None:
+        report = probe_report()
+        report["timings"]["validation_ns"] = 7
+        with self.assertRaisesRegex(benchmark.EvidenceError, "timings schema keys differ"):
+            benchmark.validate_report(
+                report, backend(), "server", 3, require_allocations=True
+            )
+
+    def test_report_rejects_nested_candidate_only_timing_schema_field(self) -> None:
+        report = probe_report()
+        report["timings"]["first_enumeration"]["layout_probe_ns"] = 7
+        with self.assertRaisesRegex(benchmark.EvidenceError, "first_enumeration schema keys differ"):
+            benchmark.validate_report(
+                report, backend(), "server", 3, require_allocations=True
+            )
+
+    def test_report_rejects_nested_candidate_only_allocation_schema_field(self) -> None:
+        report = probe_report()
+        report["allocations"]["workload"]["candidate_live_bytes"] = 7
+        with self.assertRaisesRegex(benchmark.EvidenceError, "allocations.workload schema keys differ"):
             benchmark.validate_report(
                 report, backend(), "server", 3, require_allocations=True
             )
@@ -378,6 +491,42 @@ class SummaryContractTests(unittest.TestCase):
         records = complete_records()
         del records[0]["declared_file_artifacts"]
         with self.assertRaisesRegex(summarizer.SummaryError, "declared_file_artifacts"):
+            summarizer.build_summary(records, expected_samples=2)
+
+    def test_raw_declared_artifacts_must_match_runtime_artifacts(self) -> None:
+        records = complete_records()
+        records[0]["declared_file_artifacts"][0]["sha256"] = "f" * 64
+        with self.assertRaisesRegex(summarizer.SummaryError, "differ from runtime artifacts"):
+            summarizer.build_summary(records, expected_samples=2)
+
+    def test_raw_prepared_files_must_match_runtime_artifacts(self) -> None:
+        records = complete_records()
+        records[0]["preparation"]["declared_files"] = ["/wrong"]
+        with self.assertRaisesRegex(summarizer.SummaryError, "prepared files"):
+            summarizer.build_summary(records, expected_samples=2)
+
+    def test_raw_runtime_artifact_path_order_is_not_semantic(self) -> None:
+        record = raw_record("S83-C0", "server", "warm", 1, 2)
+        record["declared_files"].reverse()
+        record["preparation"]["declared_files"].reverse()
+        summarizer.validate_record(record)
+
+    def test_raw_measurement_rejects_candidate_only_timing_schema_field(self) -> None:
+        records = complete_records()
+        records[0]["measurement"]["timings"]["validation_ns"] = 7
+        with self.assertRaisesRegex(summarizer.SummaryError, "timings schema keys differ"):
+            summarizer.build_summary(records, expected_samples=2)
+
+    def test_raw_measurement_rejects_nested_candidate_only_timing_schema_field(self) -> None:
+        records = complete_records()
+        records[0]["measurement"]["timings"]["workload"]["candidate_probe_ns"] = 7
+        with self.assertRaisesRegex(summarizer.SummaryError, "workload schema keys differ"):
+            summarizer.build_summary(records, expected_samples=2)
+
+    def test_raw_measurement_rejects_nested_candidate_only_allocation_schema_field(self) -> None:
+        records = complete_records()
+        records[0]["measurement"]["allocations"]["final_snapshot"]["candidate_heap"] = 7
+        with self.assertRaisesRegex(summarizer.SummaryError, "final_snapshot schema keys differ"):
             summarizer.build_summary(records, expected_samples=2)
 
     def test_summary_has_no_candidate_ordering_fields(self) -> None:
