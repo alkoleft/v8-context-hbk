@@ -716,8 +716,8 @@ class S83CandidateSummaryTests(unittest.TestCase):
                 candidate["production"]["formation"]["write_amplification_ratio"], 1.0
             )
             markdown = (directory / "summary.md").read_text(encoding="utf-8")
-            self.assertIn("Hypothesis-specific Footprint", markdown)
-            self.assertIn("Direct Formation", markdown)
+            self.assertIn("Размер структур отдельных гипотез", markdown)
+            self.assertIn("Прямое формирование", markdown)
 
     def test_parity_backend_maps_all_registry_derived_labels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

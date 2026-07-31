@@ -1,294 +1,317 @@
-> **T183 BOUNDED EXPERIMENT — the following requirements authorize isolated
-> comparison prototypes only.** Production adoption remains blocked until the
-> user selects an outcome and the durable HBK specification or ADR accepts it.
+> **ОГРАНИЧЕННЫЙ ЭКСПЕРИМЕНТ T183 — следующие требования разрешают только
+> изолированные сравнительные прототипы.** Внедрение в production остаётся
+> заблокированным, пока пользователь не выберет результат, а долговременная
+> спецификация или ADR HBK не примет это решение.
 
 ## ADDED Requirements
 
-### Requirement: Zero-copy format selection is evidence-gated
-
-The provider SHALL NOT select or implement a production zero-copy snapshot
-format until the current owned cache, a custom flat mapped candidate and an
-archive candidate with checked validation have been compared on the same provider and
-downstream workloads.
-
-#### Scenario: Comparison protocol is frozen before candidate acceptance
-
-- **WHEN** the discovery phase prepares a candidate comparison
-- **THEN** it SHALL record the exact HBK/provider artifact identity, platform
-  version, locale, extraction-schema version, build profile, host/OS, commands,
-  run count, warm-up policy, cold-cache method, summary statistic, raw-result
-  format and measurement-tool fallbacks
-- **AND** it SHALL define task-local material-benefit and regression thresholds
-  before candidate results are used to select the production format.
-
-#### Scenario: Candidate formats are compared
-
-- **WHEN** the discovery phase evaluates zero-copy snapshot storage
-- **THEN** it SHALL report the SQLite-to-owned, current-cache-to-owned and
-  zero-copy paths separately
-- **AND** it SHALL separately record snapshot production/rebuild, cold
-  ready-for-query startup from process start through validation/mapping, warm
-  ready-for-query startup under the same boundary, first-lookup latency,
-  batched warm-lookup latency and post-workload steady state
-- **AND** it SHALL record allocation count and bytes, retained private heap
-  after open and after the workload, peak and steady-state RSS, PSS when
-  available, aggregate multi-process PSS, file size, page faults and bytes
-  touched when available
-- **AND** behavior, candidate ordering and lookup results SHALL match the
-  current snapshot contract.
-
-#### Scenario: Organization hypotheses are compared
-
-- **WHEN** discovery evaluates layout, lookup indexes, checked dynamic access
-  or snapshot formation independently from the storage-library choice
-- **THEN** each hypothesis SHALL use a separate branch/worktree and change one
-  primary organizational dimension over a recorded reference commit
-- **AND** all candidates SHALL use the exact same corpus, harness, query
-  manifest and canonical content/lookup baseline
-- **AND** implementation MAY proceed in parallel but performance measurements
-  on one host SHALL run serially with cache stance and host load recorded.
-
-#### Scenario: Candidate fails its resource gate
-
-- **WHEN** a candidate retains a parallel provider model, has no material
-  resource benefit or exceeds the accepted CPU/memory thresholds
-- **THEN** the candidate SHALL be deleted rather than retained as an alternate
-  production cache path.
-
-### Requirement: Canonical runtime ownership is evidence-gated
-
-HBK files SHALL remain authoritative external documentation inputs. The
-zero-copy snapshot SHALL become the single canonical HBK runtime context
-artifact only when its behavior and resource gates pass and that decision is
-accepted in the durable HBK specification or ADR.
-
-#### Scenario: Candidate has not passed the gate
-
-- **WHEN** discovery or prototype work is still in progress
-- **THEN** the current accepted runtime path SHALL remain canonical
-- **AND** the candidate SHALL NOT become an alternate production path.
-
-#### Scenario: Candidate passes the gate
-
-- **WHEN** the accepted comparison proves full behavior parity and satisfies
-  the startup, lookup and resource gates
-- **THEN** the zero-copy snapshot SHALL become the single runtime owner for
-  migrated HBK context consumers
-- **AND** SQLite MAY remain only as a private rebuild/index-production input
-- **AND** runtime consumers SHALL NOT retain or query a parallel SQLite or
-  owned HBK fact model.
-
-#### Scenario: Snapshot is missing or invalid
-
-- **WHEN** the snapshot is missing, stale, incompatible, truncated or invalid
-- **THEN** the provider SHALL use the rebuild path accepted by the canonical
-  runtime decision
-- **AND** snapshot-backed resolver/catalog consumers SHALL NOT introduce a
-  hidden SQLite/HBK fallback or understand snapshot layout.
-
-#### Scenario: Storage metadata is checked
-
-- **WHEN** the provider opens a file-backed snapshot
-- **THEN** it SHALL validate magic, snapshot binary-layout version,
-  extraction-schema version, source identity, locale, exact platform version
-  and the accepted structural/integrity metadata
-- **AND** a platform-version mismatch SHALL invalidate the snapshot rather
-  than reuse it across platform versions
-- **AND** that storage metadata SHALL NOT become a semantic entity identity or
-  canonical-name key.
-
-### Requirement: The mapped snapshot is the single live HBK fact model
-
-An accepted zero-copy snapshot SHALL replace the heap-materialized runtime
-snapshot for migrated snapshot-backed consumers and SHALL NOT be retained
-beside an equivalent owned provider fact graph.
-
-#### Scenario: Snapshot open succeeds
-
-- **WHEN** a valid zero-copy snapshot is opened
-- **THEN** provider facts, strings and physical indexes SHALL be read through
-  borrowed mapped views
-- **AND** the loader SHALL NOT deserialize the complete payload into owned
-  strings, nested vectors or a second fact arena.
+### Requirement: Выбор zero-copy формата допускается только на основании доказательств
+
+Провайдер SHALL NOT выбирать или реализовывать production-формат zero-copy
+снапшота, пока на одинаковых нагрузках провайдера и downstream-потребителей не
+будут сравнены текущий cache с владеющими данными, пользовательский плоский
+memory-mapped кандидат и архивный кандидат с проверяемой валидацией.
+
+#### Scenario: Протокол сравнения фиксируется до приёмки кандидата
+
+- **WHEN** этап исследования подготавливает сравнение кандидатов
+- **THEN** он SHALL зафиксировать точную идентичность артефактов HBK/провайдера,
+  версию платформы, локаль, версию схемы извлечения, профиль сборки, хост/ОС,
+  команды, количество запусков, политику прогрева, метод холодного cache,
+  итоговую статистику, формат сырых результатов и резервные варианты средств
+  измерения
+- **AND** он SHALL определить локальные для задачи пороги существенной пользы
+  и регрессий до того, как результаты кандидатов будут использованы для выбора
+  production-формата.
+
+#### Scenario: Форматы-кандидаты сравниваются
+
+- **WHEN** этап исследования оценивает хранение zero-copy снапшота
+- **THEN** он SHALL отдельно отразить пути SQLite-to-owned,
+  current-cache-to-owned и zero-copy
+- **AND** он SHALL отдельно зафиксировать производство/пересборку снапшота,
+  холодный startup готовности к запросам от запуска процесса до окончания
+  валидации/mapping, тёплый startup готовности к запросам в тех же границах,
+  задержку первого lookup, задержку пакетных тёплых lookup и устойчивое
+  состояние после рабочей нагрузки
+- **AND** он SHALL зафиксировать количество и объём аллокаций, сохраняющийся
+  private heap после открытия и после рабочей нагрузки, пиковый и устойчивый
+  RSS, PSS при наличии, суммарный PSS нескольких процессов, размер файла,
+  page faults и объём затронутых байтов при наличии
+- **AND** поведение, порядок кандидатов и результаты lookup SHALL
+  соответствовать текущему контракту снапшота.
+
+#### Scenario: Сравниваются гипотезы организации данных
+
+- **WHEN** исследование оценивает layout, lookup-индексы, проверяемый
+  динамический доступ или формирование снапшота независимо от выбора библиотеки
+  хранения
+- **THEN** каждая гипотеза SHALL использовать отдельную ветку/worktree и
+  изменять одно основное организационное измерение относительно
+  зафиксированного опорного коммита
+- **AND** все кандидаты SHALL использовать строго одинаковые corpus, harness,
+  манифест запросов и каноническую базовую линию контента/lookup
+- **AND** реализация MAY выполняться параллельно, но измерения
+  производительности на одном хосте SHALL выполняться последовательно с
+  фиксацией состояния cache и нагрузки хоста.
+
+#### Scenario: Кандидат не проходит ресурсный gate
+
+- **WHEN** кандидат сохраняет параллельную модель провайдера, не даёт
+  существенной ресурсной пользы или превышает принятые пороги CPU/памяти
+- **THEN** кандидат SHALL быть удалён, а не сохранён как альтернативный
+  production-путь cache.
+
+### Requirement: Каноническое владение runtime допускается только на основании доказательств
+
+Файлы HBK SHALL оставаться авторитетными внешними входными данными
+документации. Zero-copy снапшот SHALL стать единственным каноническим
+runtime-артефактом контекста HBK только после прохождения gates поведения и
+ресурсов и принятия этого решения в долговременной спецификации или ADR HBK.
+
+#### Scenario: Кандидат ещё не прошёл gate
+
+- **WHEN** исследование или прототипирование ещё продолжается
+- **THEN** текущий принятый runtime-путь SHALL оставаться каноническим
+- **AND** кандидат SHALL NOT становиться альтернативным production-путём.
+
+#### Scenario: Кандидат проходит gate
+
+- **WHEN** принятое сравнение доказывает полную поведенческую эквивалентность и
+  выполнение gates startup, lookup и ресурсов
+- **THEN** zero-copy снапшот SHALL стать единственным runtime-владельцем для
+  переведённых на него потребителей контекста HBK
+- **AND** SQLite MAY оставаться только приватным входом для пересборки или
+  производства индекса
+- **AND** runtime-потребители SHALL NOT сохранять или запрашивать параллельную
+  SQLite-модель либо владеющую модель фактов HBK.
+
+#### Scenario: Снапшот отсутствует или невалиден
+
+- **WHEN** снапшот отсутствует, устарел, несовместим, усечён или невалиден
+- **THEN** провайдер SHALL использовать путь пересборки, принятый решением о
+  каноническом runtime
+- **AND** потребители resolver/catalog, использующие снапшот, SHALL NOT
+  добавлять скрытый fallback к SQLite/HBK или понимать layout снапшота.
+
+#### Scenario: Метаданные хранилища проверяются
+
+- **WHEN** провайдер открывает файловый снапшот
+- **THEN** он SHALL проверить magic, версию бинарного layout снапшота, версию
+  схемы извлечения, идентичность источника, локаль, точную версию платформы и
+  принятые структурные метаданные/метаданные целостности
+- **AND** несовпадение версии платформы SHALL инвалидировать снапшот, а не
+  допускать его повторное использование между версиями платформы
+- **AND** эти метаданные хранилища SHALL NOT становиться семантической
+  идентичностью сущности или ключом канонического имени.
+
+### Requirement: Memory-mapped снапшот является единственной живой моделью фактов HBK
+
+Принятый zero-copy снапшот SHALL заменить материализуемый в heap runtime-снапшот
+для переведённых на него потребителей снапшота и SHALL NOT сохраняться рядом с
+эквивалентным владеющим графом фактов провайдера.
+
+#### Scenario: Снапшот успешно открыт
 
-#### Scenario: Snapshot is rebuilt
+- **WHEN** валидный zero-copy снапшот открыт
+- **THEN** факты провайдера, строки и физические индексы SHALL читаться через
+  заимствованные memory-mapped представления
+- **AND** загрузчик SHALL NOT десериализовывать полную полезную нагрузку во
+  владеющие строки, вложенные векторы или вторую арену фактов.
 
-- **WHEN** the provider creates a replacement snapshot
-- **THEN** construction-only state SHALL be released before mapped facts are
-  published to consumers
-- **AND** the final runtime SHALL retain only the mapped provider fact owner.
+#### Scenario: Снапшот пересобирается
 
-### Requirement: Mapped files are immutable and validated before typed access
-
-The provider SHALL map only read-only immutable snapshot files and SHALL prove
-the accepted file-layout safety invariants before exposing typed borrowed data.
-
-#### Scenario: Reader opens a snapshot session
-
-- **WHEN** a process opens a compatible snapshot
-- **THEN** it SHALL acquire a shared modification lock for the provider-owned
-  logical snapshot slot that selects the active artifact and retain it for the
-  complete lifetime of that snapshot session
-- **AND** that lock target SHALL remain stable across content-addressed or
-  uniquely named artifact generations in the same slot
-- **AND** other readers MAY acquire the same shared lock concurrently.
-
-#### Scenario: Writer attempts to change an active snapshot
-
-- **WHEN** a writer cannot acquire the required exclusive modification lock
-  because one or more readers are active
-- **THEN** it SHALL fail immediately with a typed snapshot-in-use error
-- **AND** it SHALL NOT wait, truncate, overwrite, rename over or republish the
-  active snapshot.
-
-#### Scenario: Snapshot is published
-
-- **WHEN** a writer completes a new snapshot
-- **THEN** it SHALL hold the exclusive modification lock for the same logical
-  snapshot slot while publishing both a newly named or content-addressed
-  immutable file and the discovery metadata/current pointer atomically
-- **AND** it SHALL NOT truncate, rewrite or mutate a file that may already be
-  mapped by another reader.
-
-#### Scenario: Typed data is accessed
-
-- **WHEN** a reader creates typed views over mapped bytes
-- **THEN** the provider SHALL first enforce the accepted magic/version, bounds,
-  alignment, byte-order, range-overflow, UTF-8, enum/tag and integrity checks
-- **AND** malformed bytes SHALL produce provider cache invalidation rather than
-  unchecked dereference or undefined behavior.
-
-#### Scenario: HBK source is replaced between sessions
-
-- **WHEN** a new snapshot is produced for a replacement HBK source
-- **THEN** it SHALL create a new session-local ID space
-- **AND** the provider SHALL NOT compare, migrate, serialize or validate
-  numeric local-ID stability against the previous snapshot.
-
-### Requirement: HBK string storage can serve as an immutable base dictionary
-
-The zero-copy snapshot SHALL expose a narrow provider-owned base dictionary
-capability with dense generation-scoped IDs, borrowed ID-to-text resolution and
-indexed accepted text/canonical-name-to-ID lookup.
-
-#### Scenario: Downstream name exists in HBK
-
-- **WHEN** an authorized downstream symbol composer looks up an accepted
-  canonical name already present in the HBK base dictionary
-- **THEN** the provider capability SHALL return the existing base ID without
-  copying or re-interning the HBK string.
-
-#### Scenario: Downstream name is absent from HBK
-
-- **WHEN** a BSL/metadata semantic name is absent from the HBK base dictionary
-- **THEN** HBK SHALL report a normal miss
-- **AND** it SHALL NOT store the name, own a project overlay or create a
-  cross-source entity registry.
-
-#### Scenario: Base ID crosses generations
-
-- **WHEN** callers compare or persist IDs from unrelated snapshot generations
-- **THEN** the contract SHALL treat that operation as invalid
-- **AND** no base string ID SHALL be advertised as a persistent universal
-  identity.
-
-### Requirement: Borrowed semantic catalog behavior is preserved
-
-The zero-copy storage change SHALL preserve the existing typed BSL/SDBL catalog
-and read-handle results, ordering, ambiguity, availability and source identity
-behavior.
-
-#### Scenario: Full-corpus logical parity is checked
-
-- **WHEN** the current and candidate snapshots are built from the same source
-- **THEN** the parity oracle SHALL compare logical fact counts and sets for
-  platform types, members, callables, constructors, overloads, signatures,
-  parameters, globals, module contexts/events, language facts, enums/values and
-  SDBL tables/fields/parameters
-- **AND** it SHALL compare every field currently observable through the
-  read-handle, borrowed BSL/SDBL catalogs and snapshot-backed adapters
-- **AND** it SHALL normalize session-local numeric IDs through stable provider
-  fact identity and text before comparison.
-
-#### Scenario: Existing catalog query runs over mapped storage
-
-- **WHEN** a consumer performs an exact identity, type name/alias,
-  template-key, owner/member/kind, callable/constructor, global,
-  module-context/event, language, enum/value, query-table/field/parameter,
-  availability or relation lookup
-- **THEN** it SHALL observe behavior equivalent to the current provider-owned
-  snapshot
-- **AND** normal hits, misses/empty results, multiple candidates, ambiguity and
-  unsupported outcomes SHALL be preserved at the layer that owns them
-- **AND** the provider SHALL not construct generic resolver DTOs, selected
-  context records or owned signature/parameter projections in the storage
-  layer.
-
-#### Scenario: Ordering and concurrency parity are checked
-
-- **WHEN** identical lookups run repeatedly, sequentially and through
-  concurrent read-only consumers
-- **THEN** candidate, overload, parameter, member and relation ordering SHALL
-  remain deterministic
-- **AND** concurrent reads SHALL produce the same logical results as
-  sequential reads.
-
-#### Scenario: Hidden runtime fallback is excluded
-
-- **WHEN** a mapped snapshot and its borrowed catalogs/adapters have opened
-  successfully and the source SQLite/HBK artifacts are made unavailable to the
-  running parity probe
-- **THEN** all covered lookups SHALL continue to produce the same results
-- **AND** no covered runtime path SHALL fall back to SQLite or HBK parsing.
-
-#### Scenario: Documentation parity scope is evaluated
-
-- **WHEN** discovery defines the canonical snapshot payload
-- **THEN** it SHALL explicitly decide whether any full documentation text is
-  included
-- **AND** until that decision is accepted, documentation parity SHALL cover
-  only fields observable through current snapshot/catalog contracts rather
-  than silently adding HTML, long descriptions or search/export payloads.
-
-#### Scenario: Variable-length children are traversed
-
-- **WHEN** a callable, signature, parameter, type reference or owner/member
-  relation is traversed
-- **THEN** the provider SHALL use validated ranges/slices into mapped sections
-- **AND** traversal SHALL NOT allocate one owned vector per parent entity.
-
-### Requirement: First-run claims identify snapshot production lifecycle
-
-The change SHALL distinguish mapping an existing snapshot from creating the
-snapshot for the first time.
-
-#### Scenario: Ready snapshot is supplied
-
-- **WHEN** the accepted HBK build/distribution pipeline supplies a compatible
-  snapshot before analyzer startup
-- **THEN** cold-start measurements MAY include that mapped snapshot as the
-  first analyzer open
-- **AND** the artifact producer, source identity and validation work SHALL be
-  recorded.
-
-#### Scenario: Snapshot is built locally on first use
-
-- **WHEN** no compatible snapshot exists and the provider builds it from
-  SQLite
-- **THEN** the build cost SHALL be included in first-ever-run measurements
-- **AND** the change SHALL NOT claim that cache mapping removed that initial
-  build cost.
-
-### Requirement: Dependency and durable-contract decisions remain explicit
-
-No new zero-copy, mapping or on-disk index dependency SHALL be adopted until a
-measured candidate and durable HBK ADR/spec decision own it.
-
-#### Scenario: External crate is proposed
-
-- **WHEN** implementation proposes `memmap2`, `rkyv`, `zerocopy`, `fst` or an
-  equivalent dependency
-- **THEN** the decision SHALL name the measured bottleneck, safety model,
-  lifecycle owner and rejected alternatives
-- **AND** durable HBK `spec/` and the affected acceptance baseline SHALL be
-  updated before production implementation.
+- **WHEN** провайдер создаёт заменяющий снапшот
+- **THEN** состояние, используемое только при построении, SHALL быть освобождено
+  до публикации memory-mapped фактов потребителям
+- **AND** итоговый runtime SHALL сохранять только memory-mapped владельца
+  фактов провайдера.
+
+### Requirement: Memory-mapped файлы неизменяемы и валидируются до типизированного доступа
+
+Провайдер SHALL отображать в память только read-only неизменяемые файлы
+снапшота и SHALL доказать принятые инварианты безопасности файлового layout до
+предоставления типизированных заимствованных данных.
+
+#### Scenario: Читатель открывает сессию снапшота
+
+- **WHEN** процесс открывает совместимый снапшот
+- **THEN** он SHALL получить разделяемую блокировку изменения для принадлежащего
+  провайдеру логического слота снапшота, который выбирает активный артефакт, и
+  удерживать её в течение всего времени жизни этой сессии снапшота
+- **AND** цель этой блокировки SHALL оставаться стабильной при переходе между
+  content-addressed или уникально именованными поколениями артефакта в одном
+  слоте
+- **AND** другие читатели MAY одновременно получать ту же разделяемую
+  блокировку.
+
+#### Scenario: Писатель пытается изменить активный снапшот
+
+- **WHEN** писатель не может получить требуемую эксклюзивную блокировку
+  изменения из-за наличия одного или нескольких активных читателей
+- **THEN** он SHALL немедленно завершиться с типизированной ошибкой
+  snapshot-in-use
+- **AND** он SHALL NOT ожидать, усекать, перезаписывать, переименовывать поверх
+  или повторно публиковать активный снапшот.
+
+#### Scenario: Снапшот публикуется
+
+- **WHEN** писатель завершает новый снапшот
+- **THEN** при атомарной публикации как нового именованного либо
+  content-addressed неизменяемого файла, так и метаданных обнаружения/current
+  pointer он SHALL удерживать эксклюзивную блокировку изменения того же
+  логического слота снапшота
+- **AND** он SHALL NOT усекать, переписывать или изменять файл, который уже
+  может быть memory-mapped другим читателем.
+
+#### Scenario: Выполняется доступ к типизированным данным
+
+- **WHEN** читатель создаёт типизированные представления над memory-mapped
+  байтами
+- **THEN** провайдер SHALL сначала обеспечить принятые проверки magic/версии,
+  границ, alignment, порядка байтов, переполнения диапазонов, UTF-8, enum/tag и
+  целостности
+- **AND** некорректные байты SHALL приводить к инвалидации cache провайдера, а
+  не к непроверенному разыменованию или undefined behavior.
+
+#### Scenario: Источник HBK заменён между сессиями
+
+- **WHEN** новый снапшот производится для заменившегося источника HBK
+- **THEN** он SHALL создать новое локальное для сессии пространство ID
+- **AND** провайдер SHALL NOT сравнивать, мигрировать, сериализовывать или
+  проверять стабильность числовых локальных ID относительно предыдущего
+  снапшота.
+
+### Requirement: Хранилище строк HBK может служить неизменяемым базовым словарём
+
+Zero-copy снапшот SHALL предоставлять узкую принадлежащую провайдеру возможность
+базового словаря с плотными ID в области поколения, заимствованным разрешением
+ID-to-text и индексированным lookup принятого текста/канонического имени в ID.
+
+#### Scenario: Downstream-имя существует в HBK
+
+- **WHEN** авторизованный downstream-компоновщик символов ищет принятое
+  каноническое имя, уже присутствующее в базовом словаре HBK
+- **THEN** возможность провайдера SHALL вернуть существующий базовый ID без
+  копирования или повторного интернирования строки HBK.
+
+#### Scenario: Downstream-имя отсутствует в HBK
+
+- **WHEN** семантическое имя BSL/метаданных отсутствует в базовом словаре HBK
+- **THEN** HBK SHALL сообщить об обычном промахе
+- **AND** он SHALL NOT хранить имя, владеть overlay проекта или создавать
+  межисточниковый реестр сущностей.
+
+#### Scenario: Базовый ID пересекает границу поколений
+
+- **WHEN** вызывающий код сравнивает или сохраняет ID из не связанных друг с
+  другом поколений снапшота
+- **THEN** контракт SHALL считать эту операцию невалидной
+- **AND** ни один базовый ID строки SHALL NOT заявляться как постоянная
+  универсальная идентичность.
+
+### Requirement: Поведение заимствованного семантического каталога сохраняется
+
+Изменение zero-copy хранилища SHALL сохранять существующие результаты,
+порядок, неоднозначность, доступность и поведение идентичности источника для
+типизированных BSL/SDBL catalog и read handle.
+
+#### Scenario: Проверяется логическая эквивалентность полного корпуса
+
+- **WHEN** текущий снапшот и кандидат построены из одного источника
+- **THEN** parity oracle SHALL сравнить количества и множества логических фактов
+  для типов платформы, членов, вызываемых сущностей, конструкторов, перегрузок,
+  сигнатур, параметров, глобальных сущностей, контекстов/событий модулей,
+  языковых фактов, перечислений/значений и таблиц/полей/параметров SDBL
+- **AND** он SHALL сравнить каждое поле, наблюдаемое сейчас через read handle,
+  заимствованные BSL/SDBL catalog и использующие снапшот адаптеры
+- **AND** перед сравнением он SHALL нормализовать числовые ID, локальные для
+  сессии, через стабильную идентичность факта провайдера и текст.
+
+#### Scenario: Существующий запрос каталога выполняется над memory-mapped хранилищем
+
+- **WHEN** потребитель выполняет lookup точной идентичности, имени/псевдонима
+  типа, template key, владельца/члена/вида, вызываемой сущности/конструктора,
+  глобальной сущности, контекста/события модуля, языка, перечисления/значения,
+  таблицы/поля/параметра запроса, доступности или отношения
+- **THEN** он SHALL наблюдать поведение, эквивалентное текущему снапшоту,
+  принадлежащему провайдеру
+- **AND** обычные попадания, промахи/пустые результаты, несколько кандидатов,
+  неоднозначность и неподдерживаемые исходы SHALL сохраняться на владеющем ими
+  слое
+- **AND** провайдер SHALL NOT создавать generic resolver DTO, выбранные записи
+  контекста или владеющие проекции сигнатур/параметров на слое хранения.
+
+#### Scenario: Проверяется эквивалентность порядка и конкурентного доступа
+
+- **WHEN** идентичные lookup выполняются повторно, последовательно и через
+  конкурентных read-only потребителей
+- **THEN** порядок кандидатов, перегрузок, параметров, членов и отношений SHALL
+  оставаться детерминированным
+- **AND** конкурентные чтения SHALL давать те же логические результаты, что и
+  последовательные чтения.
+
+#### Scenario: Скрытый runtime-fallback исключён
+
+- **WHEN** memory-mapped снапшот и его заимствованные catalog/adapters успешно
+  открыты, а исходные артефакты SQLite/HBK становятся недоступны выполняющемуся
+  parity probe
+- **THEN** все охваченные lookup SHALL продолжать давать те же результаты
+- **AND** ни один охваченный runtime-путь SHALL не переходить к SQLite или
+  разбору HBK как fallback.
+
+#### Scenario: Оценивается область эквивалентности документации
+
+- **WHEN** исследование определяет каноническую полезную нагрузку снапшота
+- **THEN** оно SHALL явно решить, включается ли какой-либо полный текст
+  документации
+- **AND** до принятия этого решения эквивалентность документации SHALL
+  охватывать только поля, наблюдаемые через текущие контракты снапшота/catalog,
+  а не неявно добавлять HTML, длинные описания или полезную нагрузку
+  поиска/экспорта.
+
+#### Scenario: Обходятся дочерние элементы переменной длины
+
+- **WHEN** выполняется обход вызываемой сущности, сигнатуры, параметра, ссылки
+  на тип или отношения владелец/член
+- **THEN** провайдер SHALL использовать проверенные диапазоны/slices в
+  memory-mapped секциях
+- **AND** обход SHALL NOT выделять по одному владеющему вектору на каждую
+  родительскую сущность.
+
+### Requirement: Заявления о первом запуске учитывают жизненный цикл производства снапшота
+
+Изменение SHALL различать отображение существующего снапшота и его создание в
+первый раз.
+
+#### Scenario: Предоставлен готовый снапшот
+
+- **WHEN** принятый pipeline сборки/распространения HBK предоставляет
+  совместимый снапшот до запуска анализатора
+- **THEN** измерения холодного запуска MAY включать этот memory-mapped снапшот
+  как первое открытие анализатором
+- **AND** SHALL быть зафиксированы производитель артефакта, идентичность
+  источника и работа по валидации.
+
+#### Scenario: Снапшот строится локально при первом использовании
+
+- **WHEN** совместимый снапшот отсутствует и провайдер строит его из SQLite
+- **THEN** стоимость построения SHALL быть включена в измерения самого первого
+  запуска
+- **AND** изменение SHALL NOT заявлять, что mapping cache устранил эту
+  первоначальную стоимость построения.
+
+### Requirement: Решения о зависимостях и долговременном контракте остаются явными
+
+Ни одна новая зависимость для zero-copy, mapping или дискового индекса SHALL
+NOT приниматься, пока измеренный кандидат и долговременное решение ADR/spec HBK
+не закрепят владение ею.
+
+#### Scenario: Предлагается внешняя библиотека
+
+- **WHEN** реализация предлагает `memmap2`, `rkyv`, `zerocopy`, `fst` или
+  эквивалентную зависимость
+- **THEN** решение SHALL назвать измеренное узкое место, модель безопасности,
+  владельца жизненного цикла и отклонённые альтернативы
+- **AND** долговременные HBK `spec/` и затронутая acceptance baseline SHALL быть
+  обновлены до production-реализации.

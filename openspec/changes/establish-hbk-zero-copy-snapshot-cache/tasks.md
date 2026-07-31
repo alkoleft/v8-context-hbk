@@ -1,220 +1,249 @@
-> **BOUNDED T183 EXPERIMENT / NO PRODUCTION SELECTION**
+> **ОГРАНИЧЕННЫЙ ЭКСПЕРИМЕНТ T183 / PRODUCTION-ВАРИАНТ НЕ ВЫБРАН**
 >
-> Tasks in section 1 are executable under durable task T183. Sections
-> 2–6 are a non-executable follow-up backlog: their items deliberately are not
-> checkboxes and SHALL NOT be selected or implemented until task 1.15 is
-> accepted in the durable HBK specification or ADR, the user has selected an
-> outcome and production implementation is explicitly authorized.
+> Задачи раздела 1 исполняются в рамках долгосрочной задачи T183. Разделы
+> 2–6 представляют собой неисполняемый последующий backlog: их пункты намеренно
+> не оформлены как checkbox и НЕ ДОЛЖНЫ выбираться или реализовываться, пока
+> задача 1.15 не будет принята в долгосрочной спецификации HBK или ADR,
+> пользователь не выберет исход и production-реализация не будет явно разрешена.
 
-## 1. Discovery And Architecture Gate
+## 1. Исследование и архитектурный критерий допуска
 
-Tasks 1.1–1.6 are ordered prerequisites. Candidate prototype tasks 1.7–1.12
-SHALL NOT start until the comparison protocol, current baselines, numerical
-gates, inventory, lifecycle and behavior oracle have been recorded and the
-durable task ledger authorizes the bounded prototype work.
+Задачи 1.1–1.6 являются упорядоченными предварительными условиями. Задачи
+прототипирования кандидатов 1.7–1.12 НЕ ДОЛЖНЫ начинаться, пока не будут
+зафиксированы протокол сравнения, текущие baseline, числовые критерии допуска,
+инвентаризация, жизненный цикл и oracle поведения, а долгосрочный реестр задач
+не разрешит ограниченное прототипирование.
 
-- [x] 1.1 Freeze a reproducible comparison protocol before accepting candidate
-  results: exact HBK/provider artifact identity and checksum, platform version,
-  locale, extraction-schema version, build profile, host/OS, commands, run
-  count, warm-up policy, cold-cache method, summary statistic, raw-result
-  format and measurement-tool fallbacks.
-- [x] 1.2 Capture separate baselines and run-to-run noise for SQLite-to-owned
-  materialization as the SQL baseline row,
-  current-binary-cache-to-owned cold/warm open and representative
-  post-workload steady state on the selected datasets.
-- [x] 1.3 Define task-local numerical material-benefit and non-regression
-  thresholds for production/rebuild, cold and warm ready-for-query startup
-  under the frozen protocol boundary, first lookup, batched warm lookup,
-  allocations, peak/steady RSS, PSS, aggregate multi-process PSS, page
-  faults/bytes touched and snapshot size before using prototype results to
-  choose a format.
-- [x] 1.4 Inventory the current SQLite-to-binary-cache-to-runtime data flow,
-  including every materialized `String`, `Vec`, lookup index and duplicated
-  live representation.
-- [x] 1.5 Decide and document the snapshot production lifecycle: build-time,
-  release artifact, installation step, or first-run rebuildable cache.
-- [x] 1.6 Freeze the behavior oracle: normalize session-local numeric IDs
-  through logical fact identity/text; compare full-corpus fact families and
-  observable fields; cover exact/name/owner/callable/global/module/language/
-  enum/query/availability/relation lookups; preserve hit, miss, ambiguity,
-  unsupported and deterministic-order behavior; and explicitly decide whether
-  the canonical snapshot includes documentation beyond current
-  snapshot/catalog fields.
-- [x] 1.7 Record the hypothesis registry, branch ancestry and result-table
-  template before prototyping: H0 SQL-to-owned baseline, C0 current cache
-  control, H1 custom flat mapped sections, H2 “H1 layout + typed reader” with
-  `zerocopy` only if H1 exposes decoding cost, H3 archive candidate such as
-  `rkyv`/`bytecheck`, and separate reverse-index sub-variants.
-- [x] 1.8 Prototype H1 as a custom flat, sectioned snapshot with checked
-  offsets, flat arenas, ranges, sorted lookup indexes and an interned HBK string
-  dictionary.
-- [x] 1.9 Prototype H2 from the exact measured H1 commit only when H1
-  measurements justify isolating fixed-record decode overhead; report it as
-  “H1 layout + typed reader”, otherwise record the no-go evidence instead of
-  adding the dependency.
-- [x] 1.10 Prototype H3 as an archive candidate, including
-  `rkyv`/`bytecheck` or an equivalent format, against the same catalog and
-  lookup contracts. Do not call it validated until the checked safe-access
-  boundary and compatibility proof pass.
-- [x] 1.11 Evaluate reverse string lookup implementations for the immutable
-  HBK dictionary, starting with sorted indexes, then mapped hash indexes, and
-  adding FST only when the simpler variants leave a measured lookup or size
-  problem. The sorted F0/L1/D1/P1/R1, archived A0 and mapped-hash I1 variants
-  are measured. I1 records 65/66 ns reverse-hit and 47/47 ns reverse-miss
-  medians inside the frozen gates, together with its artifact/startup/resource
-  cost. FST is not added because the simpler mapped-hash hypothesis no longer
-  leaves the reverse lookup itself outside the gate; no candidate selection is
-  implied.
-- [x] 1.12 Specify snapshot binary-layout and extraction-schema compatibility,
-  exact platform-version/source checks, structural validation, immutable
-  publication, shared session-long reader locks, fail-fast exclusive writer
-  locking, the stable logical snapshot-slot lock key and protected discovery
-  metadata/current-pointer operations, mapping lifetime and the invariant that
-  a mapped snapshot is never modified.
-- [x] 1.13 Measure every viable candidate against the frozen protocol and produce
-  one comparison table with SQL-to-owned as baseline, current-cache-to-owned as
-  control and each zero-copy hypothesis as a separate row. Report
-  production/rebuild, cold/warm ready-for-query startup, first lookup, batched
-  warm lookup, page faults/bytes touched, allocations, peak/steady RSS, PSS,
-  aggregate multi-process PSS, file/section/index sizes and post-workload
-  retained state. Record harness/candidate commit SHAs and branch ancestry, and
-  do not rank or name a winner. The consolidated table is recorded, but
-  the earlier S85 rows that fail parity/lifecycle retain their recorded
-  evidence gaps. Every parity-complete S83 row now includes producer
-  allocations and per-section/dictionary/index byte footprints.
-- [x] 1.14 Define the ownership boundary between the provider-owned immutable
-  HBK base dictionary and a downstream request/project-scoped overlay for BSL
-  and metadata strings; do not add the overlay to HBK.
-- [ ] 1.15 Present the unranked evidence to the user. Only after the user
-  selects an outcome, accept or reject the snapshot format, canonical runtime
-  promotion and base-dictionary handoff in the durable HBK specification or ADR. On
-  acceptance, SQLite may remain only in its explicitly accepted private
-  rebuild/index-production role. Retain every candidate branch and its evidence
-  until the user decides, including candidates that fail a mandatory gate.
-  The current packet explicitly records
-  `no-candidate-passes-all-frozen-gates`; no waiver or selection exists.
-- [x] 1.16 Freeze the independent S83 comparison set for exact platform
-  `8.3.27.1859`: separate service-data root, exact HBK/provider identities,
-  parameterized harness commit, host-load evidence, H0/C0 noise and concrete
-  numerical gates. Do not reuse S85 values.
-- [x] 1.17 Implement corrected S83-F0 sectioned-mapping and S83-A0
-  checked-archive format/lifecycle references in separate worktrees. Record
-  that F0 maps the dictionary/indexes but decodes variable fact records on
-  access; do not call that fact path fully zero-copy. Require exact platform
-  checks, immutable locked publication, rebuild-before-map, complete mapped
-  canonical parity, section footprints and producer allocation evidence.
-- [x] 1.17a Prototype the minimal `pub(crate)` statically dispatched
-  semantic-read seam before refactoring catalogs/adapters. Prove at compile
-  time that one associated record projection can represent the owned
-  reference, F0 owned-per-access, A0 archived-view and R1 borrowed-range
-  shapes without an escaping temporary or dispatch allocation. Then migrate
-  the exact BSL/SDBL catalog methods plus every direct `catalog.snapshot()` /
-  `HbkFactSnapshot` access in `PlatformSnapshotSource` and
-  `QueryTableSnapshotSource`; preserve existing public owned constructors and
-  source compatibility. Add a public API compile smoke for
-  `PlatformSnapshotSource::{new,with_source_id}` and
-  `QueryTableSnapshotSource::{new,with_source_ids}`. Add the versioned full
-  transcript and allocation guards defined by the implementation
-  specification.
-- [x] 1.18 Implement S83-L1 page layout, S83-I1 mapped indexes, S83-D1 checked
-  dynamic reading, S83-P1 direct formation and S83-R1 fixed-head/range-linked
-  borrowed fact records in separate F0-derived branches/worktrees. Change only
-  the registered primary variable in each branch and implement in parallel
-  while serializing all performance runs.
-- [x] 1.19 Run the complete S83 parity/lifecycle/resource protocol and add the
-  rows to one unranked comparison table. Preserve every branch, record
-  incomplete/failed gates and wait for the user's selection before any merge,
-  deletion, dependency acceptance or canonical promotion. The exact-commit
-  parity and 252 resource records are complete; every branch remains
-  preserved and no row is selected, eligible, merged or promoted.
+- [x] 1.1 Зафиксировать воспроизводимый протокол сравнения до принятия
+  результатов кандидатов: точные идентичность и checksum артефактов HBK/provider,
+  версию платформы, локаль, версию extraction schema, профиль сборки, host/OS,
+  команды, число прогонов, политику прогрева, метод холодного кеша, сводную
+  статистику, формат сырых результатов и резервные варианты инструментов
+  измерения.
+- [x] 1.2 Зафиксировать отдельные baseline и межпрогонный шум для
+  материализации SQLite-to-owned как SQL baseline-строки, холодного/тёплого
+  открытия current-binary-cache-to-owned и репрезентативного устойчивого
+  состояния после workload на выбранных наборах данных.
+- [x] 1.3 Определить локальные для задачи числовые пороги существенной пользы
+  и отсутствия регрессий до использования результатов прототипов для выбора
+  формата: для производства/пересборки, холодной и тёплой готовности к запросам
+  при запуске в границах зафиксированного протокола, первого lookup, пакетного
+  тёплого lookup, аллокаций, пикового/устойчивого RSS, PSS, суммарного PSS
+  нескольких процессов, page faults/прочитанных байтов и размера снапшота.
+- [x] 1.4 Инвентаризировать текущий поток данных
+  SQLite-to-binary-cache-to-runtime, включая каждый материализованный `String`,
+  `Vec`, lookup-индекс и каждое дублирующее живое представление.
+- [x] 1.5 Определить и документировать жизненный цикл производства снапшота:
+  во время сборки, как release-артефакт, как шаг установки или как
+  пересобираемый кеш первого запуска.
+- [x] 1.6 Зафиксировать oracle поведения: нормализовать локальные для сессии
+  числовые ID через логическую идентичность/текст факта; сравнить семейства
+  фактов всего корпуса и наблюдаемые поля; охватить lookup по точной
+  идентичности, имени, владельцу, callable, global, module, language, enum,
+  query, availability и relation; сохранить поведение hit, miss, ambiguity,
+  unsupported и детерминированного порядка; явно решить, включает ли
+  канонический снапшот документацию сверх текущих полей снапшота/каталога.
+- [x] 1.7 До прототипирования зафиксировать реестр гипотез, происхождение веток
+  и шаблон таблицы результатов: H0 SQL-to-owned baseline, C0 current cache
+  контрольный вариант, H1 собственные плоские секции, отображённые в память,
+  H2 «layout H1 + типизированный reader» с `zerocopy` только если H1 выявит
+  стоимость декодирования, H3 архивный кандидат наподобие `rkyv`/`bytecheck`
+  и отдельные подварианты обратного индекса.
+- [x] 1.8 Прототипировать H1 как собственный плоский секционированный снапшот
+  с проверяемыми смещениями, плоскими аренами, диапазонами, отсортированными
+  lookup-индексами и интернированным словарём строк HBK.
+- [x] 1.9 Прототипировать H2 только из точно измеренного коммита H1 и только
+  когда измерения H1 обосновывают изоляцию накладных расходов декодирования
+  записей фиксированного размера; представить его как «layout H1 +
+  типизированный reader», иначе зафиксировать свидетельства отказа вместо
+  добавления зависимости.
+- [x] 1.10 Прототипировать H3 как архивного кандидата, включая
+  `rkyv`/`bytecheck` или эквивалентный формат, в рамках тех же контрактов
+  каталогов и lookup. НЕ ДОЛЖНО называться проверенным до прохождения границы
+  проверяемого безопасного доступа и доказательства совместимости.
+- [x] 1.11 Оценить реализации обратного lookup строк для неизменяемого словаря
+  HBK, начиная с отсортированных индексов, затем отображённых в память
+  hash-индексов и добавляя FST только когда более простые варианты оставляют
+  измеренную проблему lookup или размера. Измерены отсортированные варианты
+  F0/L1/D1/P1/R1, архивный A0 и вариант I1 с отображённым в память hash-индексом.
+  Для I1 зафиксированы медианы reverse-hit 65/66 ns и reverse-miss 47/47 ns
+  внутри зафиксированных критериев допуска вместе со стоимостью артефакта,
+  запуска и ресурсов. FST не добавлен, поскольку более простая гипотеза с
+  отображённым в память hash-индексом больше не оставляет сам обратный lookup
+  за пределами критерия допуска; выбор кандидата не подразумевается.
+- [x] 1.12 Определить совместимость бинарного layout снапшота и extraction
+  schema, точные проверки версии платформы/источника, структурную валидацию,
+  неизменяемую публикацию, разделяемые reader-блокировки на всю сессию,
+  fail-fast эксклюзивную writer-блокировку, стабильный логический ключ
+  блокировки слота снапшота и защищённые операции с метаданными обнаружения/
+  current-pointer, время жизни mapping и инвариант, согласно которому
+  отображённый в память снапшот никогда не изменяется.
+- [x] 1.13 Измерить каждого жизнеспособного кандидата по зафиксированному
+  протоколу и подготовить одну сравнительную таблицу с SQL-to-owned в качестве
+  baseline, current-cache-to-owned в качестве контрольного варианта и каждой
+  zero-copy гипотезой в отдельной строке. Отразить производство/пересборку,
+  холодную/тёплую готовность к запросам при запуске, первый lookup, пакетный
+  тёплый lookup, page faults/прочитанные байты, аллокации, пиковый/устойчивый
+  RSS, PSS, суммарный PSS нескольких процессов, размеры файла/секций/индексов
+  и удерживаемое состояние после workload. Зафиксировать SHA коммитов
+  harness/кандидата и происхождение веток; не ранжировать и не называть
+  победителя. Сводная таблица зафиксирована, но более ранние строки S85,
+  не прошедшие проверку эквивалентности/жизненного цикла, сохраняют
+  зафиксированные пробелы в свидетельствах. Каждая строка S83 с полной
+  эквивалентностью теперь включает аллокации producer и объём каждой секции,
+  словаря и индекса в байтах.
+- [x] 1.14 Определить границу владения между принадлежащим провайдеру
+  неизменяемым базовым словарём HBK и нижестоящим overlay для BSL и строк
+  метаданных, ограниченным запросом/проектом; не добавлять overlay в HBK.
+- [ ] 1.15 Представить пользователю неранжированные свидетельства. Только
+  после выбора исхода пользователем принять или отклонить формат снапшота,
+  назначение канонической runtime-реализации и передачу базового словаря в
+  долгосрочной спецификации HBK или ADR. При принятии SQLite может остаться
+  только в явно принятой приватной роли для пересборки/построения индексов.
+  Сохранять каждую ветку кандидата и её свидетельства до решения пользователя,
+  включая кандидатов, не прошедших обязательный критерий допуска. Текущий пакет
+  явно фиксирует `no-candidate-passes-all-frozen-gates`; исключений или выбора
+  не существует.
+- [x] 1.16 Зафиксировать независимый набор сравнения S83 для точной версии
+  платформы `8.3.27.1859`: отдельный корень служебных данных, точные
+  идентичности HBK/provider, параметризованный коммит harness, свидетельства
+  нагрузки host, шум H0/C0 и конкретные числовые критерии допуска. Не
+  переиспользовать значения S85.
+- [x] 1.17 Реализовать эталонные S83-F0 для секционированного mapping и S83-A0
+  для формата/жизненного цикла проверяемого архива в отдельных worktree.
+  Зафиксировать, что F0 отображает словарь/индексы в память, но декодирует
+  записи фактов переменного размера при доступе; не называть этот путь фактов
+  полностью zero-copy. Требовать точные проверки платформы, неизменяемую
+  публикацию с блокировкой, пересборку до mapping, полную эквивалентность
+  отображённого в память канонического представления, размеры секций и
+  свидетельства аллокаций producer.
+- [x] 1.17a Прототипировать минимальный `pub(crate)` seam семантического чтения
+  со статической диспетчеризацией до рефакторинга каталогов/адаптеров. На этапе
+  компиляции доказать, что одна проекция записи через associated type может
+  представлять формы owned reference, F0 owned-per-access, A0 archived-view и
+  R1 borrowed-range без временного значения, выходящего за допустимое время
+  жизни, или аллокации на диспетчеризацию. Затем перенести точные методы
+  каталогов BSL/SDBL и каждый прямой доступ `catalog.snapshot()` /
+  `HbkFactSnapshot` в `PlatformSnapshotSource` и `QueryTableSnapshotSource`;
+  сохранить существующие публичные owned-конструкторы и совместимость исходного
+  кода. Добавить публичный compile smoke для
+  `PlatformSnapshotSource::{new,with_source_id}` и
+  `QueryTableSnapshotSource::{new,with_source_ids}`. Добавить версионированный
+  полный transcript и ограничения аллокаций, определённые спецификацией
+  реализации.
+- [x] 1.18 Реализовать S83-L1 page layout, S83-I1 отображённые в память
+  индексы, S83-D1 проверяемое динамическое чтение, S83-P1 прямое формирование
+  и S83-R1 заимствованные записи фактов с фиксированной головной частью и
+  связанными диапазонами в отдельных производных от F0 ветках/worktree.
+  В каждой ветке изменять только зарегистрированную основную переменную и
+  реализовывать варианты параллельно, последовательно выполняя все
+  performance-прогоны.
+- [x] 1.19 Выполнить полный протокол S83 для проверки эквивалентности,
+  жизненного цикла и ресурсов и добавить строки в единую неранжированную
+  сравнительную таблицу. Сохранить каждую ветку, зафиксировать неполные/
+  непройденные критерии допуска и дождаться выбора пользователя до любого
+  слияния, удаления, принятия зависимости или назначения канонической
+  реализации. Проверки эквивалентности точных коммитов и 252 записи ресурсов
+  завершены; все ветки сохранены, ни одна строка не выбрана, не признана
+  допустимой, не слита и не назначена канонической.
 
-## 2. Provider Prerequisites (Non-Executable Follow-Up)
+## 2. Предварительные условия провайдера (неисполняемый последующий этап)
 
-- 2.1 Define the selected snapshot header, section directory, compatibility
-  metadata, validation rules and corruption errors.
-- 2.2 Define borrowed provider views that preserve existing catalog
-  semantics without reconstructing entity-shaped owned records.
-- 2.3 Define generation-scoped base string identifiers and make their
-  session lifetime explicit; do not serialize, migrate or compare numeric IDs
-  across snapshot sessions and do not treat them as durable entity identity.
-- 2.4 Define the single canonical snapshot production path from accepted
-  HBK/provider build inputs without introducing a second runtime source of
-  truth.
+- 2.1 Определить header, directory секций, метаданные совместимости, правила
+  валидации и ошибки повреждения для выбранного снапшота.
+- 2.2 Определить заимствованные представления провайдера, сохраняющие
+  существующую семантику каталогов без пересоздания владеющих памятью записей
+  в форме сущностей.
+- 2.3 Определить базовые идентификаторы строк в пределах поколения и явно
+  задать их время жизни в сессии; не сериализовать, не переносить и не
+  сравнивать числовые ID между сессиями снапшота и не считать их постоянной
+  идентичностью сущностей.
+- 2.4 Определить единый канонический путь производства снапшота из принятых
+  входных данных сборки HBK/provider без появления второго runtime-источника
+  истины.
 
-## 3. Zero-Copy Snapshot Implementation (Non-Executable Follow-Up)
+## 3. Реализация zero-copy снапшота (неисполняемый последующий этап)
 
-- 3.1 Implement deterministic snapshot production and validation in the
-  HBK provider.
-- 3.2 Implement immutable memory-mapped loading with checked bounds,
-  alignment and section validation before typed access.
-- 3.3 Implement borrowed catalog, signature, parameter, property and
-  accepted documentation-field access over the selected layout.
-- 3.4 Implement base dictionary resolution and reverse lookup required by
-  provider queries without allocating entity-shaped DTOs.
-- 3.5 Implement shared session-long reader locking and fail-fast exclusive
-  writer locking around safe rebuild/publication; return a typed
-  snapshot-in-use error instead of modifying an active mapped artifact.
+- 3.1 Реализовать детерминированное производство и валидацию снапшота в
+  провайдере HBK.
+- 3.2 Реализовать неизменяемую загрузку через memory mapping с проверкой границ,
+  выравнивания и секций до типизированного доступа.
+- 3.3 Реализовать заимствованный доступ к каталогам, сигнатурам, параметрам,
+  свойствам и принятым полям документации поверх выбранного layout.
+- 3.4 Реализовать разрешение базового словаря и обратный lookup, необходимые
+  запросам провайдера, без аллокации DTO в форме сущностей.
+- 3.5 Реализовать разделяемую reader-блокировку на всю сессию и fail-fast
+  эксклюзивную writer-блокировку вокруг безопасной пересборки/публикации;
+  возвращать типизированную ошибку snapshot-in-use вместо изменения активного
+  отображённого в память артефакта.
 
-## 4. Catalog Migration And Duplicate Removal (Non-Executable Follow-Up)
+## 4. Миграция каталогов и удаление дубликатов (неисполняемый последующий этап)
 
-- 4.1 Migrate each runtime catalog consumer from heap-deserialized storage
-  to borrowed snapshot views while preserving observable query behavior.
-- 4.2 Remove the replaced heap runtime model, duplicate indexes and
-  multi-hop conversions; do not retain a compatibility mirror.
-- 4.3 Add a structural reintroduction guard proving that one process does
-  not keep both the mapped snapshot and a fully materialized HBK catalog.
+- 4.1 Перенести каждого runtime-потребителя каталога с десериализованного
+  хранилища в куче на заимствованные представления снапшота, сохранив наблюдаемое
+  поведение запросов.
+- 4.2 Удалить заменённую runtime-модель в куче, дублирующие индексы и
+  многоэтапные преобразования; не сохранять совместимую копию.
+- 4.3 Добавить структурную защиту от повторного появления, доказывающую, что
+  один процесс не хранит одновременно отображённый в память снапшот и полностью
+  материализованный каталог HBK.
 
-## 5. Downstream Base-Dictionary Handoff (Non-Executable Follow-Up)
+## 5. Передача базового словаря нижестоящей системе (неисполняемый последующий этап)
 
-- 5.1 Expose only the minimal borrowed base-dictionary boundary accepted by
-  the downstream semantic model; keep project overlay ownership outside HBK.
-- 5.2 Verify that BSL and metadata overlays can compare and resolve names
-  against the HBK base without copying the HBK dictionary or leaking
-  provider-private storage types.
-- 5.3 Record the accepted dependency outcome in
+- 5.1 Предоставить только минимальную границу заимствованного базового словаря,
+  принятую нижестоящей семантической моделью; оставить владение проектным
+  overlay за пределами HBK.
+- 5.2 Проверить, что overlay BSL и метаданных могут сравнивать и разрешать
+  имена относительно базы HBK без копирования словаря HBK или утечки приватных
+  типов хранения провайдера.
+- 5.3 Зафиксировать принятый результат зависимости в
   `v8-context/openspec/changes/establish-unified-semantic-entity-model`.
 
-## 6. Verification And Completion (Non-Executable Follow-Up)
+## 6. Проверка и завершение (неисполняемый последующий этап)
 
-- 6.1 Add compatibility/lifecycle tests for wrong magic, binary-layout
-  version, extraction-schema version, source identity, locale and platform
-  version; truncated/corrupt sections; concurrent readers; fail-fast locked
-  updates; publication; reopen; and a new session-local ID space after source
-  replacement.
-- 6.2 Add full-corpus parity tests covering logical fact counts/sets and
-  every observable field for platform types, members, callables, constructors,
-  overloads, signatures, parameters, globals, module contexts/events, language
-  facts, enums/values and SDBL tables/fields/parameters.
-- 6.3 Add lookup parity tests for exact identity, type name/alias,
-  template key, owner/member/kind, callable/constructor, global,
-  module-context/event, language, enum/value, query-table/field/parameter,
-  availability and relation lookup, including hit, miss/empty, multiple
-  candidates, ambiguity, unsupported and deterministic ordering.
-- 6.4 Run parity through `HbkFactReadHandle`, the borrowed BSL/SDBL
-  catalogs, `PlatformSnapshotSource` and `QueryTableSnapshotSource`; repeat
-  sequentially and concurrently; then make the SQLite/HBK sources unavailable
-  to the running probe and prove there is no hidden runtime fallback. Use a
-  narrow internal semantic-read seam for only the methods those catalogs and
-  adapters call; keep existing public owned-snapshot wrappers source-compatible;
-  replace every direct snapshot access in both adapters; prove the
-  owned/F0/A0/R1 projection shapes compile without unsound lifetimes; and use
-  allocation counters to reject boxed/dynamic iterators or ID collection used
-  only to cross the seam. Existing public response `Vec`s remain allowed.
-- 6.5 Re-run the frozen comparison protocol for production/rebuild,
-  cold/warm startup, first lookup, batched warm lookup, page faults/bytes
-  touched, allocation count/bytes, peak/steady RSS, PSS, aggregate
-  multi-process PSS, post-workload retained state, file/section/index sizes and
-  base-dictionary lookup.
-- 6.6 Apply the predeclared acceptance gates and present the unranked result
-  table. Promote a candidate to the single canonical HBK runtime context
-  artifact and remove the replaced owned runtime path only after the user
-  selects it and the durable decision is accepted; otherwise retain the
-  current canonical runtime path. Do not delete experimental branches or
-  evidence before that decision.
-- 6.7 Update the HBK durable requirements, acceptance baseline,
-  implementation specification, ADRs and `spec/IMPLEMENTATION_TODO.md`, plus
-  record the accepted dependency outcome in the downstream unified semantic
-  entity change.
-- 6.8 Review the final diff for duplicate models, dictionaries, indexes,
-  loaders, fallback reads and conversion chains before marking the change
-  complete.
+- 6.1 Добавить тесты совместимости/жизненного цикла для неверных magic,
+  версии binary layout, версии extraction schema, идентичности источника,
+  локали и версии платформы; усечённых/повреждённых секций; конкурентных
+  readers; fail-fast заблокированных обновлений; публикации; повторного
+  открытия; нового пространства локальных для сессии ID после замены источника.
+- 6.2 Добавить тесты эквивалентности всего корпуса, охватывающие логические
+  количества/множества фактов и каждое наблюдаемое поле для типов платформы,
+  членов, callable, конструкторов, overload, сигнатур, параметров, globals,
+  контекстов/событий модулей, фактов языка, enums/значений и таблиц/полей/
+  параметров SDBL.
+- 6.3 Добавить тесты эквивалентности lookup для точной идентичности,
+  имени/alias типа, ключа template, owner/member/kind, callable/constructor,
+  global, module-context/event, language, enum/value,
+  query-table/field/parameter, availability и relation lookup, включая hit,
+  miss/empty, несколько кандидатов, ambiguity, unsupported и
+  детерминированный порядок.
+- 6.4 Запустить проверку эквивалентности через `HbkFactReadHandle`,
+  заимствованные каталоги BSL/SDBL, `PlatformSnapshotSource` и
+  `QueryTableSnapshotSource`; повторить последовательно и конкурентно; затем
+  сделать источники SQLite/HBK недоступными работающему probe и доказать
+  отсутствие скрытого runtime fallback. Использовать узкий внутренний seam
+  семантического чтения только для методов, вызываемых этими каталогами и
+  адаптерами; сохранить совместимость исходного кода существующих публичных
+  обёрток owned-снапшота; заменить каждый прямой доступ к снапшоту в обоих
+  адаптерах; доказать компилируемость форм проекций owned/F0/A0/R1 без
+  некорректных времён жизни; использовать счётчики аллокаций для отклонения
+  boxed/dynamic iterator или коллекций ID, используемых только для пересечения
+  seam. Существующие публичные response-`Vec` остаются допустимыми.
+- 6.5 Повторно выполнить зафиксированный протокол сравнения для
+  производства/пересборки, холодного/тёплого запуска, первого lookup,
+  пакетного тёплого lookup, page faults/прочитанных байтов, числа/объёма
+  аллокаций, пикового/устойчивого RSS, PSS, суммарного PSS нескольких процессов,
+  удерживаемого состояния после workload, размеров файла/секций/индексов и
+  lookup базового словаря.
+- 6.6 Применить предварительно объявленные критерии приёмки и представить
+  неранжированную таблицу результатов. Назначить кандидата единственным
+  каноническим runtime-артефактом контекста HBK и удалить заменённый runtime-путь
+  с владением данными только после его выбора пользователем и принятия
+  долгосрочного решения; иначе сохранить текущий канонический runtime-путь.
+  Не удалять экспериментальные ветки или свидетельства до этого решения.
+- 6.7 Обновить долгосрочные требования HBK, acceptance baseline, спецификацию
+  реализации, ADR и `spec/IMPLEMENTATION_TODO.md`, а также зафиксировать
+  принятый результат зависимости в нижестоящем изменении единой семантической
+  модели сущностей.
+- 6.8 Проверить итоговый diff на дублирующие модели, словари, индексы, loaders,
+  fallback-чтения и цепочки преобразований до завершения изменения.

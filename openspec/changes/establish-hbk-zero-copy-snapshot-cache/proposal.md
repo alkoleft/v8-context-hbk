@@ -1,100 +1,113 @@
-> **T183 BOUNDED EXPERIMENT — no production format selected.** This change
-> authorizes isolated comparison prototypes and measurements. It does not
-> authorize production adoption, canonical-runtime promotion or merging a
-> candidate without a later user decision and accepted durable HBK change.
+> **ОГРАНИЧЕННЫЙ ЭКСПЕРИМЕНТ T183 — production-формат не выбран.** Это
+> изменение разрешает изолированные сравнительные прототипы и измерения. Оно
+> не разрешает внедрение в production, назначение канонической runtime-реализации
+> или слияние кандидата без последующего решения пользователя и принятого
+> долгосрочного изменения HBK.
 
-## Why
+## Зачем
 
-The provider-owned HBK binary cache already avoids rebuilding
-`HbkFactSnapshot` from SQLite on every run, but its reader first allocates the
-complete payload and then materializes every string, arena and nested vector
-into heap-owned Rust values. This retains avoidable startup CPU, allocation and
-peak-memory cost and prevents the existing HBK string dictionary from serving
-as a read-only base for later project/session symbol composition.
+Бинарный кеш HBK, принадлежащий провайдеру, уже позволяет не пересоздавать
+`HbkFactSnapshot` из SQLite при каждом запуске, но его reader сначала выделяет
+память под все содержимое, а затем материализует каждую строку, арену и
+вложенный вектор в Rust-значения, владеющие памятью в куче. Из-за этого
+сохраняются избыточные затраты CPU, аллокаций и пиковой памяти при запуске,
+а существующий словарь строк HBK не может служить read-only основой для
+последующего формирования символов проекта/сессии.
 
-## What Changes
+## Что изменяется
 
-- Explore and measure an immutable file-backed zero-copy representation of the
-  existing provider-owned HBK fact snapshot.
-- Keep HBK files as authoritative external documentation inputs. Promote the
-  binary snapshot to the canonical HBK runtime context artifact only if it
-  passes the accepted behavior, startup, lookup and resource gates; SQLite may
-  then remain only as a private rebuild/index-production input.
-- Replace, rather than layer over, the heap-materialized runtime snapshot for
-  accepted consumers; the file-backed and heap-owned representations MUST NOT
-  remain live as duplicate provider fact models.
-- Lay out the HBK string dictionary, reverse string/name lookup and compact fact
-  arenas/indexes so validated borrowed views can operate directly over a
-  read-only mapped file.
-- Evaluate the mapped HBK dictionary as generation-scoped base symbol storage.
-  A later cross-source owner may reuse base IDs and add only BSL/metadata
-  strings absent from HBK in a project-local overlay; HBK does not own that
+- Исследовать и измерить неизменяемое файловое zero-copy представление
+  существующего снапшота фактов HBK, принадлежащего провайдеру.
+- Сохранить HBK-файлы в роли авторитетных внешних источников документации.
+  Сделать бинарный снапшот каноническим runtime-артефактом контекста HBK только
+  в случае прохождения принятых критериев поведения, запуска, lookup и
+  ресурсов; после этого SQLite может остаться только приватным входом для
+  пересборки/построения индексов.
+- Для принятых потребителей заменить, а не дополнить, runtime-снапшот,
+  материализованный в куче; файловое представление и представление, владеющее
+  памятью в куче, НЕ ДОЛЖНЫ одновременно оставаться живыми дублирующими моделями
+  фактов провайдера.
+- Разместить словарь строк HBK, обратный lookup строк/имён и компактные
+  арены/индексы фактов так, чтобы проверенные заимствованные представления могли
+  работать непосредственно с read-only файлом, отображённым в память.
+- Оценить отображённый в память словарь HBK как базовое хранилище символов в
+  пределах поколения. Будущий владелец, объединяющий несколько источников,
+  может повторно использовать базовые ID и добавлять только отсутствующие в HBK
+  строки BSL/метаданных в локальный для проекта overlay; HBK не владеет этим
   overlay.
-- Preserve the existing typed borrowed BSL/SDBL catalogs and provider-owned
-  lookup semantics without exposing cache layout to resolver or analyzer
-  consumers.
-- Compare a custom flat offset/range layout, a validated archived layout such
-  as `rkyv`, and only the narrow on-disk indexes justified by measurements.
-- Treat each zero-copy construction approach as a falsifiable hypothesis with
-  its own expected win, rejection rule and measured result row.
-- Compare organization independently from library/format choice: physical
-  hot/cold section placement, mapped lookup-index shape, checked lazy/dynamic
-  section access and formation/write strategy each receive an isolated
-  branch/result row over a common reference layout.
-- Compare SQLite-to-owned, current-cache-to-owned and zero-copy paths under one
-  reproducible protocol covering production/rebuild, cold/warm ready-for-query
-  startup, first lookup, batched warm lookup, allocations, RSS/PSS, page
-  faults, file size and full observable behavior parity. The SQLite-to-owned
-  path is the baseline row for the final comparison table.
-- Decide separately whether a ready snapshot is produced by the HBK
-  build/distribution pipeline or is derived locally on cache miss. A locally
-  built snapshot cannot improve the first-ever run that builds it.
-- Define exact platform-version and source compatibility checks, immutable
-  publication, session-long shared reader locks, fail-fast exclusive writer
-  locking, corruption handling and concurrent-reader/rebuild behavior before
-  any memory mapping is accepted.
-- **BREAKING (provisional):** the internal native runtime snapshot may change
-  from heap-owned records with nested `Vec` fields to snapshot-backed borrowed
-  records/ranges. Public semantic catalog behavior is intended to remain
-  unchanged.
+- Сохранить существующие типизированные заимствованные каталоги BSL/SDBL и
+  принадлежащую провайдеру семантику lookup, не раскрывая устройство кеша
+  потребителям resolver или analyzer.
+- Сравнить собственный плоский layout смещений/диапазонов, проверяемый архивный
+  layout наподобие `rkyv` и только те узкие дисковые индексы, необходимость
+  которых подтверждена измерениями.
+- Рассматривать каждый подход к построению zero-copy как проверяемую гипотезу
+  с собственными ожидаемым преимуществом, правилом отклонения и строкой
+  результатов измерений.
+- Сравнивать организацию независимо от выбора библиотеки/формата: физическое
+  размещение горячих/холодных секций, форма отображённого в память lookup-индекса,
+  проверяемый ленивый/динамический доступ к секциям и стратегия формирования/
+  записи получают отдельные ветку и строку результатов относительно общего
+  эталонного layout.
+- Сравнить пути SQLite-to-owned, current-cache-to-owned и zero-copy по единому
+  воспроизводимому протоколу, охватывающему производство/пересборку, холодную/
+  тёплую готовность к запросам при запуске, первый lookup, пакетный тёплый
+  lookup, аллокации, RSS/PSS, page faults, размер файла и полную эквивалентность
+  наблюдаемого поведения. Путь SQLite-to-owned является baseline-строкой
+  итоговой сравнительной таблицы.
+- Отдельно решить, производится ли готовый снапшот конвейером сборки/дистрибуции
+  HBK или создаётся локально при промахе кеша. Локально построенный снапшот не
+  может улучшить самый первый запуск, во время которого он строится.
+- До принятия любого memory mapping определить точные проверки совместимости
+  версии платформы и источника, неизменяемую публикацию, удерживаемые всю сессию
+  разделяемые reader-блокировки, fail-fast эксклюзивную writer-блокировку,
+  обработку повреждений и поведение при конкурентном чтении/пересборке.
+- **КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ (предварительное):** внутренний нативный runtime-снапшот
+  может перейти от записей, владеющих памятью в куче, с вложенными полями `Vec`
+  к заимствованным записям/диапазонам на основе снапшота. Публичное семантическое
+  поведение каталогов предполагается сохранить неизменным.
 
-## Capabilities
+## Возможности
 
-### New Capabilities
+### Новые возможности
 
-- `hbk-zero-copy-snapshot-cache`: A measured, provider-owned, immutable
-  file-backed HBK snapshot and base string dictionary with validated borrowed
-  access, explicit lifecycle/invalidation and no parallel heap fact model.
+- `hbk-zero-copy-snapshot-cache`: измеренный, принадлежащий провайдеру,
+  неизменяемый файловый снапшот HBK и базовый словарь строк с проверенным
+  заимствованным доступом, явным жизненным циклом/инвалидацией и без параллельной
+  модели фактов в куче.
 
-### Modified Capabilities
+### Изменяемые возможности
 
-- `hbk-fact-snapshot-cache`: If the candidate passes its gates, revise the
-  current SQLite-canonical provider contract so the zero-copy snapshot becomes
-  the single canonical HBK runtime context artifact, with SQLite retained only
-  in an explicitly accepted private rebuild/index-production role.
+- `hbk-fact-snapshot-cache`: если кандидат проходит свои критерии допуска,
+  пересмотреть текущий контракт провайдера, в котором SQLite является
+  каноническим, так чтобы zero-copy снапшот стал единственным каноническим
+  runtime-артефактом контекста HBK, а SQLite сохранялся только в явно принятой
+  приватной роли для пересборки/построения индексов.
 
-## Impact
+## Влияние
 
-- Owning repository: `v8-context-hbk`.
-- Likely affected crate: `syntax-helper-search`; public compatibility and
-  parity checks may also affect `context-resolver-search`.
-- Likely affected areas: snapshot binary cache, string storage, arena/index
-  layout, read handles, borrowed BSL/SDBL catalogs, memory accounting,
-  provider startup selection and cache publication.
-- Candidate dependencies requiring a separate measured decision: `memmap2`,
-  `rkyv`/`bytecheck`, `zerocopy`, and an mmap-capable reverse string index such
-  as `fst`. This proposal accepts none of them yet.
-- Upstream contracts to preserve: HBK remains the authoritative external
-  documentation input; snapshot binary-layout, extraction-schema, source,
-  locale and platform-version metadata are artifact provenance rather than
-  entity identity; downstream code receives semantic catalogs/read handles and
-  never snapshot bytes or offsets.
-- Downstream draft dependency:
-  `v8-context/openspec/changes/establish-unified-semantic-entity-model` must not
-  stabilize a common `SymbolId`, HBK-backed base dictionary or cross-source
-  string lifecycle until this change has separately accepted or rejected the
-  zero-copy/base-dictionary hypothesis.
-- Out of scope for T183: production implementation or migration,
-  BSL/metadata overlay ownership, a process-global interner, persistent
-  cross-project entity IDs, analyzer mirrors, old-layout compatibility shims
-  and replacing HBK files as the authoritative documentation inputs.
+- Репозиторий-владелец: `v8-context-hbk`.
+- Вероятно затрагиваемый crate: `syntax-helper-search`; проверки публичной
+  совместимости и эквивалентности также могут затронуть
+  `context-resolver-search`.
+- Вероятно затрагиваемые области: бинарный кеш снапшота, хранение строк,
+  layout арен/индексов, read handles, заимствованные каталоги BSL/SDBL, учёт
+  памяти, выбор снапшота при запуске провайдера и публикация кеша.
+- Зависимости кандидатов, требующие отдельного решения на основе измерений:
+  `memmap2`, `rkyv`/`bytecheck`, `zerocopy` и обратный индекс строк с поддержкой
+  mmap, например `fst`. Это предложение пока не принимает ни одну из них.
+- Вышестоящие контракты, которые необходимо сохранить: HBK остаётся
+  авторитетным внешним источником документации; метаданные бинарного layout
+  снапшота, extraction schema, источника, локали и версии платформы являются
+  происхождением артефакта, а не идентичностью сущности; нижестоящий код получает
+  семантические каталоги/read handles и никогда не получает байты или смещения
+  снапшота.
+- Зависимое нижестоящее предложение:
+  `v8-context/openspec/changes/establish-unified-semantic-entity-model` НЕ ДОЛЖНО
+  стабилизировать общий `SymbolId`, базовый словарь на основе HBK или жизненный
+  цикл строк из нескольких источников, пока это изменение отдельно не примет
+  или не отклонит гипотезу zero-copy/базового словаря.
+- Вне области T183: production-реализация или миграция, владение overlay
+  BSL/метаданных, глобальный для процесса interner, постоянные межпроектные ID
+  сущностей, копии для analyzer, слои совместимости со старым layout и замена
+  HBK-файлов в роли авторитетных источников документации.

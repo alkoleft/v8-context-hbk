@@ -1378,32 +1378,42 @@ def median_at(group: dict[str, Any], *path: str) -> Any:
 
 
 def fmt_ms(value: Any) -> str:
-    return "n/a" if value is None else f"{float(value) / 1_000_000:.3f}"
+    return "н/д" if value is None else f"{float(value) / 1_000_000:.3f}"
 
 
 def fmt_us(value: Any) -> str:
-    return "n/a" if value is None else f"{float(value) / 1_000:.3f}"
+    return "н/д" if value is None else f"{float(value) / 1_000:.3f}"
 
 
 def fmt_mib_from_kib(value: Any) -> str:
-    return "n/a" if value is None else f"{float(value) / 1024:.2f}"
+    return "н/д" if value is None else f"{float(value) / 1024:.2f}"
 
 
 def fmt_mib_from_bytes(value: Any) -> str:
-    return "n/a" if value is None else f"{float(value) / 1024 / 1024:.2f}"
+    return "н/д" if value is None else f"{float(value) / 1024 / 1024:.2f}"
+
+
+def fmt_bool_ru(value: Any) -> str:
+    if value is True:
+        return "да"
+    if value is False:
+        return "нет"
+    if value is None:
+        return "н/д"
+    return str(value)
 
 
 def render_markdown(summary: dict[str, Any]) -> str:
     lines = [
-        "# S83 Candidate Evidence",
+        "# Доказательства по кандидатам S83",
         "",
-        f"Frozen harness commit: `{summary['harness_commit']}`.",
+        f"Зафиксированный коммит измерительного стенда: `{summary['harness_commit']}`.",
         "",
-        "Rows are evidence only. This report records no ordering or canonical choice.",
-        "Registry presentation order is fixed by the hypothesis registry and is not a rank.",
-        f"Eligibility state: `{summary['eligibility_state']}`.",
+        "Строки содержат только доказательства. Отчёт не задаёт порядок кандидатов и не фиксирует канонический выбор.",
+        "Порядок представления задан реестром гипотез и не является ранжированием.",
+        f"Состояние допуска: `{summary['eligibility_state']}`.",
         "",
-        "| Backend | Commit | Warm ready ms | Cold ready ms | Warm first lookup us | Warm workload ms | Warm PSS MiB | Cold PSS MiB |",
+        "| Кандидат | Коммит | Готовность, прогретый запуск, мс | Готовность, холодный запуск, мс | Первый поиск, прогретый запуск, мкс | Нагрузка, прогретый запуск, мс | PSS, прогретый запуск, МиБ | PSS, холодный запуск, МиБ |",
         "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for candidate in summary["candidates"]:
@@ -1421,9 +1431,9 @@ def render_markdown(summary: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## Production",
+            "## Формирование артефакта",
             "",
-            "| Backend | N | Total ms | Materialize ms | Serialize ms | Validate ms | Write ms | Artifact MiB | Peak RSS MiB |",
+            "| Кандидат | Замеры | Всего, мс | Материализация, мс | Сериализация, мс | Валидация, мс | Запись, мс | Артефакт, МиБ | Пиковый RSS, МиБ |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1443,9 +1453,9 @@ def render_markdown(summary: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## Allocation And Four Readers",
+            "## Аллокации и четыре читателя",
             "",
-            "| Backend | Runtime alloc calls | Runtime allocated MiB | Producer alloc calls | Producer allocated MiB | Four-reader PSS MiB |",
+            "| Кандидат | Вызовы аллокаций при чтении | Выделено при чтении, МиБ | Вызовы аллокаций при формировании | Выделено при формировании, МиБ | PSS четырёх читателей, МиБ |",
             "| --- | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1464,9 +1474,9 @@ def render_markdown(summary: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## Footprint",
+            "## Размер составляющих",
             "",
-            "| Backend | Artifact MiB | Section MiB | Dictionary MiB | Index MiB | Dictionary text MiB | Archive index fixed MiB |",
+            "| Кандидат | Артефакт, МиБ | Секции, МиБ | Словарь, МиБ | Индекс, МиБ | Текст словаря, МиБ | Фиксированная часть архивного индекса, МиБ |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1484,9 +1494,9 @@ def render_markdown(summary: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## Hypothesis-specific Footprint",
+            "## Размер структур отдельных гипотез",
             "",
-            "| Backend | Mapped hash MiB | Hash bucket MiB | Hash tables | Hash groups | Hash buckets | Max probe | Record head MiB | Nested arena MiB |",
+            "| Кандидат | Отображённый хеш, МиБ | Бакеты хеша, МиБ | Хеш-таблицы | Группы хеша | Бакеты хеша | Максимальная проба | Заголовки записей, МиБ | Арена вложенных данных, МиБ |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1497,19 +1507,19 @@ def render_markdown(summary: dict[str, Any]) -> str:
             f"| {candidate['backend']} | "
             f"{fmt_mib_from_bytes(median_at(wrapped, 'metrics', 'mapped_hash_bytes'))} | "
             f"{fmt_mib_from_bytes(median_at(wrapped, 'metrics', 'mapped_hash_bucket_bytes'))} | "
-            f"{median_at(wrapped, 'metrics', 'mapped_hash_tables') or 'n/a'} | "
-            f"{median_at(wrapped, 'metrics', 'mapped_hash_groups') or 'n/a'} | "
-            f"{median_at(wrapped, 'metrics', 'mapped_hash_buckets') or 'n/a'} | "
-            f"{median_at(wrapped, 'metrics', 'mapped_hash_max_probe') or 'n/a'} | "
+            f"{median_at(wrapped, 'metrics', 'mapped_hash_tables') or 'н/д'} | "
+            f"{median_at(wrapped, 'metrics', 'mapped_hash_groups') or 'н/д'} | "
+            f"{median_at(wrapped, 'metrics', 'mapped_hash_buckets') or 'н/д'} | "
+            f"{median_at(wrapped, 'metrics', 'mapped_hash_max_probe') or 'н/д'} | "
             f"{fmt_mib_from_bytes(median_at(wrapped, 'metrics', 'record_head_bytes'))} | "
             f"{fmt_mib_from_bytes(median_at(wrapped, 'metrics', 'nested_arena_bytes'))} |"
         )
     lines.extend(
         [
             "",
-            "## Direct Formation",
+            "## Прямое формирование",
             "",
-            "| Backend | Strategy | Monolithic artifact buffer | At most one completed section | Logical MiB written | Peak section MiB | Peak tracked working MiB | Write amplification |",
+            "| Кандидат | Стратегия | Монолитный буфер артефакта | Не более одной завершённой секции | Логически записано, МиБ | Пиковый буфер секции, МиБ | Пиковая отслеживаемая рабочая память, МиБ | Усиление записи |",
             "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1517,39 +1527,39 @@ def render_markdown(summary: dict[str, Any]) -> str:
         formation = candidate["production"].get("formation", {})
         lines.append(
             f"| {candidate['backend']} | "
-            f"{formation.get('strategy', 'n/a')} | "
-            f"{formation.get('retains_monolithic_artifact_buffer', 'n/a')} | "
-            f"{formation.get('retains_at_most_one_completed_section_buffer', 'n/a')} | "
+            f"{formation.get('strategy', 'н/д')} | "
+            f"{fmt_bool_ru(formation.get('retains_monolithic_artifact_buffer'))} | "
+            f"{fmt_bool_ru(formation.get('retains_at_most_one_completed_section_buffer'))} | "
             f"{fmt_mib_from_bytes(median_at({'metrics': formation}, 'metrics', 'logical_bytes_written'))} | "
             f"{fmt_mib_from_bytes(median_at({'metrics': formation}, 'metrics', 'peak_section_buffer_bytes'))} | "
             f"{fmt_mib_from_bytes(median_at({'metrics': formation}, 'metrics', 'peak_working_buffer_bytes'))} | "
-            f"{formation.get('write_amplification_ratio', 'n/a')} |"
+            f"{formation.get('write_amplification_ratio', 'н/д')} |"
         )
     lines.extend(
         [
             "",
-            "## Eligibility",
+            "## Допуск",
             "",
-            "| Backend | Eligible | Failed gates | Inconclusive noisy gates | Missing gates | Other blockers | Waiver |",
+            "| Кандидат | Допущен | Непройденные критерии | Неопределённые шумные критерии | Отсутствующие критерии | Другие блокирующие критерии | Исключение |",
             "| --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for candidate in summary["candidates"]:
         eligibility = candidate["eligibility"]
         lines.append(
-            f"| {candidate['backend']} | {eligibility['eligible']} | "
-            f"{', '.join(eligibility['failed_gates']) or 'none'} | "
-            f"{', '.join(eligibility['inconclusive_noisy_gates']) or 'none'} | "
-            f"{', '.join(eligibility['missing_gates']) or 'none'} | "
-            f"{', '.join(eligibility['other_blocking_gates']) or 'none'} | "
+            f"| {candidate['backend']} | {fmt_bool_ru(eligibility['eligible'])} | "
+            f"{', '.join(eligibility['failed_gates']) or 'нет'} | "
+            f"{', '.join(eligibility['inconclusive_noisy_gates']) or 'нет'} | "
+            f"{', '.join(eligibility['missing_gates']) or 'нет'} | "
+            f"{', '.join(eligibility['other_blocking_gates']) or 'нет'} | "
             f"{eligibility['waiver_status']} |"
         )
     lines.extend(
         [
             "",
-            "## Frozen Gates",
+            "## Зафиксированные критерии",
             "",
-            "| Backend | Gate | Status | Noisy | Median | Threshold | Failed count | Failed operations |",
+            "| Кандидат | Критерий | Статус | Шумный | Медиана | Порог | Число нарушений | Операции с нарушениями |",
             "| --- | --- | --- | --- | ---: | ---: | ---: | --- |",
         ]
     )
@@ -1558,10 +1568,10 @@ def render_markdown(summary: dict[str, Any]) -> str:
             gate = candidate["gates"][name]
             lines.append(
                 f"| {candidate['backend']} | {name} | {gate['status']} | "
-                f"{gate.get('noisy', 'n/a')} | "
-                f"{gate.get('median', 'n/a')} | {gate.get('threshold', 'n/a')} | "
-                f"{gate.get('failed_count', 'n/a')} | "
-                f"{', '.join(gate.get('failed_operations', [])) or 'n/a'} |"
+                f"{fmt_bool_ru(gate.get('noisy'))} | "
+                f"{gate.get('median', 'н/д')} | {gate.get('threshold', 'н/д')} | "
+                f"{gate.get('failed_count', 'н/д')} | "
+                f"{', '.join(gate.get('failed_operations', [])) or 'н/д'} |"
             )
     lines.append("")
     return "\n".join(lines)

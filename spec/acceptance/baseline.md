@@ -2692,156 +2692,175 @@ completed in 95.24 seconds. No wrapper, DTO, enum mirror, module, adapter,
 cache, registry, reader, parser, storage/index, schema, serialized shape or
 alternate facade was added. The workspace version is `0.2.4`.
 
-## T183 Interim Zero-Copy Snapshot Evidence
+## T183 — Промежуточные свидетельства по zero-copy-снапшоту
 
-T183 has a frozen comparison harness at
-`051df7979e3cf5f6431b4d13829f436c98c47054` for the real
-`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` corpus and the provider SQLite
-artifact `cc9b2b8aaf31f64c880b92cc3a02fd3166541f10f8d209faf8c7a7c22cac0d55`.
-The SQL-owned row is the baseline and the current binary cache is the runtime
-control.
+Для T183 зафиксирован стенд сравнения на коммите
+`051df7979e3cf5f6431b4d13829f436c98c47054`, использующий реальный корпус
+`/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk` и SQLite-артефакт провайдера
+`cc9b2b8aaf31f64c880b92cc3a02fd3166541f10f8d209faf8c7a7c22cac0d55`.
+Вариант с данными во владении, загруженными из SQL, является baseline, а текущий
+бинарный cache — контрольным вариантом времени выполнения.
 
-Candidate branches were measured but not ranked or selected:
+Ветви кандидатов измерены, но не ранжированы и не выбраны:
 
 - H1 `experiment/hbk-zero-copy-flat-h1`
-  `a2431254ee5d90a6e77c877e329bbb8d0ca50e84`: ineligible because full mapped
-  parity, workload equivalence, full structural validation, exact provider
-  SQLite identity and typed producer lock behavior are incomplete.
+  `a2431254ee5d90a6e77c877e329bbb8d0ca50e84`: не соответствует критериям
+  допуска, поскольку не завершены полный паритет отображённого представления,
+  эквивалентность рабочей нагрузки, полная структурная валидация, проверка
+  точной идентичности SQLite провайдера и типизированное поведение блокировки
+  средства записи.
 - H2 `experiment/hbk-zero-copy-flat-typed-h2`
-  `826991395a508e36b7a684dc987ead218ef27184`: representative workload totals
-  match C0, but full mapped canonical parity, integrated first-use lifecycle
-  proof, locked publication self-validation and the reviewed module-event
-  ordering validation are incomplete.
+  `826991395a508e36b7a684dc987ead218ef27184`: итоговые значения
+  репрезентативной рабочей нагрузки совпадают с C0, но не завершены полный
+  канонический паритет отображённого представления, интегрированное
+  доказательство жизненного цикла первого использования, самопроверка
+  публикации под блокировкой и проверенная валидация порядка событий модулей.
 - H3 `experiment/hbk-zero-copy-rkyv-h3`
-  `497afa52344fb318a4f27c94762cc7eafa1126ca`: owned-adapter oracle digests
-  match C0, but borrowed mapped-view canonical parity and first-use lifecycle
-  proof are incomplete, and not every binary-searched name/id array has an
-  open-time sorted-order proof.
+  `497afa52344fb318a4f27c94762cc7eafa1126ca`: дайджесты оракула через адаптер
+  с владением совпадают с C0, но не завершены канонический паритет заимствованного
+  отображённого представления и доказательство жизненного цикла первого
+  использования; кроме того, не для каждого массива имён/ID с бинарным поиском
+  доказан порядок сортировки при открытии.
 
-Key medians against C0: C0 warm/cold ready is 41.764 / 73.475 ms, workload is
-2,125.346 ms, peak RSS is 35,200 KiB and artifact size is 11,325,758 bytes.
-H2 warm/cold ready is 55.195 / 66.979 ms, workload is 370.613 ms, peak RSS is
-13,312 KiB, four-reader PSS is 12,848 KiB and artifact size is 11,445,079
-bytes. H3 warm/cold ready is 35.167 / 48.908 ms, workload is 4,729.164 ms,
-peak RSS is 15,872 KiB, four-reader PSS is 15,300 KiB and artifact size is
-14,097,196 bytes. H2 exceeds 20 of 25 frozen per-operation ceilings in each
-cache stance; H3 exceeds 19 warm and 20 cold ceilings. H1's operation timings
-are not comparable because three observed totals differ from C0.
+Основные медианы относительно C0: готовность C0 для прогретого/холодного запуска
+составляет 41.764 / 73.475 ms, рабочая нагрузка — 2,125.346 ms, пиковый RSS —
+35,200 KiB, размер артефакта — 11,325,758 bytes. Для H2 готовность
+прогретого/холодного запуска составляет 55.195 / 66.979 ms, рабочая нагрузка —
+370.613 ms, пиковый RSS — 13,312 KiB, PSS четырёх читателей — 12,848 KiB,
+размер артефакта — 11,445,079 bytes. Для H3 готовность прогретого/холодного
+запуска составляет 35.167 / 48.908 ms, рабочая нагрузка — 4,729.164 ms,
+пиковый RSS — 15,872 KiB, PSS четырёх читателей — 15,300 KiB, размер артефакта —
+14,097,196 bytes. H2 превышает 20 из 25 зафиксированных пооперационных порогов
+в каждом режиме cache; H3 превышает 19 порогов в прогретом и 20 в холодном
+режиме. Времена операций H1 несопоставимы, поскольку три наблюдаемых итоговых
+значения отличаются от C0.
 
-No candidate currently passes the mandatory parity/lifecycle gates. The
-accepted runtime path remains the current owned snapshot/cache path until the
-user selects an outcome and a durable decision accepts production adoption.
-The complete unranked startup-plus-first-lookup, operation, resource,
-production, relative-value and gate tables are in
-[T183 HBK Zero-Copy Snapshot Evidence](hbk-zero-copy-snapshot-evidence.md).
+Сейчас ни один кандидат не проходит обязательные критерии паритета и жизненного
+цикла. Принятым путём времени выполнения остаётся текущий путь снапшота/cache
+с владением данными до тех пор, пока пользователь не выберет результат, а
+устойчивое решение не разрешит production-внедрение. Полные неранжированные
+таблицы запуска и первого lookup, операций, ресурсов, production-построения,
+относительной ценности и критериев приведены в документе
+[T183 — Свидетельства по zero-copy-снапшоту HBK](hbk-zero-copy-snapshot-evidence.md).
 
-### S83 comparison-set preparation
+### Подготовка набора сравнения S83
 
-The additional T183 comparison set uses the exact
-`/opt/1cv8/x86_64/8.3.27.1859/shcntx_ru.hbk` input (`40,744,845` bytes,
-SHA-256
+Дополнительный набор сравнения T183 использует точный входной файл
+`/opt/1cv8/x86_64/8.3.27.1859/shcntx_ru.hbk` (`40,744,845` bytes, SHA-256
 `5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`)
-and a separate service-data root
-`target/hbk-zero-copy-experiment-8.3.27.1859/`. It is not pooled with the
-8.5.1.1150 comparison.
+и отдельный корень служебных данных
+`target/hbk-zero-copy-experiment-8.3.27.1859/`. Его данные не объединяются с
+данными сравнения 8.5.1.1150.
 
-The release provider-index build produced
+Release-сборка индекса провайдера сформировала
 `target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.release.sqlite`
 (`204,288,000` bytes, SHA-256
 `55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`)
-in `18.19 s` with `286,912 KiB` peak RSS. It contains `25,052` documents.
-The initial owned-snapshot smoke reports `69,695` strings, `1,749` platform
-types, `18,004` type members, `8,299` callables, `601` globals, `53` query
-tables, `498` query fields, `56` query parameters, zero language facts, `670`
-enums and `2,934` enum values. The current owned cache is `11,186,057` bytes.
+за `18.19 s` при пиковом RSS `286,912 KiB`. Она содержит `25,052` документов.
+Первичная smoke-проверка снапшота с владением данными сообщает о `69,695`
+строках, `1,749` типах платформы, `18,004` членах типов, `8,299` вызываемых
+сущностях, `601` глобальном элементе, `53` таблицах запросов, `498` полях
+запросов, `56` параметрах запросов, отсутствии языковых фактов, `670`
+перечислениях и `2,934` значениях перечислений. Текущий cache с владением
+данными занимает `11,186,057` bytes.
 
-The frozen S83 harness is
-`28f29b5a262db362b6b58c8109e6df6c2afbbc44`. Its 61-record service evidence
-contains 45 runtime/formation samples, nine allocation profiles, six
-four-reader samples and one full parity record, all successful. Maximum
-recorded load1 was 0.205 per logical CPU and minimum available memory was
-11,924,664 KiB.
+Зафиксированный стенд S83 находится на коммите
+`28f29b5a262db362b6b58c8109e6df6c2afbbc44`. Его служебные свидетельства из
+61 записи содержат 45 образцов времени выполнения/формирования, девять
+профилей аллокаций, шесть образцов для четырёх читателей и одну полную запись
+паритета; все проверки успешны. Максимальный зарегистрированный load1 составил
+0.205 на логический CPU, а минимальный объём доступной памяти — 11,924,664 KiB.
 
-H0 SQL-owned warm/cold ready medians are 588.217 / 1,631.261 ms with
-74,948 / 74,664 KiB peak RSS. C0 cache-owned warm/cold ready medians are
-42.489 / 73.776 ms with 34,816 KiB peak RSS and
-22,141 / 22,102 KiB post-workload PSS. The C0 artifact is 11,186,057 bytes;
-local production takes 642.839 ms at 80,780 KiB peak RSS; aggregate
-four-reader PSS is 81,142 KiB.
+Медианы готовности H0 с владением данными из SQL для прогретого/холодного
+запуска составляют 588.217 / 1,631.261 ms при пиковом RSS
+74,948 / 74,664 KiB. Для C0 с владением данными из cache эти медианы составляют
+42.489 / 73.776 ms при пиковом RSS 34,816 KiB и PSS после рабочей нагрузки
+22,141 / 22,102 KiB. Артефакт C0 занимает 11,186,057 bytes; локальное
+production-формирование занимает 642.839 ms при пиковом RSS 80,780 KiB;
+суммарный PSS четырёх читателей составляет 81,142 KiB.
 
-The canonical H0/C0 content file has 176,793 records and SHA-256
+Канонический файл содержимого H0/C0 содержит 176,793 записи и имеет SHA-256
 `5f66d20509877ac29a83ede2d5178368ed3fd78d7dab0ffbc12df506acc3b1fd`.
-The lookup file has 276,415 records and SHA-256
+Файл lookup содержит 276,415 записей и имеет SHA-256
 `9b17c7100cd368fe0880e679d66ab8eb7d8505ee617d9fc80b1a9a9d8aa5c5c8`;
-four concurrent readers reproduce both files byte-for-byte. Concrete S83-only
-material-benefit and non-regression gates are frozen in
-[T183 HBK Zero-Copy Snapshot Experiment](../implementation/hbk-zero-copy-snapshot-experiment.md#frozen-s83-h0c0-evidence-and-candidate-gates).
-These facts do not rank or select an S83 candidate.
+четыре параллельных читателя воспроизводят оба файла побайтно. Конкретные только
+для S83 критерии материальной пользы и отсутствия регрессий зафиксированы в
+[Эксперименте T183 с zero-copy-снапшотом HBK](../implementation/hbk-zero-copy-snapshot-experiment.md#frozen-s83-h0c0-evidence-and-candidate-gates).
+Эти факты не ранжируют и не выбирают кандидата S83.
 
-### S83 F0/A0 reference evidence
+### Эталонные свидетельства S83 F0/A0
 
-The first complete S83 F0/A0 numeric pass is
+Первый полный числовой прогон S83 F0/A0 сохранён в
 `target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-F0-A0-complete-360cbd9.jsonl`
-with auxiliary summary `summary-S83-F0-A0-complete-360cbd9.json`/`.md`.
-It contains 72 successful records: runtime warm/cold timing, production
-timing, runtime allocation, production allocation and aggregate four-reader
-PSS samples for both candidates. Storage parity and semantic parity are
-separate successful gates, recorded in
+со вспомогательной сводкой `summary-S83-F0-A0-complete-360cbd9.json`/`.md`.
+Он содержит 72 успешные записи: времена прогретого/холодного выполнения,
+время production-формирования, аллокации времени выполнения и
+production-формирования, а также суммарные образцы PSS четырёх читателей для
+обоих кандидатов. Паритет хранения и семантический паритет являются отдельными
+успешными критериями, зафиксированными в
 `raw-S83-F0-5eac531-parity-rerun-6aadd9b.jsonl`,
 `raw-S83-A0-2a14ed6-parity-6aadd9b.jsonl`,
-`raw-semantic-s83-f0-semantic-a9a98a1.jsonl` and
+`raw-semantic-s83-f0-semantic-a9a98a1.jsonl` и
 `raw-semantic-s83-a0-semantic-36a41aa.jsonl`.
 
-S83-F0 `a9a98a18ed2af21ba16573a00719c13edddac97b` uses immutable artifact
+S83-F0 `a9a98a18ed2af21ba16573a00719c13edddac97b` использует неизменяемый артефакт
 `s83-f0.5eac531.h2` (`11,304,567` bytes, SHA-256
 `20bc6ff8bf922b129233cafdcb4abbec51496697ee086788aacaf1eb00bd74b2`).
-S83-A0 `36a41aa74a9c6898576706f34a9a403918d452e4` uses immutable artifact
+S83-A0 `36a41aa74a9c6898576706f34a9a403918d452e4` использует неизменяемый артефакт
 `s83-a0.2a14ed6.a0` (`13,936,492` bytes, SHA-256
 `6fbd33ab0d58c2197e324b0b61193d873bc777def0087ae42b178cd8b53e00d1`).
-Both artifacts are mode `0444` with adjacent lock files.
+Оба артефакта имеют режим `0444` и соседние файлы блокировки.
 
-S83-F0 warm/cold ready medians are `54.358 / 67.899 ms`, workload medians
-are `358.243 / 356.781 ms`, peak RSS is `13,184 KiB`, four-reader PSS is
-`12,342 KiB`, runtime allocation-to-ready is `66,266` calls /
-`4,633,385` bytes, and local rebuild is `3,272.623 ms`. F0 passes storage
-and semantic parity but fails the frozen warm/cold ready gates, reverse-hit
-and forward-dictionary operation gates, open-major-fault gate, total rebuild
-gate and production allocation calls/bytes gates.
+Для S83-F0 медианы готовности прогретого/холодного запуска составляют
+`54.358 / 67.899 ms`, медианы рабочей нагрузки — `358.243 / 356.781 ms`,
+пиковый RSS — `13,184 KiB`, PSS четырёх читателей — `12,342 KiB`, аллокации
+времени выполнения до готовности — `66,266` вызовов / `4,633,385` bytes,
+локальное перестроение — `3,272.623 ms`. F0 проходит паритет хранения и
+семантический паритет, но не проходит зафиксированные критерии готовности
+прогретого/холодного запуска, операций попадания в обратном словаре и прямого
+словаря, major page faults при открытии, полного перестроения, а также числа
+и объёма аллокаций production-формирования.
 
-S83-A0 warm/cold ready medians are `39.174 / 50.703 ms`, workload medians
-are `4,638.727 / 4,644.303 ms`, peak RSS is `15,744 KiB`, four-reader PSS is
-`15,180 KiB`, runtime allocation-to-ready is `151,855` calls /
-`6,791,316` bytes, and local rebuild is `1,994.852 ms`. A0 passes storage
-and semantic parity but fails the frozen warm-ready, runtime allocation-call,
-reverse dictionary hit/miss, workload, per-operation, open-major-fault,
-total rebuild and production peak-RSS gates.
+Для S83-A0 медианы готовности прогретого/холодного запуска составляют
+`39.174 / 50.703 ms`, медианы рабочей нагрузки —
+`4,638.727 / 4,644.303 ms`, пиковый RSS — `15,744 KiB`, PSS четырёх читателей —
+`15,180 KiB`, аллокации времени выполнения до готовности — `151,855` вызовов /
+`6,791,316` bytes, локальное перестроение — `1,994.852 ms`. A0 проходит
+паритет хранения и семантический паритет, но не проходит зафиксированные
+критерии готовности прогретого запуска, числа аллокаций времени выполнения,
+попадания/промаха в обратном словаре, рабочей нагрузки, отдельных операций,
+major page faults при открытии, полного перестроения и пикового RSS
+production-формирования.
 
-Both F0 and A0 preserve all 25 workload observed totals in both cache
-stances. F0 exceeds 20 of 25 per-operation ceilings in each stance; A0
-exceeds 20 warm and 19 cold ceilings. The complete unranked S83 gate table is
-in [T183 HBK Zero-Copy Snapshot Evidence](hbk-zero-copy-snapshot-evidence.md).
-No S83 candidate is selected, ranked, promoted or made canonical.
+F0 и A0 сохраняют все 25 наблюдаемых итоговых значений рабочей нагрузки в обоих
+режимах cache. F0 превышает 20 из 25 пооперационных порогов в каждом режиме;
+A0 превышает 20 порогов в прогретом и 19 в холодном режиме. Полная
+неранжированная таблица критериев S83 приведена в
+[Свидетельствах T183 по zero-copy-снапшоту HBK](hbk-zero-copy-snapshot-evidence.md).
+Ни один кандидат S83 не выбран, не ранжирован, не продвинут и не сделан
+каноническим.
 
-### S83 consolidated candidate evidence
+### Сводные свидетельства по кандидатам S83
 
-The derived resource raw
+Исходный файл измерений ресурсов производных кандидатов
 `target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-derived-resource-0219685.jsonl`
-contains 180/180 successful records and has SHA-256
+содержит 180/180 успешных записей и имеет SHA-256
 `fe9e800f32d129c3c82b7281a3f9be9bc5b607493ba692e53654a85e99d91351`.
-Together with the 72-record F0/A0 raw it produces
+Вместе с исходными 72 записями F0/A0 он формирует
 `summary-S83-all-candidates-0219685.json` / `.md`.
 
-Every F0/A0/L1/I1/D1/P1/R1 row passes storage parity at the exact measured
-commit and semantic catalog/resolver parity: 176,793 content records,
-276,415 lookup records and 742,872 semantic records compare byte-for-byte in
-one sequential plus four concurrent source-hidden replays. F0/A0 exact-commit
-storage proofs are
-`raw-S83-F0-a9a98a1-parity-exact-0219685.jsonl` and
+Каждая строка F0/A0/L1/I1/D1/P1/R1 проходит паритет хранения на точном
+измеренном коммите и семантический паритет catalog/resolver: 176,793 записи
+содержимого, 276,415 записей lookup и 742,872 семантические записи совпадают
+побайтно в одном последовательном и четырёх параллельных воспроизведениях с
+недоступным исходным источником. Доказательства паритета хранения F0/A0 на
+точных коммитах находятся в
+`raw-S83-F0-a9a98a1-parity-exact-0219685.jsonl` и
 `raw-S83-A0-36a41aa-parity-exact-0219685.jsonl`.
 
-The principal unranked medians are:
+Основные неранжированные медианы:
 
-| ID | Warm/cold ready, ms | Warm/cold workload, ms | Four-reader PSS, KiB | Artifact bytes | Production total, ms | Frozen eligibility |
+| ID | Готовность, прогретый/холодный запуск, ms | Рабочая нагрузка, прогретый/холодный запуск, ms | PSS четырёх читателей, KiB | Размер артефакта, bytes | Общее время production-формирования, ms | Соответствие зафиксированным критериям допуска |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | `S83-F0` | 54.358 / 67.899 | 358.243 / 356.781 | 12,342 | 11,304,567 | 3,272.623 | false |
 | `S83-A0` | 39.174 / 50.703 | 4,638.727 / 4,644.303 | 15,180 | 13,936,492 | 1,994.852 | false |
@@ -2851,14 +2870,16 @@ The principal unranked medians are:
 | `S83-P1` | 54.986 / 64.242 | 353.585 / 356.805 | 12,346 | 11,304,567 | 3,101.216 | false |
 | `S83-R1` | 53.317 / 63.633 | 359.604 / 361.455 | 12,993 | 12,061,887 | 3,315.699 | false |
 
-The summary explicitly records
-`eligibility_state = no-candidate-passes-all-frozen-gates`. Non-exempt noisy
-gates are inconclusive rather than pass/fail, and no waiver is recorded. The
-complete SQL baseline, current-cache control, 25-operation lookup matrix,
-memory/allocation/footprint evidence and exact failed/inconclusive gate sets
-are in
-[T183 HBK Zero-Copy Snapshot Evidence](hbk-zero-copy-snapshot-evidence.md).
-No row is selected, recommended, merged, promoted or made canonical.
+Сводка явно фиксирует
+`eligibility_state = no-candidate-passes-all-frozen-gates`. Зашумлённые
+критерии без разрешённого исключения отмечаются как неопределённые, а не как
+пройденные/непройденные; ни одного исключения не зафиксировано. Полные данные
+SQL baseline, контрольного текущего cache, матрица lookup из 25 операций,
+свидетельства по памяти/аллокациям/занимаемому объёму и точные наборы
+непройденных/неопределённых критериев приведены в
+[Свидетельствах T183 по zero-copy-снапшоту HBK](hbk-zero-copy-snapshot-evidence.md).
+Ни одна строка не выбрана, не рекомендована, не объединена, не продвинута и не
+сделана канонической.
 
 Baseline update rule:
 

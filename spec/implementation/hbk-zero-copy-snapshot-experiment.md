@@ -1,763 +1,861 @@
-# T183 HBK Zero-Copy Snapshot Experiment
+# T183 Эксперимент с zero-copy снапшотом HBK
 
-Status: active bounded experiment. This document authorizes comparison
-prototypes only. It does not select a production format, accept a dependency,
-change the canonical runtime owner or authorize merging a candidate into
-`master`.
+Статус: активный ограниченный эксперимент. Этот документ разрешает только
+сравнительные прототипы. Он не выбирает формат для эксплуатации, не принимает
+зависимость, не изменяет канонического владельца данных во время выполнения и
+не разрешает слияние кандидата в `master`.
 
-## Question And Decision Boundary
+## Вопрос и границы решения
 
-The experiment asks whether a validated file-backed snapshot is materially
-better than the current runtime paths while preserving all observable snapshot,
-catalog and adapter behavior.
+Эксперимент проверяет, является ли валидируемый файловый снапшот существенно
+лучше текущих путей выполнения при сохранении всего наблюдаемого поведения
+снапшота, каталогов и адаптеров.
 
-`H0` SQLite-to-owned is the baseline. `C0` current-binary-cache-to-owned is a
-control. Candidate measurements are evidence rows, not a ranking. Passing the
-predeclared gates means only that a candidate remains eligible for a later
-decision. The user must choose whether any candidate is preferred; no branch is
-promoted or merged into `master` merely because it has the best measured value.
+`H0` с преобразованием SQLite в модель с владением данными — baseline. `C0` с
+преобразованием текущего бинарного кэша в модель с владением данными —
+контрольный вариант. Измерения кандидатов — строки с доказательствами, а не
+ранжирование. Прохождение заранее объявленных критериев означает только, что
+кандидат сохраняет допустимость для последующего решения. Пользователь должен
+решить, предпочтителен ли какой-либо кандидат; ветвь не продвигается и не
+сливается в `master` только из-за лучшего измеренного значения.
 
-HBK remains the authoritative documentation input. A zero-copy artifact may
-become the canonical runtime context only after a separate accepted
-specification or ADR decision.
+HBK остаётся авторитетным входом документации. Zero-copy артефакт может стать
+каноническим контекстом времени выполнения только после отдельного принятого
+решения в спецификации или ADR.
 
-## Comparison Set S85
+## Набор сравнения S85
 
-The mandatory real-corpus row is:
+Обязательная строка для реального корпуса:
 
-- platform HBK:
+- HBK платформы:
   `/opt/1cv8/x86_64/8.5.1.1150/shcntx_ru.hbk`;
-- platform version: `8.5.1.1150`;
-- locale: `ru`;
-- HBK size: `41,361,963` bytes;
-- HBK SHA-256:
+- версия платформы: `8.5.1.1150`;
+- локаль: `ru`;
+- размер HBK: `41,361,963` байт;
+- SHA-256 HBK:
   `b8bc0d3a1ee8d00e2f113a800339731304428cc35ae395e5094a8b022773f8ed`;
-- provider SQLite:
+- SQLite провайдера:
   `target/snapshot-materialization/shcntx_ru.schema16.release.sqlite`;
-- SQLite size: `206,753,792` bytes;
-- SQLite SHA-256:
+- размер SQLite: `206,753,792` байт;
+- SHA-256 SQLite:
   `cc9b2b8aaf31f64c880b92cc3a02fd3166541f10f8d209faf8c7a7c22cac0d55`;
-- provider schema: `16`;
-- extraction schema: `11`.
+- схема провайдера: `16`;
+- схема извлечения: `11`.
 
-The SQLite file is a prebuilt, reused, read-only provider input. SQL benchmark
-processes do not rebuild it and do not share a `rusqlite::Connection`. Each
-process starts with a fresh SQLite connection and the repository's existing
-read settings.
+Файл SQLite — предварительно собранный, повторно используемый вход провайдера
+только для чтения. Процессы SQL-бенчмарка не пересобирают его и не используют
+общий `rusqlite::Connection`. Каждый процесс запускается с новым соединением
+SQLite и существующими в репозитории настройками чтения.
 
-This corpus currently contains no language facts. Full semantic parity
-therefore also uses deterministic real-derived fixtures that contain language
-facts, ambiguity and unsupported outcomes. Those fixtures are parity evidence,
-not substitutes for real-corpus performance measurements. Any additional real
-corpus must be recorded with the same identity fields and reported as a
-separate dataset rather than pooled silently with this row.
+Сейчас этот корпус не содержит языковых фактов. Поэтому полная семантическая
+эквивалентность также использует детерминированные фикстуры, производные от
+реальных данных и содержащие языковые факты, неоднозначность и неподдерживаемые
+результаты. Эти фикстуры служат доказательствами эквивалентности, а не заменой
+измерений производительности на реальном корпусе. Любой дополнительный реальный
+корпус должен быть записан с теми же полями идентичности и представлен как
+отдельный набор данных, а не неявно объединён с этой строкой.
 
-## Comparison Set S83
+## Набор сравнения S83
 
-The user requested an additional, independent comparison set over:
+Пользователь запросил дополнительный независимый набор сравнения для:
 
-- dataset ID: `shcntx_ru-8.3.27.1859-schema16-extraction11`;
-- platform HBK:
+- ID набора данных: `shcntx_ru-8.3.27.1859-schema16-extraction11`;
+- HBK платформы:
   `/opt/1cv8/x86_64/8.3.27.1859/shcntx_ru.hbk`;
-- platform version: `8.3.27.1859`;
-- locale/source locale: `ru`;
-- HBK size: `40,744,845` bytes;
-- HBK SHA-256:
+- версия платформы: `8.3.27.1859`;
+- локаль/локаль источника: `ru`;
+- размер HBK: `40,744,845` байт;
+- SHA-256 HBK:
   `5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`;
-- provider SQLite:
+- SQLite провайдера:
   `target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.release.sqlite`;
-- SQLite size: `204,288,000` bytes;
-- SQLite SHA-256:
+- размер SQLite: `204,288,000` байт;
+- SHA-256 SQLite:
   `55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`;
-- provider schema: `16`;
-- extraction schema: `11`;
-- service-data root:
+- схема провайдера: `16`;
+- схема извлечения: `11`;
+- корень служебных данных:
   `target/hbk-zero-copy-experiment-8.3.27.1859/`.
 
-S83 does not change the first supported production platform baseline. It tests
-whether the hypotheses survive an older, smaller real corpus and requires the
-artifact to reject every platform version other than `8.3.27.1859` for this
-set. S83 raw/parity/prepared files and numerical gates are independent from
-S85. No value or threshold is pooled or copied between the sets.
+S83 не изменяет baseline первой поддерживаемой платформы для промышленной
+эксплуатации. Он проверяет, сохраняются ли гипотезы на более старом и меньшем
+реальном корпусе,
+и требует, чтобы для этого набора артефакт отклонял любую версию платформы,
+отличную от `8.3.27.1859`. Необработанные файлы, файлы эквивалентности,
+подготовленные файлы и числовые критерии S83 независимы от S85. Значения и
+пороговые величины не объединяются и не копируются между наборами.
 
-The release provider-index build completed in `18.19 s` at `286,912 KiB` peak
-RSS and produced `25,052` documents. The initial owned snapshot contains
-`69,695` strings, `1,749` platform types, `18,004` type members, `8,299`
-callables, `601` globals, `53` query tables, `498` query fields, `56` query
-parameters, zero language facts, `670` enums and `2,934` enum values. These
-counts establish corpus identity; candidate parity still uses the full
-canonical content and lookup files plus deterministic language/ambiguity/
-unsupported fixtures.
+Релизная сборка индекса провайдера завершилась за `18.19 s` при пиковом RSS
+`286,912 KiB` и создала `25,052` документа. Исходный снапшот с владением
+данными содержит `69,695` строк, `1,749` типов платформы, `18,004` членов
+типов, `8,299` вызываемых сущностей, `601` глобальную сущность, `53` таблицы
+запросов, `498` полей запросов, `56` параметров запросов, ни одного языкового
+факта, `670` перечислений и `2,934` значения перечислений. Эти количества
+фиксируют идентичность корпуса; проверка эквивалентности кандидатов по-прежнему
+использует полные канонические файлы содержимого и lookup, а также
+детерминированные фикстуры с языковыми фактами, неоднозначностью и
+неподдерживаемыми результатами.
 
-## Hypothesis Registry And Branch Ancestry
+## Реестр гипотез и происхождение ветвей
 
-| ID | Path | Falsifiable claim | Branch relationship |
+| ID | Путь | Фальсифицируемое утверждение | Связь ветвей |
 | --- | --- | --- | --- |
-| `H0` | SQLite to current owned snapshot | Accepted semantic and performance baseline | common benchmark base |
-| `C0` | Current binary cache to owned snapshot | Controls for avoiding SQLite while retaining full deserialization | common benchmark base |
-| `H1` | Custom flat mapped sections with checked offsets and lazy `from_le_bytes` decoding | Avoids graph deserialization and private heap without unacceptable lookup cost | branch from frozen benchmark-base commit |
-| `H2` | H1 artifact/layout with typed fixed-section views | Isolates typed-access cost from H1 layout/writer cost | branch from the exact measured H1 commit; reported as “H1 layout + typed reader”, not an independent format |
-| `H3` | `rkyv` archive candidate | A validated archive may provide simpler borrowed traversal with competitive validation/open and lookup cost | branch from frozen benchmark-base commit |
+| `H0` | Из SQLite в текущий снапшот с владением данными | Принятый семантический baseline и baseline производительности | общая база бенчмарка |
+| `C0` | Из текущего бинарного кэша в снапшот с владением данными | Контрольный вариант отказа от SQLite при сохранении полной десериализации | общая база бенчмарка |
+| `H1` | Собственные плоские отображённые в память секции с проверяемыми смещениями и ленивым декодированием `from_le_bytes` | Исключает десериализацию графа и приватную кучу без неприемлемой стоимости lookup | ветвь от зафиксированного коммита базы бенчмарка |
+| `H2` | Артефакт/layout H1 с типизированными представлениями секций фиксированного размера | Изолирует стоимость типизированного доступа от стоимости layout/записи H1 | ветвь от точного измеренного коммита H1; представляется как «layout H1 + типизированный читатель», а не как независимый формат |
+| `H3` | Кандидат на основе архива `rkyv` | Валидируемый архив может обеспечить более простой обход с заимствованием при конкурентоспособной стоимости валидации/открытия и lookup | ветвь от зафиксированного коммита базы бенчмарка |
 
-`H3` is called an archive candidate until it proves its safe-access boundary,
-format/schema/endianness compatibility, dependency acceptability and parity.
-No unchecked archived access is allowed in domain or catalog code.
+`H3` называется кандидатом на основе архива, пока не докажет границу
+безопасного доступа, совместимость формата/схемы/порядка байтов, приемлемость
+зависимости и эквивалентность. Непроверяемый доступ к архиву в коде домена или
+каталога не допускается.
 
-Reverse string lookup is a measured sub-hypothesis. Start with sorted
-dictionary/remapped dense IDs and binary search; compare a mapped
-open-addressed index only if exact/canonical lookup remains limiting. Do not
-add FST unless both simpler variants leave measured lookup or size evidence.
+Обратный lookup строк — измеряемая подгипотеза. Начать следует с
+отсортированного словаря, переназначенных плотных ID и двоичного поиска;
+сравнивать отображённый в память индекс с открытой адресацией следует только в
+том случае, если точный/канонический lookup остаётся ограничением. FST не
+добавляется, пока оба более простых варианта не оставят измеренные основания
+по lookup или размеру.
 
-The common harness and protocol are committed before candidate branches. Every
-result records the harness commit and candidate commit. Candidate branches
-must use the exact frozen harness; a harness change requires an explicit new
-benchmark-base commit and rerunning all affected baseline and candidate rows.
+Общий стенд и протокол фиксируются коммитом до создания ветвей кандидатов.
+Каждый результат записывает коммит стенда и коммит кандидата. Ветви кандидатов
+должны использовать точно зафиксированный стенд; изменение стенда требует
+явного нового коммита базы бенчмарка и повторного запуска всех затронутых строк
+baseline и кандидатов.
 
-The expected isolation is:
+Ожидаемая изоляция:
 
 ```text
 experiment/hbk-zero-copy-base
 ├── experiment/hbk-zero-copy-flat-h1
 ├── experiment/hbk-zero-copy-rkyv-h3
-└── experiment/hbk-zero-copy-flat-typed-h2  (from measured H1 commit)
+└── experiment/hbk-zero-copy-flat-typed-h2  (от измеренного коммита H1)
 ```
 
-H1 and H3 may be implemented in parallel worktrees. H2 starts only after H1
-has a committed artifact/layout and measures the subtraction from H1.
+H1 и H3 могут реализовываться параллельно в отдельных worktree. H2 запускается
+только после фиксации артефакта/layout H1 коммитом и измеряет разницу
+относительно H1.
 
-### S83 organization registry
+### Реестр организации S83
 
-S83 keeps format references separate from the organization hypotheses:
+S83 отделяет эталонные форматы от гипотез организации:
 
-| ID | Role / isolated variable | Falsifiable claim |
+| ID | Роль / изолированная переменная | Фальсифицируемое утверждение |
 | --- | --- | --- |
-| `S83-H0` | SQLite-to-owned baseline | Establishes S83 semantic, startup, lookup and resource denominators. |
-| `S83-C0` | Current-cache-to-owned control | Establishes the cost left after avoiding SQLite while retaining full deserialization. |
-| `S83-F0` | Corrected sectioned mapping/lifecycle reference: mapped dictionary and indexes, decoded-on-access variable fact records | A validated sectioned mapping can remove the complete owned runtime mirror and establish the common lifecycle/index reference; its per-record decoding cost and non-borrowed nested fact fields remain explicit evidence rather than being called fully zero-copy. |
-| `S83-A0` | Checked archive format/lifecycle reference | A checked archive provides a second format/safety reference; it is not a substitute for the organization hypotheses below. |
-| `S83-L1` | F0 with only hot/cold page-clustered section order changed | Co-locating the sections touched together by the frozen workload reduces first-touch faults/latency or resident pages without changing lookup algorithms. |
-| `S83-I1` | F0 with only mapped open-address reverse/name indexes changed | A stable checked hash/probe layout reduces limiting exact/reverse lookups enough to justify its artifact and validation overhead. |
-| `S83-D1` | F0 with only lazy safe per-section validation/access changed | Header/directory validation plus checked first-use section validation reduces ready time/page touches without returning corrupt data or shifting unacceptable cost into first lookup. |
-| `S83-P1` | F0 with only two-pass/direct formation changed | Writing the same runtime semantics without a monolithic output buffer reduces formation allocations/peak RSS or write amplification. |
-| `S83-R1` | F0 with only variable fact-record representation replaced by fixed heads plus checked ranges into mapped nested arenas | Borrowed fact, signature, parameter and type-reference projections remove decoded-on-access owned vectors and make the complete catalog/resolver path zero-copy without changing F0 lookup algorithms, section-order policy or publication semantics. |
+| `S83-H0` | Baseline преобразования SQLite в модель с владением данными | Устанавливает для S83 знаменатели семантики, запуска, lookup и ресурсов. |
+| `S83-C0` | Контрольный вариант преобразования текущего кэша в модель с владением данными | Устанавливает стоимость, остающуюся после отказа от SQLite при сохранении полной десериализации. |
+| `S83-F0` | Исправленный эталон секционного отображения в память и жизненного цикла: отображённые в память словарь и индексы, декодируемые при доступе записи фактов переменного размера | Валидируемое секционное отображение в память может устранить полное зеркало времени выполнения с владением данными и установить общий эталон жизненного цикла/индекса; его стоимость декодирования каждой записи и незаимствованные вложенные поля фактов остаются явными доказательствами, а не называются полностью zero-copy. |
+| `S83-A0` | Эталон проверяемого архивного формата и жизненного цикла | Проверяемый архив предоставляет второй эталон формата/безопасности; он не заменяет приведённые ниже гипотезы организации. |
+| `S83-L1` | F0, в котором изменён только порядок секций с кластеризацией горячих/холодных страниц | Совместное размещение секций, к которым вместе обращается зафиксированная нагрузка, уменьшает ошибки страниц/задержку первого обращения или число резидентных страниц без изменения алгоритмов lookup. |
+| `S83-I1` | F0, в котором изменены только отображённые в память обратные/именные индексы с открытой адресацией | Стабильный проверяемый layout хеширования/пробирования достаточно сокращает ограничивающие точные/обратные lookup, чтобы оправдать накладные расходы артефакта и валидации. |
+| `S83-D1` | F0, в котором изменены только ленивая безопасная валидация и доступ к каждой секции | Валидация заголовка/каталога вместе с проверяемой валидацией секции при первом использовании сокращает время до готовности к запросам/обращения к страницам, не возвращая повреждённые данные и не перенося неприемлемую стоимость в первый lookup. |
+| `S83-P1` | F0, в котором изменено только двухпроходное/прямое формирование | Запись той же семантики времени выполнения без монолитного выходного буфера сокращает выделения памяти/пиковый RSS при формировании либо усиление записи. |
+| `S83-R1` | F0, в котором только представление записей фактов переменного размера заменено фиксированными заголовками и проверяемыми диапазонами во вложенных отображённых в память аренах | Заимствованные проекции фактов, сигнатур, параметров и ссылок на типы устраняют декодируемые при доступе векторы с владением данными и делают полный путь каталогов/resolver zero-copy без изменения алгоритмов lookup F0, политики порядка секций или семантики публикации. |
 
-Every candidate has its own branch and worktree. `S83-L1`, `S83-I1`,
-`S83-D1`, `S83-P1` and `S83-R1` branch from the exact measured `S83-F0`
-commit. Implementation work may run in parallel. Performance commands are
-serialized by the coordinator; agents must not benchmark concurrently on the
-shared host.
+У каждого кандидата есть собственная ветвь и worktree. `S83-L1`, `S83-I1`,
+`S83-D1`, `S83-P1` и `S83-R1` ответвляются от точного измеренного коммита
+`S83-F0`. Реализация может выполняться параллельно. Команды измерения
+производительности координатор выполняет последовательно; агенты не должны
+одновременно запускать бенчмарки на общем хосте.
 
-S83 candidate timing is inadmissible until the candidate records the exact S83
-HBK/SQLite/harness/query-manifest/oracle identities and its complete mapped
-content and lookup files compare byte-for-byte with `S83-H0`/`S83-C0`.
+Измерения времени кандидата S83 недопустимы, пока кандидат не запишет точные
+идентичности HBK/SQLite/стенда/манифеста запросов/эталона S83, а его полные
+файлы отображённого в память содержимого и lookup не совпадут побайтно с
+`S83-H0`/`S83-C0`.
 
-## Frozen Measurement Boundary
+## Зафиксированные границы измерений
 
-All timed paths run as separate release-profile processes. A parent timestamp
-is captured immediately before `/usr/bin/time` executes the child and the
-child reports parent-launch-to-ready plus earliest-`main`-entry-to-ready. The
-first lookup includes read-handle creation. Workload anchor resolution is a
-separate timed/fault/allocation phase before the reported warm-up and batched
-workload. The harness exposes
-separate commands for:
+Все измеряемые по времени пути выполняются отдельными процессами релизного
+профиля. Метка времени родительского процесса фиксируется непосредственно
+перед тем, как `/usr/bin/time` запускает дочерний процесс, а дочерний процесс
+сообщает время от запуска родителем до готовности к запросам и время от самого
+раннего входа в `main` до готовности к запросам. Первый lookup включает
+создание дескриптора чтения. Разрешение опорных значений нагрузки — отдельная
+фаза измерения времени/ошибок страниц/выделений памяти перед регистрируемым
+прогревом и пакетной нагрузкой. Стенд предоставляет отдельные команды:
 
-- `prepare-cache`: produce a C0 artifact outside any measured open process;
-- `sql-owned`: process start to a ready current owned snapshot from the reused
-  read-only SQLite artifact;
-- `cache-owned`: process start to a ready owned snapshot from an already
-  prepared compatible cache and fail the sample unless the loader reports
-  `Loaded`;
-- candidate `produce`: current owned snapshot input to candidate
-  encode/validate/write, reported separately from SQL materialization and also
-  as total local rebuild;
-- candidate `open`: process start through compatibility validation and
-  read-only mapping until ready for a query;
-- `first-lookup`: the first representative lookup after open;
-- `warm-lookup`: the versioned batched query manifest;
-- `hold`: post-open and post-workload steady-state memory observation;
-- `parity`: canonical logical oracle generation in a separate process, never
-  mixed into startup or memory timing.
+- `prepare-cache`: создать артефакт C0 вне любого измеряемого процесса открытия;
+- `sql-owned`: от старта процесса до готового к запросам текущего снапшота с
+  владением данными из повторно используемого артефакта SQLite только для
+  чтения;
+- `cache-owned`: от старта процесса до готового к запросам снапшота с владением
+  данными из уже подготовленного совместимого кэша; образец считается
+  неуспешным, если загрузчик не сообщил `Loaded`;
+- `produce` кандидата: от входного текущего снапшота с владением данными до
+  кодирования/валидации/записи кандидата; измеряется отдельно от материализации
+  SQL, а также как полная локальная пересборка;
+- `open` кандидата: от старта процесса через проверку совместимости и
+  отображение только для чтения до готовности к запросу;
+- `first-lookup`: первый репрезентативный lookup после открытия;
+- `warm-lookup`: версионированный манифест пакетных запросов;
+- `hold`: наблюдение установившегося состояния памяти после открытия и после
+  нагрузки;
+- `parity`: генерация канонического логического эталона в отдельном процессе,
+  никогда не смешиваемая с измерениями запуска или памяти.
 
-`prepare-cache` creates the current cache once from the exact SQLite input.
-Measured C0 runs use a per-run artifact copy inside the experiment output
-root, verify its checksum before the run and reject any sample whose status is
-not `Loaded`. Candidate produce runs also use per-run outputs. Cleanup is
-limited to paths created below `target/hbk-zero-copy-experiment/`; source HBK,
-provider SQLite, prepared evidence and unrelated `target/` data are never
-deleted.
+`prepare-cache` однократно создаёт текущий кэш из точного входа SQLite.
+Измеряемые запуски C0 используют отдельную для каждого запуска копию артефакта
+в корне выходных данных эксперимента, проверяют её контрольную сумму перед
+запуском и отклоняют любой образец со статусом, отличным от `Loaded`. Запуски
+produce кандидатов также используют отдельные выходные файлы для каждого
+запуска. Очистка ограничена путями, созданными внутри
+`target/hbk-zero-copy-experiment/`; исходный HBK, SQLite провайдера,
+подготовленные доказательства и несвязанные данные `target/` никогда не
+удаляются.
 
-Warm and cold-best-effort results are separate:
+Результаты warm и cold-best-effort разделены:
 
-- warm runs use two unreported warm-ups followed by nine recorded samples;
-- cold-best-effort runs use nine recorded fresh processes and a documented
-  per-file Linux page-cache eviction request for every input artifact before
-  each run;
-- global `/proc/sys/vm/drop_caches` is not used;
-- an advisory eviction that cannot be verified is labelled
-  `cold-best-effort`, never “true cold”;
-- all implementations use the same cache stance and interleaved run order.
+- warm-запуски используют два нерегистрируемых прогрева, после которых
+  записываются девять образцов;
+- cold-best-effort-запуски используют девять новых регистрируемых процессов, а
+  перед каждым запуском для каждого входного артефакта выполняется
+  документированный запрос Linux на вытеснение из файлового кэша страниц;
+- глобальный `/proc/sys/vm/drop_caches` не используется;
+- рекомендательное вытеснение, которое невозможно проверить, помечается
+  `cold-best-effort`, но никогда не называется «true cold»;
+- все реализации используют одинаковый режим кэша и чередующийся порядок
+  запусков.
 
-Timing samples compile the experiment allocator as a direct `System`
-delegation with counters removed. Allocation profiling is a separate release
-binary with compile-time counting enabled; it reports calls, cumulative
-allocated/deallocated bytes, live bytes and peak live bytes by phase.
-`heaptrack` is an external cross-check rather than the source of timing
-evidence. `/usr/bin/time` records process elapsed, maximum RSS and minor/major
-faults. The held process exposes
-`/proc/<pid>/smaps_rollup` evidence for RSS, PSS, private/shared and anonymous
-memory. The four-reader scenario reports aggregate PSS. If a tool is
-unavailable or denied, the field is `unavailable` with the exact reason; it is
-not replaced by an incomparable estimate.
+В образцах измерения времени аллокатор эксперимента компилируется как прямое
+делегирование `System` с удалёнными счётчиками. Профилирование выделений памяти
+выполняется отдельным релизным бинарным файлом со включённым на этапе компиляции
+подсчётом; он сообщает количество вызовов, суммарное число выделенных и
+освобождённых байтов, текущие и пиковые текущие байты по фазам. `heaptrack` —
+внешняя перекрёстная проверка, а не источник доказательств времени.
+`/usr/bin/time` записывает длительность процесса, максимальный RSS и
+малые/большие ошибки страниц. Удерживаемый процесс предоставляет данные
+`/proc/<pid>/smaps_rollup` для RSS, PSS, приватной/общей и анонимной памяти.
+Сценарий с четырьмя читателями сообщает суммарный PSS. Если инструмент
+недоступен или доступ запрещён, поле получает значение `unavailable` с точной
+причиной; оно не заменяется несопоставимой оценкой.
 
-Raw results use versioned JSONL below
-`target/hbk-zero-copy-experiment/results/`. Each record includes corpus,
-backend/hypothesis, lifecycle scenario, cache stance, harness commit,
-candidate commit, build profile, host/kernel, Rust/Cargo versions, command,
-sample index, status and measured fields. Summary values are median and MAD.
-Samples are never silently trimmed. A process/tool failure or invalid backend
-status is recorded and invalidates the comparison group, which is rerun in
-full. `MAD / median > 5%` marks a metric noisy and prevents a gate conclusion
-until the noise is explained or the group is rerun.
+Необработанные результаты используют версионированный JSONL внутри
+`target/hbk-zero-copy-experiment/results/`. Каждая запись включает корпус,
+backend/гипотезу, сценарий жизненного цикла, режим кэша, коммит стенда, коммит
+кандидата, профиль сборки, хост/ядро, версии Rust/Cargo, команду, индекс
+образца, статус и измеренные поля. Итоговые значения — медиана и MAD. Образцы
+никогда не отбрасываются неявно. Сбой процесса/инструмента или недопустимый
+статус backend записывается и делает группу сравнения недействительной, после
+чего группа полностью перезапускается. `MAD / median > 5%` помечает метрику как
+шумную и не позволяет сделать вывод по критерию допуска до объяснения шума или
+повторного запуска группы.
 
-The frozen harness `run-command` and `record-parity` entry points accept
-candidate runtime, production and oracle executables directly. Its allocation
-and four-reader helpers remain H0/C0-specific. S83 candidate rows for those two
-scenarios therefore use a thin outer driver that substitutes only the
-candidate executable/artifact, emits the same raw identity, machine-state and
-resource envelope, and records frozen harness SHA
-`28f29b5a262db362b6b58c8109e6df6c2afbbc44` plus the exact candidate SHA.
-This driver is orchestration outside the frozen timing/parity harness; it does
-not transform measurements, alter cache stance or justify changing H0/C0
-baselines. Its allocation preflight accepts the instrumentation flag from the
-candidate-native `allocations.enabled` or `allocation_phases.enabled` report
-object and stores the original measurement object unchanged.
+Точки входа `run-command` и `record-parity` зафиксированного стенда принимают
+исполняемые файлы кандидата для времени выполнения, формирования и эталона
+напрямую. Его вспомогательные средства для выделений памяти и четырёх читателей
+остаются специфичными для H0/C0. Поэтому строки кандидатов S83 для этих двух
+сценариев
+используют тонкий внешний драйвер, который подставляет только исполняемый
+файл/артефакт кандидата, выдаёт те же необработанные идентичность, состояние
+машины и ресурсный конверт и записывает SHA зафиксированного стенда
+`28f29b5a262db362b6b58c8109e6df6c2afbbc44` вместе с точным SHA кандидата.
+Этот драйвер — оркестрация вне зафиксированного стенда измерений
+времени/эквивалентности; он не преобразует измерения, не меняет режим кэша и
+не обосновывает изменение baseline H0/C0. Его предварительная проверка
+выделений памяти принимает флаг инструментирования из объекта отчёта кандидата
+`allocations.enabled` или `allocation_phases.enabled` и сохраняет исходный
+объект измерения без изменений.
 
-Task-local numeric material-benefit and non-regression gates are derived from
-the H0/C0 noise runs and written into this document before any candidate code
-is implemented. Candidate results may not be inspected to choose or adjust
-those thresholds.
+Локальные для задачи числовые критерии материальной выгоды и отсутствия
+регрессий выводятся из запусков H0/C0 с оценкой шума и записываются в этот
+документ до реализации любого кода кандидата. Результаты кандидатов нельзя
+просматривать для выбора или корректировки этих порогов.
 
-## Frozen H0/C0 Evidence
+## Зафиксированные доказательства H0/C0
 
-The final common benchmark base is commit
-`051df7979e3cf5f6431b4d13829f436c98c47054`. Its workload is
-`hbk-snapshot-warm-lookups/v2`, including forward string resolution, reverse
-string hit and reverse string miss. The raw service evidence contains 61
-records for this harness commit: 60 successful measurements and one successful
-parity record, with no failed record.
+Итоговая общая база бенчмарка — коммит
+`051df7979e3cf5f6431b4d13829f436c98c47054`. Его нагрузка —
+`hbk-snapshot-warm-lookups/v2`, включая прямое разрешение строки, успешный
+обратный lookup строки и неуспешный обратный lookup строки. Необработанные
+служебные доказательства содержат 61 запись для этого коммита стенда: 60
+успешных измерений и одну успешную запись эквивалентности, без неуспешных
+записей.
 
-The H0/C0 timing and memory medians are:
+Медианы времени и памяти H0/C0:
 
-| Backend/scenario | N | Ready median ± MAD | Workload median ± MAD | Peak RSS | Post-workload PSS/private |
+| Backend/сценарий | N | Медиана готовности к запросам ± MAD | Медиана нагрузки ± MAD | Пиковый RSS | PSS/приватная память после нагрузки |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| H0 SQL owned, warm | 9 | 599.568 ± 7.419 ms | 2,226.218 ± 8.489 ms | 75,500 KiB | 68,428 / 68,408 KiB |
-| H0 SQL owned, cold-best-effort | 9 | 1,707.429 ± 10.461 ms | 2,222.610 ± 6.898 ms | 75,156 KiB | 68,422 / 68,400 KiB |
-| C0 cache owned, warm | 9 | 41.764 ± 0.839 ms | 2,125.346 ± 11.649 ms | 35,200 KiB | 22,312 / 22,292 KiB |
-| C0 cache owned, cold-best-effort | 9 | 73.475 ± 2.774 ms | 2,136.306 ± 12.465 ms | 35,200 KiB | 22,312 / 22,292 KiB |
+| H0 SQL с владением данными, warm | 9 | 599.568 ± 7.419 ms | 2,226.218 ± 8.489 ms | 75,500 KiB | 68,428 / 68,408 KiB |
+| H0 SQL с владением данными, cold-best-effort | 9 | 1,707.429 ± 10.461 ms | 2,222.610 ± 6.898 ms | 75,156 KiB | 68,422 / 68,400 KiB |
+| C0 кэш с владением данными, warm | 9 | 41.764 ± 0.839 ms | 2,125.346 ± 11.649 ms | 35,200 KiB | 22,312 / 22,292 KiB |
+| C0 кэш с владением данными, cold-best-effort | 9 | 73.475 ± 2.774 ms | 2,136.306 ± 12.465 ms | 35,200 KiB | 22,312 / 22,292 KiB |
 
-C0 first lookup is 2.902 ± 0.113 microseconds warm and
-2.997 ± 0.125 microseconds cold-best-effort. Its warm anchor resolution is
-15.066 ± 0.325 microseconds. The warm dictionary medians are 0 ns for
-`dictionary_by_id` after integer averaging, 946 ± 23 ns for reverse hit and
-49,871 ± 503 ns for reverse miss. The zero average is reported as timer
-resolution evidence, not as a literal claim that forward lookup has no cost.
+Первый lookup C0 занимает 2.902 ± 0.113 микросекунды в режиме warm и
+2.997 ± 0.125 микросекунды в режиме cold-best-effort. Разрешение опорных
+значений в режиме warm занимает 15.066 ± 0.325 микросекунды. Медианы словаря
+в режиме warm составляют 0 ns для
+`dictionary_by_id` после целочисленного усреднения, 946 ± 23 ns для успешного
+обратного lookup и 49,871 ± 503 ns для неуспешного обратного lookup. Нулевое
+среднее указывается как свидетельство разрешения таймера, а не как буквальное
+утверждение об отсутствии стоимости прямого lookup.
 
-C0 runtime open performs 137,633 allocation calls and allocates 29,278,447
-bytes before ready. Its final and peak live allocation-accounted values are
-17,942,214 and 29,274,971 bytes. The four-reader C0 median is 82,021 KiB PSS
-and 79,396 KiB private. H0 is 265,794 KiB PSS and 262,988 KiB private.
+Открытие C0 во время выполнения выполняет 137,633 вызова выделения памяти и до
+готовности к запросам выделяет 29,278,447 байт. Итоговое и пиковое текущие
+значения по учёту выделений составляют 17,942,214 и 29,274,971 байт. Медиана
+C0 для четырёх читателей — 82,021 KiB PSS и 79,396 KiB приватной памяти. Для H0
+это 265,794 KiB PSS и 262,988 KiB приватной памяти.
 
-C0 artifact production, including SQL materialization, has a total local
-rebuild median of 675.933 ± 10.180 ms. SQL materialization is
-594.571 ± 2.660 ms, artifact write is 73.492 ± 20.710 ms, peak RSS is
-81,356 KiB and artifact size is 11,325,758 bytes. The write phase is marked
-noisy and remains descriptive; the non-noisy combined local-rebuild value is
-the lifecycle gate. The production allocation profile is 1,291,568 calls,
-182,653,725 allocated bytes and 63,498,929 peak live bytes.
+Формирование артефакта C0, включая материализацию SQL, имеет медиану полной
+локальной пересборки 675.933 ± 10.180 ms. Материализация SQL занимает
+594.571 ± 2.660 ms, запись артефакта — 73.492 ± 20.710 ms, пиковый RSS равен
+81,356 KiB, а размер артефакта — 11,325,758 байт. Фаза записи помечена как
+шумная и остаётся описательной; критерием допуска жизненного цикла служит
+нешумное объединённое значение локальной пересборки. Профиль выделений при
+формировании:
+1,291,568 вызовов, 182,653,725 выделенных байт и 63,498,929 пиковых текущих
+байт.
 
-Cold-best-effort C0 brings 11,403,264 file bytes resident according to
-`fincore`; H0 brings 117,473,280 SQLite bytes resident. These are page-cache
-residency deltas, not exact CPU byte-read counters.
+Согласно `fincore`, C0 в режиме cold-best-effort переводит в резидентное
+состояние 11,403,264 байт файла; H0 переводит в резидентное состояние
+117,473,280 байт SQLite. Это изменения резидентности кэша страниц, а не точные
+счётчики прочитанных CPU байтов.
 
-The H0/C0 canonical content and lookup transcript digests are respectively
+Дайджесты канонического содержимого H0/C0 и транскрипта lookup соответственно:
 `000c78a733b286b1bf926ba5dec6e2168593ed14028ca4df02179fc8eedc6ba6`
-and
+и
 `76b7ae21c8a70c10ca5d623de9d64309036f3219c7728a861217751b90874219`.
-The full files are byte-identical, including four concurrent-reader
-transcripts.
+Полные файлы побайтно идентичны, включая транскрипты четырёх параллельных
+читателей.
 
-## Candidate Evidence Collected
+## Собранные доказательства кандидатов
 
-The committed H1, H2 and H3 branches have been measured, but no candidate
-completes the mandatory mapped parity and integrated rebuild-before-map
-lifecycle gates. The full unranked runtime, startup-plus-first-lookup,
-operation, allocation, memory, production, relative-value and gate tables are
-in
-[T183 HBK Zero-Copy Snapshot Evidence](../acceptance/hbk-zero-copy-snapshot-evidence.md).
+Зафиксированные коммитами ветви H1, H2 и H3 измерены, но ни один кандидат не
+выполняет обязательные критерии эквивалентности отображённых в память данных и
+интегрированного жизненного цикла с пересборкой до отображения в память. Полные
+неранжированные таблицы времени выполнения, запуска вместе с первым lookup,
+операций, выделений памяти, памяти, формирования, относительных значений и
+критериев приведены в документе
+[Доказательства эксперимента T183 с zero-copy снапшотом HBK](../acceptance/hbk-zero-copy-snapshot-evidence.md).
 
-That evidence also freezes the provisional downstream handoff: immutable
-provider-owned HBK strings may be exposed through generation-scoped,
-session-local IDs, while the project/request overlay remains outside HBK.
-The physical snapshot representation remains unselected. The downstream
-unified semantic entity change must not treat a memory-mapped base dictionary
-or compact materialization as accepted production architecture before the
-user's decision.
+Эти доказательства также фиксируют предварительный контракт передачи
+последующему потребителю: неизменяемые строки HBK с владением провайдера могут
+предоставляться
+через ID текущей сессии, ограниченные поколением, а слой проекта/запроса
+остаётся за пределами HBK. Физическое представление снапшота остаётся
+невыбранным. Последующее изменение единой модели семантических сущностей не
+должно считать отображённый в память базовый словарь или компактную
+материализацию принятой архитектурой для эксплуатации до решения пользователя.
 
-## Current Owned-Cache Inventory
+## Состав текущего кэша с владением данными
 
-The current writer first materializes the complete owned snapshot, serializes
-it into a second `Vec<u8>` payload and writes that payload. The current reader
-reads the complete payload into a `Vec<u8>`, validates its checksum and then
-allocates a second complete owned graph. The payload buffer and partially
-decoded graph overlap during load.
+Текущий писатель сначала материализует полный снапшот с владением данными,
+сериализует его во второй буфер полезной нагрузки `Vec<u8>` и записывает этот
+буфер. Текущий читатель считывает всю полезную нагрузку в `Vec<u8>`, проверяет
+её контрольную сумму,
+а затем выделяет второй полный граф с владением данными. Во время загрузки
+буфер полезной нагрузки и частично декодированный граф существуют одновременно.
 
-The real corpus owned graph contains a `Vec<String>` with 70,860 individually
-allocated strings and eleven top-level fact arenas: 1,754 platform types,
-18,167 members, 8,337 callables, 601 globals, 53 query tables, 498 fields,
-56 parameters, zero language facts in this corpus, 711 enums and 3,087 enum
-values. Records additionally own nested vectors for metadata-template
-parameters, type references, signatures, signature parameters and returns,
-query owner paths/template parameters and related ordered values.
+Граф с владением данными для реального корпуса содержит `Vec<String>` с 70,860
+отдельно выделенными строками и одиннадцать арен фактов верхнего уровня: 1,754
+типа платформы, 18,167 членов, 8,337 вызываемых сущностей, 601 глобальную
+сущность, 53 таблицы запросов, 498 полей, 56 параметров, ни одного языкового
+факта в этом корпусе, 711 перечислений и 3,087 значений перечислений. Записи
+также владеют вложенными векторами параметров шаблонов метаданных, ссылок на
+типы, сигнатур, параметров и возвращаемых значений сигнатур, путей владельцев
+запросов/параметров шаблонов и связанных упорядоченных значений.
 
-The snapshot also materializes 34 lookup/index representations:
+Снапшот также материализует 34 представления lookup/индексов:
 
-- generic fact IDs; type IDs, names and templates;
-- member IDs, owner CSR, owner/name and owner/name/kind;
-- callable IDs, owner CSR, owner/name and constructors;
-- global names and domain/name/kind;
-- module event names and domain/language/module-kind contexts;
-- query table IDs, names, syntax names and identifiers;
-- query field owner CSR and owner/name;
-- query parameter owner CSR and owner/name;
-- language IDs and names;
-- enum IDs and names; enum-value IDs, owner CSR and owner/name;
-- availability owner CSR and available-since;
-- relation source/kind CSR.
+- общие ID фактов; ID, имена и шаблоны типов;
+- ID членов, CSR владельцев, владелец/имя и владелец/имя/вид;
+- ID вызываемых сущностей, CSR владельцев, владелец/имя и конструкторы;
+- глобальные имена и домен/имя/вид;
+- имена событий модулей и контексты домен/язык/вид модуля;
+- ID, имена, синтаксические имена и идентификаторы таблиц запросов;
+- CSR владельцев полей запросов и владелец/имя;
+- CSR владельцев параметров запросов и владелец/имя;
+- ID и имена языков;
+- ID и имена перечислений; ID значений перечислений, CSR владельцев и
+  владелец/имя;
+- CSR владельцев доступности и доступность с версии;
+- CSR источник/вид отношения.
 
-For the selected corpus the serialized C0 artifact is 11,325,758 bytes while
-the ready owned graph accounts for 17,908,362 logical/heap bytes and
-22,288 KiB process-private memory after the workload. A candidate must avoid
-reconstructing this graph; retaining both a complete mapped representation and
-a complete owned mirror is a structural failure regardless of timings.
+Для выбранного корпуса сериализованный артефакт C0 занимает 11,325,758 байт,
+тогда как готовый к запросам граф с владением данными учитывает 17,908,362
+логических/кучных байта и 22,288 KiB приватной памяти процесса после нагрузки.
+Кандидат должен избегать восстановления этого графа; одновременное сохранение
+полного отображённого в память представления и полного зеркала с владением
+данными является структурной ошибкой независимо от измерений времени.
 
-## Prototype Production Lifecycle
+## Жизненный цикл артефакта прототипа
 
-T183 uses a release/installation artifact with a first-use rebuild fallback:
+T183 использует релизный/установочный артефакт с резервной пересборкой при
+первом использовании:
 
-1. a supplied compatible immutable generation is the preferred runtime input;
-2. a missing, corrupt, wrong-layout, wrong-extraction-schema, wrong-source,
-   wrong-locale or wrong-platform-version artifact is rebuilt before any
-   mapping is exposed;
-3. rebuild produces a new temporary immutable generation and publishes it
-   atomically; it never overwrites or truncates the mapped file;
-4. discovery/publication requires the stable logical slot's exclusive lock;
-   opening and the complete mapping lifetime hold its shared lock;
-5. an update attempt while a reader holds the shared lock fails immediately
-   with a typed snapshot-in-use error;
-6. after publication a new session opens the new generation and receives a new
-   session-local numeric ID space.
+1. предоставленное совместимое неизменяемое поколение является
+   предпочтительным входом времени выполнения;
+2. отсутствующий, повреждённый либо имеющий неверные layout, схему извлечения,
+   источник, локаль или версию платформы артефакт пересобирается до
+   предоставления любого отображения в память;
+3. пересборка создаёт новое временное неизменяемое поколение и публикует его
+   атомарно; она никогда не перезаписывает и не обрезает отображённый в память
+   файл;
+4. обнаружение/публикация требует эксклюзивной блокировки стабильного
+   логического слота; открытие и весь срок жизни отображения в память удерживают
+   его разделяемую блокировку;
+5. попытка обновления, пока читатель удерживает разделяемую блокировку,
+   немедленно завершается типизированной ошибкой занятости снапшота;
+6. после публикации новая сессия открывает новое поколение и получает новое
+   числовое пространство ID текущей сессии.
 
-Measurements keep supplied-artifact open and local rebuild as separate rows.
-This lifecycle contract does not decide that any candidate is canonical; that
-decision still requires the user's explicit selection.
+В измерениях открытие предоставленного артефакта и локальная пересборка
+остаются отдельными строками. Этот контракт жизненного цикла не объявляет ни
+одного кандидата каноническим; такое решение по-прежнему требует явного выбора
+пользователя.
 
-## Predeclared Candidate Gates
+## Заранее объявленные критерии допуска кандидатов
 
-These gates are frozen before H1/H3 code. They compare runtime candidates to
-C0, because C0 is the current no-SQL runtime control, while every table also
-shows H0-relative values. A gate marked noisy (`MAD / median > 5%`) is rerun or
-explained before a conclusion. Thresholds are not relaxed after inspecting a
-candidate.
+Эти критерии фиксируются до написания кода H1/H3. Они сравнивают кандидатов
+времени выполнения с C0, поскольку C0 — текущий контрольный вариант времени
+выполнения без SQL, при этом каждая таблица также показывает значения
+относительно H0. Критерий, помеченный как шумный (`MAD / median > 5%`), до
+формирования вывода перезапускается или получает объяснение. Пороговые значения
+не смягчаются после изучения кандидата.
 
-Mandatory correctness and safety:
+Обязательная корректность и безопасность:
 
-- canonical content and lookup files are byte-identical to H0/C0 and both
-  digests match the frozen values above;
-- sequential and four-reader transcripts match;
-- no SQLite/HBK fallback occurs after candidate open;
-- header compatibility, structural validation, platform-version rejection,
-  immutable-generation publication, mapping lifetime and fail-fast lock tests
-  pass;
-- no complete owned snapshot mirror exists beside the mapped artifact.
+- канонические файлы содержимого и lookup побайтно идентичны H0/C0, и оба
+  дайджеста совпадают с зафиксированными выше значениями;
+- последовательный транскрипт и транскрипт четырёх читателей совпадают;
+- после открытия кандидата не происходит резервного обращения к SQLite/HBK;
+- проходят тесты совместимости заголовка, структурной валидации, отклонения
+  версии платформы, публикации неизменяемого поколения, срока жизни отображения
+  в память и немедленно завершающейся блокировки;
+- рядом с отображённым в память артефактом не существует полного зеркала
+  снапшота с владением данными.
 
-Mandatory material benefit against C0:
+Обязательная материальная выгода относительно C0:
 
-Fractional ceilings are rounded down to the nearest whole measured unit so
-that rounding cannot weaken the stated minimum reduction.
+Дробные верхние пределы округляются вниз до ближайшей целой измеряемой единицы,
+чтобы округление не могло ослабить заявленное минимальное сокращение.
 
-| Metric | Required candidate median |
+| Метрика | Требуемая медиана кандидата |
 | --- | ---: |
-| warm process-start-to-ready | at most 33,410,942 ns (20% reduction) |
-| cold-best-effort process-start-to-ready | at most 58,780,152 ns (20% reduction) |
-| runtime allocation calls to ready | at most 68,816 (50% reduction) |
-| runtime allocated bytes to ready | at most 14,639,223 (50% reduction) |
-| peak runtime RSS | at most 29,920 KiB (15% reduction) |
-| warm post-workload PSS | at most 17,849 KiB (20% reduction) |
-| warm post-workload private | at most 17,833 KiB (20% reduction) |
-| cold post-workload PSS | at most 17,849 KiB (20% reduction) |
-| cold post-workload private | at most 17,833 KiB (20% reduction) |
-| aggregate four-reader PSS | at most 65,616 KiB (20% reduction) |
-| reverse dictionary hit | at most 473 ns (50% reduction) |
-| reverse dictionary miss | at most 24,935 ns (50% reduction) |
+| warm от старта процесса до готовности к запросам | не более 33,410,942 ns (сокращение на 20%) |
+| cold-best-effort от старта процесса до готовности к запросам | не более 58,780,152 ns (сокращение на 20%) |
+| вызовы выделения памяти времени выполнения до готовности к запросам | не более 68,816 (сокращение на 50%) |
+| выделенные байты времени выполнения до готовности к запросам | не более 14,639,223 (сокращение на 50%) |
+| пиковый RSS времени выполнения | не более 29,920 KiB (сокращение на 15%) |
+| PSS после нагрузки в режиме warm | не более 17,849 KiB (сокращение на 20%) |
+| приватная память после нагрузки в режиме warm | не более 17,833 KiB (сокращение на 20%) |
+| PSS после нагрузки в режиме cold | не более 17,849 KiB (сокращение на 20%) |
+| приватная память после нагрузки в режиме cold | не более 17,833 KiB (сокращение на 20%) |
+| суммарный PSS четырёх читателей | не более 65,616 KiB (сокращение на 20%) |
+| успешный обратный lookup словаря | не более 473 ns (сокращение на 50%) |
+| неуспешный обратный lookup словаря | не более 24,935 ns (сокращение на 50%) |
 
-Mandatory non-regression and resource ceilings:
+Обязательные верхние пределы отсутствия регрессий и ресурсов:
 
-- first lookup median is at most 25,000 ns in each cache stance; this absolute
-  budget is used because a few-microsecond C0 single-shot baseline is
-  timer/scheduler noisy;
-- anchor resolution median is at most 25,000 ns in each cache stance;
-- total warm workload is at most 2,444,147,515 ns and cold-best-effort workload
-  at most 2,456,751,978 ns (15% regression ceiling);
-- every individual batched operation must preserve observed totals and its
-  median must be no greater than `C0 median + max(25% of C0 median,
-  3 × C0 MAD, 3 × candidate MAD)`; forward dictionary lookup additionally has
-  an absolute 10 ns average ceiling;
-- open major faults remain zero and open minor faults are at most 9,635;
-- cold-best-effort file-resident growth is at most 14,254,080 bytes;
-- artifact size is at most 14,157,197 bytes;
-- total local rebuild is at most 844,916,105 ns, production peak RSS at most
-  101,695 KiB, production allocation calls at most 1,614,460, production
-  allocated bytes at most 228,317,156 and production peak live bytes at most
-  79,373,661;
-- write time, every section size, private/shared/anonymous memory and
-  H0-relative results are still reported even where the gate applies only to
-  the combined lifecycle or C0-relative value.
+- медиана первого lookup не превышает 25,000 ns в каждом режиме кэша; этот
+  абсолютный бюджет используется потому, что единичное измерение baseline C0
+  длительностью в несколько микросекунд подвержено шуму таймера/планировщика;
+- медиана разрешения опорных значений не превышает 25,000 ns в каждом режиме
+  кэша;
+- полная warm-нагрузка не превышает 2,444,147,515 ns, а нагрузка
+  cold-best-effort — 2,456,751,978 ns (верхний предел регрессии 15%);
+- каждая отдельная пакетная операция должна сохранять наблюдаемые итоговые
+  количества, а её медиана не должна превышать `C0 median + max(25% of C0 median,
+  3 × C0 MAD, 3 × candidate MAD)`; для прямого lookup словаря дополнительно
+  действует абсолютный верхний предел среднего в 10 ns;
+- большие ошибки страниц при открытии остаются равными нулю, а малые ошибки
+  страниц при открытии не превышают 9,635;
+- прирост резидентных байтов файла в режиме cold-best-effort не превышает
+  14,254,080 байт;
+- размер артефакта не превышает 14,157,197 байт;
+- полная локальная пересборка не превышает 844,916,105 ns, пиковый RSS при
+  формировании — 101,695 KiB, вызовы выделения памяти при формировании —
+  1,614,460, выделенные байты при формировании — 228,317,156, а пиковые текущие
+  байты при формировании — 79,373,661;
+- время записи, размер каждой секции, приватная/общая/анонимная память и
+  результаты относительно H0 всё равно указываются даже там, где критерий
+  применяется только к объединённому жизненному циклу или значению относительно
+  C0.
 
-Passing all gates means “eligible for user consideration”, not first place.
-Failing a gate remains an evidence row and does not authorize deleting its
-branch or selecting another candidate without the user's decision.
+Прохождение всех критериев допуска означает «допустим для рассмотрения
+пользователем», а не первое место. Непрохождение критерия допуска остаётся
+строкой доказательств и не разрешает удалять ветвь кандидата или выбирать
+другого кандидата без решения
+пользователя.
 
-## Frozen S83 H0/C0 Evidence And Candidate Gates
+<a id="frozen-s83-h0c0-evidence-and-candidate-gates"></a>
 
-S83 uses harness commit
-`28f29b5a262db362b6b58c8109e6df6c2afbbc44` and workload
-`hbk-snapshot-warm-lookups/v2`. Its service evidence is
+## Зафиксированные доказательства H0/C0 и критерии допуска кандидатов S83
+
+S83 использует коммит стенда
+`28f29b5a262db362b6b58c8109e6df6c2afbbc44` и нагрузку
+`hbk-snapshot-warm-lookups/v2`. Его служебные доказательства находятся в
 `target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-28f29b5.jsonl`.
-The file contains 61 records: 45 runtime/formation timing samples, nine
-allocation profiles, six aggregate four-reader samples and one parity record.
-Every record is successful and carries the same harness, corpus and provider
-identity.
+Файл содержит 61 запись: 45 образцов времени выполнения/формирования, девять
+профилей выделений памяти, шесть суммарных образцов с четырьмя читателями и
+одну запись эквивалентности. Каждая запись успешна и содержит одинаковую
+идентичность стенда, корпуса и провайдера.
 
-The complete H0/C0 canonical files compare byte-for-byte. The content oracle
-contains 176,793 records / 57,486,556 bytes with SHA-256
+Полные канонические файлы H0/C0 совпадают побайтно. Эталон содержимого включает
+176,793 записи / 57,486,556 байт с SHA-256
 `5f66d20509877ac29a83ede2d5178368ed3fd78d7dab0ffbc12df506acc3b1fd`.
-The lookup transcript contains 276,415 records / 88,520,585 bytes with SHA-256
+Транскрипт lookup содержит 276,415 записей / 88,520,585 байт с SHA-256
 `9b17c7100cd368fe0880e679d66ab8eb7d8505ee617d9fc80b1a9a9d8aa5c5c8`.
-Four concurrent C0 oracle processes reproduce both files exactly.
+Четыре параллельных процесса эталона C0 точно воспроизводят оба файла.
 
-The timing and memory medians are:
+Медианы времени и памяти:
 
-| Backend/scenario | N | Ready median ± MAD | Workload median ± MAD | Peak RSS | Post-workload PSS/private |
+| Backend/сценарий | N | Медиана готовности к запросам ± MAD | Медиана нагрузки ± MAD | Пиковый RSS | PSS/приватная память после нагрузки |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| S83-H0 SQL-owned warm | 9 | 588.217 ± 4.898 ms | 2,179.371 ± 6.546 ms | 74,948 KiB | 67,992 / 67,972 KiB |
-| S83-H0 SQL-owned cold-best-effort | 9 | 1,631.261 ± 7.871 ms | 2,173.222 ± 7.407 ms | 74,664 KiB | 67,989 / 67,968 KiB |
-| S83-C0 cache-owned warm | 9 | 42.489 ± 0.388 ms | 2,071.101 ± 9.079 ms | 34,816 KiB | 22,141 / 22,120 KiB |
-| S83-C0 cache-owned cold-best-effort | 9 | 73.776 ± 1.699 ms | 2,091.371 ± 3.571 ms | 34,816 KiB | 22,102 / 22,080 KiB |
+| S83-H0 SQL с владением данными, warm | 9 | 588.217 ± 4.898 ms | 2,179.371 ± 6.546 ms | 74,948 KiB | 67,992 / 67,972 KiB |
+| S83-H0 SQL с владением данными, cold-best-effort | 9 | 1,631.261 ± 7.871 ms | 2,173.222 ± 7.407 ms | 74,664 KiB | 67,989 / 67,968 KiB |
+| S83-C0 кэш с владением данными, warm | 9 | 42.489 ± 0.388 ms | 2,071.101 ± 9.079 ms | 34,816 KiB | 22,141 / 22,120 KiB |
+| S83-C0 кэш с владением данными, cold-best-effort | 9 | 73.776 ± 1.699 ms | 2,091.371 ± 3.571 ms | 34,816 KiB | 22,102 / 22,080 KiB |
 
-S83-C0 local production takes 642.839 ± 19.106 ms total, including a
-582.161 ± 1.910 ms owned-snapshot open/materialize phase and
-56.912 ± 11.701 ms artifact writing.
-Its peak RSS is 80,780 KiB and its artifact is 11,186,057 bytes. The
-write-only phase is noisy and remains reported evidence; the non-regression
-gate applies to the combined local-production time.
+Полное локальное формирование S83-C0 занимает 642.839 ± 19.106 ms, включая
+фазу открытия/материализации снапшота с владением данными длительностью
+582.161 ± 1.910 ms и запись артефакта длительностью 56.912 ± 11.701 ms.
+Пиковый RSS равен 80,780 KiB, а размер артефакта — 11,186,057 байт. Фаза,
+включающая только запись, является шумной и остаётся зарегистрированным
+доказательством; критерий допуска отсутствия регрессии применяется к
+объединённому времени локального формирования.
 
-The allocation and concurrent-reader baselines are:
+Baseline выделений памяти и параллельных читателей:
 
-| Backend/scenario | N | Allocations to ready | Allocated bytes to ready | Final / peak live bytes |
+| Backend/сценарий | N | Выделения до готовности к запросам | Выделенные байты до готовности к запросам | Итоговые / пиковые текущие байты |
 | --- | ---: | ---: | ---: | ---: |
-| S83-H0 SQL-owned allocation profile | 3 | 1,278,346 | 156,058,238 | 22,262,899 / 63,018,253 |
-| S83-C0 cache-owned allocation profile | 3 | 136,036 | 28,942,929 | 17,746,497 / 28,939,398 |
-| S83-C0 local-production allocation profile | 3 | 1,278,357 | 183,859,167 | 22,261,991 / 63,018,399 |
-| S83-H0 aggregate four-reader | 3 | — | — | 263,954 KiB PSS / 261,196 KiB private |
-| S83-C0 aggregate four-reader | 3 | — | — | 81,142 KiB PSS / 78,548 KiB private |
+| S83-H0 профиль выделений SQL с владением данными | 3 | 1,278,346 | 156,058,238 | 22,262,899 / 63,018,253 |
+| S83-C0 профиль выделений кэша с владением данными | 3 | 136,036 | 28,942,929 | 17,746,497 / 28,939,398 |
+| S83-C0 профиль выделений локального формирования | 3 | 1,278,357 | 183,859,167 | 22,261,991 / 63,018,399 |
+| S83-H0 суммарно для четырёх читателей | 3 | — | — | 263,954 KiB PSS / 261,196 KiB приватной памяти |
+| S83-C0 суммарно для четырёх читателей | 3 | — | — | 81,142 KiB PSS / 78,548 KiB приватной памяти |
 
-Across the 126 captured before/hold/after machine-state snapshots, maximum
-one-minute load was 0.205 per logical CPU, minimum available memory was
-11,924,664 KiB and the maximum instantaneous runnable-task count was 3
-during the explicit concurrent-reader checks. Candidate timing remains
-serialized and must record the same fields.
+В 126 зафиксированных снапшотах состояния машины до/во время удержания/после
+максимальная минутная нагрузка составила 0.205 на логический CPU, минимальная
+доступная память — 11,924,664 KiB, а максимальное мгновенное число готовых к
+выполнению задач — 3 во время явных проверок параллельных читателей. Измерения
+времени кандидатов остаются последовательными и должны записывать те же поля.
 
-S83 first-lookup medians are single-shot 2.614–3.461 microsecond observations
-and exceed the five-percent MAD ratio in every runtime group. The same
-relative-noise effect applies to a few 100–250 ns batched operations, while
-their absolute MAD remains 10–16 ns. These cases use the already declared
-absolute first-lookup budget and the per-operation noise envelope below rather
-than a fractional speed comparison. No candidate threshold is derived from a
-candidate result.
+Медианы первого lookup S83 — единичные наблюдения длительностью 2.614–3.461
+микросекунды, превышающие пятипроцентное отношение MAD в каждой группе времени
+выполнения. Тот же эффект относительного шума относится к нескольким пакетным
+операциям длительностью 100–250 ns, при этом их абсолютный MAD остаётся равным
+10–16 ns. В этих случаях вместо дробного сравнения скорости используется уже
+объявленный абсолютный бюджет первого lookup и приведённый ниже шумовой
+конверт каждой операции. Ни один порог кандидата не выводится из результата
+кандидата.
 
-The following S83 gates are frozen before F0/A0/L1/I1/D1/P1 code. They use
-S83-C0 only and are not copied from S85. Fractional ceilings are rounded down.
+Следующие критерии S83 зафиксированы до написания кода F0/A0/L1/I1/D1/P1. Они
+используют только S83-C0 и не копируются из S85. Дробные верхние пределы
+округляются вниз.
 
-Mandatory correctness and safety:
+Обязательная корректность и безопасность:
 
-- content and lookup files are byte-identical to the S83 digests and full files
-  above, including sequential and four-reader transcripts;
-- exact HBK/provider identity, platform `8.3.27.1859`, locale, provider schema,
-  extraction schema, layout and section structure are validated before access;
-- supplied-artifact open performs no SQLite/HBK fallback and keeps no complete
-  owned snapshot mirror;
-- immutable-generation publication, rebuild-before-map, session-long shared
-  lock, fail-fast writer lock and mapping lifetime tests pass;
-- every candidate records section/dictionary/index sizes and producer
-  allocation evidence.
+- файлы содержимого и lookup побайтно идентичны приведённым выше дайджестам и
+  полным файлам S83, включая последовательный транскрипт и транскрипт четырёх
+  читателей;
+- точные идентичность HBK/провайдера, платформа `8.3.27.1859`, локаль, схема
+  провайдера, схема извлечения, layout и структура секций валидируются до
+  доступа;
+- открытие предоставленного артефакта не выполняет резервного обращения к
+  SQLite/HBK и не сохраняет полного зеркала снапшота с владением данными;
+- проходят тесты публикации неизменяемого поколения, пересборки до отображения
+  в память, разделяемой блокировки на всю сессию, немедленно завершающейся
+  блокировки писателя и срока жизни отображения в память;
+- каждый кандидат записывает размеры секций/словаря/индексов и доказательства
+  выделений памяти формирователя.
 
-Mandatory material benefit against S83-C0:
+Обязательная материальная выгода относительно S83-C0:
 
-| Metric | Required candidate median |
+| Метрика | Требуемая медиана кандидата |
 | --- | ---: |
-| warm process-start-to-ready | at most 33,991,352 ns (20% reduction) |
-| cold-best-effort process-start-to-ready | at most 59,020,968 ns (20% reduction) |
-| runtime allocation calls to ready | at most 68,018 (50% reduction) |
-| runtime allocated bytes to ready | at most 14,471,464 (50% reduction) |
-| peak runtime RSS in either stance | at most 29,593 KiB (at least 15% reduction in both stances) |
-| warm post-workload PSS | at most 17,712 KiB (20% reduction) |
-| warm post-workload private | at most 17,696 KiB (20% reduction) |
-| cold post-workload PSS | at most 17,681 KiB (20% reduction) |
-| cold post-workload private | at most 17,664 KiB (20% reduction) |
-| aggregate four-reader PSS | at most 64,913 KiB (20% reduction) |
-| reverse dictionary hit | at most 458 ns (50% reduction) |
-| reverse dictionary miss | at most 24,048 ns (50% reduction) |
+| warm от старта процесса до готовности к запросам | не более 33,991,352 ns (сокращение на 20%) |
+| cold-best-effort от старта процесса до готовности к запросам | не более 59,020,968 ns (сокращение на 20%) |
+| вызовы выделения памяти времени выполнения до готовности к запросам | не более 68,018 (сокращение на 50%) |
+| выделенные байты времени выполнения до готовности к запросам | не более 14,471,464 (сокращение на 50%) |
+| пиковый RSS времени выполнения в любом режиме | не более 29,593 KiB (сокращение не менее чем на 15% в обоих режимах) |
+| PSS после нагрузки в режиме warm | не более 17,712 KiB (сокращение на 20%) |
+| приватная память после нагрузки в режиме warm | не более 17,696 KiB (сокращение на 20%) |
+| PSS после нагрузки в режиме cold | не более 17,681 KiB (сокращение на 20%) |
+| приватная память после нагрузки в режиме cold | не более 17,664 KiB (сокращение на 20%) |
+| суммарный PSS четырёх читателей | не более 64,913 KiB (сокращение на 20%) |
+| успешный обратный lookup словаря | не более 458 ns (сокращение на 50%) |
+| неуспешный обратный lookup словаря | не более 24,048 ns (сокращение на 50%) |
 
-Mandatory non-regression and resource ceilings:
+Обязательные верхние пределы отсутствия регрессий и ресурсов:
 
-- first lookup and anchor resolution medians are each at most 25,000 ns in
-  each cache stance;
-- total warm workload is at most 2,381,766,522 ns and cold-best-effort
-  workload at most 2,405,076,745 ns;
-- every individual batched operation preserves observed totals and its median
-  is no greater than `S83-C0 median + max(25% of S83-C0 median,
-  3 × S83-C0 MAD, 3 × candidate MAD)`; forward dictionary lookup additionally
-  has an absolute 10 ns average ceiling;
-- open major faults remain zero and open minor faults are at most 9,525;
-- cold-best-effort file-resident growth is at most 14,074,880 bytes;
-- artifact size is at most 13,982,571 bytes;
-- total local production is at most 803,548,621 ns, production peak RSS at
-  most 100,975 KiB, production allocation calls at most 1,597,946,
-  production allocated bytes at most 229,823,958 and production peak live
-  bytes at most 78,772,998;
-- write time, every section/dictionary/index size, private/shared/anonymous
-  memory, machine pressure and H0-relative results remain reported even where
-  the gate applies only to a combined or C0-relative value.
+- медианы первого lookup и разрешения опорных значений не превышают 25,000 ns
+  каждая в каждом режиме кэша;
+- полная warm-нагрузка не превышает 2,381,766,522 ns, а нагрузка
+  cold-best-effort — 2,405,076,745 ns;
+- каждая отдельная пакетная операция сохраняет наблюдаемые итоговые количества,
+  а её медиана не превышает `S83-C0 median + max(25% of S83-C0 median,
+  3 × S83-C0 MAD, 3 × candidate MAD)`; для прямого lookup словаря дополнительно
+  действует абсолютный верхний предел среднего в 10 ns;
+- большие ошибки страниц при открытии остаются равными нулю, а малые ошибки
+  страниц при открытии не превышают 9,525;
+- прирост резидентных байтов файла в режиме cold-best-effort не превышает
+  14,074,880 байт;
+- размер артефакта не превышает 13,982,571 байт;
+- полное локальное формирование не превышает 803,548,621 ns, пиковый RSS при
+  формировании — 100,975 KiB, вызовы выделения памяти при формировании —
+  1,597,946, выделенные байты при формировании — 229,823,958, а пиковые текущие
+  байты при формировании — 78,772,998;
+- время записи, размер каждой секции/словаря/индекса,
+  приватная/общая/анонимная память, нагрузка на машину и результаты относительно
+  H0 продолжают указываться даже там, где критерий применяется только к
+  объединённому значению или значению относительно C0.
 
-These gates determine only whether an S83 row is eligible for the user's
-consideration. They do not rank candidates, select first place, authorize a
-merge or make a snapshot canonical.
+Эти критерии определяют только допустимость строки S83 для рассмотрения
+пользователем. Они не ранжируют кандидатов, не выбирают первое место, не
+разрешают слияние и не делают снапшот каноническим.
 
-An S83 row is eligible only when every mandatory correctness/safety,
-material-benefit and non-regression/resource gate passes, with no missing or
-unexplained noisy gate. A user may explicitly waive a named numeric gate only
-through a durable decision that records owner, date and rationale; a waiver is
-not inferred from selecting or discussing a row. When no row is eligible, the
-decision packet must say so explicitly and limit the next action to a
-rerun/new experiment, an explicit waiver decision or rejection/stop.
+Строка S83 допустима только тогда, когда пройдены все обязательные критерии
+допуска по корректности/безопасности, материальной выгоде и отсутствию
+регрессий/ресурсам,
+без отсутствующих или необъяснённых шумных критериев. Пользователь может явно
+сделать исключение для именованного числового критерия допуска только через
+решение, зафиксированное в долговечном источнике с указанием владельца, даты и
+обоснования; исключение не выводится из выбора или обсуждения строки. Если ни
+одна строка не допустима, пакет решения должен явно
+это указать и ограничить следующее действие повторным запуском/новым
+экспериментом, явным решением об исключении для критерия допуска либо
+отклонением/остановкой.
 
-### S83 F0/A0 first measured pass
+### Первый измеренный проход S83 F0/A0
 
-The first complete S83 F0/A0 resource evidence is
+Первые полные ресурсные доказательства S83 F0/A0 находятся в
 `target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-F0-A0-complete-360cbd9.jsonl`.
-It is accompanied by storage parity raws
-`raw-S83-F0-5eac531-parity-rerun-6aadd9b.jsonl` and
-`raw-S83-A0-2a14ed6-parity-6aadd9b.jsonl`, and semantic parity raws
-`raw-semantic-s83-f0-semantic-a9a98a1.jsonl` and
+Их сопровождают необработанные данные эквивалентности хранилища
+`raw-S83-F0-5eac531-parity-rerun-6aadd9b.jsonl` и
+`raw-S83-A0-2a14ed6-parity-6aadd9b.jsonl` и необработанные данные семантической
+эквивалентности
+`raw-semantic-s83-f0-semantic-a9a98a1.jsonl` и
 `raw-semantic-s83-a0-semantic-36a41aa.jsonl`.
 
-Both S83-F0 (`a9a98a18ed2af21ba16573a00719c13edddac97b`) and S83-A0
-(`36a41aa74a9c6898576706f34a9a403918d452e4`) pass storage parity, semantic
-catalog/resolver transcript parity and workload observed-total equivalence.
-Neither passes every frozen numeric gate. F0 fails warm/cold ready,
-reverse-hit, forward-dictionary, open-major-fault, total rebuild and
-production allocation calls/bytes gates. A0 fails warm-ready, runtime
-allocation-call, reverse dictionary hit/miss, workload, per-operation,
-open-major-fault, total rebuild and production peak-RSS gates. The complete
-unranked table is in
-[T183 HBK Zero-Copy Snapshot Evidence](../acceptance/hbk-zero-copy-snapshot-evidence.md).
-No S83 candidate is selected or promoted by this result.
+И S83-F0 (`a9a98a18ed2af21ba16573a00719c13edddac97b`), и S83-A0
+(`36a41aa74a9c6898576706f34a9a403918d452e4`) проходят эквивалентность
+хранилища, семантическую эквивалентность транскрипта каталогов/resolver и
+эквивалентность наблюдаемых итоговых количеств нагрузки. Ни один из них не
+проходит все зафиксированные числовые критерии. F0 не проходит критерии
+готовности к запросам warm/cold, успешного обратного lookup, прямого lookup
+словаря, больших ошибок страниц при открытии, полной пересборки, вызовов
+выделения памяти и выделенных байтов при формировании. A0 не проходит критерии
+готовности к запросам warm, вызовов выделения памяти времени выполнения,
+успешного/неуспешного обратного lookup словаря, нагрузки, отдельных операций,
+больших ошибок страниц при открытии, полной пересборки и пикового RSS при
+формировании. Полная неранжированная таблица приведена в документе
+[Доказательства эксперимента T183 с zero-copy снапшотом HBK](../acceptance/hbk-zero-copy-snapshot-evidence.md).
+Этот результат не выбирает и не продвигает ни одного кандидата S83.
 
-### S83 consolidated measured pass
+### Консолидированный измеренный проход S83
 
-The derived L1/I1/D1/P1/R1 resource raw is
+Необработанные ресурсные данные производных L1/I1/D1/P1/R1 находятся в
 `target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-derived-resource-0219685.jsonl`
-(180 successful records, SHA-256
+(180 успешных записей, SHA-256
 `fe9e800f32d129c3c82b7281a3f9be9bc5b607493ba692e53654a85e99d91351`).
-Together with the 72-record F0/A0 raw, the final unranked summary is
+Вместе с 72 необработанными записями F0/A0 итоговая неранжированная сводка
+находится в
 `summary-S83-all-candidates-0219685.json` / `.md`.
 
-Every candidate has exact storage parity at its measured resource commit and
-exact semantic catalog/resolver parity at that commit. F0 and A0 were rerun
-at `a9a98a18ed2af21ba16573a00719c13edddac97b` and
-`36a41aa74a9c6898576706f34a9a403918d452e4`; the final summarizer rejects an
-ancestor-only proof. The summarizer also requires exact unique sample IDs,
-rejects duplicate/order-dependent parity proofs and retains every
-hypothesis-specific footprint field.
+Каждый кандидат имеет точную эквивалентность хранилища на измеренном коммите
+ресурсов и точную семантическую эквивалентность каталогов/resolver на этом
+коммите. F0 и A0 были повторно запущены на
+`a9a98a18ed2af21ba16573a00719c13edddac97b` и
+`36a41aa74a9c6898576706f34a9a403918d452e4`; итоговый сумматор отклоняет
+доказательство только для коммита-предка. Сумматор также требует точные
+уникальные ID образцов, отклоняет дублирующиеся/зависящие от порядка
+доказательства эквивалентности и сохраняет каждое специфичное для гипотезы поле
+занимаемого объёма.
 
-The consolidated result has
-`eligibility_state = no-candidate-passes-all-frozen-gates`. A gate whose
-`MAD / median` exceeds five percent is `inconclusive-noisy`, not pass/fail,
-unless it is covered by the predeclared first-lookup absolute-budget or
-per-operation MAD-envelope exception. No waiver is recorded. The result packet
-therefore supports only a rerun/new hypothesis, explicit named-gate waiver
-with durable owner/date/rationale, or rejection/stop; it does not make an
-ineligible row eligible by presentation.
+Консолидированный результат имеет
+`eligibility_state = no-candidate-passes-all-frozen-gates`. Критерий, для
+которого `MAD / median` превышает пять процентов, получает статус
+`inconclusive-noisy`, а не pass/fail, если только на него не распространяется
+заранее объявленное исключение абсолютного бюджета первого lookup или
+MAD-конверта отдельной операции. Ни одного исключения не записано. Поэтому
+пакет результатов поддерживает только повторный запуск/новую гипотезу, явное
+исключение для именованного критерия допуска с зафиксированными в долговечном
+источнике владельцем/датой/обоснованием либо отклонение/остановку;
+представление результатов не делает
+недопустимую строку допустимой.
 
-The complete startup/lookup, 25-operation, memory, sharing, production,
-allocation, footprint, behavioral and failed/inconclusive gate tables are in
-[T183 HBK Zero-Copy Snapshot Evidence](../acceptance/hbk-zero-copy-snapshot-evidence.md).
-No row is ranked, recommended, selected, merged or made canonical.
+Полные таблицы запуска/lookup, 25 операций, памяти, совместного использования,
+формирования, выделений памяти, занимаемого объёма, поведения и
+непройденных/неопределённых критериев приведены в документе
+[Доказательства эксперимента T183 с zero-copy снапшотом HBK](../acceptance/hbk-zero-copy-snapshot-evidence.md).
+Ни одна строка не ранжируется, не рекомендуется, не выбирается, не сливается и
+не становится канонической.
 
-## Mandatory Behavioral Oracle
+## Обязательный поведенческий эталон
 
-Parity is an independent mandatory gate. Performance values remain recorded
-evidence, but they cannot support accepting a candidate until its parity status
-is `pass`.
+Эквивалентность — независимый обязательный критерий допуска. Значения
+производительности остаются зарегистрированными доказательствами, но не могут
+обосновывать принятие кандидата, пока статус его эквивалентности не равен
+`pass`.
 
-The versioned canonical JSONL oracle compares logical content, not layout or
-session-local numeric IDs. Every string ID is resolved to text and every typed
-record link is normalized to `(fact-family, logical-id-text)`. Nested
-signatures, parameters and type references retain source order.
+Версионированный канонический эталон JSONL сравнивает логическое содержимое, а
+не layout или числовые ID текущей сессии. Каждый ID строки разрешается в текст,
+а каждая типизированная ссылка записи нормализуется в
+`(fact-family, logical-id-text)`. Вложенные сигнатуры, параметры и ссылки на
+типы сохраняют исходный порядок.
 
-The content oracle covers all observable fields, counts, ordered memberships,
-availability and relations for platform types, members, callables,
-constructors, signatures, parameters, globals, module contexts/events,
-language facts, enums/values and query tables/fields/parameters. The lookup
-transcript covers exhaustive corpus hits plus fixed misses, wrong
-owner/domain/kind, ambiguity and unsupported outcomes through
-`HbkFactReadHandle`, borrowed BSL/SDBL catalogs,
-`PlatformSnapshotSource` and `QueryTableSnapshotSource`.
+Эталон содержимого охватывает все наблюдаемые поля, количества, упорядоченную
+принадлежность, доступность и отношения типов платформы, членов, вызываемых
+сущностей, конструкторов, сигнатур, параметров, глобальных сущностей, контекстов/
+событий модулей, языковых фактов, перечислений/значений и таблиц/полей/
+параметров запросов. Транскрипт lookup охватывает все успешные результаты
+корпуса, а также фиксированные неуспешные результаты, неверные
+владелец/домен/вид, неоднозначность и неподдерживаемые результаты через
+`HbkFactReadHandle`, заимствованные каталоги BSL/SDBL,
+`PlatformSnapshotSource` и `QueryTableSnapshotSource`.
 
-Sequential and concurrent transcripts must be byte-identical. The full
-canonical files are compared byte-for-byte; SHA-256 is only a compact table
-field. The source-hidden probe makes SQLite and HBK unavailable for the whole
-candidate replay to exclude a hidden fallback. For a self-contained mapped
-candidate it hides both sources before the candidate process starts, which
-also proves that they remain unavailable after the artifact opens and avoids
-an unobservable transition race. The SQL-owned baseline is exempt because
-SQLite is its declared source.
+Последовательные и параллельные транскрипты должны быть побайтно идентичны.
+Полные канонические файлы сравниваются побайтно; SHA-256 — только компактное
+поле таблицы. Проверка со скрытыми источниками делает SQLite и HBK недоступными
+на всё время воспроизведения кандидата, чтобы исключить скрытый резервный путь.
+Для самодостаточного отображённого в память кандидата она скрывает оба
+источника до запуска процесса кандидата, что также доказывает сохранение их
+недоступности после открытия артефакта и устраняет ненаблюдаемую гонку перехода.
+Baseline SQL с владением данными освобождён от этого требования, поскольку
+SQLite — его объявленный источник.
 
-The catalog/resolver transcript uses a minimal `pub(crate)` generic
-semantic-read engine with statically dispatched owned/F0/A0 adapters. Its
-associated record projection may be an owned-snapshot reference, an F0
-decoded record by value, an A0 archived view or an R1 borrowed
-fixed-head/range view. The engine consumes the projection immediately; no
-reference to an F0 temporary may escape. Candidate layout offsets are not part
-of the port.
+Транскрипт каталогов/resolver использует минимальный обобщённый механизм
+семантического чтения `pub(crate)` со статической диспетчеризацией адаптеров с
+владением данными/F0/A0. Связанная с ним проекция записи может быть ссылкой на
+снапшот с владением данными, декодированной записью F0 по значению, архивным
+представлением A0 либо заимствованным представлением R1 с фиксированным
+заголовком/диапазоном. Механизм немедленно потребляет проекцию; ссылка на
+временное значение F0 не может выйти наружу. Смещения layout кандидата не
+являются частью порта.
 
-Before the catalog refactor, a compile-only prototype must express all four
-projection shapes. The refactor then replaces every direct snapshot access
-used by the BSL/SDBL catalogs, `PlatformSnapshotSource` and
-`QueryTableSnapshotSource`, not merely their constructors. Existing public
-owned constructors/types and their current call sites must compile unchanged;
-candidate constructors remain experiment-only. A dedicated public API compile
-smoke constructs `PlatformSnapshotSource` through `new` and `with_source_id`
-and `QueryTableSnapshotSource` through `new` and `with_source_ids`.
+До рефакторинга каталогов прототип только для компиляции должен выражать все
+четыре формы проекций. Затем рефакторинг заменяет каждый прямой доступ к
+снапшоту, используемый каталогами BSL/SDBL, `PlatformSnapshotSource` и
+`QueryTableSnapshotSource`, а не только их конструкторы. Существующие публичные
+конструкторы/типы с владением данными и их текущие места вызова должны
+компилироваться без изменений; конструкторы кандидатов остаются только
+экспериментальными. Отдельная проверка компиляции публичного API создаёт
+`PlatformSnapshotSource` через `new` и `with_source_id`, а
+`QueryTableSnapshotSource` — через `new` и `with_source_ids`.
 
-The timed path has no `dyn`/boxed iterator, no collected ID vector used only
-to cross the port, and no storage-boundary clone of strings or nested children
-for a borrowed-capable candidate. Resolver output vectors and sorting/dedup
-required by the observable API remain permitted and measured. F0
-decoded-on-access allocations remain explicit F0 evidence; only R1 claims
-borrowed variable fact records.
+В измеряемом пути нет `dyn`/итератора в контейнере с владением, собранного
+вектора ID,
+используемого только для пересечения порта, и клонирования строк или вложенных
+дочерних элементов на границе хранилища для кандидата, способного предоставлять
+заимствования. Выходные векторы resolver и требуемые наблюдаемым API
+сортировка/устранение дубликатов остаются разрешёнными и измеряемыми. Выделения
+F0 при декодировании по обращению остаются явными доказательствами F0; только
+R1 заявляет заимствованные записи фактов переменного размера.
 
-The versioned `catalog-resolver-transcript-v1.jsonl` matrix is:
+Матрица версионированного `catalog-resolver-transcript-v1.jsonl`:
 
-| Surface | Operations included |
+| Поверхность | Включённые операции |
 | --- | --- |
-| BSL catalog | source ID/locale/string; type by ID, name/alias, template and generated-self role; member/callable/global by ID; member enumeration and owner/name/optional-kind lookup; callable enumeration, owner/name and constructors; global properties/methods and exact-name lookup; module-context event enumeration/exact lookup; availability contexts and available-since |
-| SDBL catalog | source/platform-source ID, locale/string; table by ID and enumeration; table by name/syntax/identifier; field and parameter by ID, enumeration and table/name; every metadata-source selector and unknown-selector miss |
-| `PlatformSnapshotSource` | descriptor/source/capabilities; `resolve` ID and exact-name; every `TypeLookup` variant; member enumeration/name and every member kind; callable ID plus owner/name with and without owner; BSL global context; every supported and unsupported module-context kind; exact and enumerated module properties/methods/events/enum-value request; every relation kind; availability |
-| `QueryTableSnapshotSource` | descriptor/source/capabilities; `resolve` table/field/parameter ID and exact-name name/syntax/identifier union; every unsupported type/member/callable/module-context/availability operation; SDBL global context; every relation kind |
+| Каталог BSL | ID источника/локаль/строка; тип по ID, имени/псевдониму, шаблону и роли сгенерированного self; член/вызываемая/глобальная сущность по ID; перечисление членов и lookup по владельцу/имени/необязательному виду; перечисление вызываемых сущностей, владелец/имя и конструкторы; глобальные свойства/методы и lookup по точному имени; перечисление событий контекста модуля/точный lookup; контексты доступности и доступность с версии |
+| Каталог SDBL | ID источника/источника платформы, локаль/строка; таблица по ID и перечисление; таблица по имени/синтаксическому имени/идентификатору; поле и параметр по ID, перечисление и таблица/имя; каждый селектор источника метаданных и неуспешный результат неизвестного селектора |
+| `PlatformSnapshotSource` | дескриптор/источник/возможности; `resolve` по ID и точному имени; каждый вариант `TypeLookup`; перечисление/имя членов и каждый вид члена; ID вызываемой сущности и владелец/имя с владельцем и без него; глобальный контекст BSL; каждый поддерживаемый и неподдерживаемый вид контекста модуля; точный и перечисляемый запрос свойств/методов/событий/значений перечислений модуля; каждый вид отношения; доступность |
+| `QueryTableSnapshotSource` | дескриптор/источник/возможности; `resolve` ID таблицы/поля/параметра и объединение точных имени/синтаксического имени/идентификатора; каждая неподдерживаемая операция с типом/членом/вызываемой сущностью/контекстом модуля/доступностью; глобальный контекст SDBL; каждый вид отношения |
 
-Every applicable operation includes corpus-derived hits plus fixed
-miss/inactive-source/wrong-source/wrong-domain/wrong-kind cases. Ambiguity and
-multiple-candidate cases use deterministic fixtures when the real corpus does
-not provide them. Each JSONL result records the surface, operation/query case,
-status, ordered facts, ordered candidates, exact diagnostics, and every typed
-payload field including nested signatures, parameters, type references,
-template bindings, availability and relations. Fact and string IDs are
-normalized as defined above.
+Каждая применимая операция включает успешные результаты, производные от
+корпуса, и фиксированные случаи неуспешного результата/неактивного источника/
+неверного источника/неверного домена/неверного вида. Для неоднозначности и
+нескольких кандидатов используются детерминированные фикстуры, если реальный
+корпус их не предоставляет. Каждый результат JSONL записывает поверхность,
+случай операции/запроса, статус, упорядоченные факты, упорядоченных кандидатов,
+точные диагностики и каждое типизированное поле полезной нагрузки, включая
+вложенные
+сигнатуры, параметры, ссылки на типы, привязки шаблонов, доступность и
+отношения. ID фактов и строк нормализуются, как определено выше.
 
-The owned baseline transcript is generated from the frozen S83 provider.
-Candidate transcripts are compared byte-for-byte sequentially and with four
-concurrent readers in a sandbox where the HBK and SQLite sources are hidden
-before process start and throughout replay. The driver waits for every writer
-to exit before inspecting, hashing or comparing any output. Storage oracle and
-catalog/resolver transcript are independent gates. Until both pass, candidate
-resource measurements are labeled structural-only and are ineligible for full
-behavior acceptance.
+Транскрипт baseline с владением данными генерируется из зафиксированного
+провайдера S83. Транскрипты кандидатов сравниваются побайтно последовательно и
+с четырьмя параллельными читателями в песочнице, где источники HBK и SQLite
+скрыты до старта процесса и на всём протяжении воспроизведения. Драйвер ждёт
+завершения каждого писателя до проверки, хеширования или сравнения любого
+выходного файла. Эталон хранилища и транскрипт каталогов/resolver — независимые
+критерии допуска. Пока оба не пройдены, ресурсные измерения кандидата помечаются как
+только структурные и недопустимы для полного принятия поведения.
 
-`scripts/verify-hbk-s83-semantic-parity.py` is the external S83 semantic gate.
-It rejects dirty driver and candidate worktrees; verifies exact commit, binary,
-artifact, manifest and owned-transcript identities; independently reads the
-candidate header to check the separate format/layout versions, provider and
-extraction schemas, platform version and source identities; exposes only the
-exact immutable artifact plus its adjacent writable lock file to the sandbox;
-and appends a pass or failure record under the fixed S83 results root. The
-source-hidden sandbox does not mount the host `/home` or `/opt` trees.
+`scripts/verify-hbk-s83-semantic-parity.py` — внешний семантический критерий
+допуска S83. Он отклоняет worktree драйвера и кандидата с незакоммиченными изменениями;
+проверяет точные идентичности коммита, бинарного файла, артефакта, манифеста и
+транскрипта с владением данными; независимо читает заголовок кандидата для
+проверки отдельных версий формата/layout, схем провайдера и извлечения, версии
+платформы и идентичностей источников; предоставляет песочнице только точный
+неизменяемый артефакт и соседний с ним доступный для записи файл блокировки; и
+добавляет запись pass или failure в зафиксированный корень результатов S83.
+Песочница со скрытыми источниками не монтирует деревья хоста `/home` или
+`/opt`.
 
-The gate predeclares the complete S83 artifact registry instead of accepting
-arbitrary layout labels after measurements: F0/D1/P1 use `HBKFH2`, layout
-`2`, flags `0`, 63 sections; L1 uses `HBKFH2`, layout `3`, flags `1`,
-63 sections; I1 uses `HBKFI1`, layout `3`, flags `1`, 64 sections; R1 uses
-`HBKFR1`, layout `1`, flags `1`, 71 sections; and A0 uses the existing
-`HBKRKYV` archive format/layout `1`. The semantic backend label must match the
-registered artifact identity. D1 and P1 deliberately share the F0 identity
-because D1 changes validation timing only and P1 changes formation only.
+Критерий заранее объявляет полный реестр артефактов S83 вместо принятия
+произвольных меток layout после измерений: F0/D1/P1 используют `HBKFH2`, layout
+`2`, флаги `0`, 63 секции; L1 использует `HBKFH2`, layout `3`, флаги `1`,
+63 секции; I1 использует `HBKFI1`, layout `3`, флаги `1`, 64 секции; R1
+использует `HBKFR1`, layout `1`, флаги `1`, 71 секцию; A0 использует
+существующий архивный формат `HBKRKYV`/layout `1`. Семантическая метка backend
+должна соответствовать зарегистрированной идентичности артефакта. D1 и P1
+намеренно имеют общую идентичность F0, потому что D1 изменяет только время
+валидации, а P1 — только формирование.
 
-The downstream unified semantic entity change currently depends only on the
-provider-owned immutable HBK base dictionary and generation-local IDs. This
-experiment does not stabilize its internal port as a downstream public API;
-the downstream source-record/locator shape remains undecided until the user
-selects an outcome.
+Последующее изменение единой модели семантических сущностей сейчас зависит
+только от неизменяемого базового словаря HBK с владением провайдера и ID,
+локальных для поколения. Этот эксперимент не стабилизирует свой внутренний
+порт как публичный API последующего потребителя; форма последующей записи
+источника/локатора остаётся нерешённой до выбора результата пользователем.
 
-Documentation parity includes only fields already observable through the
-current snapshot/catalog contracts. Full HTML, long descriptions and
-search/export payloads are outside T183.
+Эквивалентность документации включает только поля, уже наблюдаемые через
+текущие контракты снапшота/каталогов. Полный HTML, длинные описания и данные
+поиска/экспорта находятся вне T183.
 
-## Compatibility And Safety Prototype Contract
+## Контракт совместимости и безопасности прототипа
 
-Every candidate header carries and validates its own binary-layout version,
-extraction-schema version, source identity/checksum, locale and exact platform
-version. Layout version is not cache-format terminology for the SQLite
-extraction schema; the values are independent compatibility dimensions.
-Platform-version mismatch makes an artifact incompatible and requires a new
-artifact.
+Каждый заголовок кандидата содержит и валидирует собственную версию бинарного
+layout, версию схемы извлечения, идентичность/контрольную сумму источника,
+локаль и точную версию платформы. Версия layout — не терминология формата кэша
+для схемы извлечения SQLite; эти значения являются независимыми измерениями
+совместимости. Несовпадение версии платформы делает артефакт несовместимым и
+требует нового артефакта.
 
-Numeric string and fact IDs are valid only for the current mapped session.
-Replacing the source creates a new ID space; no stability comparison,
-migration or persistence across sessions is required.
+Числовые ID строк и фактов действительны только для текущей отображённой в
+память сессии. Замена источника создаёт новое пространство ID; сравнение
+стабильности, миграция или сохранение между сессиями не требуются.
 
-Mapped artifacts are immutable. A reader holds a shared lock for the stable
-logical snapshot slot for the entire mapping lifetime. A writer must acquire a
-fail-fast exclusive lock before changing discovery metadata or publishing a
-new immutable generation; if readers exist, it returns a typed
-snapshot-in-use error and does not wait, truncate, overwrite or rename over an
-active mapping.
+Отображённые в память артефакты неизменяемы. Читатель удерживает разделяемую
+блокировку стабильного логического слота снапшота на протяжении всего срока
+жизни отображения в память. Писатель должен получить немедленно завершающуюся
+эксклюзивную блокировку до изменения метаданных обнаружения или публикации
+нового неизменяемого поколения; при наличии читателей он возвращает
+типизированную ошибку занятости снапшота и не ждёт, не обрезает, не
+перезаписывает и не переименовывает поверх активного отображения в память.
 
-Before typed access, a candidate validates magic and versions, section bounds,
-alignment, range overflow, byte order, UTF-8, enum/tag values and integrity
-metadata. The mapping owner and lock outlive every borrowed view. `unsafe`
-remains inside a documented safe abstraction and is not used to escape the
-ownership model.
+До типизированного доступа кандидат валидирует магическое значение и версии,
+границы секций,
+выравнивание, переполнение диапазонов, порядок байтов, UTF-8, значения
+перечислений/тегов и метаданные целостности. Владелец отображения в память и
+блокировка живут дольше любого заимствованного представления. `unsafe` остаётся
+внутри документированной безопасной абстракции и не используется для обхода
+модели владения.
 
-## Result Table Contract
+## Контракт таблицы результатов
 
-The final durable table has one row per dataset/backend/variant and contains:
+Итоговая долговечная таблица содержит одну строку на каждый набор
+данных/backend/вариант и включает:
 
-- branch ancestry, harness commit and candidate commit;
-- parity status and canonical content/behavior digests;
-- production/write/validation and total local rebuild median/MAD;
-- cold-best-effort and warm process-start-to-ready median/MAD;
-- first lookup and each batched warm operation;
-- allocation count/bytes;
-- peak RSS, steady RSS/PSS/private/anonymous/file-backed memory;
-- aggregate four-reader PSS;
-- minor/major faults and bytes touched when available;
-- artifact, section, dictionary and reverse-index sizes;
-- relative values against H0 and C0;
-- each predeclared gate status.
+- происхождение ветви, коммит стенда и коммит кандидата;
+- статус эквивалентности и дайджесты канонического содержимого/поведения;
+- медиану/MAD формирования/записи/валидации и полной локальной пересборки;
+- медиану/MAD от старта процесса до готовности к запросам в режимах
+  cold-best-effort и warm;
+- первый lookup и каждую пакетную warm-операцию;
+- количество/байты выделений памяти;
+- пиковый RSS, установившиеся RSS/PSS/приватную/анонимную/файловую память;
+- суммарный PSS четырёх читателей;
+- малые/большие ошибки страниц и затронутые байты, если доступны;
+- размеры артефакта, секций, словаря и обратного индекса;
+- относительные значения по сравнению с H0 и C0;
+- статус каждого заранее объявленного критерия допуска.
 
-The table contains no automatic score, rank, “winner” or first-place marker.
-The user receives the evidence and makes the selection decision.
+Таблица не содержит автоматической оценки, ранга, «победителя» или отметки
+первого места. Пользователь получает доказательства и принимает решение о
+выборе.
 
-For S83, `production` in result fields means release-profile snapshot
-formation/rebuild measurement only. It does not mean deployment, production
-adoption or canonical-runtime promotion.
+Для S83 `production` в полях результата означает только измерение
+формирования/пересборки снапшота релизного профиля. Это не означает
+развёртывание, внедрение в промышленную эксплуатацию или продвижение в
+канонический контекст времени выполнения.

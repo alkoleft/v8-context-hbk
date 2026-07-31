@@ -34,7 +34,7 @@ type-reference conclusions live in
 `decisions/`. Detailed records for T165-T182 are in
 `archive/completed-tasks-t165-t182.md`.
 
-Current first unchecked task: T183.
+Первая текущая незавершённая задача: T183.
 
 ## Loop Rule
 
@@ -53,91 +53,106 @@ Current first unchecked task: T183.
 
 ## Active Tasks
 
-- [ ] **T183 — Compare isolated zero-copy snapshot hypotheses without
-  selecting a winner**
-  - Requirements:
+- [ ] **T183 — Сравнить изолированные гипотезы zero-copy-снапшота без выбора
+  победителя**
+  - Требования:
     [NFR-RESOLVE-001](requirements/non-functional.md#nfr-resolve-001-in-process-resolver-latency-and-determinism),
     [NFR-SNAPSHOT-001](requirements/non-functional.md#nfr-snapshot-001-evidence-gated-file-backed-snapshot-experiment).
-  - Implementation:
-    [T183 experiment contract](implementation/hbk-zero-copy-snapshot-experiment.md),
-    [Provider-Owned HBK Fact Snapshot](implementation/components.md#provider-owned-hbk-fact-snapshot),
-    [T183 Zero-Copy Candidate Isolation](implementation/components.md#t183-zero-copy-candidate-isolation).
+  - Реализация:
+    [Контракт эксперимента T183](implementation/hbk-zero-copy-snapshot-experiment.md),
+    [Снапшот фактов HBK, принадлежащий провайдеру](implementation/components.md#provider-owned-hbk-fact-snapshot),
+    [Изоляция zero-copy-кандидатов T183](implementation/components.md#t183-zero-copy-candidate-isolation).
   - OpenSpec:
     `openspec/changes/establish-hbk-zero-copy-snapshot-cache`.
-  - Scope:
-    1. commit a standalone, versioned release benchmark/parity base for H0
-       SQLite-to-owned and C0 current-cache-to-owned;
-    2. capture baseline noise and freeze numerical gates before candidate code;
-    3. create isolated H1 custom-flat and H3 archive-candidate worktrees from
-       the frozen base, then H2 “H1 layout + typed reader” from measured H1;
-    4. require parity before accepting candidate performance evidence;
-    5. publish raw evidence plus one unranked comparison table with branch
-       ancestry and commit SHAs.
-    6. run an independent S83 comparison set on exact platform
-       `8.3.27.1859`, adding separate typed-flat/archive references and
-       one-variable layout, mapped-index, checked-dynamic-read and
-       direct-formation hypotheses in their own worktrees.
-  - Verification:
-    strict OpenSpec validation; format/check/test for the frozen base and each
-    candidate branch; exact corpus/checksum verification; versioned canonical
-    content and lookup transcripts; repeated median/MAD release measurements;
-    independent safety/performance review.
-  - Completion boundary:
-    update the durable acceptance baseline with all measured rows and gate
-    outcomes, but do not name a winner, merge a candidate into `master`, accept
-    a new production dependency or change the canonical runtime path without
-    the user's explicit selection.
-  - Progress:
-    frozen benchmark/parity base `051df7979e3cf5f6431b4d13829f436c98c47054`;
-    H0/C0 protocol, noise, production lifecycle, owned-cache inventory,
-    behavior oracle and predeclared numerical gates are recorded in the T183
-    experiment contract. Candidate branches `experiment/hbk-zero-copy-flat-h1`
+  - Объём:
+    1. зафиксировать коммитом автономную версионированную release-базу
+       benchmark/parity для H0 SQLite-to-owned и C0 current-cache-to-owned;
+    2. измерить шум baseline и зафиксировать числовые критерии до появления
+       кода кандидатов;
+    3. создать от зафиксированной базы изолированные worktree H1 с собственным
+       плоским форматом и H3 с архивным кандидатом, затем создать от измеренного
+       H1 вариант H2 «layout H1 + типизированный reader»;
+    4. требовать паритет до принятия свидетельств производительности кандидата;
+    5. опубликовать исходные свидетельства и одну неранжированную таблицу
+       сравнения с происхождением ветвей и SHA коммитов;
+    6. выполнить независимый набор сравнений S83 на точной версии платформы
+       `8.3.27.1859`, добавив отдельные эталонные типизированный плоский/архивный
+       форматы и изменяющие по одной переменной гипотезы layout,
+       отображённого индекса, динамического чтения с обязательными проверками и
+       прямого формирования в собственных worktree.
+  - Проверка:
+    строгая валидация OpenSpec; format/check/test для зафиксированной базы и
+    каждой ветви кандидата; проверка точных корпуса и checksum;
+    версионированные канонические транскрипты содержимого и lookup; повторные
+    release-измерения медианы/MAD; независимая проверка безопасности и
+    производительности.
+  - Граница завершения:
+    обновить устойчивый acceptance baseline всеми измеренными строками и
+    результатами критериев, но без явного выбора пользователя не называть
+    победителя, не объединять кандидата с `master`, не принимать новую
+    production-зависимость и не изменять канонический путь времени выполнения.
+  - Прогресс:
+    зафиксированная база benchmark/parity
+    `051df7979e3cf5f6431b4d13829f436c98c47054`; протокол H0/C0, шум,
+    production-жизненный цикл, инвентаризация cache с владением данными, оракул
+    поведения и предварительно объявленные числовые критерии зафиксированы в
+    контракте эксперимента T183. Ветви кандидатов
+    `experiment/hbk-zero-copy-flat-h1`
     (`a2431254ee5d90a6e77c877e329bbb8d0ca50e84`),
     `experiment/hbk-zero-copy-flat-typed-h2`
-    (`826991395a508e36b7a684dc987ead218ef27184`) and
+    (`826991395a508e36b7a684dc987ead218ef27184`) и
     `experiment/hbk-zero-copy-rkyv-h3`
-    (`497afa52344fb318a4f27c94762cc7eafa1126ca`) have generated unranked
-    evidence. All remain unselected and unmerged. H1 is ineligible due parity,
-    validation and workload-equivalence blockers; H2 and H3 preserve the
-    representative workload totals but still lack full mapped canonical parity
-    and complete first-use lifecycle proof. H2 releases its writer lock before
-    post-publication self-validation, and its `ModuleEventNames` validation
-    orders owner IDs differently from the owned text-order contract. H3 does
-    not prove sorted order for every binary-searched name/id array. Candidate
-    production allocations and per-section/dictionary/index byte footprints
-    remain uninstrumented. The complete unranked gate table is in
+    (`497afa52344fb318a4f27c94762cc7eafa1126ca`) сформировали неранжированные
+    свидетельства. Все они остаются невыбранными и необъединёнными. H1 не
+    соответствует критериям допуска из-за блокирующих проблем с паритетом,
+    валидацией и эквивалентностью рабочей нагрузки; H2 и H3 сохраняют итоговые
+    значения репрезентативной рабочей нагрузки, но для них всё ещё отсутствуют
+    полный канонический паритет отображённого представления и полное
+    доказательство жизненного цикла первого использования. H2 освобождает
+    блокировку writer до самопроверки после публикации, а её валидация
+    `ModuleEventNames` упорядочивает ID владельцев иначе, чем контракт порядка
+    текста с владением данными. H3 не доказывает порядок сортировки для каждого
+    массива имён/ID с бинарным поиском. Аллокации production-формирования
+    кандидатов и занимаемый объём секций/словарей/индексов в bytes остаются без
+    инструментирования. Полная неранжированная таблица критериев находится в
     `acceptance/hbk-zero-copy-snapshot-evidence.md`.
-    The user requested a second independent comparison set for
-    `/opt/1cv8/x86_64/8.3.27.1859/shcntx_ru.hbk`. Its HBK identity is
+    Пользователь запросил второй независимый набор сравнения для
+    `/opt/1cv8/x86_64/8.3.27.1859/shcntx_ru.hbk`. Идентичность его HBK —
     `40,744,845` bytes /
     `5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`;
-    its schema-16 provider SQLite identity is `204,288,000` bytes /
+    идентичность SQLite провайдера со схемой 16 — `204,288,000` bytes /
     `55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`.
-    S83 uses a separate target root. Harness
-    `28f29b5a262db362b6b58c8109e6df6c2afbbc44` now has a complete successful
-    61-record H0/C0 set: 45 runtime/formation samples, nine allocation
-    profiles, six aggregate four-reader samples and one full parity record.
-    Concrete S83-only gates, host-pressure evidence and parity digests are
-    frozen in the experiment contract before F0/A0/L1/I1/D1/P1/R1 candidate
-    work. Parallel agents may implement separate worktrees, but all
-    performance runs are serialized. Separate branches now contain F0
+    S83 использует отдельный корень target. Стенд
+    `28f29b5a262db362b6b58c8109e6df6c2afbbc44` теперь содержит полный успешный
+    набор H0/C0 из 61 записи: 45 образцов времени выполнения/формирования,
+    девять профилей аллокаций, шесть суммарных образцов для четырёх читателей
+    и одну полную запись паритета. Конкретные только для S83 критерии,
+    свидетельства нагрузки на хост и дайджесты паритета зафиксированы в
+    контракте эксперимента до начала работы над кандидатами
+    F0/A0/L1/I1/D1/P1/R1. Параллельные агенты могут реализовывать варианты в
+    отдельных worktree, но все прогоны производительности выполняются
+    последовательно. В отдельных ветвях теперь находятся F0
     (`a9a98a1`), A0 (`36a41aa`), L1 (`98f8b3b`), I1 (`b7a6748`), D1
-    (`a7ae530`), P1 (`b0d2523`) and R1 (`ffcb990`). The 72-record F0/A0 and
-    180-record derived resource raws are complete. Every candidate passes
-    exact-commit storage parity and the five-way source-hidden semantic
-    catalog/resolver transcript gate. The strict summarizer requires unique
-    sample IDs, rejects duplicate/order-dependent or ancestor-only parity
-    proofs, preserves hypothesis-specific footprint/formation evidence and
-    records noisy non-exempt gates as inconclusive.
-    The consolidated summary records
-    `eligibility_state = no-candidate-passes-all-frozen-gates`; no waiver
-    exists. No S83 row is ranked, selected, recommended, merged or promoted.
-    The complete SQL-baseline/current-control/candidate startup, lookup,
-    operation, memory, production, allocation, footprint and gate tables are
-    in `acceptance/hbk-zero-copy-snapshot-evidence.md`.
-    T183 remains open at the user-decision gate. Under the frozen contract the
-    user may request a rerun/new hypothesis, explicitly waive named gates in a
-    durable decision, or reject/stop production adoption.
+    (`a7ae530`), P1 (`b0d2523`) и R1 (`ffcb990`). Исходные 72 записи F0/A0 и
+    180 записей ресурсов производных кандидатов завершены. Каждый кандидат
+    проходит паритет хранения на точном коммите и
+    критерий семантического транскрипта catalog/resolver для пяти запусков с
+    недоступными исходными источниками. Строгий построитель сводки требует
+    уникальных ID образцов, отклоняет дублирующиеся, зависящие от порядка или
+    относящиеся только к коммиту-предку доказательства паритета, сохраняет
+    специфичные для гипотез свидетельства занимаемого объёма/формирования и
+    отмечает зашумлённые критерии без разрешённого исключения как
+    неопределённые. Сводная таблица фиксирует
+    `eligibility_state = no-candidate-passes-all-frozen-gates`; ни одного
+    исключения нет. Ни одна строка S83 не ранжирована, не выбрана, не
+    рекомендована, не объединена и не продвинута. Полные таблицы SQL baseline,
+    контрольного текущего варианта и кандидатов по запуску, lookup, операциям,
+    памяти, production-формированию, аллокациям, занимаемому объёму и критериям
+    находятся в `acceptance/hbk-zero-copy-snapshot-evidence.md`.
+    T183 остаётся открытой на этапе решения пользователя. Согласно
+    зафиксированному контракту пользователь может запросить повторный прогон
+    или новую гипотезу, явно разрешить исключение из именованных критериев в
+    устойчивом решении либо отклонить/остановить production-внедрение.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

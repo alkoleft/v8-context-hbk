@@ -1045,43 +1045,53 @@ or compressed bitmap indexes in the first slice. Evaluate `fst` for name/id maps
 `zerovec` for persisted zero-copy snapshots, and `roaring` for large set intersections only after
 the owned arena snapshot has concrete memory/latency measurements.
 
-### T183 Zero-Copy Candidate Isolation
+<a id="t183-zero-copy-candidate-isolation"></a>
 
-T183 authorizes only isolated comparison implementations defined by
-`hbk-zero-copy-snapshot-experiment.md`. It does not change the current
-provider-owned `HbkFactSnapshot`, binary-cache or resolver-adapter production
-contracts.
+### T183 — Изоляция zero-copy-кандидатов
 
-The common release harness and parity oracle are fixed on an experiment base
-commit. H1 custom-flat and H3 archive candidates branch from that exact commit
-and may run in parallel worktrees. H2 branches from the measured H1 commit and
-changes only fixed-section access, so it is reported as “H1 layout + typed
-reader” rather than as an independent format. Candidate code, dependencies and
-generated artifacts remain branch-local until a later user decision and
-accepted durable design.
+T183 разрешает только изолированные реализации для сравнения, определённые в
+`hbk-zero-copy-snapshot-experiment.md`. Задача не изменяет действующие
+production-контракты принадлежащего провайдеру `HbkFactSnapshot`, бинарного
+cache или resolver-адаптера.
 
-Candidate writers may consume the same owned snapshot so format production can
-be compared without also changing extraction. SQL materialization,
-candidate encoding/write and total local rebuild are reported separately.
-Candidate readers expose only an internal experiment view/oracle boundary; T183
-must not stabilize a new public snapshot trait or migrate production catalogs.
+Общий release-стенд и оракул паритета зафиксированы на базовом коммите
+эксперимента. Кандидаты H1 с собственным плоским форматом и H3 с архивным
+форматом ответвляются от этого точного коммита и могут выполняться в
+параллельных worktree. H2 ответвляется от измеренного коммита H1 и изменяет
+только доступ к секциям фиксированного размера, поэтому описывается как
+«layout H1 + типизированный reader», а не как независимый формат. Код,
+зависимости и сформированные артефакты кандидатов остаются локальными для их
+ветвей до последующего решения пользователя и принятия устойчивого проектного
+решения.
 
-The H1 safe access path uses checked offsets/ranges and byte decoding. H2 must
-validate size, alignment and bit patterns before typed views. H3 remains an
-archive candidate until checked archive validation, schema/version/endianness
-handling and dependency review pass. No candidate may expose unchecked mapped
-or archived data to domain/catalog code.
+Средства записи кандидатов могут использовать один и тот же снапшот с владением
+данными, чтобы сравнивать формирование форматов без одновременного изменения
+извлечения. Материализация SQL, кодирование/запись кандидата и полное локальное
+перестроение измеряются отдельно. Средства чтения кандидатов предоставляют
+только внутреннюю границу экспериментального представления/оракула; T183 не
+должна стабилизировать новый публичный trait снапшота или переносить
+production-каталоги.
 
-The independent S83 comparison set additionally isolates physical organization
-from format choice. Its F0 typed-flat and A0 checked-archive rows are reference
-formats. F0-derived L1, I1, D1 and P1 change respectively only section
-placement, mapped lookup-index shape, checked dynamic section access and
-formation/write strategy; R1 replaces variable fact records with fixed heads
-and checked ranges into mapped nested arenas. Each lives in a separate
-worktree; timed runs are serialized on the shared host even when implementation
-proceeds in parallel. All seven S83 rows pass the complete behavior oracle, but
-none passes every frozen numeric gate, so this component boundary remains
-experimental and no implementation is promoted.
+Безопасный путь доступа H1 использует смещения/диапазоны с обязательными
+проверками и декодирование bytes. Перед созданием типизированных представлений H2 должна
+проверять размер, выравнивание и битовые шаблоны. H3 остаётся архивным
+кандидатом, пока не пройдены валидация архива с обязательными проверками,
+обработка схемы/версии/порядка байтов и проверка зависимости. Ни один кандидат не может
+передавать непроверенные отображённые или архивные данные в код домена/catalog.
+
+Независимый набор сравнения S83 дополнительно отделяет физическую организацию
+от выбора формата. Его строки F0 с типизированным плоским форматом и A0 с
+архивным форматом с обязательными проверками являются эталонными форматами.
+Производные от F0 варианты L1, I1, D1 и P1 изменяют соответственно только
+размещение секций, форму отображённого lookup-индекса, динамический доступ к
+секциям с обязательными проверками и стратегию формирования/записи; R1 заменяет
+записи фактов переменного размера фиксированными заголовками и диапазонами с
+обязательными проверками в отображённых вложенных аренах. Каждый вариант
+находится в отдельном worktree; измеряемые по времени
+прогоны выполняются последовательно на общем хосте, даже если реализация идёт
+параллельно. Все семь строк S83 проходят полный оракул поведения, но ни одна не
+проходит все зафиксированные числовые критерии, поэтому граница компонента
+остаётся экспериментальной и ни одна реализация не продвигается.
 
 ## Implementation Dependencies
 

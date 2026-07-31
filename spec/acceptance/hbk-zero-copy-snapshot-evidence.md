@@ -1,154 +1,158 @@
-# T183 HBK Zero-Copy Snapshot Evidence
+# Свидетельства по zero-copy-снапшоту HBK для T183
 
-Status: unranked experiment evidence; user decision pending.
+Статус: неранжированные свидетельства эксперимента; ожидается решение пользователя.
 
-This file records the first consolidated measurement pass over the committed
-T183 hypotheses. It does not assign a score, rank, winner or first place.
-Passing a numeric threshold means only that one metric is within its frozen
-gate. It does not override an incomplete mandatory parity, safety or lifecycle
-gate.
+В этом файле зафиксирован первый консолидированный проход измерений по
+закоммиченным гипотезам T183. Файл не назначает баллы, ранг, победителя или
+первое место. Прохождение числового порога означает только то, что одна метрика
+укладывается в соответствующий замороженный критерий допуска. Оно не отменяет
+неполноту обязательных критериев допуска по эквивалентности, безопасности или
+жизненному циклу.
 
-## Evidence Identity And Ancestry
+## Идентичность и происхождение свидетельств
 
-All rows use the frozen harness
+Во всех строках используются замороженный стенд
 `051df7979e3cf5f6431b4d13829f436c98c47054`, workload
-`hbk-snapshot-warm-lookups/v2`, platform `8.5.1.1150`, locale `ru`, provider
-schema `16` and extraction schema `11`.
+`hbk-snapshot-warm-lookups/v2`, платформа `8.5.1.1150`, локаль `ru`, схема
+провайдера `16` и схема извлечения `11`.
 
-The real-corpus inputs are:
+Входные данные реального корпуса:
 
-- HBK size/SHA-256: `41,361,963` bytes /
+- размер/SHA-256 HBK: `41,361,963` bytes /
   `b8bc0d3a1ee8d00e2f113a800339731304428cc35ae395e5094a8b022773f8ed`;
-- provider SQLite size/SHA-256: `206,753,792` bytes /
+- размер/SHA-256 SQLite провайдера: `206,753,792` bytes /
   `cc9b2b8aaf31f64c880b92cc3a02fd3166541f10f8d209faf8c7a7c22cac0d55`.
 
-| ID | Branch | Measured commit | Parent/relationship |
+| ID | Ветка | Измеренный коммит | Родитель/связь |
 | --- | --- | --- | --- |
 | `H0` | `experiment/hbk-zero-copy-base` | `051df7979e3cf5f6431b4d13829f436c98c47054` | SQL-to-owned baseline |
-| `C0` | `experiment/hbk-zero-copy-base` | `051df7979e3cf5f6431b4d13829f436c98c47054` | Current-cache-to-owned control |
-| `H1` | `experiment/hbk-zero-copy-flat-h1` | `a2431254ee5d90a6e77c877e329bbb8d0ca50e84` | Parent `79e0b17083b12c2a778cea0237632746fcdfb396` |
-| `H2` | `experiment/hbk-zero-copy-flat-typed-h2` | `826991395a508e36b7a684dc987ead218ef27184` | Exact parent is measured H1 commit `a2431254ee5d...` |
-| `H3` | `experiment/hbk-zero-copy-rkyv-h3` | `497afa52344fb318a4f27c94762cc7eafa1126ca` | Two commits from `79e0b17083b12c2a778cea0237632746fcdfb396` |
+| `C0` | `experiment/hbk-zero-copy-base` | `051df7979e3cf5f6431b4d13829f436c98c47054` | контрольный вариант current-cache-to-owned |
+| `H1` | `experiment/hbk-zero-copy-flat-h1` | `a2431254ee5d90a6e77c877e329bbb8d0ca50e84` | Родитель `79e0b17083b12c2a778cea0237632746fcdfb396` |
+| `H2` | `experiment/hbk-zero-copy-flat-typed-h2` | `826991395a508e36b7a684dc987ead218ef27184` | Точный родитель — измеренный коммит H1 `a2431254ee5d...` |
+| `H3` | `experiment/hbk-zero-copy-rkyv-h3` | `497afa52344fb318a4f27c94762cc7eafa1126ca` | На два коммита дальше `79e0b17083b12c2a778cea0237632746fcdfb396` |
 
-The measured candidate artifacts are:
+Измеренные артефакты кандидатов:
 
-| ID | Bytes | SHA-256 |
+| ID | Байты | SHA-256 |
 | --- | ---: | --- |
 | `H1` | 17,691,072 | `606a31140be1614b424abfc8f77283985420efa6ae15e8223112b1d40c5ba863` |
 | `H2` | 11,445,079 | `d86cbe8ef7fe2c47f46a895007170674ee28a150106c6511412e4b5c9561fb78` |
 | `H3` | 14,097,196 | `4a2a2154652ba41f58c16f853e4c621d90af3e78e6810be2c0246b8f65f03a10` |
 
-Generated service evidence is under
+Сформированные служебные свидетельства находятся в
 `target/hbk-zero-copy-experiment/results/`:
 
-- baseline `raw-v1.jsonl` and `summary-051df79.json`/`.md`;
-- H1 `raw-h1-a243125.jsonl` and `summary-h1-a243125.json`/`.md`;
-- H2 `raw-h2-8269913.jsonl` and `summary-h2-8269913.json`/`.md`;
-- H3 `raw-h3-497afa.jsonl` and `summary-h3-497afa.json`/`.md`.
+- baseline: `raw-v1.jsonl` и `summary-051df79.json`/`.md`;
+- H1: `raw-h1-a243125.jsonl` и `summary-h1-a243125.json`/`.md`;
+- H2: `raw-h2-8269913.jsonl` и `summary-h2-8269913.json`/`.md`;
+- H3: `raw-h3-497afa.jsonl` и `summary-h3-497afa.json`/`.md`.
 
-## Interpretation Limits
+## Ограничения интерпретации
 
-- H1's workload row is descriptive only. Three operations produce the wrong
-  totals, and the reviewed path uses non-equivalent count/normalization
-  behavior. H1 workload latency and per-operation latency are not admissible
-  comparisons.
-- H2 preserves all 25 frozen workload totals and uses the frozen mixed-case
-  inputs, but its mapped oracle covers only counts, strings and a lookup smoke
-  subset. Independent review also found that the `ModuleEventNames` validation
-  comparator orders owner IDs numerically while the owned index is sorted by
-  owner text, so valid owned order can be rejected before the module-event
-  parity surface is proven.
-- H3 preserves all 25 frozen workload totals. A complete owned-adapter oracle
-  matches the frozen digests, but the full oracle is not traversed through the
-  borrowed mapped view and reconstructs an owned graph in the parity process.
-  Checked archive access is used, but validation still does not prove sorted
-  order for every name/id lookup array consumed by binary search.
-- The real corpus contains zero language facts. It cannot by itself prove
-  language, ambiguity or unsupported-outcome parity; the mandatory
-  real-derived fixtures remain required.
-- Exact per-section, dictionary and reverse-index byte footprints were not
-  emitted by the candidate reports. Artifact sizes are exact, but those
-  internal footprint fields remain unavailable and are an evidence gap.
-- Candidate producer allocation profiles were not instrumented. The
-  production allocation gates remain unevaluated for H1, H2 and H3.
+- Строка workload для H1 носит только описательный характер. Три операции дают
+  неверные итоговые значения, а проверенный путь использует неэквивалентное
+  поведение подсчёта/нормализации. Задержки workload и отдельных операций H1
+  недопустимо использовать для сравнения.
+- H2 сохраняет все 25 замороженных итоговых значений workload и использует
+  замороженные входы со смешанным регистром, но его oracle для отображённого в
+  память представления охватывает только количества, строки и smoke-подмножество
+  lookup. Независимое ревью также обнаружило, что компаратор валидации
+  `ModuleEventNames` упорядочивает ID владельцев численно, тогда как owned-индекс
+  отсортирован по тексту владельца. Поэтому корректный owned-порядок может быть
+  отклонён до доказательства поверхности эквивалентности module-event.
+- H3 сохраняет все 25 замороженных итоговых значений workload. Полный oracle
+  owned-адаптера совпадает с замороженными digest, однако полный oracle не
+  проходит через borrowed-представление, отображённое в память, и в процессе
+  проверки эквивалентности заново строит owned-граф. Используется проверяемый
+  доступ к архиву, но валидация всё ещё не доказывает сортировку каждого массива
+  lookup по имени/ID, используемого двоичным поиском.
+- Реальный корпус не содержит фактов языка. Сам по себе он не может доказать
+  эквивалентность языка, неоднозначности или результата unsupported;
+  обязательные фикстуры, полученные из реальных данных, по-прежнему нужны.
+- В отчётах кандидатов не выводились точные размеры в байтах для отдельных
+  секций, словаря и обратного индекса. Размеры артефактов точны, но внутренние
+  поля footprint недоступны и остаются пробелом в свидетельствах.
+- Профили аллокаций producer для кандидатов не инструментировались. Критерии
+  допуска по production-аллокациям для H1, H2 и H3 остаются неоценёнными.
 
-## Startup, Lookup And Runtime
+## Запуск, lookup и runtime
 
-Values are median ± MAD over nine release processes. `Startup + first lookup`
-is the median of the per-sample sum, not a sum of independently rounded table
-medians.
+Значения представлены как медиана ± MAD по девяти release-процессам.
+`Startup + first lookup` — медиана суммы внутри каждого образца, а не сумма
+независимо округлённых медиан таблицы.
 
-| Metric | H0 SQL owned | C0 cache owned | H1 custom flat | H2 typed flat | H3 rkyv archive |
+| Метрика | H0 SQL owned | C0 cache owned | H1 custom flat | H2 typed flat | H3 rkyv archive |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Warm ready, ms | 599.568 ± 7.419 | 41.764 ± 0.839 | 23.288 ± 0.214 | 55.195 ± 2.044 | 35.167 ± 1.089 |
-| Cold-best-effort ready, ms | 1,707.429 ± 10.461 | 73.475 ± 2.774 | 44.448 ± 0.745 | 66.979 ± 0.474 | 48.908 ± 1.338 |
-| Warm startup + first lookup, ms | 599.571 ± 7.419 | 41.767 ± 0.839 | 23.294 ± 0.216 | 55.199 ± 2.045 | 35.171 ± 1.087 |
-| Cold startup + first lookup, ms | 1,707.431 ± 10.462 | 73.478 ± 2.774 | 44.456 ± 0.747 | 66.984 ± 0.475 | 48.914 ± 1.339 |
-| Warm first lookup, µs | 2.703 ± 0.214 | 2.902 ± 0.113 | 7.154 ± 0.717 | 4.608 ± 0.307 | 4.173 ± 0.485 |
-| Cold first lookup, µs | 2.751 ± 0.171 | 2.997 ± 0.125 | 7.874 ± 1.861 | 4.801 ± 0.348 | 3.814 ± 0.194 |
-| Warm anchor resolution, µs | 15.458 ± 0.559 | 15.066 ± 0.325 | 27.077 ± 2.221 | 16.866 ± 1.568 | 15.583 ± 0.511 |
-| Cold anchor resolution, µs | 15.420 ± 0.230 | 15.252 ± 0.289 | 26.613 ± 3.333 | 16.519 ± 0.670 | 14.572 ± 0.470 |
-| Warm workload, ms | 2,226.218 ± 8.489 | 2,125.346 ± 11.649 | 248.780 ± 4.680 † | 370.613 ± 3.750 | 4,729.164 ± 18.520 |
-| Cold workload, ms | 2,222.610 ± 6.898 | 2,136.306 ± 12.465 | 243.069 ± 3.080 † | 370.430 ± 3.709 | 4,754.210 ± 15.430 |
-| Peak RSS warm/cold, KiB | 75,500 / 75,156 | 35,200 / 35,200 | 19,328 / 19,328 | 13,312 / 13,312 | 15,872 / 15,744 |
-| Open minor faults warm/cold | 18,584 / 18,585 | 7,708 / 7,708 | 271 / 271 | 183 / 184 | 219 / 218 |
-| Open major faults warm/cold | 0 / 0 | 0 / 0 | 0 / 1 | 0 / 1 | 0 / 1 |
-| Cold file-resident growth, bytes | 117,473,280 | 11,403,264 | 17,694,720 | 11,448,320 | 14,098,432 |
+| Готовность к запросам, warm, ms | 599.568 ± 7.419 | 41.764 ± 0.839 | 23.288 ± 0.214 | 55.195 ± 2.044 | 35.167 ± 1.089 |
+| Готовность к запросам, cold-best-effort, ms | 1,707.429 ± 10.461 | 73.475 ± 2.774 | 44.448 ± 0.745 | 66.979 ± 0.474 | 48.908 ± 1.338 |
+| Запуск + первый lookup, warm, ms | 599.571 ± 7.419 | 41.767 ± 0.839 | 23.294 ± 0.216 | 55.199 ± 2.045 | 35.171 ± 1.087 |
+| Запуск + первый lookup, cold, ms | 1,707.431 ± 10.462 | 73.478 ± 2.774 | 44.456 ± 0.747 | 66.984 ± 0.475 | 48.914 ± 1.339 |
+| Первый lookup, warm, µs | 2.703 ± 0.214 | 2.902 ± 0.113 | 7.154 ± 0.717 | 4.608 ± 0.307 | 4.173 ± 0.485 |
+| Первый lookup, cold, µs | 2.751 ± 0.171 | 2.997 ± 0.125 | 7.874 ± 1.861 | 4.801 ± 0.348 | 3.814 ± 0.194 |
+| Разрешение anchor, warm, µs | 15.458 ± 0.559 | 15.066 ± 0.325 | 27.077 ± 2.221 | 16.866 ± 1.568 | 15.583 ± 0.511 |
+| Разрешение anchor, cold, µs | 15.420 ± 0.230 | 15.252 ± 0.289 | 26.613 ± 3.333 | 16.519 ± 0.670 | 14.572 ± 0.470 |
+| Workload, warm, ms | 2,226.218 ± 8.489 | 2,125.346 ± 11.649 | 248.780 ± 4.680 † | 370.613 ± 3.750 | 4,729.164 ± 18.520 |
+| Workload, cold, ms | 2,222.610 ± 6.898 | 2,136.306 ± 12.465 | 243.069 ± 3.080 † | 370.430 ± 3.709 | 4,754.210 ± 15.430 |
+| Пиковый RSS, warm/cold, KiB | 75,500 / 75,156 | 35,200 / 35,200 | 19,328 / 19,328 | 13,312 / 13,312 | 15,872 / 15,744 |
+| Minor faults при открытии, warm/cold | 18,584 / 18,585 | 7,708 / 7,708 | 271 / 271 | 183 / 184 | 219 / 218 |
+| Major faults при открытии, warm/cold | 0 / 0 | 0 / 0 | 0 / 1 | 0 / 1 | 0 / 1 |
+| Рост file-resident, cold, bytes | 117,473,280 | 11,403,264 | 17,694,720 | 11,448,320 | 14,098,432 |
 
-† H1 workload values are not behaviorally comparable.
+† Значения workload для H1 поведенчески несопоставимы.
 
-The single-shot candidate first-lookups have `MAD / median > 5%`, which is
-consistent with the timer/scheduler noise anticipated by the frozen absolute
-budget. Every observed candidate first lookup remained below 25 µs; the
-candidate maxima were 17.007 µs for H1, 6.452 µs for H2 and 5.401 µs for H3.
-This explains the noisy field without changing the predeclared threshold.
+У однократных первых lookup кандидатов `MAD / median > 5%`, что согласуется
+с шумом таймера/планировщика, предусмотренным замороженным абсолютным бюджетом.
+Все наблюдавшиеся первые lookup кандидатов оставались ниже 25 µs; максимумы
+составили 17.007 µs для H1, 6.452 µs для H2 и 5.401 µs для H3. Это объясняет
+шумное поле без изменения заранее объявленного порога.
 
-## Steady Memory, Sharing And Allocations
+## Установившаяся память, совместное использование и аллокации
 
-`smaps_rollup` private includes private-clean file-backed pages and is not
-equivalent to heap. Anonymous memory is therefore reported separately. Exact
-file-backed attribution was not available from the frozen `smaps_rollup`
-record.
+Поле private в `smaps_rollup` включает file-backed страницы private-clean и
+не эквивалентно heap. Поэтому анонимная память приводится отдельно. В
+замороженной записи `smaps_rollup` точная атрибуция file-backed памяти была
+недоступна.
 
-| Metric, KiB unless noted | H0 | C0 | H1 | H2 | H3 |
+| Метрика, KiB, если не указано иное | H0 | C0 | H1 | H2 | H3 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Warm after-open RSS/PSS/private | 70,308 / 68,428 / 68,408 | 24,284 / 22,312 / 22,292 | 19,352 / 17,886 / 17,872 | 13,364 / 11,898 / 11,884 | 15,820 / 14,354 / 14,340 |
-| Warm post-workload RSS/PSS/private | 70,308 / 68,428 / 68,408 | 24,284 / 22,312 / 22,292 | 19,384 / 17,918 / 17,904 | 13,372 / 11,906 / 11,892 | 15,944 / 14,478 / 14,464 |
-| Warm post-workload shared/anonymous | 1,896 / 65,744 | 1,972 / 19,824 | 1,480 / 144 | 1,480 / 160 | 1,480 / 260 |
-| Cold post-workload RSS/PSS/private | 70,308 / 68,422 / 68,400 | 24,264 / 22,312 / 22,292 | 19,376 / 17,910 / 17,896 | 13,396 / 11,930 / 11,916 | 15,944 / 14,478 / 14,464 |
-| Four-reader aggregate PSS/private | 265,794 / 262,988 | 82,021 / 79,396 | 18,386 / 568 | 12,848 / 1,036 | 15,300 / 1,040 |
-| Runtime allocation calls to ready | 1,291,557 | 137,633 | 8 | 66,698 | 153,416 |
-| Runtime allocated bytes to ready | 154,852,833 | 29,278,447 | 4,484 | 4,662,246 | 6,856,044 |
-| Final/peak live allocator bytes | 22,409,823 / 63,498,795 | 17,942,214 / 29,274,971 | 2,964 / 4,500 | 2,965 / 8,181 | 2,316 / 3,852 |
+| RSS/PSS/private после открытия, warm | 70,308 / 68,428 / 68,408 | 24,284 / 22,312 / 22,292 | 19,352 / 17,886 / 17,872 | 13,364 / 11,898 / 11,884 | 15,820 / 14,354 / 14,340 |
+| RSS/PSS/private после workload, warm | 70,308 / 68,428 / 68,408 | 24,284 / 22,312 / 22,292 | 19,384 / 17,918 / 17,904 | 13,372 / 11,906 / 11,892 | 15,944 / 14,478 / 14,464 |
+| shared/anonymous после workload, warm | 1,896 / 65,744 | 1,972 / 19,824 | 1,480 / 144 | 1,480 / 160 | 1,480 / 260 |
+| RSS/PSS/private после workload, cold | 70,308 / 68,422 / 68,400 | 24,264 / 22,312 / 22,292 | 19,376 / 17,910 / 17,896 | 13,396 / 11,930 / 11,916 | 15,944 / 14,478 / 14,464 |
+| Совокупные PSS/private четырёх читателей | 265,794 / 262,988 | 82,021 / 79,396 | 18,386 / 568 | 12,848 / 1,036 | 15,300 / 1,040 |
+| Вызовы runtime-аллокаций до готовности к запросам | 1,291,557 | 137,633 | 8 | 66,698 | 153,416 |
+| Байты runtime-аллокаций до готовности к запросам | 154,852,833 | 29,278,447 | 4,484 | 4,662,246 | 6,856,044 |
+| Конечные/пиковые живые байты аллокатора | 22,409,823 / 63,498,795 | 17,942,214 / 29,274,971 | 2,964 / 4,500 | 2,965 / 8,181 | 2,316 / 3,852 |
 
-## Artifact Production
+## Формирование артефакта
 
-| Row | Total local rebuild | Materialize/encode | Serialize | Write/publish | Validation | Peak RSS | Artifact |
+| Строка | Полная локальная пересборка | Материализация/кодирование | Сериализация | Запись/публикация | Валидация | Пиковый RSS | Артефакт |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| C0 | 675.933 ± 10.180 ms | 594.571 ± 2.660 ms | included | 73.492 ± 20.710 ms | included | 81,356 KiB | 11,325,758 B |
-| H1 | 1,064.891 ± 8.750 ms | unavailable | unavailable | unavailable | unavailable | 115,436 KiB | 17,691,072 B |
-| H2 | 2,188.519 ± 29.555 ms | 1,923.008 ± 12.309 ms encode | included | 204.104 ± 14.488 ms residual | 55.958 ± 3.694 ms | 101,716 ± 132 KiB | 11,445,079 B |
-| H3 | 1,985.567 ± 15.508 ms | 601.640 ± 3.766 ms | 22.982 ± 0.214 ms | 230.377 ± 15.446 ms | unavailable | 87,992 ± 4 KiB | 14,097,196 B |
+| C0 | 675.933 ± 10.180 ms | 594.571 ± 2.660 ms | включено | 73.492 ± 20.710 ms | включено | 81,356 KiB | 11,325,758 B |
+| H1 | 1,064.891 ± 8.750 ms | недоступно | недоступно | недоступно | недоступно | 115,436 KiB | 17,691,072 B |
+| H2 | 2,188.519 ± 29.555 ms | 1,923.008 ± 12.309 ms encode | включено | 204.104 ± 14.488 ms остаток | 55.958 ± 3.694 ms | 101,716 ± 132 KiB | 11,445,079 B |
+| H3 | 1,985.567 ± 15.508 ms | 601.640 ± 3.766 ms | 22.982 ± 0.214 ms | 230.377 ± 15.446 ms | недоступно | 87,992 ± 4 KiB | 14,097,196 B |
 
-H2 does not time write directly. Its residual is external process time minus
-candidate-reported encode and validation and therefore also includes process
-startup/exit, lock and reporting overhead. H3's internal total includes work
-outside its separately reported materialize/serialize/write phases.
+H2 не измеряет время записи напрямую. Его остаток — внешнее время процесса за
+вычетом заявленных кандидатом кодирования и валидации; следовательно, туда
+также входят запуск/завершение процесса, блокировка и накладные расходы отчёта.
+Внутреннее полное время H3 включает работу вне отдельно заявленных фаз
+материализации/сериализации/записи.
 
-## Dictionary And Batched Operations
+## Словарь и пакетные операции
 
-The dictionary medians are average nanoseconds per operation:
+Медианы словаря — среднее число наносекунд на операцию:
 
-| Row | Forward by ID warm/cold | Reverse hit warm/cold | Reverse miss warm/cold |
+| Строка | Прямой поиск по ID, warm/cold | Обратный lookup с попаданием, warm/cold | Обратный lookup с промахом, warm/cold |
 | --- | ---: | ---: | ---: |
 | C0 | 0 / 1 | 946 / 962 | 49,871 / 49,217 |
 | H1 | 19 / 20 † | 763 / 738 † | 567 / 552 † |
 | H2 | 23 / 23 | 834 / 830 | 600 / 610 |
 | H3 | 3 / 3 | 2,189 / 2,185 | 115,513 / 116,035 |
 
-The complete warm/cold operation table is:
+Полная таблица операций warm/cold:
 
-| Operation, average ns | C0 warm/cold | H1† warm/cold | H2 warm/cold | H3 warm/cold |
+| Операция, среднее ns | C0 warm/cold | H1† warm/cold | H2 warm/cold | H3 warm/cold |
 | --- | ---: | ---: | ---: | ---: |
 | availability_by_fact | 111 / 110 | 281 / 270 | 268 / 265 | 107 / 107 |
 | callable_by_owner_name | 324 / 320 | 337 / 347 | 630 / 645 | 480 / 483 |
@@ -176,241 +180,247 @@ The complete warm/cold operation table is:
 | type_by_name_miss | 355 / 350 | 397 / 375 | 725 / 719 | 636 / 665 |
 | type_template_by_key | 112 / 109 | 204 / 195 | 390 / 386 | 211 / 221 |
 
-H1 produces zero rather than 20,000 for `query_table_by_name`,
-`query_table_by_syntax` and `type_template_by_key` in both stances. H2 and H3
-match every C0 observed total. Applying the frozen per-operation ceiling, H2
-exceeds 20 of 25 ceilings in each stance. H3 exceeds 19 of 25 warm ceilings
-and 20 of 25 cold ceilings. Total workload time does not override these
-individual non-regression failures.
+H1 даёт ноль вместо 20,000 для `query_table_by_name`,
+`query_table_by_syntax` и `type_template_by_key` в обоих режимах. H2 и H3
+совпадают со всеми наблюдаемыми итогами C0. При применении замороженного
+потолка для каждой операции H2 превышает 20 из 25 потолков в каждом режиме.
+H3 превышает 19 из 25 потолков в режиме warm и 20 из 25 в режиме cold. Полное
+время workload не отменяет эти отдельные нарушения отсутствия регрессии.
 
-## Relative Values
+## Относительные значения
 
-Each cell is relative to C0 / H0. Artifact and rebuild have no H0 value.
+Каждая ячейка приведена относительно C0 / H0. Для артефакта и пересборки
+значение H0 отсутствует.
 
-| Metric | H1 | H2 | H3 |
+| Метрика | H1 | H2 | H3 |
 | --- | ---: | ---: | ---: |
-| Warm ready | -44.2% / -96.1% | +32.2% / -90.8% | -15.8% / -94.1% |
-| Cold ready | -39.5% / -97.4% | -8.8% / -96.1% | -33.4% / -97.1% |
-| Warm first lookup | +146.5% / +164.7% | +58.8% / +70.5% | +43.8% / +54.4% |
-| Warm workload | not comparable | -82.6% / -83.4% | +122.5% / +112.4% |
-| Runtime allocations to ready | -100.0% / -100.0% | -51.5% / -94.8% | +11.5% / -88.1% |
-| Runtime allocated bytes | -100.0% / -100.0% | -84.1% / -97.0% | -76.6% / -95.6% |
-| Peak RSS | -45.1% / -74.4% | -62.2% / -82.4% | -54.9% / -79.0% |
-| Warm post-workload PSS | -19.7% / -73.8% | -46.6% / -82.6% | -35.1% / -78.8% |
-| Four-reader PSS | -77.6% / -93.1% | -84.3% / -95.2% | -81.3% / -94.2% |
-| Artifact bytes | +56.2% / n/a | +1.1% / n/a | +24.5% / n/a |
-| Total local rebuild | +57.5% / n/a | +223.8% / n/a | +193.8% / n/a |
+| Готовность к запросам, warm | -44.2% / -96.1% | +32.2% / -90.8% | -15.8% / -94.1% |
+| Готовность к запросам, cold | -39.5% / -97.4% | -8.8% / -96.1% | -33.4% / -97.1% |
+| Первый lookup, warm | +146.5% / +164.7% | +58.8% / +70.5% | +43.8% / +54.4% |
+| Workload, warm | несопоставимо | -82.6% / -83.4% | +122.5% / +112.4% |
+| Runtime-аллокации до готовности к запросам | -100.0% / -100.0% | -51.5% / -94.8% | +11.5% / -88.1% |
+| Байты runtime-аллокаций | -100.0% / -100.0% | -84.1% / -97.0% | -76.6% / -95.6% |
+| Пиковый RSS | -45.1% / -74.4% | -62.2% / -82.4% | -54.9% / -79.0% |
+| PSS после workload, warm | -19.7% / -73.8% | -46.6% / -82.6% | -35.1% / -78.8% |
+| PSS четырёх читателей | -77.6% / -93.1% | -84.3% / -95.2% | -81.3% / -94.2% |
+| Байты артефакта | +56.2% / n/a | +1.1% / n/a | +24.5% / n/a |
+| Полная локальная пересборка | +57.5% / n/a | +223.8% / n/a | +193.8% / n/a |
 
-## Mandatory Correctness And Lifecycle Gates
+## Обязательные критерии допуска по корректности и жизненному циклу
 
-| Gate | H1 | H2 | H3 |
+| Критерий допуска | H1 | H2 | H3 |
 | --- | --- | --- | --- |
-| Full mapped canonical content and lookup files | Incomplete: smoke only | Incomplete: smoke only | Incomplete: matching digests are from owned adapter, not mapped view |
-| Canonical digests | Not produced | Not produced | Owned adapter matches `000c78a7...` / `76b7ae21...`; mapped gate still incomplete |
-| Sequential and four-reader canonical transcripts | Incomplete | Incomplete | Incomplete |
-| No SQLite/HBK fallback after mapped open | Incomplete: no full probe | Incomplete: no full probe | Incomplete: no full mapped probe |
-| 25 workload observed totals | Fail: three mismatches | Pass | Pass |
-| Exact HBK/provider/platform/schema identity | Fail: exact provider SQLite identity missing | Pass | Pass |
-| Structural validation before typed access | Fail: shallow record/reference/tag validation | Incomplete: strong section/reference/order checks, but `ModuleEventNames` owner-order validation does not match the owned text-order contract | Incomplete: source-locale and several indexes are checked, but not every binary-searched name/id array is proven sorted |
-| Read-only mapping and owned mapping lifetime | Pass for tested mapped path | Pass | Pass through checked `rkyv::access` |
-| Fail-fast typed writer lock | Partial: helper typed, producer path generic | Partial: typed producer, but self-validation runs after lock release | Pass for separate slot producer/open APIs |
-| Integrated rebuild-before-map lifecycle | Not implemented | Not implemented | Not implemented |
-| No complete owned runtime mirror | Pass for measured runtime | Pass for measured runtime | Pass for measured runtime; parity tool separately constructs an owned mirror |
-| Language/ambiguity/unsupported fixture parity | Incomplete | Incomplete | Incomplete |
+| Полные файлы канонического содержимого и lookup из отображённого в память представления | Неполно: только smoke | Неполно: только smoke | Неполно: совпадающие digest получены из owned-адаптера, а не из отображённого в память представления |
+| Канонические digest | Не сформированы | Не сформированы | Owned-адаптер совпадает с `000c78a7...` / `76b7ae21...`; критерий допуска для отображённого в память представления всё ещё не завершён |
+| Последовательные и четырёхчитательские канонические транскрипты | Неполно | Неполно | Неполно |
+| Отсутствие fallback к SQLite/HBK после открытия отображения | Неполно: нет полной пробы | Неполно: нет полной пробы | Неполно: нет полной пробы отображённого в память представления |
+| Наблюдаемые итоги 25 операций workload | Не пройдено: три несовпадения | Пройдено | Пройдено |
+| Точная идентичность HBK/провайдера/платформы/схемы | Не пройдено: отсутствует точная идентичность SQLite провайдера | Пройдено | Пройдено |
+| Структурная валидация до типизированного доступа | Не пройдено: поверхностная валидация записей/ссылок/tag | Неполно: строгие проверки секций/ссылок/порядка, но валидация порядка владельцев `ModuleEventNames` не соответствует owned-контракту текстового порядка | Неполно: проверяются исходная локаль и несколько индексов, но не для каждого используемого двоичным поиском массива имён/ID доказана сортировка |
+| Read-only-отображение и owned lifetime отображения | Пройдено для проверенного пути отображения | Пройдено | Пройдено через проверяемый `rkyv::access` |
+| Типизированная fail-fast-блокировка writer | Частично: helper типизирован, путь producer общий | Частично: типизированный producer, но самопроверка выполняется после освобождения блокировки | Пройдено для раздельных API producer/open слота |
+| Интегрированный жизненный цикл rebuild-before-map | Не реализован | Не реализован | Не реализован |
+| Отсутствие полного owned-зеркала runtime | Пройдено для измеренного runtime | Пройдено для измеренного runtime | Пройдено для измеренного runtime; средство проверки эквивалентности отдельно строит owned-зеркало |
+| Эквивалентность фикстур языка/неоднозначности/unsupported | Неполно | Неполно | Неполно |
 
-No candidate completes every mandatory correctness and lifecycle gate.
+Ни один кандидат не завершает все обязательные критерии допуска по корректности
+и жизненному циклу.
 
-## Frozen Numeric Gate Matrix
+## Матрица замороженных числовых критериев допуска
 
-`Pass` below means only that the recorded numeric value is within that one
-frozen threshold. `Fail` means it is outside. `Not evaluated` means the
-required comparable or instrumented evidence is absent.
+`Пройдено` ниже означает только то, что записанное числовое значение укладывается
+в один соответствующий замороженный порог. `Не пройдено` означает выход за его
+пределы. `Не оценено` означает отсутствие требуемых сопоставимых или
+инструментированных свидетельств.
 
-### Material-Benefit Gates
+### Критерии допуска по существенной пользе
 
-| Gate | H1 | H2 | H3 |
+| Критерий допуска | H1 | H2 | H3 |
 | --- | --- | --- | --- |
-| Warm ready ≤ 33,410,942 ns | Pass: 23,287,938 | Fail: 55,194,658 | Fail: 35,167,009 |
-| Cold ready ≤ 58,780,152 ns | Pass: 44,447,777 | Fail: 66,978,928 | Pass: 48,908,203 |
-| Runtime allocation calls ≤ 68,816 | Pass: 8 | Pass: 66,698 | Fail: 153,416 |
-| Runtime allocated bytes ≤ 14,639,223 | Pass: 4,484 | Pass: 4,662,246 | Pass: 6,856,044 |
-| Peak RSS ≤ 29,920 KiB | Pass: 19,328 | Pass: 13,312 | Pass: 15,872 |
-| Warm PSS ≤ 17,849 KiB | Fail: 17,918 | Pass: 11,906 | Pass: 14,478 |
-| Warm private ≤ 17,833 KiB | Fail: 17,904 | Pass: 11,892 | Pass: 14,464 |
-| Cold PSS ≤ 17,849 KiB | Fail: 17,910 | Pass: 11,930 | Pass: 14,478 |
-| Cold private ≤ 17,833 KiB | Fail: 17,896 | Pass: 11,916 | Pass: 14,464 |
-| Four-reader PSS ≤ 65,616 KiB | Pass: 18,386 | Pass: 12,848 | Pass: 15,300 |
-| Reverse dictionary hit ≤ 473 ns | Fail: 763 | Fail: 834 | Fail: 2,189 |
-| Reverse dictionary miss ≤ 24,935 ns | Pass: 567 | Pass: 600 | Fail: 115,513 |
+| Готовность к запросам, warm ≤ 33,410,942 ns | Пройдено: 23,287,938 | Не пройдено: 55,194,658 | Не пройдено: 35,167,009 |
+| Готовность к запросам, cold ≤ 58,780,152 ns | Пройдено: 44,447,777 | Не пройдено: 66,978,928 | Пройдено: 48,908,203 |
+| Вызовы runtime-аллокаций ≤ 68,816 | Пройдено: 8 | Пройдено: 66,698 | Не пройдено: 153,416 |
+| Байты runtime-аллокаций ≤ 14,639,223 | Пройдено: 4,484 | Пройдено: 4,662,246 | Пройдено: 6,856,044 |
+| Пиковый RSS ≤ 29,920 KiB | Пройдено: 19,328 | Пройдено: 13,312 | Пройдено: 15,872 |
+| PSS, warm ≤ 17,849 KiB | Не пройдено: 17,918 | Пройдено: 11,906 | Пройдено: 14,478 |
+| Private, warm ≤ 17,833 KiB | Не пройдено: 17,904 | Пройдено: 11,892 | Пройдено: 14,464 |
+| PSS, cold ≤ 17,849 KiB | Не пройдено: 17,910 | Пройдено: 11,930 | Пройдено: 14,478 |
+| Private, cold ≤ 17,833 KiB | Не пройдено: 17,896 | Пройдено: 11,916 | Пройдено: 14,464 |
+| PSS четырёх читателей ≤ 65,616 KiB | Пройдено: 18,386 | Пройдено: 12,848 | Пройдено: 15,300 |
+| Обратный lookup словаря с попаданием ≤ 473 ns | Не пройдено: 763 | Не пройдено: 834 | Не пройдено: 2,189 |
+| Обратный lookup словаря с промахом ≤ 24,935 ns | Пройдено: 567 | Пройдено: 600 | Не пройдено: 115,513 |
 
-### Non-Regression And Resource Gates
+### Критерии допуска по отсутствию регрессии и ресурсам
 
-| Gate | H1 | H2 | H3 |
+| Критерий допуска | H1 | H2 | H3 |
 | --- | --- | --- | --- |
-| First lookup median ≤ 25,000 ns, both stances | Pass: 7,154 / 7,874 | Pass: 4,608 / 4,801 | Pass: 4,173 / 3,814 |
-| Anchor median ≤ 25,000 ns, both stances | Fail: 27,077 / 26,613 | Pass: 16,866 / 16,519 | Pass: 15,583 / 14,572 |
-| Warm/cold total workload ceiling | Not evaluated: workload mismatch | Pass: 370.613 / 370.430 ms | Fail: 4,729.164 / 4,754.210 ms |
-| All observed totals match | Fail: 3 of 25 differ | Pass | Pass |
-| Every per-operation ceiling | Not evaluated | Fail: 20 of 25 in both stances | Fail: 19 warm / 20 cold of 25 |
-| Forward dictionary absolute ≤ 10 ns | Fail: 19 / 20 | Fail: 23 / 23 | Pass: 3 / 3 |
-| Open major faults remain zero | Fail: 0 / 1 | Fail: 0 / 1 | Fail: 0 / 1 |
-| Open minor faults ≤ 9,635 | Pass: 271 | Pass: 184 | Pass: 219 |
-| Cold file-resident growth ≤ 14,254,080 B | Fail: 17,694,720 | Pass: 11,448,320 | Pass: 14,098,432 |
-| Artifact ≤ 14,157,197 B | Fail: 17,691,072 | Pass: 11,445,079 | Pass: 14,097,196 |
-| Total local rebuild ≤ 844,916,105 ns | Fail: 1,064,890,508 | Fail: 2,188,519,416 | Fail: 1,985,567,453 |
-| Production peak RSS ≤ 101,695 KiB | Fail: 115,436 | Fail: 101,716 | Pass: 87,992 |
-| Production allocation calls/bytes/peak | Not evaluated | Not evaluated | Not evaluated |
+| Медиана первого lookup ≤ 25,000 ns в обоих режимах | Пройдено: 7,154 / 7,874 | Пройдено: 4,608 / 4,801 | Пройдено: 4,173 / 3,814 |
+| Медиана anchor ≤ 25,000 ns в обоих режимах | Не пройдено: 27,077 / 26,613 | Пройдено: 16,866 / 16,519 | Пройдено: 15,583 / 14,572 |
+| Полный потолок workload, warm/cold | Не оценено: несовпадение workload | Пройдено: 370.613 / 370.430 ms | Не пройдено: 4,729.164 / 4,754.210 ms |
+| Совпадение всех наблюдаемых итогов | Не пройдено: различаются 3 из 25 | Пройдено | Пройдено |
+| Каждый пооперационный потолок | Не оценено | Не пройдено: 20 из 25 в обоих режимах | Не пройдено: 19 warm / 20 cold из 25 |
+| Абсолютное значение прямого lookup словаря ≤ 10 ns | Не пройдено: 19 / 20 | Не пройдено: 23 / 23 | Пройдено: 3 / 3 |
+| Major faults при открытии остаются нулевыми | Не пройдено: 0 / 1 | Не пройдено: 0 / 1 | Не пройдено: 0 / 1 |
+| Minor faults при открытии ≤ 9,635 | Пройдено: 271 | Пройдено: 184 | Пройдено: 219 |
+| Рост file-resident, cold ≤ 14,254,080 B | Не пройдено: 17,694,720 | Пройдено: 11,448,320 | Пройдено: 14,098,432 |
+| Артефакт ≤ 14,157,197 B | Не пройдено: 17,691,072 | Пройдено: 11,445,079 | Пройдено: 14,097,196 |
+| Полная локальная пересборка ≤ 844,916,105 ns | Не пройдено: 1,064,890,508 | Не пройдено: 2,188,519,416 | Не пройдено: 1,985,567,453 |
+| Пиковый RSS при формировании ≤ 101,695 KiB | Не пройдено: 115,436 | Не пройдено: 101,716 | Пройдено: 87,992 |
+| Вызовы/байты/пик аллокаций при формировании | Не оценено | Не оценено | Не оценено |
 
-## S83 F0/A0 Reference Evidence
+## Опорные свидетельства S83 F0/A0
 
-The S83 reference pass uses platform `8.3.27.1859`, HBK SHA-256
+Опорный проход S83 использует платформу `8.3.27.1859`, HBK SHA-256
 `5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`,
-provider SQLite SHA-256
+SHA-256 SQLite провайдера
 `55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`,
-provider schema `16`, extraction schema `11` and frozen harness
+схему провайдера `16`, схему извлечения `11` и замороженный стенд
 `28f29b5a262db362b6b58c8109e6df6c2afbbc44`.
 
-Generated service evidence is under
+Сформированные служебные свидетельства находятся в
 `target/hbk-zero-copy-experiment-8.3.27.1859/results/`:
 
-- numeric resource raw:
+- необработанные числовые данные по ресурсам:
   `raw-S83-F0-A0-complete-360cbd9.jsonl`;
-- auxiliary numeric summary:
+- вспомогательная числовая сводка:
   `summary-S83-F0-A0-complete-360cbd9.json` / `.md`;
-- diagnostic pre-merge resource raw:
+- диагностические необработанные данные по ресурсам до merge:
   `raw-S83-F0-A0-resource-061a242.jsonl`;
-- storage parity:
+- эквивалентность хранилища:
   `raw-S83-F0-5eac531-parity-rerun-6aadd9b.jsonl`,
   `raw-S83-A0-2a14ed6-parity-6aadd9b.jsonl`;
-- semantic parity:
+- семантическая эквивалентность:
   `raw-semantic-s83-f0-semantic-a9a98a1.jsonl`,
   `raw-semantic-s83-a0-semantic-36a41aa.jsonl`.
 
-All 72 records in `raw-S83-F0-A0-complete-360cbd9.jsonl` are successful:
-18 runtime timing rows, nine production timing rows, three runtime allocation
-profiles, three production allocation profiles and three aggregate four-reader
-rows for each of F0 and A0. The measured artifacts remain immutable files:
+Все 72 записи в `raw-S83-F0-A0-complete-360cbd9.jsonl` успешны: для каждого из
+F0 и A0 имеются 18 строк измерения времени runtime, девять строк времени
+формирования, три профиля runtime-аллокаций, три профиля аллокаций при
+формировании и три совокупные строки четырёх читателей. Измеренные артефакты
+остаются неизменяемыми файлами:
 
-| ID | Branch | Semantic commit | Artifact | Bytes | SHA-256 | Mode |
+| ID | Ветка | Семантический коммит | Артефакт | Байты | SHA-256 | Режим |
 | --- | --- | --- | --- | ---: | --- | --- |
 | `S83-F0` | `experiment/hbk-zero-copy-83-flat-f0-semantic` | `a9a98a18ed2af21ba16573a00719c13edddac97b` | `s83-f0.5eac531.h2` | 11,304,567 | `20bc6ff8bf922b129233cafdcb4abbec51496697ee086788aacaf1eb00bd74b2` | `0444` |
 | `S83-A0` | `experiment/hbk-zero-copy-83-archive-a0-semantic` | `36a41aa74a9c6898576706f34a9a403918d452e4` | `s83-a0.2a14ed6.a0` | 13,936,492 | `6fbd33ab0d58c2197e324b0b61193d873bc777def0087ae42b178cd8b53e00d1` | `0444` |
 
-### S83 Startup, Lookup And Runtime
+### Запуск, lookup и runtime S83
 
-Values are median ± MAD over nine release processes.
+Значения представлены как медиана ± MAD по девяти release-процессам.
 
-| Metric | S83-F0 | S83-A0 |
+| Метрика | S83-F0 | S83-A0 |
 | --- | ---: | ---: |
-| Warm ready, ms | 54.358 ± 0.618 | 39.174 ± 0.445 |
-| Cold-best-effort ready, ms | 67.899 ± 0.673 | 50.703 ± 0.121 |
-| Warm first lookup, µs | 3.902 ± 0.074 | 2.872 ± 0.165 |
-| Cold first lookup, µs | 4.149 ± 0.520 | 2.823 ± 0.174 |
-| Warm anchor resolution, µs | 14.007 ± 0.438 | 11.915 ± 0.381 |
-| Cold anchor resolution, µs | 14.750 ± 0.506 | 11.965 ± 0.412 |
-| Warm workload, ms | 358.243 ± 2.417 | 4,638.727 ± 14.339 |
-| Cold workload, ms | 356.781 ± 2.173 | 4,644.303 ± 13.769 |
-| Peak RSS warm/cold, KiB | 13,184 / 13,184 | 15,744 / 15,616 |
-| Warm post-workload PSS/private, KiB | 11,770 / 11,756 | 14,358 / 14,344 |
-| Cold post-workload PSS/private, KiB | 11,770 / 11,756 | 14,354 / 14,340 |
-| Open minor faults warm/cold | 182 / 182 | 216 / 216 |
-| Open major faults warm/cold | 0 / 1 | 0 / 1 |
-| Cold file-resident growth, bytes | 11,304,960 | 13,938,688 |
+| Готовность к запросам, warm, ms | 54.358 ± 0.618 | 39.174 ± 0.445 |
+| Готовность к запросам, cold-best-effort, ms | 67.899 ± 0.673 | 50.703 ± 0.121 |
+| Первый lookup, warm, µs | 3.902 ± 0.074 | 2.872 ± 0.165 |
+| Первый lookup, cold, µs | 4.149 ± 0.520 | 2.823 ± 0.174 |
+| Разрешение anchor, warm, µs | 14.007 ± 0.438 | 11.915 ± 0.381 |
+| Разрешение anchor, cold, µs | 14.750 ± 0.506 | 11.965 ± 0.412 |
+| Workload, warm, ms | 358.243 ± 2.417 | 4,638.727 ± 14.339 |
+| Workload, cold, ms | 356.781 ± 2.173 | 4,644.303 ± 13.769 |
+| Пиковый RSS, warm/cold, KiB | 13,184 / 13,184 | 15,744 / 15,616 |
+| PSS/private после workload, warm, KiB | 11,770 / 11,756 | 14,358 / 14,344 |
+| PSS/private после workload, cold, KiB | 11,770 / 11,756 | 14,354 / 14,340 |
+| Minor faults при открытии, warm/cold | 182 / 182 | 216 / 216 |
+| Major faults при открытии, warm/cold | 0 / 1 | 0 / 1 |
+| Рост file-resident, cold, bytes | 11,304,960 | 13,938,688 |
 
-Both candidates preserve all 25 S83-C0 workload observed totals in warm and
-cold-best-effort stances. Applying the frozen per-operation ceiling formula,
-F0 exceeds 20 of 25 operation ceilings in each stance. A0 exceeds 20 of 25
-warm ceilings and 19 of 25 cold ceilings.
+Оба кандидата сохраняют все 25 наблюдаемых итогов workload S83-C0 в режимах
+warm и cold-best-effort. При применении замороженной формулы пооперационного
+потолка F0 превышает 20 из 25 потолков операций в каждом режиме. A0 превышает
+20 из 25 потолков warm и 19 из 25 потолков cold.
 
-### S83 Memory, Sharing And Allocations
+### Память, совместное использование и аллокации S83
 
-| Metric | S83-F0 | S83-A0 |
+| Метрика | S83-F0 | S83-A0 |
 | --- | ---: | ---: |
-| Runtime allocation calls to ready | 66,266 | 151,855 |
-| Runtime allocated bytes to ready | 4,633,385 | 6,791,316 |
-| Final / peak live allocator bytes | 2,978 / 8,194 | 2,385 / 3,921 |
-| Aggregate four-reader PSS/private, KiB | 12,342 / 664 | 15,180 / 1,044 |
-| Aggregate four-reader RSS/shared/anonymous, KiB | 53,008 / 52,348 / 644 | 63,284 / 62,240 / 1,044 |
+| Вызовы runtime-аллокаций до готовности к запросам | 66,266 | 151,855 |
+| Байты runtime-аллокаций до готовности к запросам | 4,633,385 | 6,791,316 |
+| Конечные / пиковые живые байты аллокатора | 2,978 / 8,194 | 2,385 / 3,921 |
+| Совокупные PSS/private четырёх читателей, KiB | 12,342 / 664 | 15,180 / 1,044 |
+| Совокупные RSS/shared/anonymous четырёх читателей, KiB | 53,008 / 52,348 / 644 | 63,284 / 62,240 / 1,044 |
 
-### S83 Artifact Production
+### Формирование артефакта S83
 
-| Metric | S83-F0 | S83-A0 |
+| Метрика | S83-F0 | S83-A0 |
 | --- | ---: | ---: |
-| Total local rebuild, ms | 3,272.623 ± 36.147 | 1,994.852 ± 23.196 |
-| Materialize, ms | 584.768 ± 10.213 | 586.432 ± 5.495 |
-| Write/publish, ms | 244.055 ± 32.800 | 258.073 ± 30.467 |
-| Production peak RSS, KiB | 100,900 | 100,996 |
-| Artifact bytes | 11,304,567 | 13,936,492 |
-| Production allocation calls | 2,291,021 | 1,582,041 |
-| Production allocated bytes | 281,173,378 | 203,711,633 |
-| Production peak live bytes | 63,694,157 | 63,018,740 |
+| Полная локальная пересборка, ms | 3,272.623 ± 36.147 | 1,994.852 ± 23.196 |
+| Материализация, ms | 584.768 ± 10.213 | 586.432 ± 5.495 |
+| Запись/публикация, ms | 244.055 ± 32.800 | 258.073 ± 30.467 |
+| Пиковый RSS при формировании, KiB | 100,900 | 100,996 |
+| Байты артефакта | 11,304,567 | 13,936,492 |
+| Вызовы аллокаций при формировании | 2,291,021 | 1,582,041 |
+| Байты аллокаций при формировании | 281,173,378 | 203,711,633 |
+| Пиковые живые байты при формировании | 63,694,157 | 63,018,740 |
 
-### S83 Behavioral And Safety Gates
+### Поведенческие критерии допуска и критерии безопасности S83
 
-| Gate | S83-F0 | S83-A0 |
+| Критерий допуска | S83-F0 и S83-A0 |
+| --- | --- |
+| Эквивалентность содержимого хранилища и lookup | Пройдено: content `5f66d205...`, lookup `9b17c710...`, последовательный и четыре параллельных читателя, источники скрыты до открытия |
+| Семантическая эквивалентность catalog/resolver | Пройдено: пять транскриптов, 742,872 записей / 769,824,709 bytes, SHA-256 `1fe7f166...`, источники скрыты до запуска процесса и на протяжении replay |
+| Точная идентичность платформы/источника/схемы/заголовка | Пройдено: платформа `8.3.27.1859`, схема провайдера `16`, схема извлечения `11`, точные хэши HBK/провайдера |
+| Отсутствие fallback к SQLite/HBK после открытия предоставленного артефакта | Пройдено в критериях допуска хранилища и семантики с пробами при скрытых источниках |
+| Отсутствие полного owned-зеркала runtime | Пройдено для измеренного runtime и семантического адаптера; F0 всё ещё декодирует variable-записи фактов при доступе |
+| Свидетельства неизменяемости артефакта и блокировки | Пройдено: режим артефакта `0444`, соседний файл разделяемой блокировки |
+| Наблюдаемые итоги workload | Пройдено: 25 из 25 в обоих режимах |
+
+### Матрица замороженных числовых критериев допуска S83
+
+`Пройдено` ниже означает только то, что записанное числовое значение укладывается
+в один соответствующий замороженный порог. `Не пройдено` означает выход за его
+пределы.
+
+| Критерий допуска | S83-F0 | S83-A0 |
 | --- | --- | --- |
-| Storage content and lookup parity | Pass: content `5f66d205...`, lookup `9b17c710...`, sequential plus four-reader readers, sources hidden before open |
-| Semantic catalog/resolver parity | Pass: five transcripts, 742,872 records / 769,824,709 bytes, SHA-256 `1fe7f166...`, sources hidden before process and through replay |
-| Exact platform/source/schema/header identity | Pass: platform `8.3.27.1859`, provider schema `16`, extraction schema `11`, exact HBK/provider hashes |
-| No SQLite/HBK fallback after supplied-artifact open | Pass in storage and semantic gates with source-hidden probes |
-| No complete owned runtime mirror | Pass for measured runtime and semantic adapter; F0 still decodes variable fact records on access |
-| Immutable artifact and lock evidence | Pass: artifact mode `0444`, adjacent shared lock file |
-| Workload observed totals | Pass: 25 of 25 in both stances |
+| Готовность к запросам, warm ≤ 33,991,352 ns | Не пройдено: 54,357,920 | Не пройдено: 39,173,528 |
+| Готовность к запросам, cold ≤ 59,020,968 ns | Не пройдено: 67,899,017 | Пройдено: 50,703,490 |
+| Вызовы runtime-аллокаций ≤ 68,018 | Пройдено: 66,266 | Не пройдено: 151,855 |
+| Байты runtime-аллокаций ≤ 14,471,464 | Пройдено: 4,633,385 | Пройдено: 6,791,316 |
+| Пиковый RSS ≤ 29,593 KiB | Пройдено: 13,184 | Пройдено: 15,744 |
+| PSS/private, warm ≤ 17,712 / 17,696 KiB | Пройдено: 11,770 / 11,756 | Пройдено: 14,358 / 14,344 |
+| PSS/private, cold ≤ 17,681 / 17,664 KiB | Пройдено: 11,770 / 11,756 | Пройдено: 14,354 / 14,340 |
+| PSS четырёх читателей ≤ 64,913 KiB | Пройдено: 12,342 | Пройдено: 15,180 |
+| Обратный lookup словаря с попаданием ≤ 458 ns | Не пройдено: 961 / 975 | Не пройдено: 2,245 / 2,213 |
+| Обратный lookup словаря с промахом ≤ 24,048 ns | Пройдено: 524 / 520 | Не пройдено: 113,905 / 114,151 |
+| Первый lookup ≤ 25,000 ns в обоих режимах | Пройдено: 3,902 / 4,149 | Пройдено: 2,872 / 2,823 |
+| Разрешение anchor ≤ 25,000 ns в обоих режимах | Пройдено: 14,007 / 14,750 | Пройдено: 11,915 / 11,965 |
+| Потолок workload, warm/cold | Пройдено: 358.243 / 356.781 ms | Не пройдено: 4,638.727 / 4,644.303 ms |
+| Каждый пооперационный потолок | Не пройдено: 20 из 25 в обоих режимах | Не пройдено: 20 warm / 19 cold из 25 |
+| Абсолютное значение прямого lookup словаря ≤ 10 ns | Не пройдено: 23 / 23 | Пройдено: 3 / 3 |
+| Major faults при открытии остаются нулевыми | Не пройдено: 0 / 1 | Не пройдено: 0 / 1 |
+| Minor faults при открытии ≤ 9,525 | Пройдено: 182 | Пройдено: 216 |
+| Рост file-resident, cold ≤ 14,074,880 B | Пройдено: 11,304,960 | Пройдено: 13,938,688 |
+| Артефакт ≤ 13,982,571 B | Пройдено: 11,304,567 | Пройдено: 13,936,492 |
+| Полная локальная пересборка ≤ 803,548,621 ns | Не пройдено: 3,272,622,772 | Не пройдено: 1,994,852,136 |
+| Пиковый RSS при формировании ≤ 100,975 KiB | Пройдено: 100,900 | Не пройдено: 100,996 |
+| Вызовы аллокаций при формировании ≤ 1,597,946 | Не пройдено: 2,291,021 | Пройдено: 1,582,041 |
+| Байты аллокаций при формировании ≤ 229,823,958 | Не пройдено: 281,173,378 | Пройдено: 203,711,633 |
+| Пиковые живые байты при формировании ≤ 78,772,998 | Пройдено: 63,694,157 | Пройдено: 63,018,740 |
 
-### S83 Frozen Numeric Gate Matrix
+Ни строка S83-F0, ни строка S83-A0 не проходит все замороженные числовые
+критерии допуска. Таблица не является рейтингом и не выбирает кандидата.
 
-`Pass` below means only that the recorded numeric value is within that one
-frozen threshold. `Fail` means it is outside.
+## Консолидированные неранжированные свидетельства S83
 
-| Gate | S83-F0 | S83-A0 |
-| --- | --- | --- |
-| Warm ready ≤ 33,991,352 ns | Fail: 54,357,920 | Fail: 39,173,528 |
-| Cold ready ≤ 59,020,968 ns | Fail: 67,899,017 | Pass: 50,703,490 |
-| Runtime allocation calls ≤ 68,018 | Pass: 66,266 | Fail: 151,855 |
-| Runtime allocated bytes ≤ 14,471,464 | Pass: 4,633,385 | Pass: 6,791,316 |
-| Peak RSS ≤ 29,593 KiB | Pass: 13,184 | Pass: 15,744 |
-| Warm PSS/private ≤ 17,712 / 17,696 KiB | Pass: 11,770 / 11,756 | Pass: 14,358 / 14,344 |
-| Cold PSS/private ≤ 17,681 / 17,664 KiB | Pass: 11,770 / 11,756 | Pass: 14,354 / 14,340 |
-| Four-reader PSS ≤ 64,913 KiB | Pass: 12,342 | Pass: 15,180 |
-| Reverse dictionary hit ≤ 458 ns | Fail: 961 / 975 | Fail: 2,245 / 2,213 |
-| Reverse dictionary miss ≤ 24,048 ns | Pass: 524 / 520 | Fail: 113,905 / 114,151 |
-| First lookup ≤ 25,000 ns, both stances | Pass: 3,902 / 4,149 | Pass: 2,872 / 2,823 |
-| Anchor resolution ≤ 25,000 ns, both stances | Pass: 14,007 / 14,750 | Pass: 11,915 / 11,965 |
-| Warm/cold workload ceiling | Pass: 358.243 / 356.781 ms | Fail: 4,638.727 / 4,644.303 ms |
-| Every per-operation ceiling | Fail: 20 of 25 in both stances | Fail: 20 warm / 19 cold of 25 |
-| Forward dictionary absolute ≤ 10 ns | Fail: 23 / 23 | Pass: 3 / 3 |
-| Open major faults remain zero | Fail: 0 / 1 | Fail: 0 / 1 |
-| Open minor faults ≤ 9,525 | Pass: 182 | Pass: 216 |
-| Cold file-resident growth ≤ 14,074,880 B | Pass: 11,304,960 | Pass: 13,938,688 |
-| Artifact ≤ 13,982,571 B | Pass: 11,304,567 | Pass: 13,936,492 |
-| Total local rebuild ≤ 803,548,621 ns | Fail: 3,272,622,772 | Fail: 1,994,852,136 |
-| Production peak RSS ≤ 100,975 KiB | Pass: 100,900 | Fail: 100,996 |
-| Production allocation calls ≤ 1,597,946 | Fail: 2,291,021 | Pass: 1,582,041 |
-| Production allocated bytes ≤ 229,823,958 | Fail: 281,173,378 | Pass: 203,711,633 |
-| Production peak live bytes ≤ 78,772,998 | Pass: 63,694,157 | Pass: 63,018,740 |
-
-No S83-F0 or S83-A0 row passes every frozen numeric gate. The table is not a
-ranking and does not select a candidate.
-
-## S83 Consolidated Unranked Evidence
-
-The derived-candidate resource raw
+Необработанные данные о ресурсах производных кандидатов
 `target/hbk-zero-copy-experiment-8.3.27.1859/results/raw-S83-derived-resource-0219685.jsonl`
-contains 180 successful records and has SHA-256
+содержат 180 успешных записей и имеют SHA-256
 `fe9e800f32d129c3c82b7281a3f9be9bc5b607493ba692e53654a85e99d91351`.
-For each of L1/I1/D1/P1/R1 it contains exactly nine warm runtime, nine
-cold-best-effort runtime, nine production, three runtime-allocation, three
-producer-allocation and three aggregate-four-reader records. Performance
-processes were serialized; candidate order was rotated between runtime
-samples. The complete machine-readable summary is
-`summary-S83-all-candidates-0219685.json` and its rendered evidence table is
-`summary-S83-all-candidates-0219685.md`. Both explicitly record
-`ranked: false` and `selection: pending-user-decision`.
+Для каждого из L1/I1/D1/P1/R1 там содержится ровно по девять записей runtime
+warm, девять runtime cold-best-effort, девять формирования, три записи
+runtime-аллокаций, три записи producer-аллокаций и три совокупные записи
+четырёх читателей. Процессы измерения производительности выполнялись
+последовательно; порядок кандидатов ротировался между образцами runtime. Полная
+машиночитаемая сводка — `summary-S83-all-candidates-0219685.json`, а её
+отрендеренная таблица свидетельств —
+`summary-S83-all-candidates-0219685.md`. В обоих файлах явно записано
+`ranked: false` и `selection: pending-user-decision`.
 
-The five derived artifacts are deterministic, immutable files with adjacent
-slot lock files:
+Пять производных артефактов — детерминированные неизменяемые файлы с соседними
+файлами блокировки слота:
 
-| ID | Branch | Commit | Artifact bytes | SHA-256 | Mode |
+| ID | Ветка | Коммит | Байты артефакта | SHA-256 | Режим |
 | --- | --- | --- | ---: | --- | --- |
 | `S83-L1` | `experiment/hbk-zero-copy-83-layout-l1` | `98f8b3bfadeeb40585fb4792aacfcc2f83b52bfc` | 11,304,567 | `cd0bfd19ae7592232f0eafb300a3f61c356ebdadaa600573245ff2144f14bc73` | `0444` |
 | `S83-I1` | `experiment/hbk-zero-copy-83-index-i1` | `b7a674806a086ba40aaa617eca461238e23615dc` | 23,694,119 | `991b9e056c09defb8e12632cd83a709df5873b4383dbaea284c5f5dc64438c85` | `0444` |
@@ -418,21 +428,21 @@ slot lock files:
 | `S83-P1` | `experiment/hbk-zero-copy-83-produce-p1` | `b0d2523d06268f27eb36fcdfb601d0444bd372fc` | 11,304,567 | `20bc6ff8bf922b129233cafdcb4abbec51496697ee086788aacaf1eb00bd74b2` | `0444` |
 | `S83-R1` | `experiment/hbk-zero-copy-83-record-r1` | `ffcb990cbd3c4e6c3e95e31ebb6b35cf716ad625` | 12,061,887 | `7bd06fd9bd0388b1d157c3fd38374c93654084cef7193b9f637abfb3cf8702d9` | `0444` |
 
-D1 changes validation timing only and P1 changes formation only, so both
-intentionally reproduce the exact F0 bytes. L1 changes only physical section
-order. I1 adds one mapped-hash section. R1 changes record and nested-arena
-representation. L1/I1/D1/P1/R1 are isolated-variable experiments against F0,
-not standalone production preferences; their measurements establish the cost
-and effect of the registered variable only.
+D1 меняет только момент валидации, а P1 — только формирование, поэтому оба
+намеренно воспроизводят точные байты F0. L1 меняет только физический порядок
+секций. I1 добавляет одну секцию mapped-hash. R1 меняет представление записи и
+nested-arena. L1/I1/D1/P1/R1 — эксперименты с изолированной переменной
+относительно F0, а не самостоятельные production-предпочтения; их измерения
+устанавливают только стоимость и эффект зарегистрированной переменной.
 
-### Consolidated Startup And Lookup
+### Консолидированные запуск и lookup
 
-The following cells are `median ± MAD`; ready/workload use milliseconds and
-first/anchor use microseconds. H0 is the SQL-to-owned baseline. C0 is the
-current-cache-to-owned control. Registry row order is presentation order, not
-a rank.
+Следующие ячейки имеют вид `median ± MAD`; для готовности к запросам/workload
+используются миллисекунды, а для first/anchor — микросекунды. H0 —
+SQL-to-owned baseline. C0 — контрольный вариант current-cache-to-owned. Порядок
+строк реестра служит только для представления и не является рангом.
 
-| ID | Warm ready, ms | Cold ready, ms | Warm first, µs | Cold first, µs | Warm anchor, µs | Cold anchor, µs | Warm workload, ms | Cold workload, ms |
+| ID | Готовность, warm, ms | Готовность, cold, ms | Первый lookup, warm, µs | Первый lookup, cold, µs | Anchor, warm, µs | Anchor, cold, µs | Workload, warm, ms | Workload, cold, ms |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `S83-H0` | 588.217 ± 4.898 | 1,631.261 ± 7.871 | 2.614 ± 0.187 | 2.994 ± 0.220 | 15.236 ± 0.597 | 15.341 ± 0.310 | 2,179.371 ± 6.546 | 2,173.222 ± 7.407 |
 | `S83-C0` | 42.489 ± 0.388 | 73.776 ± 1.699 | 2.721 ± 0.307 | 3.461 ± 0.380 | 14.275 ± 0.160 | 15.108 ± 0.438 | 2,071.101 ± 9.079 | 2,091.371 ± 3.571 |
@@ -444,15 +454,16 @@ a rank.
 | `S83-P1` | 54.986 ± 1.266 | 64.242 ± 0.291 | 4.052 ± 0.222 | 4.249 ± 0.426 | 14.806 ± 0.940 | 15.878 ± 1.665 | 353.585 ± 1.452 | 356.805 ± 2.990 |
 | `S83-R1` | 53.317 ± 1.049 | 63.633 ± 0.364 | 3.573 ± 0.065 | 3.497 ± 0.345 | 13.473 ± 0.648 | 13.454 ± 0.312 | 359.604 ± 1.508 | 361.455 ± 1.051 |
 
-D1 makes ready time measure only eager validation and deliberately moves
-typed section validation into first use; its first-lookup and anchor cells show
-that shifted cost. I1 validates and maps 12,389,536 additional hash-index bytes
-at open; its ready and memory cells include that cost.
+D1 делает так, что время готовности к запросам измеряет только eager-валидацию,
+и намеренно переносит валидацию типизированной секции в первое использование;
+ячейки первого lookup и anchor показывают эту перенесённую стоимость. При
+открытии I1 валидирует и отображает в память дополнительные 12,389,536 bytes
+hash-индекса; его ячейки готовности к запросам и памяти включают эту стоимость.
 
-All candidates preserve the exact 25 observed totals in both stances. Warm
-per-operation medians in nanoseconds are:
+Все кандидаты сохраняют точные 25 наблюдаемых итогов в обоих режимах.
+Пооперационные медианы warm в наносекундах:
 
-| Operation | C0 | F0 | A0 | L1 | I1 | D1 | P1 | R1 |
+| Операция | C0 | F0 | A0 | L1 | I1 | D1 | P1 | R1 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `availability_by_fact` | 111 | 250 | 105 | 248 | 246 | 253 | 247 | 256 |
 | `callable_by_owner_name` | 323 | 596 | 499 | 589 | 359 | 594 | 606 | 595 |
@@ -480,16 +491,16 @@ per-operation medians in nanoseconds are:
 | `type_by_name_miss` | 349 | 702 | 650 | 681 | 349 | 695 | 707 | 694 |
 | `type_template_by_key` | 109 | 377 | 223 | 380 | 102 | 388 | 379 | 383 |
 
-Cold-best-effort operation medians and every operation-specific
-`median + max(25%, 3 × C0 MAD, 3 × candidate MAD)` ceiling are retained in
-the generated JSON/Markdown summary. No operation is omitted from that proof.
+Медианы операций cold-best-effort и каждый специфичный для операции потолок
+`median + max(25%, 3 × C0 MAD, 3 × candidate MAD)` сохранены в сформированной
+сводке JSON/Markdown. Ни одна операция не исключена из этого доказательства.
 
-### Consolidated Memory And Sharing
+### Консолидированные память и совместное использование
 
-Medians are shown below; allocation MAD is zero for every listed candidate
-sample.
+Ниже приведены медианы; MAD аллокаций равен нулю для каждого перечисленного
+образца кандидата.
 
-| ID | Peak RSS warm/cold, KiB | PSS warm/cold, KiB | Private warm/cold, KiB | Minor faults warm/cold | Major faults warm/cold | Cold resident growth, B | Four-reader PSS, KiB | Runtime alloc calls / bytes |
+| ID | Пиковый RSS warm/cold, KiB | PSS warm/cold, KiB | Private warm/cold, KiB | Minor faults warm/cold | Major faults warm/cold | Рост resident, cold, B | PSS четырёх читателей, KiB | Вызовы / байты runtime-аллокаций |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `S83-H0` | 74,948 / 74,664 | 67,992 / 67,989 | 67,972 / 67,968 | 18,452 / 18,452 | 0 / 0 | 116,178,944 | 263,954 | 1,278,346 / 156,058,238 |
 | `S83-C0` | 34,816 / 34,816 | 22,141 / 22,102 | 22,120 / 22,080 | 7,620 / 7,620 | 0 / 0 | 11,259,904 | 81,142 | 136,036 / 28,942,929 |
@@ -501,18 +512,19 @@ sample.
 | `S83-P1` | 13,184 / 13,184 | 11,770 / 11,802 | 11,756 / 11,788 | 182 / 181 | 0 / 1 | 11,304,960 | 12,346 | 66,266 / 4,633,365 |
 | `S83-R1` | 13,952 / 13,952 | 12,506 / 12,514 | 12,492 / 12,500 | 188 / 187 | 0 / 1 | 12,062,720 | 12,993 | 10 / 4,676 |
 
-The frozen major-fault gate remains zero. H0/C0 recorded zero in both stances;
-every mapped candidate recorded a warm median of zero and cold-best-effort
-median of one, so that gate fails for every candidate. The result is retained
-rather than normalized away.
+Замороженный критерий допуска major-fault остаётся равным нулю. Для H0/C0 в
+обоих режимах записан ноль; у каждого отображённого в память кандидата медиана
+warm равна нулю, а медиана cold-best-effort — единице, поэтому каждый кандидат
+не проходит этот критерий допуска. Результат сохранён, а не устранён
+нормализацией.
 
-### Consolidated Production And Footprint
+### Консолидированные формирование и footprint
 
-Cells are `median ± MAD`. Time is milliseconds; bytes and KiB retain their
-native units. H0 has no separate cache-production row because SQL
-materialization is its declared runtime baseline.
+Ячейки имеют вид `median ± MAD`. Время указано в миллисекундах; bytes и KiB
+сохраняют исходные единицы. Для H0 нет отдельной строки формирования кэша,
+поскольку материализация SQL объявлена его runtime baseline.
 
-| ID | Total, ms | Materialize, ms | Serialize/formation, ms | Validate, ms | Write/publish, ms | Artifact bytes | Peak RSS, KiB |
+| ID | Всего, ms | Материализация, ms | Сериализация/формирование, ms | Валидация, ms | Запись/публикация, ms | Байты артефакта | Пиковый RSS, KiB |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `S83-C0` | 642.839 ± 19.106 | 582.161 ± 18.629 | n/a | n/a | 56.912 ± 5.536 | 11,186,057 ± 0 | 80,780 ± 0 |
 | `S83-F0` | 3,272.623 ± 36.147 | 584.768 ± 10.213 | n/a | 96.983 ± 0.296 | 244.055 ± 32.800 | 11,304,567 ± 0 | 100,900 ± 52 |
@@ -523,147 +535,160 @@ materialization is its declared runtime baseline.
 | `S83-P1` | 3,101.216 ± 20.611 | 584.968 ± 4.049 | 70.593 ± 1.966 | 79.676 ± 2.628 | 210.733 ± 8.070 | 11,304,567 ± 0 | 89,588 ± 112 |
 | `S83-R1` | 3,315.699 ± 15.749 | 599.949 ± 15.847 | n/a | 95.561 ± 0.267 | 283.741 ± 19.060 | 12,061,887 ± 0 | 102,456 ± 0 |
 
-| ID | Producer alloc calls | Producer allocated bytes | Producer peak-live bytes | Section bytes | Dictionary bytes | Index bytes |
+| ID | Вызовы аллокаций producer | Байты аллокаций producer | Пиковые живые байты producer | Байты секций | Байты словаря | Байты индекса |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `S83-C0` | 1,278,357 | 183,859,167 | 63,018,399 | n/a | n/a | n/a |
 | `S83-F0` | 2,291,021 | 281,173,378 | 63,694,157 | 11,303,343 | 4,913,114 | 3,558,899 |
-| `S83-A0` | 1,582,041 | 203,711,633 | 63,018,740 | n/a | 4,039,645 text | 2,238,408 estimated fixed |
+| `S83-A0` | 1,582,041 | 203,711,633 | 63,018,740 | n/a | 4,039,645 текст | 2,238,408 оценка фиксированной части |
 | `S83-L1` | 2,224,762 | 276,546,222 | 63,695,496 | 11,303,343 | 4,913,114 | 3,558,899 |
 | `S83-I1` | 2,291,073 | 367,802,030 | 107,009,264 | 23,692,879 | 4,913,114 | 15,948,435 |
 | `S83-D1` | 2,291,021 | 281,173,406 | 63,694,164 | 11,303,343 | 4,913,114 | 3,558,899 |
 | `S83-P1` | 2,025,983 | 218,911,208 | 63,018,773 | 11,303,343 | 4,913,114 | 3,558,899 |
 | `S83-R1` | 2,146,274 | 275,969,710 | 70,567,980 | 12,060,397 | 4,913,164 | 3,924,922 |
 
-I1's index total includes 12,389,536 mapped-hash bytes:
-12,388,896 bucket bytes, 26 tables, 226,354 groups, 774,306 buckets and
-maximum observed probe 23. R1 adds 1,078,791 record-head bytes and 2,143,520
-nested-arena bytes. P1 retains no monolithic artifact buffer, retains at most
-one completed section buffer, writes 11,304,567 logical bytes with measured
-userspace write-amplification ratio 1.0, and reports 4,633,993 peak section
-buffer bytes / 9,763,449 peak tracked working-buffer bytes.
+Общий размер индекса I1 включает 12,389,536 bytes mapped-hash:
+12,388,896 bytes bucket, 26 таблиц, 226,354 групп, 774,306 bucket и максимальную
+наблюдаемую probe 23. R1 добавляет 1,078,791 bytes record-head и 2,143,520 bytes
+nested-arena. P1 не удерживает монолитный буфер артефакта, удерживает не более
+одного буфера завершённой секции, записывает 11,304,567 логических bytes с
+измеренным коэффициентом userspace write-amplification 1.0 и сообщает
+4,633,993 пиковых bytes буфера секции / 9,763,449 пиковых bytes отслеживаемых
+рабочих буферов.
 
-### Consolidated Behavioral And Gate State
+### Консолидированное состояние поведения и критериев допуска
 
-Every F0/A0/L1/I1/D1/P1/R1 row passes all of the following independent
-behavioral proofs:
+Каждая строка F0/A0/L1/I1/D1/P1/R1 проходит все следующие независимые
+поведенческие доказательства:
 
-- storage content: 176,793 canonical records / 57,486,556 bytes /
+- содержимое хранилища: 176,793 канонические записи / 57,486,556 bytes /
   SHA-256 `5f66d20509877ac29a83ede2d5178368ed3fd78d7dab0ffbc12df506acc3b1fd`;
-- storage lookup behavior: 276,415 canonical records / 88,520,585 bytes /
+- поведение lookup хранилища: 276,415 канонических записей / 88,520,585 bytes /
   SHA-256 `9b17c7100cd368fe0880e679d66ab8eb7d8505ee617d9fc80b1a9a9d8aa5c5c8`;
-- catalog/resolver semantics: 742,872 records / 769,824,709 bytes /
+- семантика catalog/resolver: 742,872 записи / 769,824,709 bytes /
   SHA-256 `1fe7f166caad8e8573b809a97f7104caf85301370f1d34017376bc82ee893a29`;
-- one sequential plus four concurrent byte-identical storage replays and the
-  corresponding five semantic transcripts;
-- sources hidden before candidate process start and throughout replay;
-- exact platform `8.3.27.1859`, HBK/provider identity, provider schema `16`,
-  extraction schema `11`, registered artifact layout and immutable mode.
+- один последовательный и четыре параллельных побайтово идентичных replay
+  хранилища, а также соответствующие пять семантических транскриптов;
+- источники скрыты до запуска процесса кандидата и на протяжении replay;
+- точная платформа `8.3.27.1859`, идентичность HBK/провайдера, схема провайдера
+  `16`, схема извлечения `11`, зарегистрированная компоновка артефакта и режим
+  неизменяемости.
 
-The F0 and A0 storage proofs were rerun at the exact measured semantic/resource
-commits in `raw-S83-F0-a9a98a1-parity-exact-0219685.jsonl` and
-`raw-S83-A0-36a41aa-parity-exact-0219685.jsonl`. The final summary rejects an
-ancestor-only storage proof.
+Доказательства хранилища F0 и A0 были повторно выполнены на точных измеренных
+семантических/ресурсных коммитах в
+`raw-S83-F0-a9a98a1-parity-exact-0219685.jsonl` и
+`raw-S83-A0-36a41aa-parity-exact-0219685.jsonl`. Финальная сводка отклоняет
+доказательство хранилища только на коммите-предке.
 
-Thus full equivalence for T183 means identical logical content, ordering,
-lookup statuses/results and public catalog/resolver behavior, not stable
-numeric IDs or equal physical bytes. Numeric string/fact IDs remain valid only
-inside the current mapped generation.
+Таким образом, полная эквивалентность для T183 означает идентичность логического
+содержимого, порядка, статусов/результатов lookup и публичного поведения
+catalog/resolver, а не стабильность числовых ID или равенство физических байтов.
+Числовые ID строк/фактов остаются действительными только внутри текущего
+отображённого в память поколения.
 
-No row passes every frozen numeric gate, so
-`eligibility_state = no-candidate-passes-all-frozen-gates`. No waiver is
-recorded. A noisy gate is `inconclusive-noisy` rather than pass/fail unless it
-uses the predeclared first-lookup absolute-budget or per-operation MAD-envelope
-exception.
+Ни одна строка не проходит все замороженные числовые критерии допуска, поэтому
+`eligibility_state = no-candidate-passes-all-frozen-gates`. Исключения не
+зафиксированы. Шумный критерий допуска получает статус `inconclusive-noisy`, а
+не статус прохождения/непрохождения, если только к нему не применяется заранее
+объявленное исключение для абсолютного бюджета первого lookup или
+пооперационной MAD-envelope.
 
-| ID | Failed frozen gates | Inconclusive noisy gates |
+| ID | Не пройденные замороженные критерии допуска | Неопределённые шумные критерии допуска |
 | --- | --- | --- |
-| `S83-F0` | warm/cold ready; cold major fault; total rebuild; producer allocation calls/bytes; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | none |
-| `S83-A0` | warm ready; runtime allocation calls; warm/cold workload; cold major fault; total rebuild; production peak RSS; warm/cold reverse hit/miss; warm/cold per-operation ceiling | none |
-| `S83-L1` | warm/cold ready; cold major fault; total rebuild; producer allocation calls/bytes; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | cold anchor |
-| `S83-I1` | warm/cold ready; warm/cold PSS/private; cold major fault; cold resident growth; artifact size; total rebuild; production peak RSS; producer allocation calls/bytes/peak; warm/cold forward dictionary; warm/cold per-operation ceiling | cold anchor |
-| `S83-D1` | warm/cold first lookup; warm anchor; cold major fault; total rebuild; producer allocation calls/bytes; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | warm ready; cold anchor |
-| `S83-P1` | warm/cold ready; cold major fault; total rebuild; producer allocation calls; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | warm/cold anchor |
-| `S83-R1` | warm/cold ready; cold major fault; total rebuild; production peak RSS; producer allocation calls/bytes; warm/cold forward dictionary; warm/cold reverse hit; warm/cold per-operation ceiling | none |
+| `S83-F0` | готовность к запросам warm/cold; major fault cold; полная пересборка; вызовы/байты аллокаций producer; прямой lookup словаря warm/cold; обратный lookup с попаданием warm/cold; пооперационный потолок warm/cold | отсутствуют |
+| `S83-A0` | готовность к запросам warm; вызовы runtime-аллокаций; workload warm/cold; major fault cold; полная пересборка; пиковый RSS при формировании; обратный lookup с попаданием/промахом warm/cold; пооперационный потолок warm/cold | отсутствуют |
+| `S83-L1` | готовность к запросам warm/cold; major fault cold; полная пересборка; вызовы/байты аллокаций producer; прямой lookup словаря warm/cold; обратный lookup с попаданием warm/cold; пооперационный потолок warm/cold | anchor cold |
+| `S83-I1` | готовность к запросам warm/cold; PSS/private warm/cold; major fault cold; рост resident cold; размер артефакта; полная пересборка; пиковый RSS при формировании; вызовы/байты/пик аллокаций producer; прямой lookup словаря warm/cold; пооперационный потолок warm/cold | anchor cold |
+| `S83-D1` | первый lookup warm/cold; anchor warm; major fault cold; полная пересборка; вызовы/байты аллокаций producer; прямой lookup словаря warm/cold; обратный lookup с попаданием warm/cold; пооперационный потолок warm/cold | готовность к запросам warm; anchor cold |
+| `S83-P1` | готовность к запросам warm/cold; major fault cold; полная пересборка; вызовы аллокаций producer; прямой lookup словаря warm/cold; обратный lookup с попаданием warm/cold; пооперационный потолок warm/cold | anchor warm/cold |
+| `S83-R1` | готовность к запросам warm/cold; major fault cold; полная пересборка; пиковый RSS при формировании; вызовы/байты аллокаций producer; прямой lookup словаря warm/cold; обратный lookup с попаданием warm/cold; пооперационный потолок warm/cold | отсутствуют |
 
-This is a threshold matrix, not a score. It neither orders the rows nor
-chooses an acceptable trade-off. Under the frozen contract, the user can ask
-for a new experiment/rerun, explicitly waive named gates with a durable
-owner/date/rationale, or reject/stop production adoption; the evidence alone
-does not authorize selecting an ineligible row.
+Это матрица порогов, а не баллов. Она не упорядочивает строки и не выбирает
+приемлемый компромисс. В рамках замороженного контракта пользователь может
+запросить новый эксперимент/повторный прогон, явно разрешить исключение для
+именованных критериев допуска с долговременно зафиксированными владельцем,
+датой и обоснованием либо отклонить/остановить production-внедрение; сами по
+себе свидетельства не разрешают выбирать недопустимую строку.
 
-## Full Behavioral Equivalence Breakdown
+## Детализация полной поведенческой эквивалентности
 
-Full equivalence is not a single count check. It requires all of the following:
+Полная эквивалентность — не одна проверка количества. Она требует всего
+следующего:
 
-1. Storage identity: exact source HBK, provider SQLite, locale, platform,
-   provider schema and extraction schema are checked before typed access.
-2. Logical content: every observable field in platform types, members,
-   callables, signatures, parameters, globals, module contexts/events,
-   language facts, enums/values and query tables/fields/parameters is
-   normalized from local IDs to text/logical fact identity and compared.
-3. Ordered children: signatures, parameters, type references, overloads,
-   members, constructors, enum values, query fields/parameters, availability
-   and relations preserve their contract-visible order.
-4. Lookup behavior: exact/name/alias/template/owner/kind/global/module/
-   language/enum/query/availability/relation hits and misses preserve
-   cardinality, ordering and typed results.
-5. Resolver behavior: ambiguity, unsupported and not-found outcomes match
-   through `HbkFactReadHandle`, borrowed BSL/SDBL catalogs,
-   `PlatformSnapshotSource` and `QueryTableSnapshotSource`.
-6. Concurrency and fallback: sequential and concurrent transcripts are
-   byte-identical, and lookups still pass after SQLite/HBK are made
-   unavailable to the already-open probe.
-7. Ownership: the measured runtime keeps only mapped provider state, not a
-   second complete owned graph.
+1. Идентичность хранилища: точные исходный HBK, SQLite провайдера, локаль,
+   платформа, схема провайдера и схема извлечения проверяются до типизированного
+   доступа.
+2. Логическое содержимое: каждое наблюдаемое поле типов платформы, членов,
+   callable, сигнатур, параметров, глобальных элементов, контекстов/событий
+   модулей, фактов языка, enum/значений и таблиц/полей/параметров запроса
+   нормализуется от локальных ID к текстовой/логической идентичности факта и
+   сравнивается.
+3. Упорядоченные дочерние элементы: сигнатуры, параметры, ссылки на типы,
+   перегрузки, члены, конструкторы, значения enum, поля/параметры запроса,
+   доступность и отношения сохраняют видимый через контракт порядок.
+4. Поведение lookup: попадания и промахи exact/name/alias/template/owner/kind/
+   global/module/language/enum/query/availability/relation сохраняют
+   кардинальность, порядок и типизированные результаты.
+5. Поведение resolver: результаты ambiguity, unsupported и not-found совпадают
+   через `HbkFactReadHandle`, borrowed-каталоги BSL/SDBL,
+   `PlatformSnapshotSource` и `QueryTableSnapshotSource`.
+6. Параллелизм и fallback: последовательные и параллельные транскрипты побайтово
+   идентичны, а lookup по-прежнему проходят после того, как SQLite/HBK становятся
+   недоступны уже открытой пробе.
+7. Владение: измеренный runtime хранит только отображённое в память состояние
+   провайдера, а не второй полный owned-граф.
 
-H1 proves none of the complete logical/adapter layers and also fails the
-25-operation smoke. H2 proves the 25-operation manifest and broad mapped-file
-validation, but not the full content/catalog/adapter/concurrency oracle, and
-one reviewed module-event ordering check does not match the owned text-order
-contract. H3 proves the complete normalized files only through a reconstructed
-owned adapter, not through the mapped read surface, and does not yet validate
-sorted order for every lookup array used by binary search. Those earlier S85
-rows therefore remain behaviorally incomplete.
+H1 не доказывает ни один полный логический слой или слой адаптера, а также не
+проходит smoke из 25 операций. H2 доказывает манифест из 25 операций и широкую
+валидацию отображённого в память файла, но не полный oracle содержимого/catalog/
+adapter/concurrency; кроме того, одна проверенная проверка порядка module-event
+не соответствует owned-контракту текстового порядка. H3 доказывает полные
+нормализованные файлы только через заново построенный owned-адаптер, а не через
+поверхность чтения отображённого в память представления, и ещё не валидирует
+порядок сортировки для каждого массива lookup, используемого двоичным поиском.
+Поэтому более ранние строки S85 остаются поведенчески неполными.
 
-The independent S83 F0/A0/L1/I1/D1/P1/R1 rows all pass the complete storage
-and catalog/resolver equivalence protocol above. This establishes behavioral
-equivalence for the current snapshot/catalog scope; it does not establish that
-every row satisfies the independent performance/resource gates, and it does
-not extend the scope to full HTML, long descriptions or search/export
-payloads.
+Все независимые строки S83 F0/A0/L1/I1/D1/P1/R1 проходят полный описанный выше
+протокол эквивалентности хранилища и catalog/resolver. Это устанавливает
+поведенческую эквивалентность для текущей области снапшота/catalog; но не
+устанавливает, что каждая строка проходит независимые критерии допуска по
+производительности/ресурсам, и не расширяет область на полный HTML, длинные
+описания или payload поиска/экспорта.
 
-Numeric string and fact IDs are deliberately absent from equivalence. They are
-generation-scoped and session-local. Replacing the HBK source creates new IDs;
-the experiment neither persists nor migrates them.
+Числовые ID строк и фактов намеренно исключены из эквивалентности. Их область
+действия — поколение и текущая сессия. Замена источника HBK создаёт новые ID;
+эксперимент не сохраняет и не мигрирует их.
 
-## Downstream Handoff While The Decision Is Pending
+## Передача downstream, пока ожидается решение
 
-The downstream change
-`v8-context/openspec/changes/establish-unified-semantic-entity-model` may rely
-only on this provisional boundary:
+Downstream-изменение
+`v8-context/openspec/changes/establish-unified-semantic-entity-model`
+может опираться только на следующую предварительную границу:
 
 - `hbk_dependency_state`: provisional;
-- `base_dictionary_scope`: provider-owned immutable HBK strings exposed
-  through borrowed generation-scoped IDs; physical snapshot format unselected;
-- `string_identity_scope`: generation-scoped and session-local;
-- `identity_policy`: no persistent universal IDs and no cross-generation ID
-  reuse;
-- `overlay_owner`: outside HBK, owned by the downstream BSL/metadata side;
-- `promotion_state`: no winner selected and no canonical zero-copy artifact;
-- `compatibility_gate`: wrong source, locale or platform version requires
-  rebuild before any mapping is exposed.
+- `base_dictionary_scope`: неизменяемые строки HBK во владении провайдера,
+  доступные через borrowed ID с областью действия поколения; физический формат
+  снапшота не выбран;
+- `string_identity_scope`: область действия — поколение и текущая сессия;
+- `identity_policy`: нет постоянных универсальных ID и повторного использования
+  ID между поколениями;
+- `overlay_owner`: вне HBK, во владении downstream-стороны BSL/метаданных;
+- `promotion_state`: победитель не выбран, канонического zero-copy-артефакта нет;
+- `compatibility_gate`: неверная версия источника, локали или платформы требует
+  пересборки до предоставления любого отображения в память.
 
-Downstream design text must not imply that a memory-mapped base dictionary,
-borrowed handoff implementation or compact materialization has already been
-accepted as the production architecture. Those remain candidate properties
-until the user makes a selection and a durable HBK decision accepts it.
+Текст downstream-дизайна не должен подразумевать, что базовый словарь,
+отображённый в память, реализация borrowed-передачи или компактная
+материализация уже приняты как production-архитектура. Они остаются свойствами
+кандидатов, пока пользователь не сделает выбор и долговременное решение HBK не
+примет его.
 
-## Decision State
+## Состояние решения
 
-No candidate satisfies every frozen numeric gate, and no waiver exists;
-therefore no S83 row is currently eligible under the frozen contract. All
-seven S83 rows pass the mandatory behavioral-equivalence gates, so parity is
-not the blocker. No candidate branch is merged, deleted, promoted,
-recommended or marked first. The current owned snapshot/cache path remains
-canonical because the user has not selected an outcome and no durable
-production decision has accepted a replacement.
+Ни один кандидат не удовлетворяет всем замороженным числовым критериям допуска,
+и исключений нет; следовательно, сейчас ни одна строка S83 не является
+допустимой по замороженному контракту. Все семь строк S83 проходят обязательные
+критерии допуска по поведенческой эквивалентности, поэтому эквивалентность не
+является блокирующим фактором. Ни одна ветка кандидата не слита, не удалена, не
+переведена в основной статус, не рекомендована и не отмечена первой. Текущий
+owned-путь снапшота/кэша остаётся каноническим, поскольку пользователь не выбрал
+результат, а долговременное production-решение не приняло замену.

@@ -149,59 +149,67 @@ Provisional first-slice targets on the target developer workstation:
 If these targets cannot be met, the implementation task must record measured timings, source size
 and the limiting storage or translation component before adding broader optimization.
 
-## NFR-SNAPSHOT-001: Evidence-Gated File-Backed Snapshot Experiment
+<a id="nfr-snapshot-001-evidence-gated-file-backed-snapshot-experiment"></a>
 
-The T183 zero-copy snapshot work is a bounded comparison experiment, not a
-production-format decision.
+## NFR-SNAPSHOT-001: Эксперимент с файловым снапшотом, управляемый свидетельствами
 
-Requirements:
+Работа T183 над zero-copy-снапшотом является ограниченным экспериментом по
+сравнению, а не решением о production-формате.
 
-- SQLite-to-owned is the baseline and current-binary-cache-to-owned is the
-  control; every zero-copy construction approach is a separately identified
-  hypothesis measured by the same frozen release harness.
-- The common harness, exact corpus/checksums, process boundaries, cache stance,
-  run count, noise rule, raw-result schema and behavior oracle must be committed
-  before candidate branches are created. A harness change invalidates affected
-  comparisons until their baseline and candidate rows are rerun.
-- Baseline noise must be measured and task-local numerical benefit and
-  non-regression gates recorded before candidate implementation begins.
-- Performance evidence counts only after byte-for-byte logical-content and
-  lookup-transcript parity passes for the candidate. Numeric session-local IDs
-  are normalized through logical fact identity and text.
-- Startup measurements must distinguish snapshot production/rebuild,
-  process-start-to-ready open, first lookup, warm batched lookup and
-  post-workload steady state. Cold-best-effort and warm results are separate,
-  and an unverifiable advisory page-cache eviction must not be described as
-  true cold start.
-- Resource evidence must distinguish retained private heap from mapped/shared
-  pages and record allocations, peak RSS, steady RSS/PSS, aggregate
-  multi-process PSS, faults and artifact/section/index sizes where the host
-  tools support them.
-- Every mapped candidate must validate binary-layout version,
-  extraction-schema version, source identity, locale and exact platform
-  version. A platform mismatch invalidates the artifact.
-- Mapped candidate files are immutable. A reader keeps a shared
-  modification lock for its entire mapping lifetime; a writer that cannot
-  immediately obtain the exclusive logical-slot lock returns a typed
-  snapshot-in-use error without changing the active generation.
-- Candidate branches and dependencies are experimental. Passing gates does not
-  select a winner, change the canonical runtime path or authorize merge into
-  `master`; the user makes the selection after reviewing the unranked result
-  table.
-- A second corpus or harness revision is a separate comparison set. Its raw
-  results, parity files, prepared artifacts, baselines and numerical gates
-  must use a separate namespace and must not be pooled with an earlier set.
-- Organization experiments must isolate one primary variable per derived
-  branch: physical section order/layout, mapped lookup-index shape,
-  eager-versus-lazy checked access, or snapshot-formation strategy. Format
-  references may be reported beside them, but do not substitute for these
-  organization hypotheses.
-- Candidate implementation may run in parallel worktrees, but timed
-  measurements on one host must run serially. Each sample records the exact
-  corpus and harness identity plus host load/memory state so interference and
-  drift remain visible.
+Требования:
 
-The full protocol and hypothesis registry are defined in
+- SQLite-to-owned является baseline, а current-binary-cache-to-owned —
+  контрольным вариантом; каждый подход к zero-copy-построению представляет
+  собой отдельно идентифицированную гипотезу, измеряемую одним и тем же
+  зафиксированным release-стендом.
+- Общий стенд, точные корпус/checksum, границы процессов, режим cache, число
+  прогонов, правило оценки шума, схема исходных результатов и оракул поведения
+  должны быть зафиксированы коммитом до создания ветвей кандидатов. Изменение
+  стенда делает затронутые сравнения недействительными до повторного прогона
+  их строк baseline и кандидатов.
+- Шум baseline должен быть измерен, а локальные для задачи числовые критерии
+  пользы и отсутствия регрессий — зафиксированы до начала реализации кандидатов.
+- Свидетельства производительности учитываются только после того, как кандидат
+  прошёл побайтный паритет логического содержимого и lookup-транскрипта.
+  Числовые локальные для сессии ID нормализуются через логическую идентичность
+  факта и текст.
+- Измерения запуска должны различать production-формирование/перестроение
+  снапшота, открытие от старта процесса до готовности, первый lookup, пакетный
+  lookup после прогрева и устойчивое состояние после рабочей нагрузки.
+  Результаты для холодного запуска по мере доступности и прогретого запуска
+  разделяются; непроверяемое рекомендательное вытеснение page cache нельзя
+  описывать как настоящий холодный запуск.
+- Свидетельства использования ресурсов должны различать сохраняемую приватную
+  heap-память и отображённые/общие страницы, а также фиксировать аллокации,
+  пиковый RSS, устойчивые RSS/PSS, суммарный многопроцессный PSS, page faults и
+  размеры артефакта/секций/индексов там, где это поддерживают инструменты хоста.
+- Каждый отображённый кандидат должен проверять версию бинарного layout,
+  версию схемы извлечения, идентичность источника, locale и точную версию
+  платформы. Несовпадение платформы делает артефакт недействительным.
+- Отображённые файлы кандидатов неизменяемы. Reader удерживает разделяемую
+  блокировку изменения в течение всего времени жизни отображения; writer,
+  который не может немедленно получить эксклюзивную блокировку логического
+  слота, возвращает типизированную ошибку «снапшот используется», не изменяя
+  активное поколение.
+- Ветви и зависимости кандидатов являются экспериментальными. Прохождение
+  критериев не выбирает победителя, не изменяет канонический путь времени
+  выполнения и не разрешает объединение с `master`; выбор делает пользователь
+  после изучения неранжированной таблицы результатов.
+- Второй корпус или новая ревизия стенда образуют отдельный набор сравнения.
+  Его исходные результаты, файлы паритета, подготовленные артефакты, baseline
+  и числовые критерии должны использовать отдельное пространство имён и не
+  должны объединяться с предыдущим набором.
+- Эксперименты с организацией должны изолировать по одной основной переменной
+  на производную ветвь: физический порядок/layout секций, форму отображённого
+  lookup-индекса, eager/lazy-доступ с обязательными проверками или стратегию
+  формирования снапшота. Эталонные форматы могут быть приведены рядом, но не
+  заменяют эти гипотезы организации.
+- Реализация кандидатов может выполняться в параллельных worktree, но измерения
+  времени на одном хосте должны выполняться последовательно. Каждый образец
+  фиксирует точную идентичность корпуса и стенда, а также состояние
+  нагрузки/памяти хоста, чтобы помехи и дрейф оставались видимыми.
+
+Полный протокол и реестр гипотез определены в
 `implementation/hbk-zero-copy-snapshot-experiment.md`.
 
 ## NFR-TEST-001: Testability
