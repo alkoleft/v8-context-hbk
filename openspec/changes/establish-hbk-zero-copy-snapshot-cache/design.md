@@ -368,6 +368,53 @@ cold-best-effort образцов каждой строки выполняютс
 хосте. Эти показатели являются дополнительным неранжированным свидетельством,
 не изменяют исходные frozen gates и не разрешают выбор или merge.
 
+Дополнительная ревизия `S83-AV2` фиксирует выбранную пользователем форму A и не
+переопределяет AV1. Для каждого запроса она раздельно измеряет:
+
+1. storage-native iteration без materialization результата, с заимствованными
+   views там, где backend способен их предоставить;
+2. materialization request-local компактного
+   `Vec<Av2MemberLocator(u32)>`, одинакового во всех строках;
+3. чтение полного snapshot/catalog payload по заранее подготовленному locator.
+
+Таймеры этих фаз не перекрываются. Full payload не читается во время lookup и
+формирования компактного набора; lookup/фильтрация не повторяются внутри
+payload-фазы. Общей переносимой единицей materialization служит четырёхбайтовый
+benchmark-local locator текущего поколения, потому что decoded-value F0 не
+может безопасно сохраняться как заимствованный view. Source projection и
+compact projection фиксируются отдельно; тип source projection и его
+аллокации остаются явной частью строки backend.
+Для method payload setup заранее связывает member locator с упорядоченными
+callable locator; payload timing не выполняет скрытый owner/name lookup.
+
+AV2 использует corpus-wide manifest H0: type-by-name, property/method-by-known-
+owner/name/kind, callable-by-owner/name, все непосредственные members типов по
+каждому `AvailabilityContext` и полные payload типов, методов, свойств и
+заранее сформированных filtered member sets. Availability берётся только у
+записи member; пустой список universal, связанный callable является payload
+метода, а не дополнительным фильтром. `ModuleContextKind`, транзитивные
+объявления, precedence и `effective_members` запрещены. Manifest, canonical
+transcript и результаты имеют собственные version/namespace; все строки
+H0/C0 и кандидатов повторно запускаются одним frozen harness. Каждое семейство
+операций использует отдельный процесс, чтобы lazy validation/first access одной
+операции не прогревали другую.
+
+Основной показатель AV2 — steady filtered member iteration и compact-set
+materialization. Отдельно публикуются type/method point lookup, full-payload
+access, startup/first access, allocation calls/bytes, live/peak retained result
+bytes, page faults и process-boundary RSS/PSS. AV2 не меняет форматы, публичный
+API, frozen gates, ранг или выбор.
+
+Report/parity/summary используют строгие versioned tagged schema. Compact
+`len/capacity/bytes` допустимы только для materialization; другие operations
+не имитируют отсутствующую retained result memory. Frozen harness проверяет
+projection по backend/operation registry и запускает preflight cardinality /
+schema/parity smoke каждой строки до полной матрицы.
+Compact memory sample одновременно удерживает ровно один owner-set на каждый
+owner manifest текущего контекста и снимает memory до построения, при живых
+наборах и после drop. Payload bytes означают только логические bytes
+канонического checksum, не физический memory traffic.
+
 Команды кандидатов, уже формирующие замороженный конверт измерений, напрямую
 используют точки входа `run-command` и `record-parity` неизменяемого harness.
 Сбор данных о выделениях кандидата и четырёх читателях использует тонкий внешний

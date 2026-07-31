@@ -67,6 +67,53 @@ memory-mapped кандидат и архивный кандидат с пров�
   строки, выбирать победителя, проектировать публичный API или оптимизировать
   физический формат кандидата.
 
+#### Scenario: Измеряются lookup и формирование отфильтрованного набора членов типа
+
+- **WHEN** дополнительный workload S83-AV2 сравнивает type/member hot paths по
+  выбранной пользователем форме результата A
+- **THEN** H0 SQLite-to-owned SHALL быть единственной baseline-строкой, а C0
+  current-cache-to-owned SHALL быть только control
+- **AND** workload SHALL раздельно измерять type-by-name lookup,
+  property/method-by-known-owner/name/kind и callable-by-owner/name lookup,
+  storage-native iteration members без коллекции, materialization компактного
+  request-local набора единых `Av2MemberLocator(u32)` и отдельный full-payload
+  access типа, метода, свойства и заранее сформированного filtered member set
+- **AND** границы времени lookup, iteration, materialization и full-payload
+  access SHALL NOT перекрываться
+- **AND** method payload locator SHALL содержать member locator и связанные
+  callable locator, разрешённые до начала payload timing
+- **AND** фильтр SHALL использовать только availability непосредственной
+  записи member; пустой список SHALL означать universal, а
+  `ModuleContextKind`, транзитивные объявления, precedence и
+  `effective_members` SHALL NOT участвовать в запросе или результате
+- **AND** iteration/compact set SHALL включать `Property`, `Method`, `Event` и
+  `EnumValue` с отдельными counts по kind и сохранением порядка H0
+- **AND** связанный callable метода SHALL входить в full payload, но SHALL NOT
+  быть дополнительным availability-фильтром
+- **AND** corpus-wide query manifest, logical-ID-normalized ordered transcript
+  и набор полей текущего snapshot/catalog SHALL быть зафиксированы до
+  performance-прогонов кандидатов
+- **AND** каждый кандидат SHALL пройти побайтовый parity порядка/состава
+  компактного набора и полного payload с H0 до использования его performance
+  evidence
+- **AND** AV2 SHALL считать steady member iteration/materialization основным
+  показателем и отдельно записывать point lookup, full-payload access,
+  startup/first access, allocation calls/bytes, retained-result bytes, page
+  faults и RSS/PSS на применимых границах процесса
+- **AND** каждое семейство операций SHALL запускаться в отдельном процессе,
+  чтобы lazy validation и первый доступ одной операции не прогревали другую
+- **AND** AV2 SHALL использовать строгие versioned tagged schema с
+  operation-specific полями, запрещать retained-result fields вне compact
+  materialization и проверять допустимый projection по frozen backend registry
+- **AND** compact memory sample SHALL удерживать ровно один owner-set на
+  каждый owner manifest текущего контекста и измерять memory до построения,
+  при живых наборах и после drop
+- **AND** payload bytes SHALL означать canonical logical bytes checksum, а не
+  заявленный physical memory traffic
+- **AND** AV2 SHALL NOT добавлять long-form documentation/HTML в snapshot,
+  менять физический формат или публичный API, вводить новые gates, ранжировать
+  строки либо выбирать кандидата.
+
 #### Scenario: Сравниваются гипотезы организации данных
 
 - **WHEN** исследование оценивает layout, lookup-индексы, проверяемый

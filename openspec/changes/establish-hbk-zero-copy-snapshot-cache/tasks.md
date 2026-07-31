@@ -157,8 +157,19 @@
   долговечные результаты — `spec/acceptance/hbk-s83-av1-evidence.md`. Все
   строки совпали с H0 transcript, `ModuleContextKind` отсутствует, выбор не
   сделан.
+- [ ] 1.21 Зафиксировать и выполнить S83-AV2 по выбранной пользователем форме
+  A: отдельно измерить storage-native/borrowed iteration, materialization
+  компактного набора единых `Av2MemberLocator(u32)` и чтение полного payload;
+  измерить type-by-name, property/method-by-known-owner/name/kind и
+  callable-by-owner/name lookup, а также непосредственные members типа по
+  каждому `AvailabilityContext`. Считать
+  пустой availability universal, запретить `ModuleContextKind`, транзитивные
+  объявления, precedence и `effective_members`. До performance доказать
+  побайтовый parity H0 для упорядоченных compact sets и payload типа/метода/
+  свойства; сохранить неранжированные steady-time/resource результаты без
+  изменения форматов, публичного API, frozen gates или выбора.
 - [ ] 1.15 Представить пользователю неранжированные свидетельства, включая
-  дополнительную таблицу S83-AV1. Только после выбора исхода пользователем
+  дополнительные таблицы S83-AV1 и S83-AV2. Только после выбора исхода пользователем
   принять или отклонить формат снапшота, назначение канонической
   runtime-реализации и передачу базового словаря в долгосрочной спецификации
   HBK или ADR. При принятии SQLite может остаться только в явно принятой

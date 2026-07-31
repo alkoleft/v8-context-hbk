@@ -769,6 +769,213 @@ median/MAD/отношения, startup, first/steady enumeration, page faults и
 `ranked = false`, `selection = pending-user-decision`; он не изменяет frozen
 gates и не назначает runtime-реализацию.
 
+### Дополнительный workload S83-AV2: lookup и формирование набора members
+
+S83-AV2 — новая независимая ревизия workload над точным corpus S83 и строками
+H0/C0/F0/A0/L1/I1/D1/P1/R1. Она использует отдельные schema/workload/results
+namespace `hbk-s83-av2/v1`, новый замороженный harness commit и не изменяет
+AV1, исходный workload из 25 операций, физические форматы кандидатов,
+публичный API или ранее зафиксированные gates. После изменения AV2 harness все
+затронутые строки должны быть повторно измерены. H0 SQLite-to-owned остаётся
+единственной baseline-строкой; C0 current-cache-to-owned остаётся только
+`decision_role = control`.
+
+Пользователь выбрал форму результата A. Один и тот же логический запрос
+разделяется на три непересекающиеся измеряемые операции:
+
+1. `borrowed_iteration` — storage-native iteration без коллекции результата,
+   resolver DTO и копирования строк; backend использует заимствованный view,
+   когда его представление это позволяет, а F0-подобное декодирование по
+   значению и связанные аллокации остаются видимыми в его строке;
+2. `compact_materialization` — формирование request-local
+   `Vec<Av2MemberLocator>` в порядке H0 без чтения полного payload;
+   `Av2MemberLocator` — одинаковый во всех строках benchmark-local
+   четырёхбайтовый newtype над локальным индексом member текущего поколения, не
+   storage-native view и не persistent identity; locator метода,
+   подготовленный для payload-фазы, содержит такой member locator и
+   упорядоченный набор четырёхбайтовых callable locator, разрешённых вне
+   payload timing;
+3. `full_payload_access` — отдельное чтение полного payload по заранее
+   подготовленным ID/locator без повторного lookup, фильтрации или формирования
+   набора.
+
+Матрица операций включает:
+
+| Операция | Вход | Измеряемый результат |
+| --- | --- | --- |
+| `type_by_name` | нормализованное primary/alias типа и фиксированный miss | только упорядоченные локальные ID/locator |
+| `property_by_owner_name_kind` | заранее разрешённый owner, имя свойства, kind `Property` и фиксированный miss | только упорядоченные локальные ID/locator |
+| `method_by_owner_name_kind` | заранее разрешённый owner, имя метода, kind `Method` и фиксированный miss | только упорядоченные локальные ID/locator |
+| `callable_by_owner_name` | заранее разрешённый owner, имя метода и фиксированный miss | только упорядоченные локальные callable locator |
+| `members_by_owner_availability_borrowed` | заранее разрешённый owner и один `AvailabilityContext` | нативный проход непосредственных members без коллекции |
+| `members_by_owner_availability_collect` | тот же owner/context | компактный request-local набор ID/locator |
+| `type_payload` | заранее найденный type locator | все наблюдаемые поля типа, availability и available-since |
+| `method_payload` | заранее найденный member locator и связанный callable | member/callable, availability/available-since, сигнатуры, параметры, requiredness и ссылки на типы/returns |
+| `property_payload` | заранее найденный member locator | owner/kind/name/alias, availability/available-since и ссылки на типы |
+| `filtered_members_payload` | заранее сформированный compact set одного owner/context | полный member payload каждого locator без повторной фильтрации и без callable payload |
+
+Query manifest формируется из H0 до performance-прогонов кандидатов и
+фиксируется вместе с harness. Он охватывает все типы corpus, включая типы без
+members, все методы и свойства в порядке H0, distinct primary/alias lookup, а
+также фиксированные отсутствующие type/member keys. Числовые ID в manifest не
+сохраняются: owner/member/callable нормализуются через семейство факта и
+логический ID. Локальные locator разрешаются в отдельной setup-фазе вне
+измеряемого steady workload. Первый точечный lookup после ready записывается до
+этого полного разрешения manifest; steady-операции выполняются после одного
+немеряемого прогрева.
+
+Каждый запрос `members_by_owner_availability_collect` создаёт новый
+`Vec<Av2MemberLocator>` без
+повторного использования capacity между запросами. Начальная capacity равна
+количеству нефильтрованных непосредственных members данного owner, которое
+доступно из нативного owner-range без предварительного прохода фильтра. Отчёт
+сохраняет фактические `len`, `capacity`, фиксированный `locator_size = 4` и
+выделенные bytes;
+manifest не подсказывает заранее отфильтрованное количество.
+
+Фильтр members использует только availability записи `TypeMember`. В проход и
+compact set входят все текущие kind: `Property`, `Method`, `Event` и
+`EnumValue`; counts публикуются отдельно по kind. Пустой
+список означает universal, непустой — включение только при точном совпадении
+запрошенного `AvailabilityContext`. Связанный callable метода входит в
+`method_payload`, но не является вторым фильтром. `ModuleContextKind` не входит
+в запрос, предикат, metadata или результат. Members — непосредственные записи
+данного owner; workload не выполняет транзитивный обход, наследование,
+precedence, разрешение конфликтов или построение `effective_members`.
+
+Parity выполняется отдельно от performance и до принятия его строк. Для
+каждого контекста canonical transcript H0 фиксирует порядок и логические ID
+borrowed iteration/компактного набора, тип member, universal/explicit правило,
+а также полный нормализованный payload типа, метода, свойства и member каждого
+kind в filtered set. Точные поля transcript v1:
+
+- type: logical id, primary/alias, optional metadata-template kind и
+  упорядоченные параметры, optional type-template family/variant, payload
+  availability в исходном порядке и available-since;
+- member: logical id, logical owner id, kind, primary/alias, упорядоченные type
+  refs, payload availability в исходном порядке и available-since;
+- method callable: logical id, optional logical owner id, kind, primary/alias,
+  payload availability и available-since, упорядоченные signatures, signature
+  text, упорядоченные parameters/requiredness/type refs, signature-level и
+  callable-level return type refs;
+- type ref: text name, target status `ok`/`unresolved`/`ambiguous` и
+  упорядоченные logical target ids, optional template family/variant и optional
+  binding с упорядоченными arguments.
+
+Primary и distinct alias lookup являются отдельными запросами. Если
+нормализованный ключ неоднозначен, transcript сохраняет весь упорядоченный
+список кандидатов H0; он не выбирает один результат и не сортирует повторно.
+Изменение любого поля или правила порядка требует новой версии manifest,
+workload/report/parity schema и повторного запуска всех строк.
+
+«Полный payload» не включает long-form documentation, HTML, examples,
+preview/search/export payload: эти данные не добавляются в экспериментальный
+снапшот неявно. Кандидат проходит AV2 parity только при побайтовом равенстве
+transcript H0.
+
+AV2 фиксирует до candidate-прогонов следующие версии:
+
+- manifest: `hbk-s83-av2-query-manifest/v1`;
+- backend report: `hbk-s83-av2-benchmark/v1`;
+- raw envelope: `hbk-s83-av2-raw/v1`;
+- parity: `hbk-s83-av2-parity/v1`;
+- summary: `hbk-s83-av2-summary/v1`;
+- workload: `s83-av2-context-member-access/v1`.
+
+Каждый backend report имеет строгие общие поля `schema_version`,
+`workload_version`, `mode`, `backend`, `decision_role`, `operation`, nullable
+`availability_context`, `iterations`, `module_context_filter_used`,
+`empty_availability_rule`, `input_identity`, `manifest`, `runtime_artifacts`,
+`projection`, `phase_order`, `timings`, `faults`, `allocations`, `memory`,
+`counts`, `checksum` и tagged `operation_data`. Неизвестные поля отклоняются.
+`phase_order` точно равен `entry_to_ready`, `anchor_resolution`,
+`first_operation`, `warmup`, `steady_workload`, `memory_sample`; измеряемые
+интервалы не перекрываются. `timings`, `faults` и `allocations` используют те
+же точные delta-поля AV1 для каждой применимой фазы.
+
+`operation_data` имеет один из строгих вариантов:
+
+- `lookup`: `query_count`, `candidate_count`, `miss_count`;
+- `iteration`: `owner_count`, `scanned_count`, `returned_count`,
+  `universal_count`, `explicit_count`, `excluded_count`, counts каждого member
+  kind;
+- `compact_materialization`: все поля `iteration`, а также `locator_size`,
+  `total_len`, `total_capacity`, `logical_bytes`, `allocated_bytes`;
+- `payload`: `input_count`, `object_count`, `string_bytes_touched`,
+  `canonical_payload_bytes_touched`.
+
+Поля compact-result запрещены для lookup/iteration/payload, а nullable или
+условные значения не используются вместо tagged варианта. Удерживаемая память
+результата относится только к `compact_materialization`; для остальных
+операций публикуются allocator delta и process-boundary memory без фиктивного
+`retained_result_bytes`.
+
+`canonical_payload_bytes_touched` — число байт versioned canonical payload,
+фактически прошедших через checksum данной операции; это scope/denominator, а
+не заявление о физических байтах памяти или hardware bandwidth.
+
+Допустимый source projection не объявляется произвольно backend. Frozen
+manifest и harness содержат registry по backend/operation: H0/C0 используют
+`owned-id-slice`/`owned-reference`; F0/L1/I1/D1/P1 — `mapped-id-range` для
+lookup/iteration и `decoded-value` для payload; A0 —
+`archived-id-range`/`archived-view`; R1 — `mapped-id-range`/`borrowed-range`.
+Compact materialization во всех строках имеет projection
+`av2-member-locator-u32` и содержит только `Av2MemberLocator(u32)`, не строку,
+DTO, decoded record или backend-specific view. Harness отклоняет другой source
+или compact projection и отдельно проверяет, что source view не удерживает
+временное decoded значение за пределами нативного callback/iterator.
+
+Каждая operation-запись содержит count/checksum, elapsed/average ns, ns на
+запрос/возвращённый объект, allocation/reallocation/deallocation calls и bytes,
+live/peak-live delta, minor/major faults и применимые operation-specific поля.
+RSS/PSS фиксируются на границах процесса и долгоживущей materialized-set фазы,
+а не приписываются одиночному наносекундному lookup. Основная сравнительная
+таблица — steady enumeration и compact
+materialization; startup, first lookup и full-payload access публикуются
+отдельными таблицами. Каждое семейство операций запускается в отдельном
+процессе по схеме `open -> setup/anchor resolution -> first operation ->
+unmeasured warmup -> steady batch -> memory sample`; это не позволяет lazy
+validation одной операции прогреть секции другой. Для enumeration и compact
+materialization один steady batch содержит 1,000 полных corpus-wide проходов;
+для point lookup и payload — 100 полных corpus-wide проходов. Для каждой строки
+и семейства используются девять warm и девять cold-best-effort процессов, все
+performance-процессы на общем хосте идут последовательно. Зафиксированные
+first-operation anchors: тип `Запрос`, свойство `Запрос.Текст`, метод/callable
+`Запрос.Выполнить`, а для контекстной enumeration — тип
+`ФормаКлиентскогоПриложения`, имеющий universal и excluded members во всех
+девяти контекстах S83.
+
+`memory_sample` compact-materialization строит после steady и одновременно
+удерживает ровно один `Vec<Av2MemberLocator>` на каждый owner manifest для
+текущего `AvailabilityContext`, включая пустые наборы, в порядке H0. Снимки
+allocator/RSS/PSS/private/anonymous/file-backed делаются непосредственно до
+построения, при живых наборах и после их drop. Отчёт раздельно сохраняет
+наружный container overhead, сумму `len * 4`, сумму `capacity * 4`, live/peak
+delta относительно снимка до построения и post-drop delta. Steady timing, в
+отличие от memory sample, создаёт, потребляет через `black_box` и удаляет один
+owner-set до перехода к следующему owner.
+
+До полного матричного запуска обязательный preflight H0 публикует cardinality и
+оценку bytes manifest/parity/raw; затем каждая из девяти строк выполняет по
+одному schema/parity/operation smoke. Запуск останавливается без усечения или
+выборки corpus, если manifest превышает 64 MiB, canonical parity одного backend
+превышает 512 MiB, оценка raw run превышает 2 GiB либо любой backend не может
+выдать тот же schema/payload. Изменение этих ограничений требует новой ревизии
+контракта до performance-прогона.
+
+Harness/summarizer tests обязаны отклонять schema drift и неизвестные поля,
+`ModuleContextKind` в любой вложенности, неверный projection, retained compact
+payload/строки/DTO, перекрывающийся или переставленный `phase_order`, raw
+performance с canonical transcript внутри, performance до H0 parity,
+неполную/дублированную матрицу и любые rank/score/winner/recommendation поля.
+Отдельный compile/smoke gate доказывает, что H0/C0/F0/A0/L1/I1/D1/P1/R1
+формируют одинаковую schema без изменения physical artifact или публичного API.
+
+AV2 является дополнительным описательным evidence. Он не вводит новые
+числовые gates задним числом, не ранжирует строки, не выбирает кандидата и не
+разрешает merge, новую production-зависимость или назначение канонического
+runtime-артефакта.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения

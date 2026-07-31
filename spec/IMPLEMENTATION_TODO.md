@@ -84,12 +84,19 @@ type-reference conclusions live in
        проверить существующие строки на enumeration полных объектов глобальных
        BSL-методов с фильтром только по каждому `AvailabilityContext`, без
        `ModuleContextKind`, сохраняя пустой availability как universal.
+    8. выполнить отдельную ревизию S83-AV2 по выбранной форме A: раздельно
+       измерить type/property/method/callable lookup, storage-native/borrowed iteration
+       непосредственных members с фильтром только по `AvailabilityContext`,
+       materialization компактного набора единых `Av2MemberLocator(u32)` и чтение
+       полного payload типа/метода/свойства; основной показатель — steady
+       iteration/materialization, без новых gates или выбора кандидата.
   - Проверка:
     строгая валидация OpenSpec; format/check/test для зафиксированной базы и
     каждой ветви кандидата; проверка точных корпуса и checksum;
     версионированные канонические транскрипты содержимого и lookup; повторные
-    release-измерения медианы/MAD; независимая проверка безопасности и
-    производительности.
+    release-измерения медианы/MAD; AV2 parity упорядоченных compact sets и
+    full payload, тесты harness/summarizer и последовательные release-прогоны;
+    независимая проверка безопасности и производительности.
   - Граница завершения:
     обновить устойчивый acceptance baseline всеми измеренными строками и
     результатами критериев, но без явного выбора пользователя не называть
@@ -173,6 +180,11 @@ type-reference conclusions live in
     Полная русская неранжированная таблица находится в
     `acceptance/hbk-s83-av1-evidence.md`. T183 остаётся открытой до решения
     пользователя; ни один вариант не выбран и не назначен каноническим.
+    Пользователь выбрал для следующей ревизии S83-AV2 форму результата A:
+    отдельно сравнить iteration без materialization, request-local compact set
+    локальных ID/locator и full-payload access. Эта форма не является выбором
+    backend, не меняет frozen gates и требует повторного прогона всех строк в
+    отдельном results namespace.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their
