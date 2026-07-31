@@ -161,6 +161,179 @@ the H0/C0 noise runs and written into this document before any candidate code
 is implemented. Candidate results may not be inspected to choose or adjust
 those thresholds.
 
+## Frozen H0/C0 Evidence
+
+The final common benchmark base is commit
+`051df7979e3cf5f6431b4d13829f436c98c47054`. Its workload is
+`hbk-snapshot-warm-lookups/v2`, including forward string resolution, reverse
+string hit and reverse string miss. The raw service evidence contains 61
+records for this harness commit: 60 successful measurements and one successful
+parity record, with no failed record.
+
+The H0/C0 timing and memory medians are:
+
+| Backend/scenario | N | Ready median ± MAD | Workload median ± MAD | Peak RSS | Post-workload PSS/private |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| H0 SQL owned, warm | 9 | 599.568 ± 7.419 ms | 2,226.218 ± 8.489 ms | 75,500 KiB | 68,428 / 68,408 KiB |
+| H0 SQL owned, cold-best-effort | 9 | 1,707.429 ± 10.461 ms | 2,222.610 ± 6.898 ms | 75,156 KiB | 68,422 / 68,400 KiB |
+| C0 cache owned, warm | 9 | 41.764 ± 0.839 ms | 2,125.346 ± 11.649 ms | 35,200 KiB | 22,312 / 22,292 KiB |
+| C0 cache owned, cold-best-effort | 9 | 73.475 ± 2.774 ms | 2,136.306 ± 12.465 ms | 35,200 KiB | 22,312 / 22,292 KiB |
+
+C0 first lookup is 2.902 ± 0.113 microseconds warm and
+2.997 ± 0.125 microseconds cold-best-effort. Its warm anchor resolution is
+15.066 ± 0.325 microseconds. The warm dictionary medians are 0 ns for
+`dictionary_by_id` after integer averaging, 946 ± 23 ns for reverse hit and
+49,871 ± 503 ns for reverse miss. The zero average is reported as timer
+resolution evidence, not as a literal claim that forward lookup has no cost.
+
+C0 runtime open performs 137,633 allocation calls and allocates 29,278,447
+bytes before ready. Its final and peak live allocation-accounted values are
+17,942,214 and 29,274,971 bytes. The four-reader C0 median is 82,021 KiB PSS
+and 79,396 KiB private. H0 is 265,794 KiB PSS and 262,988 KiB private.
+
+C0 artifact production, including SQL materialization, has a total local
+rebuild median of 675.933 ± 10.180 ms. SQL materialization is
+594.571 ± 2.660 ms, artifact write is 73.492 ± 20.710 ms, peak RSS is
+81,356 KiB and artifact size is 11,325,758 bytes. The write phase is marked
+noisy and remains descriptive; the non-noisy combined local-rebuild value is
+the lifecycle gate. The production allocation profile is 1,291,568 calls,
+182,653,725 allocated bytes and 63,498,929 peak live bytes.
+
+Cold-best-effort C0 brings 11,403,264 file bytes resident according to
+`fincore`; H0 brings 117,473,280 SQLite bytes resident. These are page-cache
+residency deltas, not exact CPU byte-read counters.
+
+The H0/C0 canonical content and lookup transcript digests are respectively
+`000c78a733b286b1bf926ba5dec6e2168593ed14028ca4df02179fc8eedc6ba6`
+and
+`76b7ae21c8a70c10ca5d623de9d64309036f3219c7728a861217751b90874219`.
+The full files are byte-identical, including four concurrent-reader
+transcripts.
+
+## Current Owned-Cache Inventory
+
+The current writer first materializes the complete owned snapshot, serializes
+it into a second `Vec<u8>` payload and writes that payload. The current reader
+reads the complete payload into a `Vec<u8>`, validates its checksum and then
+allocates a second complete owned graph. The payload buffer and partially
+decoded graph overlap during load.
+
+The real corpus owned graph contains a `Vec<String>` with 70,860 individually
+allocated strings and eleven top-level fact arenas: 1,754 platform types,
+18,167 members, 8,337 callables, 601 globals, 53 query tables, 498 fields,
+56 parameters, zero language facts in this corpus, 711 enums and 3,087 enum
+values. Records additionally own nested vectors for metadata-template
+parameters, type references, signatures, signature parameters and returns,
+query owner paths/template parameters and related ordered values.
+
+The snapshot also materializes 34 lookup/index representations:
+
+- generic fact IDs; type IDs, names and templates;
+- member IDs, owner CSR, owner/name and owner/name/kind;
+- callable IDs, owner CSR, owner/name and constructors;
+- global names and domain/name/kind;
+- module event names and domain/language/module-kind contexts;
+- query table IDs, names, syntax names and identifiers;
+- query field owner CSR and owner/name;
+- query parameter owner CSR and owner/name;
+- language IDs and names;
+- enum IDs and names; enum-value IDs, owner CSR and owner/name;
+- availability owner CSR and available-since;
+- relation source/kind CSR.
+
+For the selected corpus the serialized C0 artifact is 11,325,758 bytes while
+the ready owned graph accounts for 17,908,362 logical/heap bytes and
+22,288 KiB process-private memory after the workload. A candidate must avoid
+reconstructing this graph; retaining both a complete mapped representation and
+a complete owned mirror is a structural failure regardless of timings.
+
+## Prototype Production Lifecycle
+
+T183 uses a release/installation artifact with a first-use rebuild fallback:
+
+1. a supplied compatible immutable generation is the preferred runtime input;
+2. a missing, corrupt, wrong-layout, wrong-extraction-schema, wrong-source,
+   wrong-locale or wrong-platform-version artifact is rebuilt before any
+   mapping is exposed;
+3. rebuild produces a new temporary immutable generation and publishes it
+   atomically; it never overwrites or truncates the mapped file;
+4. discovery/publication requires the stable logical slot's exclusive lock;
+   opening and the complete mapping lifetime hold its shared lock;
+5. an update attempt while a reader holds the shared lock fails immediately
+   with a typed snapshot-in-use error;
+6. after publication a new session opens the new generation and receives a new
+   session-local numeric ID space.
+
+Measurements keep supplied-artifact open and local rebuild as separate rows.
+This lifecycle contract does not decide that any candidate is canonical; that
+decision still requires the user's explicit selection.
+
+## Predeclared Candidate Gates
+
+These gates are frozen before H1/H3 code. They compare runtime candidates to
+C0, because C0 is the current no-SQL runtime control, while every table also
+shows H0-relative values. A gate marked noisy (`MAD / median > 5%`) is rerun or
+explained before a conclusion. Thresholds are not relaxed after inspecting a
+candidate.
+
+Mandatory correctness and safety:
+
+- canonical content and lookup files are byte-identical to H0/C0 and both
+  digests match the frozen values above;
+- sequential and four-reader transcripts match;
+- no SQLite/HBK fallback occurs after candidate open;
+- header compatibility, structural validation, platform-version rejection,
+  immutable-generation publication, mapping lifetime and fail-fast lock tests
+  pass;
+- no complete owned snapshot mirror exists beside the mapped artifact.
+
+Mandatory material benefit against C0:
+
+Fractional ceilings are rounded down to the nearest whole measured unit so
+that rounding cannot weaken the stated minimum reduction.
+
+| Metric | Required candidate median |
+| --- | ---: |
+| warm process-start-to-ready | at most 33,410,942 ns (20% reduction) |
+| cold-best-effort process-start-to-ready | at most 58,780,152 ns (20% reduction) |
+| runtime allocation calls to ready | at most 68,816 (50% reduction) |
+| runtime allocated bytes to ready | at most 14,639,223 (50% reduction) |
+| peak runtime RSS | at most 29,920 KiB (15% reduction) |
+| warm post-workload PSS | at most 17,849 KiB (20% reduction) |
+| warm post-workload private | at most 17,833 KiB (20% reduction) |
+| cold post-workload PSS | at most 17,849 KiB (20% reduction) |
+| cold post-workload private | at most 17,833 KiB (20% reduction) |
+| aggregate four-reader PSS | at most 65,616 KiB (20% reduction) |
+| reverse dictionary hit | at most 473 ns (50% reduction) |
+| reverse dictionary miss | at most 24,935 ns (50% reduction) |
+
+Mandatory non-regression and resource ceilings:
+
+- first lookup median is at most 25,000 ns in each cache stance; this absolute
+  budget is used because a few-microsecond C0 single-shot baseline is
+  timer/scheduler noisy;
+- anchor resolution median is at most 25,000 ns in each cache stance;
+- total warm workload is at most 2,444,147,515 ns and cold-best-effort workload
+  at most 2,456,751,978 ns (15% regression ceiling);
+- every individual batched operation must preserve observed totals and its
+  median must be no greater than `C0 median + max(25% of C0 median,
+  3 × C0 MAD, 3 × candidate MAD)`; forward dictionary lookup additionally has
+  an absolute 10 ns average ceiling;
+- open major faults remain zero and open minor faults are at most 9,635;
+- cold-best-effort file-resident growth is at most 14,254,080 bytes;
+- artifact size is at most 14,157,197 bytes;
+- total local rebuild is at most 844,916,105 ns, production peak RSS at most
+  101,695 KiB, production allocation calls at most 1,614,460, production
+  allocated bytes at most 228,317,156 and production peak live bytes at most
+  79,373,661;
+- write time, every section size, private/shared/anonymous memory and
+  H0-relative results are still reported even where the gate applies only to
+  the combined lifecycle or C0-relative value.
+
+Passing all gates means “eligible for user consideration”, not first place.
+Failing a gate remains an evidence row and does not authorize deleting its
+branch or selecting another candidate without the user's decision.
+
 ## Mandatory Behavioral Oracle
 
 Parity is an independent mandatory gate. Performance values do not count for a

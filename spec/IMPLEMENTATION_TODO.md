@@ -83,6 +83,12 @@ Current first unchecked task: T183.
     outcomes, but do not name a winner, merge a candidate into `master`, accept
     a new production dependency or change the canonical runtime path without
     the user's explicit selection.
+  - Progress:
+    frozen benchmark/parity base `051df7979e3cf5f6431b4d13829f436c98c47054`;
+    H0/C0 protocol, noise, production lifecycle, owned-cache inventory,
+    behavior oracle and predeclared numerical gates are recorded in the T183
+    experiment contract. Candidate branches have not yet been selected,
+    ranked or merged.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

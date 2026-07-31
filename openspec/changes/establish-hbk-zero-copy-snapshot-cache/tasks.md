@@ -13,34 +13,34 @@ SHALL NOT start until the comparison protocol, current baselines, numerical
 gates, inventory, lifecycle and behavior oracle have been recorded and the
 durable task ledger authorizes the bounded prototype work.
 
-- [ ] 1.1 Freeze a reproducible comparison protocol before accepting candidate
+- [x] 1.1 Freeze a reproducible comparison protocol before accepting candidate
   results: exact HBK/provider artifact identity and checksum, platform version,
   locale, extraction-schema version, build profile, host/OS, commands, run
   count, warm-up policy, cold-cache method, summary statistic, raw-result
   format and measurement-tool fallbacks.
-- [ ] 1.2 Capture separate baselines and run-to-run noise for SQLite-to-owned
+- [x] 1.2 Capture separate baselines and run-to-run noise for SQLite-to-owned
   materialization as the SQL baseline row,
   current-binary-cache-to-owned cold/warm open and representative
   post-workload steady state on the selected datasets.
-- [ ] 1.3 Define task-local numerical material-benefit and non-regression
+- [x] 1.3 Define task-local numerical material-benefit and non-regression
   thresholds for production/rebuild, cold and warm ready-for-query startup
   under the frozen protocol boundary, first lookup, batched warm lookup,
   allocations, peak/steady RSS, PSS, aggregate multi-process PSS, page
   faults/bytes touched and snapshot size before using prototype results to
   choose a format.
-- [ ] 1.4 Inventory the current SQLite-to-binary-cache-to-runtime data flow,
+- [x] 1.4 Inventory the current SQLite-to-binary-cache-to-runtime data flow,
   including every materialized `String`, `Vec`, lookup index and duplicated
   live representation.
-- [ ] 1.5 Decide and document the snapshot production lifecycle: build-time,
+- [x] 1.5 Decide and document the snapshot production lifecycle: build-time,
   release artifact, installation step, or first-run rebuildable cache.
-- [ ] 1.6 Freeze the behavior oracle: normalize session-local numeric IDs
+- [x] 1.6 Freeze the behavior oracle: normalize session-local numeric IDs
   through logical fact identity/text; compare full-corpus fact families and
   observable fields; cover exact/name/owner/callable/global/module/language/
   enum/query/availability/relation lookups; preserve hit, miss, ambiguity,
   unsupported and deterministic-order behavior; and explicitly decide whether
   the canonical snapshot includes documentation beyond current
   snapshot/catalog fields.
-- [ ] 1.7 Record the hypothesis registry, branch ancestry and result-table
+- [x] 1.7 Record the hypothesis registry, branch ancestry and result-table
   template before prototyping: H0 SQL-to-owned baseline, C0 current cache
   control, H1 custom flat mapped sections, H2 “H1 layout + typed reader” with
   `zerocopy` only if H1 exposes decoding cost, H3 archive candidate such as
@@ -60,7 +60,7 @@ durable task ledger authorizes the bounded prototype work.
   HBK dictionary, starting with sorted indexes, then mapped hash indexes, and
   adding FST only when the simpler variants leave a measured lookup or size
   problem.
-- [ ] 1.12 Specify snapshot binary-layout and extraction-schema compatibility,
+- [x] 1.12 Specify snapshot binary-layout and extraction-schema compatibility,
   exact platform-version/source checks, structural validation, immutable
   publication, shared session-long reader locks, fail-fast exclusive writer
   locking, the stable logical snapshot-slot lock key and protected discovery
@@ -81,8 +81,8 @@ durable task ledger authorizes the bounded prototype work.
   selects an outcome, accept or reject the snapshot format, canonical runtime
   promotion and base-dictionary handoff in the durable HBK specification or ADR. On
   acceptance, SQLite may remain only in its explicitly accepted private
-  rebuild/index-production role. Stop and delete candidate paths when evidence
-  is insufficient or a mandatory gate fails.
+  rebuild/index-production role. Retain every candidate branch and its evidence
+  until the user decides, including candidates that fail a mandatory gate.
 
 ## 2. Provider Prerequisites (Non-Executable Follow-Up)
 
