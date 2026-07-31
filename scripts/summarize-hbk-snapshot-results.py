@@ -170,16 +170,42 @@ def median_mad(values: Iterable[int | float]) -> dict[str, float | int] | None:
     }
 
 
+GroupIdentity = tuple[str, str, str, str, str]
+
+
+def group_identity(record: dict[str, Any]) -> GroupIdentity:
+    return (
+        str(record.get("dataset", "")),
+        str(record.get("backend", "")),
+        str(record.get("cache_stance", "")),
+        str(record.get("candidate_branch", "")),
+        str(record.get("candidate_commit", "")),
+    )
+
+
+def identity_json_key(identity: GroupIdentity) -> str:
+    return json.dumps(identity, ensure_ascii=False, separators=(",", ":"))
+
+
+def identity_dict(identity: GroupIdentity) -> dict[str, str]:
+    dataset, backend, stance, branch, commit = identity
+    return {
+        "dataset": dataset,
+        "backend": backend,
+        "cache_stance": stance,
+        "candidate_branch": branch,
+        "candidate_commit": commit,
+    }
+
+
 def summarize_group(records: list[dict[str, Any]]) -> dict[str, Any]:
+    identity = group_identity(records[0])
+    if any(group_identity(record) != identity for record in records):
+        raise ValueError("attempted to pool benchmark records with different identities")
     summary: dict[str, Any] = {
+        "identity": identity_dict(identity),
         "samples": len(records),
         "sample_ids": [record["sample"] for record in records],
-        "candidate_commits": sorted(
-            {str(record.get("candidate_commit", "")) for record in records}
-        ),
-        "candidate_branches": sorted(
-            {str(record.get("candidate_branch", "")) for record in records}
-        ),
         "metrics": {},
         "operations": {},
     }
@@ -221,7 +247,14 @@ def summarize_group(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def summarize_allocation_group(records: list[dict[str, Any]]) -> dict[str, Any]:
-    summary: dict[str, Any] = {"samples": len(records), "metrics": {}}
+    identity = group_identity(records[0])
+    if any(group_identity(record) != identity for record in records):
+        raise ValueError("attempted to pool allocation records with different identities")
+    summary: dict[str, Any] = {
+        "identity": identity_dict(identity),
+        "samples": len(records),
+        "metrics": {},
+    }
     for name, path in ALLOCATION_METRICS.items():
         metric = median_mad(
             value for record in records if (value := nested(record, path)) is not None
@@ -232,7 +265,14 @@ def summarize_allocation_group(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def summarize_aggregate_group(records: list[dict[str, Any]]) -> dict[str, Any]:
-    summary: dict[str, Any] = {"samples": len(records), "metrics": {}}
+    identity = group_identity(records[0])
+    if any(group_identity(record) != identity for record in records):
+        raise ValueError("attempted to pool aggregate records with different identities")
+    summary: dict[str, Any] = {
+        "identity": identity_dict(identity),
+        "samples": len(records),
+        "metrics": {},
+    }
     for name, path in AGGREGATE_METRICS.items():
         metric = median_mad(
             value for record in records if (value := nested(record, path)) is not None
@@ -249,20 +289,39 @@ def relative_percent(value: float, baseline: float) -> float | None:
 
 
 def add_relatives(groups: dict[str, dict[str, Any]]) -> None:
-    for key, group in groups.items():
-        _, stance = key.split("|", 1)
-        baseline = groups.get(f"sql-owned|{stance}")
-        if baseline is None:
-            continue
-        relatives = {}
-        for metric, result in group["metrics"].items():
-            base_result = baseline["metrics"].get(metric)
-            if base_result is None:
+    baselines: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for group in groups.values():
+        identity = group["identity"]
+        backend = identity["backend"]
+        if backend in {"sql-owned", "cache-owned", "cache-owned-produce"}:
+            baselines[
+                (identity["dataset"], identity["cache_stance"], backend)
+            ] = group
+
+    for group in groups.values():
+        identity = group["identity"]
+        dataset = identity["dataset"]
+        stance = identity["cache_stance"]
+        backend = identity["backend"]
+        comparator_names = (
+            ("cache", "cache-owned-produce"),
+        ) if backend.endswith("-produce") else (
+            ("sql", "sql-owned"),
+            ("cache", "cache-owned"),
+        )
+        for label, comparator_name in comparator_names:
+            baseline = baselines.get((dataset, stance, comparator_name))
+            if baseline is None:
                 continue
-            relatives[metric] = relative_percent(
-                float(result["median"]), float(base_result["median"])
-            )
-        group["relative_to_sql_percent"] = relatives
+            relatives = {}
+            for metric, result in group["metrics"].items():
+                base_result = baseline["metrics"].get(metric)
+                if base_result is None:
+                    continue
+                relatives[metric] = relative_percent(
+                    float(result["median"]), float(base_result["median"])
+                )
+            group[f"relative_to_{label}_percent"] = relatives
 
 
 def format_ms(value_ns: int | float | None) -> str:
@@ -296,18 +355,23 @@ def render_markdown(
         "",
         "Rows are evidence only. This report does not assign a score, rank or winner.",
         "",
-        "| Backend | Cache stance | N | Ready ms | First lookup µs | Workload ms | Peak RSS MiB | Post-workload PSS MiB | Post-workload private MiB | Open minor faults |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Backend | Branch | Commit | Cache stance | N | Ready ms | First lookup µs | Workload ms | Peak RSS MiB | Post-workload PSS MiB | Post-workload private MiB | Open minor faults |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
-    for key in sorted(groups):
-        backend, stance = key.split("|", 1)
-        group = groups[key]
+    sorted_groups = sorted(
+        groups.values(),
+        key=lambda group: tuple(group["identity"].values()),
+    )
+    for group in sorted_groups:
+        identity = group["identity"]
         lines.append(
             "| "
             + " | ".join(
                 [
-                    backend,
-                    stance,
+                    identity["backend"],
+                    identity["candidate_branch"] or "—",
+                    identity["candidate_commit"][:12] or "—",
+                    identity["cache_stance"],
                     str(group["samples"]),
                     format_ms(metric_median(group, "ready_ns")),
                     format_us(metric_median(group, "first_lookup_ns")),
@@ -321,21 +385,27 @@ def render_markdown(
             + " |"
         )
 
-    production_keys = [key for key in sorted(groups) if key.split("|", 1)[0].endswith("-produce")]
+    production_groups = [
+        group
+        for group in sorted_groups
+        if group["identity"]["backend"].endswith("-produce")
+    ]
     lines.extend(["", "## Artifact production", ""])
-    if production_keys:
+    if production_groups:
         lines.extend(
             [
-                "| Backend | N | Total local rebuild ms | Materialize ms | Artifact write ms | Artifact MiB | Peak RSS MiB |",
-                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+                "| Backend | Branch | Commit | N | Total local rebuild ms | Materialize ms | Artifact write ms | Artifact MiB | Peak RSS MiB |",
+                "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
             ]
         )
-        for key in production_keys:
-            backend, _ = key.split("|", 1)
-            group = groups[key]
+        for group in production_groups:
+            identity = group["identity"]
             artifact_bytes = metric_median(group, "artifact_bytes")
             lines.append(
-                f"| {backend} | {group['samples']} | "
+                f"| {identity['backend']} | "
+                f"{identity['candidate_branch'] or '—'} | "
+                f"{identity['candidate_commit'][:12] or '—'} | "
+                f"{group['samples']} | "
                 f"{format_ms(metric_median(group, 'ready_ns'))} | "
                 f"{format_ms(metric_median(group, 'materialize_ns'))} | "
                 f"{format_ms(metric_median(group, 'artifact_write_ns'))} | "
@@ -349,13 +419,16 @@ def render_markdown(
     if parity_records:
         lines.extend(
             [
-                "| Backend | Status | Content SHA-256 | Lookup SHA-256 |",
-                "| --- | --- | --- | --- |",
+                "| Backend | Branch | Commit | Status | Content SHA-256 | Lookup SHA-256 |",
+                "| --- | --- | --- | --- | --- | --- |",
             ]
         )
         for record in parity_records:
             lines.append(
-                f"| {record.get('backend', '—')} | {record.get('status', '—')} | "
+                f"| {record.get('backend', '—')} | "
+                f"{record.get('candidate_branch') or '—'} | "
+                f"{str(record.get('candidate_commit', ''))[:12] or '—'} | "
+                f"{record.get('status', '—')} | "
                 f"`{record.get('content_sha256', '—')}` | "
                 f"`{record.get('lookup_sha256', '—')}` |"
             )
@@ -366,15 +439,22 @@ def render_markdown(
     if aggregate_groups:
         lines.extend(
             [
-                "| Backend | N | Aggregate PSS MiB (median ± MAD) | Aggregate private MiB (median ± MAD) |",
-                "| --- | ---: | ---: | ---: |",
+                "| Backend | Branch | Commit | N | Aggregate PSS MiB (median ± MAD) | Aggregate private MiB (median ± MAD) |",
+                "| --- | --- | --- | ---: | ---: | ---: |",
             ]
         )
-        for backend, group in sorted(aggregate_groups.items()):
+        for group in sorted(
+            aggregate_groups.values(),
+            key=lambda value: tuple(value["identity"].values()),
+        ):
+            identity = group["identity"]
             pss = group["metrics"]["pss_kib"]
             private = group["metrics"]["private_kib"]
             lines.append(
-                f"| {backend} | {group['samples']} | "
+                f"| {identity['backend']} | "
+                f"{identity['candidate_branch'] or '—'} | "
+                f"{identity['candidate_commit'][:12] or '—'} | "
+                f"{group['samples']} | "
                 f"{float(pss['median']) / 1024:.2f} ± "
                 f"{float(pss['mad']) / 1024:.2f} | "
                 f"{float(private['median']) / 1024:.2f} ± "
@@ -387,11 +467,15 @@ def render_markdown(
     if allocation_groups:
         lines.extend(
             [
-                "| Backend | N | Entry allocations | Entry allocated MiB | Final live MiB | Peak live MiB |",
-                "| --- | ---: | ---: | ---: | ---: | ---: |",
+                "| Backend | Branch | Commit | N | Entry allocations | Entry allocated MiB | Final live MiB | Peak live MiB |",
+                "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
             ]
         )
-        for backend, group in sorted(allocation_groups.items()):
+        for group in sorted(
+            allocation_groups.values(),
+            key=lambda value: tuple(value["identity"].values()),
+        ):
+            identity = group["identity"]
             metrics = group["metrics"]
 
             def allocation_value(name: str) -> int | float | None:
@@ -399,7 +483,10 @@ def render_markdown(
                 return None if result is None else result["median"]
 
             lines.append(
-                f"| {backend} | {group['samples']} | "
+                f"| {identity['backend']} | "
+                f"{identity['candidate_branch'] or '—'} | "
+                f"{identity['candidate_commit'][:12] or '—'} | "
+                f"{group['samples']} | "
                 f"{allocation_value('entry_allocation_calls') or '—'} | "
                 f"{(float(allocation_value('entry_allocated_bytes')) / 1024 / 1024):.2f} | "
                 f"{(float(allocation_value('final_live_bytes')) / 1024 / 1024):.2f} | "
@@ -437,13 +524,14 @@ def main() -> None:
             f"{len(failures)} failed records exist for harness {args.harness_commit}"
         )
 
-    grouped_records: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    grouped_records: dict[GroupIdentity, list[dict[str, Any]]] = defaultdict(list)
     for record in timed:
-        key = f"{record['backend']}|{record['cache_stance']}"
-        grouped_records[key].append(record)
+        grouped_records[group_identity(record)].append(record)
     groups = {
-        key: summarize_group(sorted(value, key=lambda record: record["sample"]))
-        for key, value in sorted(grouped_records.items())
+        identity_json_key(identity): summarize_group(
+            sorted(value, key=lambda record: record["sample"])
+        )
+        for identity, value in sorted(grouped_records.items())
     }
     add_relatives(groups)
     parity_records = [
@@ -456,12 +544,12 @@ def main() -> None:
         for record in records
         if record.get("scenario") == "aggregate-four-reader-pss"
     ]
-    grouped_aggregates: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    grouped_aggregates: dict[GroupIdentity, list[dict[str, Any]]] = defaultdict(list)
     for record in aggregate_records:
-        grouped_aggregates[record["backend"]].append(record)
+        grouped_aggregates[group_identity(record)].append(record)
     aggregate_groups = {
-        backend: summarize_aggregate_group(group)
-        for backend, group in sorted(grouped_aggregates.items())
+        identity_json_key(identity): summarize_aggregate_group(group)
+        for identity, group in sorted(grouped_aggregates.items())
     }
     allocation_records = [
         record
@@ -469,12 +557,12 @@ def main() -> None:
         if record.get("scenario") == "allocation-profile"
         and record.get("status") == "ok"
     ]
-    grouped_allocations: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    grouped_allocations: dict[GroupIdentity, list[dict[str, Any]]] = defaultdict(list)
     for record in allocation_records:
-        grouped_allocations[record["backend"]].append(record)
+        grouped_allocations[group_identity(record)].append(record)
     allocation_groups = {
-        backend: summarize_allocation_group(group)
-        for backend, group in sorted(grouped_allocations.items())
+        identity_json_key(identity): summarize_allocation_group(group)
+        for identity, group in sorted(grouped_allocations.items())
     }
     summary = {
         "schema": "hbk-snapshot-benchmark-summary-v1",
