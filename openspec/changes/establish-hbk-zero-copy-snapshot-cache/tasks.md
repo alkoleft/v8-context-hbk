@@ -157,7 +157,7 @@
   долговечные результаты — `spec/acceptance/hbk-s83-av1-evidence.md`. Все
   строки совпали с H0 transcript, `ModuleContextKind` отсутствует, выбор не
   сделан.
-- [ ] 1.21 Зафиксировать и выполнить S83-AV2 по выбранной пользователем форме
+- [x] 1.21 Зафиксировать и выполнить S83-AV2 по выбранной пользователем форме
   A: отдельно измерить storage-native/borrowed iteration, materialization
   компактного набора единых `Av2MemberLocator(u32)` и чтение полного payload;
   измерить type-by-name, property/method-by-known-owner/name/kind и
@@ -168,6 +168,15 @@
   побайтовый parity H0 для упорядоченных compact sets и payload типа/метода/
   свойства; сохранить неранжированные steady-time/resource результаты без
   изменения форматов, публичного API, frozen gates или выбора.
+  Выполнено на harness-коммите
+  `80ec7bbaf62cb2fdbce98908d48891f3064413cc`: 81/81 parity-записей, 9/9
+  smoke-записей и 5,508/5,508 performance-записей. Raw SHA-256 —
+  `c733603e373a82745f6a10a1a661925b3c7335dbf1868bf91f6e91d86c3581de`,
+  summary SHA-256 —
+  `479c33e79cd9f06f2a0bf3894581180825ef6e77e357f9ce77ba366245453ce1`;
+  долговечные результаты — `spec/acceptance/hbk-s83-av2-evidence.md`. Все
+  строки совпали с H0 transcript, `ModuleContextKind` отсутствует, выбор не
+  сделан.
 - [ ] 1.15 Представить пользователю неранжированные свидетельства, включая
   дополнительные таблицы S83-AV1 и S83-AV2. Только после выбора исхода пользователем
   принять или отклонить формат снапшота, назначение канонической

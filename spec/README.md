@@ -36,6 +36,8 @@ Otherwise reconcile the specification files before implementing.
   зафиксированных критериев.
 - `acceptance/hbk-s83-av1-evidence.md`: дополнительный неранжированный проход T183 для
   полной enumeration глобальных BSL-методов с фильтром только по `AvailabilityContext`.
+- `acceptance/hbk-s83-av2-evidence.md`: дополнительный неранжированный проход T183 для
+  lookup, borrowed iteration, compact member set и full-payload access по форме результата A.
 - `implementation/syntax-helper-query-cli.md`: draft architecture for the separate Syntax
   Assistant query/search CLI and its index/relationship model.
 - `implementation/syntax-bsl-provider-plan.md`: ADR-0006 gap analysis, BSL/code-analysis use-case

@@ -2914,6 +2914,47 @@ H0 находится в [свидетельствах S83-AV1](hbk-s83-av1-evid
 `target/hbk-s83-av1/run-37d968b-9x1000/`. Ни один кандидат не выбран и не стал
 каноническим.
 
+### Дополнительные свидетельства S83-AV2
+
+Отдельный workload S83-AV2 по выбранной пользователем форме A завершён на
+harness-коммите `80ec7bbaf62cb2fdbce98908d48891f3064413cc`. Манифест
+`target/hbk-s83-av2/query-manifest.json` имеет SHA-256
+`37588404dbf3e6d0973968f19d38696bc506072b9342eca09fa68b6dc6cc061f`.
+Все 81 parity-запись, 9 smoke-записей и 5,508 performance-записей успешны.
+Raw SHA-256 —
+`c733603e373a82745f6a10a1a661925b3c7335dbf1868bf91f6e91d86c3581de`,
+summary SHA-256 —
+`479c33e79cd9f06f2a0bf3894581180825ef6e77e357f9ce77ba366245453ce1`.
+
+AV2 раздельно измеряет точечные lookup, borrowed/native iteration
+непосредственных members с фильтром только по `AvailabilityContext`,
+материализацию request-local compact set из `Av2MemberLocator(u32)` и чтение
+полного payload типа/метода/свойства. `ModuleContextKind`, inherited members,
+precedence и `effective_members` не участвуют в этом workload.
+
+По основному показателю AV2, steady filtered members access, все zero-copy
+кандидаты медленнее H0 SQL baseline. В warm borrowed iteration диапазоны
+отношений к H0 составляют: F0 `2.905-3.872x`, A0 `4.588-4.788x`, L1
+`2.990-3.913x`, I1 `2.898-3.793x`, D1 `2.893-3.963x`, P1 `2.946-3.880x`,
+R1 `2.954-3.885x`. В warm compact materialization диапазоны отношений к H0:
+F0 `2.773-3.782x`, A0 `4.500-4.718x`, L1 `2.828-3.769x`, I1
+`2.792-3.640x`, D1 `2.774-3.677x`, P1 `2.776-3.660x`, R1 `2.823-3.700x`.
+Borrowed-pass во всех строках имеет `0` steady allocation calls / bytes; compact
+set во всех строках имеет одинаковый результатный allocation profile
+`1,651,000` calls / `72,016,000` bytes.
+
+Точечный lookup даёт другой срез: I1 показывает `0.926x` H0 для type lookup,
+`0.930x` для method lookup, `0.988x` для property lookup и `1.010x` для
+callable lookup, но этот локальный выигрыш не переносится на основной
+filtered-members показатель. C0 остаётся контрольной строкой и близок к H0 на
+lookup/enumeration, при этом быстрее H0 на части payload-операций.
+
+Полная русская неранжированная сводка находится в
+[свидетельствах S83-AV2](hbk-s83-av2-evidence.md). Сырые JSONL, логи и
+сгенерированные summary остаются service data в
+`target/hbk-s83-av2/run-80ec7bb-9x/`. Ни один кандидат не выбран, не
+рекомендован и не стал каноническим.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

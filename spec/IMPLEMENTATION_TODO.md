@@ -185,6 +185,20 @@ type-reference conclusions live in
     локальных ID/locator и full-payload access. Эта форма не является выбором
     backend, не меняет frozen gates и требует повторного прогона всех строк в
     отдельном results namespace.
+    S83-AV2 завершён на harness-коммите
+    `80ec7bbaf62cb2fdbce98908d48891f3064413cc`: 81/81 parity-записей, 9/9
+    smoke-записей и 5,508/5,508 performance-записей прошли для lookup,
+    borrowed/native iteration, compact materialization и payload access. Raw
+    SHA-256 —
+    `c733603e373a82745f6a10a1a661925b3c7335dbf1868bf91f6e91d86c3581de`,
+    summary SHA-256 —
+    `479c33e79cd9f06f2a0bf3894581180825ef6e77e357f9ce77ba366245453ce1`.
+    Полная русская неранжированная таблица находится в
+    `acceptance/hbk-s83-av2-evidence.md`. По основному показателю AV2
+    `members_by_owner_availability_borrowed/collect` все zero-copy-кандидаты
+    медленнее H0 SQL baseline; I1 отдельно показывает улучшение части точечных
+    lookup, но это не является выбором. T183 остаётся открытой до решения
+    пользователя; ни один вариант не выбран и не назначен каноническим.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their
