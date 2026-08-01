@@ -66,6 +66,14 @@
   чтение полного payload типа, метода и свойства; для members типа применять
   только `AvailabilityContext`, не вводя публичный filtered API, наследование,
   `effective_members`, новые gates или автоматический выбор.
+- После предварительной реализации AV3 скорректировать решающий layout workload
+  до S83-AV4 по фактической нагрузке `v8-context`: filtered platform global
+  scope, точечный lookup типа и filtered properties/methods только одного
+  найденного типа. Corpus-wide members всех типов и module events оставить вне
+  решающей нагрузки; проверить
+  `member_start/count` в type head, AoS/SoA masks, dense bitmaps и direct CSR
+  rows в отдельных ветках, не ранжируя результаты и не перенося
+  resolve/precedence/effective selection из `v8-context` в HBK.
 - Отдельно решить, производится ли готовый снапшот конвейером сборки/дистрибуции
   HBK или создаётся локально при промахе кеша. Локально построенный снапшот не
   может улучшить самый первый запуск, во время которого он строится.

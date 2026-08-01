@@ -114,6 +114,43 @@ memory-mapped кандидат и архивный кандидат с пров�
   менять физический формат или публичный API, вводить новые gates, ранжировать
   строки либо выбирать кандидата.
 
+#### Scenario: Layout проверяется на фактическом consumer scope
+
+- **WHEN** корректирующий workload S83-AV4 сравнивает hot layout после
+  предварительного AV3
+- **THEN** corpus-wide enumeration members всех типов SHALL быть только
+  недецизионной stress diagnostic
+- **AND** решающий workload SHALL раздельно измерять filtered global
+  methods/properties, type-by-name lookup, borrowed и compact candidate members
+  kind `Property`/`Method` только одного найденного type, end-to-end type lookup
+  + scope formation и отдельный full payload типа, метода и свойства
+- **AND** все девять `AvailabilityContext` SHALL измеряться независимо, пустая
+  availability SHALL означать universal, а `ModuleContextKind` SHALL NOT быть
+  фильтром
+- **AND** type/member co-location SHALL проверяться как fixed type head с
+  `member_start/member_count`, соседний owner-major hot member section и
+  отдельный cold payload, а не как variable-size interleaved records
+- **AND** causal control direct range и R1-derived AoS, SoA, dense bitmap и
+  direct CSR layouts SHALL находиться в отдельных ветках/worktree
+- **AND** parity SHALL сохранять H0 order, owner, kind, logical identity,
+  universal/explicit availability, compact locators и полный payload
+- **AND** precedence, ambiguity, downstream lookup и effective selection SHALL
+  оставаться ответственностью `v8-context`, а HBK SHALL возвращать ordered
+  candidate stream без выбора победившего объявления
+- **AND** module events SHALL NOT входить в AV4, потому что их scope задаётся
+  `ModuleContextKind`, а не availability-фильтром; добавление events в module
+  context SHALL оставаться downstream-операцией
+- **AND** каждый fixed type anchor/context SHALL образовывать отдельную
+  measurement-строку и SHALL NOT агрегироваться с другими anchors в score или
+  общий type-scope rank
+- **AND** steady timing SHALL сопровождаться allocation calls/bytes, faults,
+  RSS/PSS, artifact/hot-section bytes, `logical_domain_count`,
+  `physical_entries_examined` и `returned_count`
+- **AND** H0/C0 и все применимые варианты SHALL быть повторно запущены одним
+  frozen AV4 harness до сравнения результатов
+- **AND** AV4 SHALL NOT ранжировать варианты, выбирать canonical runtime или
+  объединять ветвь без явного решения пользователя.
+
 #### Scenario: Сравниваются гипотезы организации данных
 
 - **WHEN** исследование оценивает layout, lookup-индексы, проверяемый

@@ -24,6 +24,37 @@ heap allocation. См. локальные evidence:
 [S83-AV1](../acceptance/hbk-s83-av1-evidence.md),
 [T183 experiment contract](hbk-zero-copy-snapshot-experiment.md).
 
+## Коррекция consumer workload после сверки с `v8-context`
+
+Предварительный AV3 ошибочно сделал основной member-нагрузкой суммарный обход
+members всех 1,749 типов. Такой запрос удобен как стресс-диагностика layout, но
+не соответствует основному потребителю и не должен участвовать в решении.
+Решающий workload S83-AV4 проверяет только:
+
+1. формирование platform global scope из 601 глобального BSL-факта с
+   фильтром по одному `AvailabilityContext`;
+2. точечный lookup одного platform type;
+3. формирование candidate scope только для этого найденного типа: его
+   непосредственные properties/methods, отфильтрованные по
+   `AvailabilityContext`;
+4. отдельное чтение полного payload уже выбранного type/member/callable
+   locator.
+
+Дальнейший lookup по сформированному scope, неоднозначность, precedence и
+effective selection принадлежат `v8-context`. В рамках T183 термин
+`inherited_members` не означает транзитивное раскрытие других типов: это тот же
+provider-owned ordered поток candidate members одного найденного типа с
+сохранением owner/provenance. Он не выбирает, какое одноимённое объявление
+«побеждает».
+
+Module events не входят в AV4: они требуют `ModuleContextKind`, который не
+является availability-фильтром. Их добавление к module context остаётся
+downstream-операцией и не влияет на сравнение hot layout global/type facts.
+
+H0 называется SQL baseline по происхождению startup, но его steady path уже
+работает над владеющим Rust snapshot в памяти. Поэтому AV4 пытается обогнать не
+SQLite VM в каждом запросе, а очень сильный direct owned-memory baseline.
+
 ## Доказано первичными источниками
 
 1. Плотные битовые маски подходят для предиката из девяти контекстов.
@@ -80,6 +111,19 @@ heap allocation. См. локальные evidence:
    предупреждает, что intrinsic может развернуться в последовательность,
    работающую хуже одной native instruction:
    [Intel Intrinsics Guide](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html).
+
+7. Co-location должна проверяться как конкретный физический layout, а не как
+   общее обещание локальности.
+
+   Arrow прямо связывает последовательный доступ с adjacency, задаёт
+   relocatable offsets без pointer swizzling и рекомендует выравнивать hot
+   buffers на 8 или 64 bytes:
+   [Arrow columnar format](https://arrow.apache.org/docs/format/Columnar.html).
+   SQLite показывает, почему baseline силён: covering index может ответить без
+   чтения исходной table row:
+   [SQLite query planner](https://www.sqlite.org/queryplanner.html).
+   Следовательно, HBK-кандидату недостаточно быть mmap-backed — он должен
+   свести запрос к меньшему числу прямых последовательных чтений, чем H0.
 
 ## Проектные выводы
 
@@ -141,15 +185,50 @@ heap allocation. См. локальные evidence:
    если после удаления indirection доминируют branch misses или векторизуемые
    сравнения ID/name.
 
-## Layout-кандидаты для опровержения
+7. Предложение хранить type и его members рядом полезно, если выразить его как
+   fixed head плюс диапазон, а не как variable-size interleaved block.
 
-| ID | Hot layout | Ожидаемый эффект | Основной риск |
-| --- | --- | --- | --- |
-| `M0-mask` | owner-major members + `u16 availability_mask` | устраняет availability slice traversal и поиск по explicit-list | всё ещё сканирует каждый member owner slice |
-| `M1-bitmap` | global owner-major IDs + 9 dense bitmaps | corpus-wide проход читает 282 слова на контекст | per-owner listing требует range intersection |
-| `M2-csr` | CSR rows `(context, owner)` -> `u32 locator` | прямой borrowed row slice без фильтра | hot index около 0.4 MiB и producer verification |
-| `M3-direct-ranges` | порядок `(context, owner)` с start/end ranges | минимальная цена row slicing при допустимом дублировании | дублирует locators либо теряет единый member order |
-| `M4-soa-hotcold` | fixed-width hot columns + cold payload arena | lookup/enumeration затрагивает меньше cache lines | payload получает дополнительный locator hop |
+   В S83 распределение непосредственных members на тип: 1,749 типов, 98 типов
+   без members, median 6, p90 23, p99 62, maximum 295, average 10.29. Поэтому
+   отдельный binary search owner-range особенно заметен на обычных коротких
+   диапазонах. AV4 проверяет следующий relocatable layout:
+
+   ```text
+   TypeHot[]:   ... member_start:u32, member_count:u32 ...
+                         │
+                         └──────┐
+   MemberHot[]: [ owner-major contiguous member records/locators ]
+   ColdArena[]: [ names, signatures, type refs, provenance, availability payload ]
+   ```
+
+   `TypeHot` и `MemberHot` являются соседними hot sections, но не чередуются
+   блоками `[Type][variable Members]`: фиксированный массив type heads сохраняет
+   O(1) доступ по locator, простую проверку bounds/alignment и стабильный stride.
+   Встроенные `member_start/member_count` стоят не более `1,749 * 8 = 13,992`
+   bytes до padding и устраняют отдельный owner-key search. Полный cold payload
+   читается только после выбора locator.
+
+8. Global scope достаточно мал, чтобы честно проверить все четыре формы без
+   compressed bitmap.
+
+   В S83 есть 500 глобальных методов и 101 глобальное свойство. Количество
+   возвращаемых объектов по контекстам `thin_client`, `web_client`,
+   `mobile_client`, `server`, `thick_client`, `external_connection`,
+   `mobile_application_client`, `mobile_application_server`,
+   `mobile_standalone_server` равно соответственно 361, 314, 354, 427, 567,
+   410, 341, 308 и 312; суммарно 3,394 locator, universal — 1. Оценка hot
+   footprint:
+
+   | Layout | Global hot bytes до headers/alignment |
+   | --- | ---: |
+   | AoS `u32 locator + u16 mask + u8 kind + pad` | 4,808 |
+   | SoA `u32[] + u16[] + u8[]` | 4,207 |
+   | 9 context bitmaps + universal bitmap | 800 |
+   | CSR `context -> ordered u32 locator row` | 13,616 |
+
+   Для 601 плотного ID-domain обычный bitmap из десяти `u64` на набор проще
+   Roaring и не требует container metadata. CSR тратит больше bytes, но в
+   query path читает только возвращаемые locator и не выполняет predicate.
 
 ## Найденный локальный hot path
 
@@ -165,7 +244,14 @@ AV2 для каждого member обращается к отдельному о
 steady allocations на borrowed iteration, поэтому этот повторный CSR/string
 path является более сильной проверяемой причиной отрыва, чем heap allocation.
 
-AV3 должен отдельно изолировать четыре формы одного и того же R1 payload:
+Global facts также не хранят availability inline: H0 получает его через
+`availability_by_fact(HbkFactRef::Global)`. Поэтому global scope допускает то
+же причинное сравнение mask/bitmap/CSR, но на отдельном плотном domain из 601
+элемента.
+
+## Предварительный AV3
+
+AV3 построил четыре формы одного и того же R1 member payload:
 
 - owner-contiguous hot AoS record с locator, kind и `u16 availability_word`;
 - SoA с отдельными owner-contiguous locator/mask/kind columns;
@@ -173,48 +259,111 @@ AV3 должен отдельно изолировать четыре формы
 - заранее сформированный ordered locator row для каждой пары
   `(AvailabilityContext, owner)`.
 
-Это выбор общего экспериментального носителя, а не выбор R1 победителем.
+Его corpus-wide member operation сохраняется только как недецизионная
+`all_types_member_stress_diagnostic`. Предварительные AV3 artifacts и smoke не
+дают основания для выбора и не заменяют AV4.
 
-## Опровергаемые гипотезы
+## Опровергаемые гипотезы S83-AV4
 
-1. `M0-mask` сократит медиану нового AV3 borrowed member-pass минимум на 20%
-   против свежего R1 parent control при нулевых steady allocations и точном H0
-   transcript.
+AV4 сохраняет четыре R1-derived layout-варианта и добавляет не участвующий в
+выборе causal control прямого диапазона в type head:
 
-2. `M2-csr` обгонит H0 steady borrowed enumeration минимум на 10% хотя бы в
-   семи из девяти контекстов, потому что читает только prefiltered locator rows
-   и не выполняет availability predicate в query path.
+| ID | Файл/память | Проверяемая причина |
+| --- | --- | --- |
+| `R1-DIRECT` | исходный R1 payload, `member_start/count` в `TypeHot` | цена отдельного owner-range lookup |
+| `R2-AOS` | owner-major `MemberHot { locator, mask, kind }` | одно последовательное чтение записи на member |
+| `R2-SOA` | отдельные locator/mask/kind columns | меньше hot bytes и узкие последовательные mask reads |
+| `R2-BITSET` | dense bitmap на context, ограниченный type range | битовый параллелизм без дублирования locator rows |
+| `R2-CSR` | direct ordered row `(context, type) -> locators` | отсутствие predicate ценой дополнительных bytes |
 
-3. `M1-bitmap` обгонит H0 только для corpus-wide enumeration и не обгонит его
-   для per-owner listing без слияния owner ranges с bitmap scan.
+Те же четыре физические формы отдельно применяются к global scope. Это
+layout-гипотезы поверх R1 и не возвращает исключённые F0/L1/D1 в shortlist.
+A0/I1/P1/R1 остаются четырьмя активными cache-кандидатами; I1 остаётся
+lookup-reference. Никакой layout не получает ранг или первое место без решения
+пользователя.
 
-4. `M4-soa-hotcold` улучшит lookup/payload только если hot lookup не затрагивает
-   локализованные cold strings/signatures до выбора итогового locator; иначе он
-   повторит проигрыш payload custom formats из AV2.
+Проверяемые ожидания:
 
-5. SIMD/branchless filtering не улучшит `M0-mask` материально, пока perf не
-   покажет branch misses или compare throughput главным hotspot после удаления
-   range/indirection.
+1. `R1-DIRECT` уменьшит steady время `type_scope_borrowed` для median/p90 типов
+   без изменения filtered member loop; это изолирует эффект `start/count`.
+2. `R2-AOS` или `R2-SOA` обгонит H0 на коротких type ranges, если один `u16`
+   predicate и последовательная загрузка дешевле owned H0 access path.
+3. `R2-BITSET` выиграет на global scope и типах p99/max, но может проиграть AoS
+   на median type из-за маскирования boundary words и декодирования битов.
+4. `R2-CSR` выиграет на `global_scope_borrowed` и больших type scopes, если
+   уменьшение `physical_entries_examined` окупит чтение большего артефакта;
+   для median type его дополнительный index footprint может не окупиться.
+5. Hot/cold co-location считается подтверждённой только если одновременно
+   уменьшаются steady time и physical hot bytes touched, а full-payload access
+   не получает материальной регрессии.
+6. SIMD/auto-vectorization не входят в первый AV4 implementation. Их можно
+   добавить отдельной
+   производной веткой только если scalar SoA/mask остаётся bottleneck и доступны
+   сравнимые hardware-counter или disassembly evidence.
 
-## Следующий замер
+Решающий workload не перечисляет members всех разных типов. Он использует
+фиксированные типы с 0/median/p90/p99/max диапазонами (`COMОбъект`,
+`ЗначенияПараметровВыводаГруппировкиТаблицыКомпоновкиДанных`,
+`ПоследовательностьНаборЗаписей.<Имя последовательности>`,
+`ОбъектМетаданных: ПланВидовРасчета`, `БиблиотекаКартинок`) и все девять
+`AvailabilityContext`. Каждый anchor/context образует отдельную measurement-
+строку. Значения разных типов не агрегируются в один score или «средний type».
 
-Нужно построить узкий набор producer/runtime-ветвей, меняющих только member
-availability layout:
+## Воспроизводимость corpus facts AV4
 
-1. сохранить порядок H0 и каноническую форму transcript AV2;
-2. реализовать AoS mask, SoA columns, bitmap и context-owner CSR под отдельными
-   runtime ID;
-3. измерить lookup, borrowed members, compact members и payload по locator;
-4. записать artifact bytes, ready/first lookup, allocations, page faults и,
-   если доступны, perf counters branches/cache misses;
-5. не принимать performance строки кандидата, потерявшего H0-order parity или
-   полный payload transcript.
+Counts выше получены только из frozen provider
+`target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.release.sqlite`
+с SHA-256
+`55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`:
+
+```bash
+sqlite3 -readonly PROVIDER \
+  "SELECT kind, COUNT(*) FROM documents
+   WHERE kind IN ('global_method','global_property') GROUP BY kind;"
+
+sqlite3 -readonly PROVIDER \
+  "WITH contexts(code) AS (VALUES
+     ('thin_client'),('web_client'),('mobile_client'),('server'),
+     ('thick_client'),('external_connection'),
+     ('mobile_application_client'),('mobile_application_server'),
+     ('mobile_standalone_server'))
+   SELECT code, SUM(CASE WHEN d.availability_contexts='' OR
+     instr(char(10)||d.availability_contexts||char(10),
+           char(10)||code||char(10))>0 THEN 1 ELSE 0 END)
+   FROM contexts CROSS JOIN documents d
+   WHERE d.kind IN ('global_method','global_property') GROUP BY code;"
+
+jq '[.types[].member_count] | sort
+    | {count:length,zero:map(select(.==0))|length,
+       median:.[length/2|floor],p90:.[length*90/100|floor],
+       p99:.[length*99/100|floor],max:.[-1],sum:add,avg:(add/length)}' \
+  target/hbk-s83-av3/query-manifest.json
+
+jq '[.types[] | select(.primary=="COMОбъект" or
+      .primary=="ЗначенияПараметровВыводаГруппировкиТаблицыКомпоновкиДанных" or
+      .primary=="ПоследовательностьНаборЗаписей.<Имя последовательности>" or
+      .primary=="ОбъектМетаданных: ПланВидовРасчета" or
+      .primary=="БиблиотекаКартинок")
+      | {logical_id,primary,member_count}]' \
+  target/hbk-s83-av3/query-manifest.json
+```
+
+Здесь `PROVIDER` заменяется указанным точным путём. AV4 manifest до любого
+performance run обязан повторить эти counts, записать logical ID и member count
+каждого anchor и canonical checksum каждой global/type context row. Числовые
+locator являются session-local и поэтому не сохраняются как долговечная
+идентичность; manifest связывает locator с logical ID внутри конкретного run.
 
 ## Уверенность и пробелы
 
 Уверенность средне-высокая для оценок footprint и выбора проверяемых структур,
 средняя — для направления изменения скорости. Первичные источники подтверждают
 bitmap, CSR и columnar/hot-cold layout как подходящие инструменты, но не
-доказывают победителя на этом corpus. Недостающее evidence — контролируемая
-реализация, удаляющая только availability/member indirection при неизменных
-producer, payload arena и lookup table.
+доказывают победителя на этом corpus.
+
+Недостающее evidence — AV4 harness, точный parity global/type scopes и
+последовательные измерения отдельных ветвей. Linux perf counters на текущем
+хосте недоступны из-за `kernel.perf_event_paranoid=4`; это фиксируется как
+evidence gap, а не устраняется изменением sysctl. Обязательными остаются wall
+time, allocation calls/bytes, faults, RSS/PSS, artifact bytes и
+`logical_domain_count`/`physical_entries_examined`/`returned_count`.

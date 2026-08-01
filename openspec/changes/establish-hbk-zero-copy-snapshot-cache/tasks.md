@@ -177,17 +177,24 @@
   долговечные результаты — `spec/acceptance/hbk-s83-av2-evidence.md`. Все
   строки совпали с H0 transcript, `ModuleContextKind` отсутствует, выбор не
   сделан.
-- [ ] 1.22 После промежуточного отсечения A0/I1/P1/R1 выполнить отдельный
-  S83-AV3 для layout горячего пути непосредственных members с фильтром только
-  по `AvailabilityContext`. Использовать R1 как единый причинный носитель, не
-  как выбранного победителя; I1 оставить lookup-reference. В отдельных
-  ветках/worktree проверить owner-contiguous AoS с `u16 availability_word`,
-  SoA locator/mask/kind columns, dense context bitmaps и prefiltered
-  `(context, owner) -> ordered u32 locator row`. До performance доказать точный
-  H0 parity всех девяти контекстов и полного payload, затем последовательно
-  измерить steady borrowed/compact sets, lookup, payload, startup/first lookup,
-  память и размеры hot sections. Не возвращать F0/L1/D1 в активный пул, не
-  ранжировать строки и не выбирать canonical runtime без решения пользователя.
+- [ ] 1.22 После промежуточного отсечения A0/I1/P1/R1 завершить исследование
+  hot layout на корректирующем S83-AV4. Предварительный AV3 и его corpus-wide
+  member pass сохранить только как stress diagnostic. Использовать R1 как
+  единый причинный носитель, не как выбранного победителя; I1 оставить
+  type-lookup reference. В отдельных ветках/worktree проверить causal control
+  `member_start/count` в fixed type head и четыре layout: owner-contiguous AoS
+  с `u16 availability_word`, SoA locator/mask/kind columns, dense context
+  bitmaps и direct ordered CSR rows. Применить их к filtered platform global
+  methods/properties и properties/methods только одного найденного type. Module
+  events исключить из AV4. Каждый fixed type anchor/context измерять отдельной
+  строкой без aggregate score. До
+  performance доказать точный H0 parity всех девяти контекстов, order/owner/
+  kind/availability и полного payload; затем последовательно измерить steady
+  borrowed/compact scopes, end-to-end type lookup + scope, payload,
+  startup/first scope, retained memory, faults и размеры hot sections. Не
+  переносить resolve/precedence/effective selection из `v8-context`, не
+  возвращать F0/L1/D1 в активный пул, не ранжировать строки и не выбирать
+  canonical runtime без решения пользователя.
 - [ ] 1.15 Представить пользователю неранжированные свидетельства, включая
   дополнительные таблицы S83-AV1 и S83-AV2. Только после выбора исхода пользователем
   принять или отклонить формат снапшота, назначение канонической

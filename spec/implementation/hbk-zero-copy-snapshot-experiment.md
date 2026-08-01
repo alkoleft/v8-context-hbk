@@ -1142,6 +1142,177 @@ semantic rules, short-list и основания исключения F0/L1/D1.
 числом и без решения пользователя не разрешает merge, удаление ветвей,
 production dependency или canonical runtime.
 
+#### Корректирующий workload S83-AV4: platform global scope и scope одного типа
+
+После подготовки AV3 downstream-проверка `v8-context` уточнила реальную форму
+нагрузки. Основной потребитель не перечисляет members всех типов. Он формирует
+platform global scope с фильтром по `AvailabilityContext`, выполняет
+точечный lookup platform type и формирует candidate scope только для найденного
+типа. Последующий lookup по материализованному scope, precedence,
+неоднозначность и effective selection остаются ответственностью `v8-context`.
+
+Поэтому полный corpus-wide member pass AV3 переводится в недецизионную
+`all_types_member_stress_diagnostic`. Его предварительные artifacts, parity
+smoke и timings не могут участвовать в сравнении, назначении первого места или
+выборе canonical runtime. Решающий layout workload получает отдельные версии
+`hbk-s83-av4-query-manifest/v1`, `hbk-s83-av4-benchmark/v1`,
+`hbk-s83-av4-parity/v1`, `hbk-s83-av4-summary/v1` и
+`s83-av4-consumer-scope-layout/v1`; H0/C0 и все применимые варианты запускаются
+заново одним frozen harness.
+
+В AV4 термин `type_scope` означает ordered candidate members одного уже
+найденного platform type. Он включает непосредственные `Property` и `Method`,
+сохраняет owner/provenance и фильтруется только по
+`AvailabilityContext`. Употреблявшийся в обсуждении термин
+`inherited_members` не добавляет транзитивный обход других типов и не выбирает
+победившее объявление. `ModuleContextKind`, precedence и `effective_members`
+по-прежнему не входят в storage query. Один общий consumer-side scope seam
+может принимать такой же поток кандидатов от platform и metadata providers, но
+политика resolve не переносится в HBK.
+
+Module events исключены из AV4: они требуют `ModuleContextKind`, который не
+является фильтром availability. Их добавление к module context остаётся
+downstream-операцией и не смешивается с измерением platform global scope.
+
+AV4 проверяет предложенную физическую близость type/members как fixed
+`TypeHot[]` с `member_start:u32/member_count:u32` и соседнюю owner-major
+`MemberHot[]`. Variable-size блоки `[Type][Members...]` запрещены: type locator
+должен сохранять O(1) fixed-stride access, а имена, сигнатуры, type refs,
+availability payload и provenance остаются в cold arenas. Reader до доступа
+проверяет, что каждый диапазон находится внутри `MemberHot`, ranges не
+перекрываются, вместе покрывают owner-major domain, а каждый member range имеет
+правильного owner и H0 order.
+
+Registry AV4:
+
+| Backend | Роль | Изменяемая переменная |
+| --- | --- | --- |
+| `S83-H0` | baseline | SQLite-to-owned startup, owned in-memory steady |
+| `S83-C0` | owned control | cache-to-owned startup, тот же owned steady |
+| `S83-R1` | parent control | R1 без новой прямой ссылки type -> members |
+| `S83-R1-DIRECT` | causal control | только `member_start/count` в type head, без выбора cache-кандидата |
+| `S83-I1` | lookup reference | неизменённый mapped type-name index |
+| `S83-R2-AOS` | layout hypothesis | type range + AoS mask/kind/locator для type/global scope |
+| `S83-R2-SOA` | layout hypothesis | type range + отдельные mask/kind/locator columns для type/global scope |
+| `S83-R2-BITSET` | layout hypothesis | type range + dense context/universal bitmaps для type/global scope |
+| `S83-R2-CSR` | layout hypothesis | direct ordered rows `(context,type)` и `context -> globals` |
+
+`R1-DIRECT` нужен только для причинной оценки предложения
+`member_start/count`; он не является пятым активным cache-кандидатом. Активный
+shortlist остаётся A0/I1/P1/R1. R2-варианты являются производными layout-
+экспериментами R1, не возвращают F0/L1/D1 и не выбирают R1 победителем.
+
+Suite eligibility frozen отдельно: H0/C0/R1/R1-DIRECT/R2-* участвуют во всех
+AV4 operations и resource rows; I1 участвует только в `type_by_name` и fresh
+`entry -> ready -> first type lookup`. I1 не получает global/type-scope,
+composite, payload или retained-set строки, чтобы mapped hash-index lookup не
+смешивался с R1-derived scope layout.
+
+Frozen decision operations:
+
+| Operation | Query | Timed result |
+| --- | --- | --- |
+| `global_scope_borrowed` | один из 9 `AvailabilityContext` | ordered borrowed/global locator stream методов и свойств без materialization |
+| `global_scope_collect` | тот же context | новый compact `Vec<u32>` locator |
+| `type_by_name` | все frozen primary/alias и miss | ordered type locator |
+| `type_scope_borrowed` | prepared locator одного fixed type + context | только ordered members этого типа без materialization |
+| `type_scope_collect` | тот же type/context | новый compact `Vec<u32>` locator |
+| `type_lookup_scope_collect` | type primary/alias/miss + context | end-to-end lookup type, direct range и compact candidate scope |
+| `type_payload` | prepared type locator | полное описание типа |
+| `method_payload` | prepared member + callable locators | полное описание метода, signatures/parameters/type refs |
+| `property_payload` | prepared member locator | полное описание свойства и type refs |
+
+Global scope включает 500 методов и 101 свойство и сохраняет их общий H0
+order. H0 counts для девяти context равны `361, 314, 354, 427, 567, 410, 341,
+308, 312`; exact values и checksum входят в manifest. Type scope использует
+фиксированные anchors распределения member count: `COMОбъект` (0),
+`ЗначенияПараметровВыводаГруппировкиТаблицыКомпоновкиДанных` (median 6),
+`ПоследовательностьНаборЗаписей.<Имя последовательности>` (p90 23),
+`ОбъектМетаданных: ПланВидовРасчета` (p99 62) и `БиблиотекаКартинок` (max
+295). Эти labels описывают позиции в frozen S83 corpus, а не универсальные
+процентили будущих платформ.
+
+Primary steady matrix:
+
+- global borrowed/collect: каждый из девяти context, 1,000 полных повторов,
+  девять warm процессов на backend/context;
+- isolated type scope borrowed/collect: каждый из пяти anchors × девяти context
+  является отдельной строкой, 10,000 повторов одного запроса, девять warm
+  процессов; lookup locator выполняется до timed interval;
+- end-to-end type lookup + scope collect: primary/alias/miss каждого anchor ×
+  девяти context также являются отдельными строками, 1,000 повторов одного
+  запроса, девять warm процессов;
+- type-by-name: полный frozen primary/alias/miss manifest, 100 повторов, девять
+  warm процессов;
+- payload: prepared type/method/property locators, по 100 повторов полного
+  frozen набора, девять warm процессов; lookup/filter не входят в interval.
+
+До каждого записанного warm sample выполняются два незаписанных прогрева.
+Процессы выполняются последовательно round-robin по backend внутри одной
+operation/context/anchor group. `MAD / median > 5%` помечает всю группу noisy;
+повтор разрешён только новым полным run ID. Основными для интерпретации являются
+`global_scope_borrowed/collect`, `type_scope_borrowed/collect` и
+`type_lookup_scope_collect`. Point member lookup остаётся недецизионной
+reference-строкой, потому что основной потребитель будет выполнять его в
+сформированном in-memory scope.
+
+Summary не агрегирует пять anchors в одно среднее, score или общий type-scope
+ранг. Он публикует отдельные `zero`, `median`, `p90`, `p99` и `max` строки с
+отдельными относительными значениями к H0/C0. Batch допускается только как
+неизмеряемый orchestration контейнер процессов и не объединяет timed samples.
+
+Resource matrix отдельно измеряет в свежих процессах `entry -> ready -> first
+global_scope`, `entry -> ready -> first type lookup -> first type scope`, а
+также удержание compact global sets всех девяти context и type sets пяти
+anchors × девяти context. Для каждой границы публикуются allocation
+calls/bytes, minor/major faults, RSS/PSS/private/anonymous/file-backed memory,
+logical len/capacity bytes, artifact bytes и hot-section offsets/bytes/
+alignment/stride. Каждая steady operation также публикует
+`logical_domain_count`, `physical_entries_examined` и `returned_count`.
+Hardware perf counters являются необязательными: на текущем host они
+недоступны при `kernel.perf_event_paranoid=4`, и harness фиксирует этот evidence
+gap без изменения системной политики.
+
+Behavioral parity AV4 до performance доказывает:
+
+- точный ordered global locator/kind/logical-ID stream и universal/explicit
+  availability для каждого context;
+- точный type primary/alias/miss lookup;
+- точный owner, kind (`Property`/`Method`), logical ID, order и availability каждого member пяти
+  anchors для каждого context;
+- полный нормализованный payload type, method/callable и property, включая
+  имена, available-since, signatures, parameters, requiredness, type refs,
+  return types и provenance;
+- одинаковые compact sets и end-to-end type lookup/scope result;
+- bounds/alignment/endian/platform/source/schema/mask/context validation и
+  независимую проверку повреждённых range/bitmap/CSR sections.
+
+AV4 manifest до performance дополнительно проверяется относительно frozen
+provider SHA-256 и обязан хранить 500/101 global kind counts, девять exact
+global context counts, logical ID/member count каждого anchor и canonical
+checksum каждой global/type context row. Числовой locator связывается с logical
+ID только внутри run и не объявляется стабильным между сессиями.
+
+Frozen manifest command после появления AV4 harness:
+
+```bash
+cargo run -p syntax-helper-search --release \
+  --features snapshot-experiment-alloc \
+  --example measure_hbk_s83_av4 -- \
+  manifest sql-owned \
+  target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.release.sqlite \
+  > target/hbk-s83-av4/query-manifest.json
+```
+
+Driver отклоняет manifest, если его собственный SHA-256, provider/HBK identity,
+versions, counts, anchors или row checksums не совпадают с registry run. До
+такого preflight ни одна performance-команда не запускается.
+
+Итог AV4 — одна таблица по операциям, времени, памяти, faults и bytes, плюс
+отдельные относительные колонки к H0 и C0. Поля `rank`, `score`, `winner`,
+`recommendation` и `canonical` запрещены. Даже вариант, обогнавший H0, остаётся
+только измеренной гипотезой до явного решения пользователя.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения

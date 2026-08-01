@@ -102,8 +102,10 @@ type-reference conclusions live in
     версионированные канонические транскрипты содержимого и lookup; повторные
     release-измерения медианы/MAD; AV2 parity упорядоченных compact sets и
     full payload, тесты harness/summarizer и последовательные release-прогоны;
-    AV3 parity всех девяти контекстов, format/alignment/bounds tests и
-    последовательный warm-only hot-layout benchmark;
+    AV3 preliminary parity/format/alignment/bounds smoke; затем заменяющий его
+    в решении AV4 parity global scope и scope одного type для всех девяти
+    контекстов, тесты direct type range/AoS/SoA/bitmap/CSR и последовательный
+    warm-only consumer-scope benchmark;
     независимая проверка безопасности и производительности.
   - Граница завершения:
     обновить устойчивый acceptance baseline всеми измеренными строками и
@@ -212,9 +214,18 @@ type-reference conclusions live in
     артефактом и более сильным producer; L1 исключён как не давший материального
     эффекта page-layout; D1 исключён из-за переноса validation cost в первый
     доступ. Ветки/коммиты/evidence сохраняются. Это shortlist без ranking,
-    eligibility, merge или выбора канонического варианта. Следующий разрешённый
-    шаг — исследовать новые member/availability layout-гипотезы поверх активного
-    пула, включая bit mask/bitmap и прямые context/owner ranges.
+    eligibility, merge или выбора канонического варианта. Предварительный AV3
+    реализовал R1-derived AoS/SoA/bitmap/CSR artifacts и прошёл локальные smoke,
+    но его corpus-wide enumeration members всех типов исключена из решающей
+    нагрузки после сверки с `v8-context`. Следующий разрешённый шаг — S83-AV4:
+    filtered platform global scope, type lookup и filtered properties/methods
+    только одного найденного type. Module events исключены; каждый fixed type
+    anchor/context публикуется отдельно. AV4 проверяет `member_start/count` в
+    fixed type head,
+    AoS/SoA masks, dense bitmaps и direct CSR rows; corpus-wide AV3 остаётся
+    stress-only. Resolve/precedence/effective selection остаются во
+    `v8-context`; ranking и выбор canonical варианта запрещены до решения
+    пользователя.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

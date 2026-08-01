@@ -405,6 +405,29 @@ access, startup/first access, allocation calls/bytes, live/peak retained result
 bytes, page faults и process-boundary RSS/PSS. AV2 не меняет форматы, публичный
 API, frozen gates, ранг или выбор.
 
+Предварительный AV3 изолирует AoS/SoA mask, dense bitmap и
+`(context, owner)` CSR поверх R1, но его corpus-wide обход members всех типов
+не соответствует решающей нагрузке `v8-context`. Поэтому AV3 сохраняется как
+stress-only evidence, а отдельная ревизия S83-AV4 заново запускает H0/C0 и
+применимые варианты на трёх consumer operations: platform global
+methods/properties с фильтром по `AvailabilityContext`, point lookup одного
+platform type и filtered properties/methods только этого найденного типа.
+
+AV4 проверяет co-location как fixed `TypeHot` с
+`member_start/member_count` и соседний owner-major `MemberHot`; cold payload
+остаётся в отдельных arenas. Direct range получает отдельный causal control,
+а AoS/SoA/bitmap/CSR — отдельные ветки. `inherited_members` в границах этого
+эксперимента означает provider-owned ordered candidates одного типа, а не
+транзитивный обход других типов или effective selection. Lookup/resolve по
+сформированному scope, precedence и неоднозначность остаются в `v8-context`.
+I1 остаётся reference для type-name lookup, а A0/I1/P1/R1 — неизменённым
+shortlist без ranking. Полный AV4 registry, anchors, iterations, parity и
+resource matrix принадлежат
+`spec/implementation/hbk-zero-copy-snapshot-experiment.md`.
+Module events не входят в AV4: они зависят от `ModuleContextKind` и добавляются
+downstream. Пять frozen type anchors публикуются раздельными строками и не
+агрегируются в общий score.
+
 Report/parity/summary используют строгие versioned tagged schema. Compact
 `len/capacity/bytes` допустимы только для materialization; другие operations
 не имитируют отсутствующую retained result memory. Frozen harness проверяет
