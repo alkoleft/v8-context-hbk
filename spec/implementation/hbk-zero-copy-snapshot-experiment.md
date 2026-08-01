@@ -976,6 +976,30 @@ AV2 является дополнительным описательным evide
 разрешает merge, новую production-зависимость или назначение канонического
 runtime-артефакта.
 
+#### Зафиксированный измеренный проход S83-AV2
+
+Проход выполнен на harness-коммите
+`80ec7bbaf62cb2fdbce98908d48891f3064413cc` и точных candidate-коммитах F0
+`86628dd`, A0 `bc1c950`, L1 `08190c9`, I1 `950fbe9`, D1 `1e9194d`, P1
+`e49de61`, R1 `477c6af`. Манифест имеет SHA-256
+`37588404dbf3e6d0973968f19d38696bc506072b9342eca09fa68b6dc6cc061f`.
+
+Все 81/81 parity-комбинации, 9/9 smoke-записей и 5,508/5,508
+performance-записей прошли. Raw SHA-256 —
+`c733603e373a82745f6a10a1a661925b3c7335dbf1868bf91f6e91d86c3581de`,
+JSON summary SHA-256 —
+`479c33e79cd9f06f2a0bf3894581180825ef6e77e357f9ce77ba366245453ce1`.
+
+Ordered compact sets и полный canonical payload всех строк точно совпали с H0
+во всех девяти `AvailabilityContext`. Основная steady filtered-members
+операция всех измеренных zero-copy-кандидатов медленнее H0/C0; I1 отдельно
+сравним с H0 на части point lookup, но этот результат не переносится на
+filtered enumeration. Полные counts, median/MAD/отношения, startup, payload,
+аллокации и memory samples зафиксированы в
+[свидетельствах S83-AV2](../acceptance/hbk-s83-av2-evidence.md). Результат имеет
+`ranked = false`, `selection = pending-user-decision`; он не изменяет frozen
+gates и не назначает runtime-реализацию.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения

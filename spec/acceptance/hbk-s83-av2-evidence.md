@@ -194,9 +194,10 @@ A0 и R1 подтверждают borrowed payload без steady allocation, н�
 
 ## Startup и память формы A
 
-`entry_to_ready` ниже — медиана по всем operation processes строки. Artifact
-MiB для H0 — размер SQLite; для C0 — SQLite + current cache; для кандидатов —
-единственный runtime snapshot.
+`entry_to_ready` ниже — медиана 34 operation/context-медиан для строки; каждая
+из этих медиан построена по девяти отдельным процессам. Artifact MiB для H0 —
+размер SQLite; для C0 — SQLite + current cache; для кандидатов — единственный
+runtime snapshot.
 
 | ID | Artifact MiB | Ready warm, ms | Ready cold-best-effort, ms |
 | --- | ---: | ---: | ---: |
@@ -245,6 +246,11 @@ RSS/PSS/private включают загруженный snapshot, prepared manif
 - F0/L1/I1/D1/P1/R1 имеют близкий профиль основной enumeration; изменение
   page layout, индекса, момента проверки или writer само по себе не устраняет
   CPU-стоимость прохода member/availability.
+- Во всех borrowed-pass отсутствуют steady allocations, поэтому наблюдаемый
+  проигрыш не является heap-эффектом. Аудит горячего пути показывает прямые
+  borrowed slices members/availability у H0 и дополнительные view/CSR/archive
+  indirection у кандидатов. Какая именно часть indirection доминирует, этим
+  прогоном не изолирована и остаётся гипотезой для следующего эксперимента.
 - A0 предоставляет archived views и отсутствие payload allocation, но имеет
   отдельную высокую стоимость первого lookup и самый высокий CPU time основной
   enumeration среди измеренных строк.
