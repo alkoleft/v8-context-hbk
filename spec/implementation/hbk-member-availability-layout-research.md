@@ -189,7 +189,11 @@ SQLite VM в каждом запросе, а очень сильный direct ow
    fixed head плюс диапазон, а не как variable-size interleaved block.
 
    В S83 распределение непосредственных members на тип: 1,749 типов, 98 типов
-   без members, median 6, p90 23, p99 62, maximum 295, average 10.29. Поэтому
+   без members, median 6, p90 23, p99 62, maximum 295, average 10.29. Эти
+   значения относятся к исходному непосредственному member domain, по которому
+   выбраны anchors. У p90-anchor три из 23 записей имеют kind `Event`, поэтому
+   AV4 scope после обязательного ограничения до `Property`/`Method` содержит
+   20 записей; именно это число хранит AV4 manifest и проверяет parity. Поэтому
    отдельный binary search owner-range особенно заметен на обычных коротких
    диапазонах. AV4 проверяет следующий relocatable layout:
 
