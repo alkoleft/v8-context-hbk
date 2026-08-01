@@ -90,12 +90,20 @@ type-reference conclusions live in
        materialization компактного набора единых `Av2MemberLocator(u32)` и чтение
        полного payload типа/метода/свойства; основной показатель — steady
        iteration/materialization, без новых gates или выбора кандидата.
+    9. после пользовательского short-list A0/I1/P1/R1 выполнить S83-AV3:
+       на едином R1-base причинно сравнить AoS availability word, SoA hot
+       columns, dense bitsets и prefiltered context-owner rows; сохранить I1
+       как lookup-reference, но не смешивать archive/producer/layout оси;
+       выполнить новый H0 parity/performance run без возврата исключённых
+       F0/L1/D1 и без выбора победителя.
   - Проверка:
     строгая валидация OpenSpec; format/check/test для зафиксированной базы и
     каждой ветви кандидата; проверка точных корпуса и checksum;
     версионированные канонические транскрипты содержимого и lookup; повторные
     release-измерения медианы/MAD; AV2 parity упорядоченных compact sets и
     full payload, тесты harness/summarizer и последовательные release-прогоны;
+    AV3 parity всех девяти контекстов, format/alignment/bounds tests и
+    последовательный warm-only hot-layout benchmark;
     независимая проверка безопасности и производительности.
   - Граница завершения:
     обновить устойчивый acceptance baseline всеми измеренными строками и

@@ -1021,6 +1021,127 @@ layout.
 shortlist не даёт eligibility, не назначает первое место и не разрешает merge
 или production-реализацию.
 
+#### Зафиксированный следующий раунд S83-AV3 после отсечения
+
+S83-AV3 проверяет не новый cache-format целиком, а одну установленную причину
+AV2-отрыва: layout горячего пути непосредственных members и их
+`AvailabilityContext`. Исследовательские основания и оценки footprint
+зафиксированы в
+[исследовании member availability layout](hbk-member-availability-layout-research.md).
+
+H0 называется SQL baseline по происхождению данных и startup, но его steady
+операции выполняются над уже построенным владеющим Rust snapshot с direct
+slice/CSR-доступом без SQLite-запросов. Поэтому целевая гипотеза AV3 должна
+устранить per-member generic `availability_by_fact` lookup и строковое
+сравнение либо заранее сформировать отфильтрованный row; одного mmap
+недостаточно.
+
+Новые варианты происходят от точного R1-коммита
+`477c6af0ae844ec13517c7a3f9bb02b8a1351a1c`. R1 выбран общим причинным
+носителем, потому что уже изолирует fixed records, nested arenas и borrowed
+payload; это не ранг, eligibility или выбор будущего runtime. A0 и P1 остаются
+активными в общем short-list и в AV2 evidence, но не повторяются в hot-layout
+матрице. I1 входит только как неизменённый lookup-reference и не получает
+member-set/payload/retained-set строк.
+
+Frozen registry до реализации:
+
+| Backend | Роль | Изменяемая переменная |
+| --- | --- | --- |
+| `S83-H0` | baseline | SQLite-to-owned startup, owned in-memory steady |
+| `S83-C0` | owned control | cache-to-owned startup, тот же owned steady |
+| `S83-R1` | parent control | неизменённый R1 hot path |
+| `S83-I1` | lookup reference | неизменённый I1 hash lookup |
+| `S83-R2-AOS` | candidate | owner-contiguous hot record: locator, kind, `u16 availability_word` |
+| `S83-R2-SOA` | candidate | отдельные owner-contiguous locator/mask/kind columns |
+| `S83-R2-BITSET` | candidate | dense included-context bitmaps в owner range плюс universal bitmap |
+| `S83-R2-CSR` | candidate | direct ordered locator row для каждой пары `(context, owner)` |
+
+Suite eligibility также frozen до реализации:
+
+| Backend | Parity | Member set | Lookup/first lookup | Payload | Retained sets |
+| --- | --- | --- | --- | --- | --- |
+| H0/C0/R1/R2-* | да | да | да | да | да |
+| I1 | да | нет | да | нет | нет |
+
+AV3 не повторяет универсальный AV2 adapter на естественно доступных полях:
+H0/C0 фильтруют owner slice по inline
+`HbkTypeMember.availability_contexts`, R1 parent control — по
+`R1TypeMemberHead.availability_contexts`, а R2 — по своей заявленной hot
+структуре. Эта разница является именно сравниваемым data layout. Каждый path
+получает один owner range и обязан вернуть тот же ordered locator stream;
+generic `availability_by_fact` остаётся вне timed member-set loop.
+
+`availability_word` имеет context bits `0..8` в точном порядке frozen registry
+AV2 и бит `15` `HAS_EXPLICIT_DECLARATION`. Universal выставляет все девять
+context bits и не выставляет флаг; explicit выставляет флаг и непустой набор
+известных context bits. Producer отклоняет неизвестный explicit-код. Это даёт
+branchless hot inclusion test и сохраняет различие universal/explicit-all.
+`ModuleContextKind` отсутствует. Полный исходный availability payload и его
+порядок сохраняются отдельно от hot word.
+
+AV3 фиксирует версии `hbk-s83-av3-query-manifest/v1`,
+`hbk-s83-av3-benchmark/v1`, `hbk-s83-av3-parity/v1`,
+`hbk-s83-av3-summary/v1` и workload
+`s83-av3-member-availability-layout/v1`. Registry запрещает поля
+`rank`, `score`, `winner`, `recommendation` и любое назначение canonical
+backend.
+
+Performance принимается только после нового parity run. H0 заново формирует
+канонический transcript всех девяти контекстов и должен совпасть с frozen AV2
+hashes; C0, R1, I1 и каждый R2-вариант побайтово сравниваются с новым H0.
+Transcript сохраняет H0 order, logical member/type/callable IDs,
+universal/explicit distinction, primary/alias/miss lookup и полный payload
+типа, метода, свойства и member каждого присутствующего kind. Отсутствие
+`EnumValue` в текущем S83 corpus остаётся явно указанным coverage gap. До
+semantic parity дополнительно проверяются bounds, section alignment, endian,
+platform version, mask round-trip, неизвестный context и повреждённые offsets.
+
+Frozen performance-набор:
+
+- `member_set_suite`: для H0/C0/R1/R2-* все девять `AvailabilityContext`, отдельно borrowed
+  iteration и новый `Vec<u32>` compact materialization, 250 полных
+  corpus-wide проходов, девять warm процессов на backend/context; в timed loop
+  остаются получение iterator/view, одинаковый checksum возвращённых locator и
+  `Vec::push` только для compact-варианта;
+- `lookup_suite`: type-by-name и method-by-known-owner/name/kind с раздельными
+  primary/alias/miss counts, 100 corpus-wide проходов и девять warm процессов;
+- `payload_suite`: для H0/C0/R1/R2-* lookup/filter исключены из интервала; по prepared locators
+  измеряются полный type/method/property payload по 100 проходов и filtered
+  member payload по 50 проходов для low/mid/high selectivity
+  `web_client`/`thin_client`/`thick_client`, по девять warm процессов;
+- `first_type_resource` и `first_method_resource`: свежий процесс,
+  `entry -> ready -> exactly one lookup`, по пять процессов; записываются
+  entry-to-ready, first operation, faults, RSS/PSS/private/anonymous/file-backed
+  memory и artifact bytes;
+- `retained_sets_resource`: для H0/C0/R1/R2-* одновременно удерживаются compact sets всех девяти
+  контекстов, по пять процессов; записываются ready/hot/retained/drop memory,
+  logical/capacity bytes;
+- недецизионный `filter_only_diagnostic` без transcript и checksum измеряет
+  только physical entries examined, returned locators, cycles/instructions,
+  branches/branch-misses и cache references/misses, если hardware counters
+  доступны. Его строки не заменяют основную матрицу и не участвуют в решении.
+
+Все performance-процессы выполняются последовательно, round-robin по backend
+внутри sample/context, после двух незаписанных прогревов. Зарегистрированные
+образцы не удаляются. `MAD / median > 5%` помечает всю соответствующую строку
+как noisy; повтор возможен только новым полным run ID, не дописыванием удобных
+образцов. Cold-best-effort steady не входит в AV3, потому что это не true cold
+boot; startup/first-use остаются отдельными свежими процессами.
+
+Каждый report публикует точные source/candidate/harness commits, argv, stderr
+hash, host/kernel/Rust identity, artifact bytes/SHA-256, а также offset, bytes,
+alignment, element stride и logical role каждой hot section. Для BITSET/CSR
+раздельно публикуются `logical_domain_count`, `physical_entries_examined` и
+`returned_count`. Старые AV2 timings, parity новых layout и resource rows не
+переиспользуются; из AV2 наследуются только corpus identity, девять контекстов,
+semantic rules, short-list и основания исключения F0/L1/D1.
+
+Результат AV3 — единая неранжированная таблица и
+`selection = pending-user-decision`. Он не меняет исходные frozen gates задним
+числом и без решения пользователя не разрешает merge, удаление ветвей,
+production dependency или canonical runtime.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения
