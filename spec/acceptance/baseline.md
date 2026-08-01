@@ -2955,6 +2955,28 @@ lookup/enumeration, при этом быстрее H0 на части payload-о
 `target/hbk-s83-av2/run-80ec7bb-9x/`. Ни один кандидат не выбран, не
 рекомендован и не стал каноническим.
 
+### Промежуточное отсечение кандидатов после S83-AV2
+
+После рассмотрения S83, S83-AV1 и S83-AV2 пользователь сократил активный пул
+до четырёх вариантов: `A0`, `I1`, `P1`, `R1`. H0 остаётся SQL baseline, C0 —
+control и не входит в shortlist.
+
+- `A0` сохраняет независимую archive-гипотезу, почти baseline-уровень AV1 и
+  borrowed payload без steady allocation, при явно сохранённых слабых
+  результатах AV2 member enumeration/first lookup;
+- `I1` сохраняет единственный измеренный выигрыш point lookup;
+- `P1` сохраняет flat runtime-артефакт F0 с более эффективным producer;
+- `R1` сохраняет borrowed fixed-record/nested-arena представление и лучший
+  payload-профиль среди custom mapped-вариантов.
+
+`F0` переведён в reference-only, `L1` исключён как не давший материального
+page-layout эффекта, `D1` исключён из-за переноса validation cost в первое
+использование. Ветки, точные коммиты и evidence сохраняются; физического
+удаления и merge нет. Состояние —
+`shortlist-four-pending-final-decision`: это не ranking, не eligibility и не
+назначение канонического runtime. Все четыре активных кандидата по-прежнему не
+проходят полный набор frozen numerical gates.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

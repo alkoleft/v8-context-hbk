@@ -199,6 +199,14 @@ type-reference conclusions live in
     медленнее H0 SQL baseline; I1 отдельно показывает улучшение части точечных
     lookup, но это не является выбором. T183 остаётся открытой до решения
     пользователя; ни один вариант не выбран и не назначен каноническим.
+    После представления AV2 пользователь сократил активный пул до A0/I1/P1/R1.
+    F0 остаётся reference-only и вытеснен из активного пула P1 с тем же runtime-
+    артефактом и более сильным producer; L1 исключён как не давший материального
+    эффекта page-layout; D1 исключён из-за переноса validation cost в первый
+    доступ. Ветки/коммиты/evidence сохраняются. Это shortlist без ranking,
+    eligibility, merge или выбора канонического варианта. Следующий разрешённый
+    шаг — исследовать новые member/availability layout-гипотезы поверх активного
+    пула, включая bit mask/bitmap и прямые context/owner ranges.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

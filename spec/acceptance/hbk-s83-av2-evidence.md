@@ -259,7 +259,26 @@ RSS/PSS/private включают загруженный snapshot, prepared manif
   member/availability представления либо явное пользовательское решение о
   допустимом компромиссе startup/memory против lookup/enumeration CPU.
 
-`selection = pending-user-decision`. Ни F0, ни A0, ни L1, ни I1, ни D1, ни P1,
-ни R1 не назначены первым, рекомендованным или каноническим вариантом. Основной
-owned-путь остаётся каноническим до явного решения пользователя и отдельного
-долговечного архитектурного решения.
+## Пользовательское отсечение после AV2
+
+После представления полной таблицы пользователь сократил активный пул до
+четырёх недублирующих направлений. Это shortlist, а не ranking и не выбор
+победителя:
+
+| ID | Состояние | Измеренное основание |
+| --- | --- | --- |
+| `S83-A0` | active shortlist | Единственный archive-вариант; AV1 steady enumeration `1.045–1.065×` H0, borrowed payload без steady allocation, но худший AV2 member pass и дорогой первый AV2 lookup остаются явными рисками. |
+| `S83-I1` | active shortlist | Единственный вариант с измеренным point-lookup около/лучше H0; цена — больший артефакт, startup, PSS и producer. |
+| `S83-P1` | active shortlist | Представитель flat/CSR runtime-формата F0 с более сильным producer: меньше total time, peak RSS и allocated bytes при том же runtime-артефакте. |
+| `S83-R1` | active shortlist | Borrowed fixed records/nested arenas, отсутствие steady payload allocations и лучший payload CPU среди custom mapped-вариантов. |
+| `S83-F0` | reference only | Runtime-представление сохранено через P1; отдельное активное направление избыточно. |
+| `S83-L1` | excluded | Перестановка секций не дала материального улучшения enumeration, payload, startup или producer относительно flat-family. |
+| `S83-D1` | excluded | Ускорение формального ready переносит проверку в первое использование: основной S83 first lookup `11.8–12.8 ms`, AV1 first enumeration `10.2–11.2 ms`. |
+
+`selection = shortlist-four-pending-final-decision`,
+`active_candidates = [A0, I1, P1, R1]`,
+`excluded_candidates = [F0, L1, D1]`. F0 остаётся измеренной reference-строкой;
+ветки, коммиты и evidence всех вариантов сохраняются. Ни один кандидат не
+назначен первым, рекомендованным или каноническим. Все кандидаты по-прежнему не
+проходят весь набор frozen numerical gates, поэтому основной owned-путь
+остаётся каноническим.

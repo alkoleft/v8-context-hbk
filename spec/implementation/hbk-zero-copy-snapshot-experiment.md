@@ -1000,6 +1000,27 @@ filtered enumeration. Полные counts, median/MAD/отношения, startu
 `ranked = false`, `selection = pending-user-decision`; он не изменяет frozen
 gates и не назначает runtime-реализацию.
 
+#### Промежуточное пользовательское отсечение после S83-AV2
+
+Активный пул следующего исследовательского раунда сокращён до `A0`, `I1`, `P1`
+и `R1`. Это четыре независимых полезных сигнала: archive/borrowed payload,
+mapped hash lookup, прямой producer того же flat runtime-артефакта и borrowed
+fixed-record/nested-arena layout.
+
+`F0` переведён в reference-only, поскольку `P1` производит побайтно тот же
+runtime-артефакт с меньшими total time, peak RSS и producer allocated bytes.
+`L1` исключён, поскольку перестановка секций не дала материального выигрыша на
+AV1/AV2 и общем S83 workload. `D1` исключён, поскольку lazy validation улучшает
+границу ready за счёт first-use cliff, не улучшая steady member/availability
+layout.
+
+Состояние решения:
+`selection = shortlist-four-pending-final-decision`,
+`active_candidates = [A0, I1, P1, R1]`,
+`excluded_candidates = [F0, L1, D1]`. Измеренные ветки и evidence сохраняются;
+shortlist не даёт eligibility, не назначает первое место и не разрешает merge
+или production-реализацию.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения
