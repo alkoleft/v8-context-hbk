@@ -297,6 +297,25 @@ type-reference conclusions live in
     `acceptance/hbk-s83-av5-evidence.md`. Пункт OpenSpec 1.23 завершён; 1.15 и
     T183 остаются открытыми до пользовательского решения. Shortlist,
     canonical runtime и production path не изменены.
+    Отдельный S83-AV6 завершён на измерительном harness commit
+    `2298c74d7151fc54047b9c3567168dc71d7782ab` с итоговой summary-фиксацией
+    `810f674`: 12/12 parity-записей, 1 296/1 296 timing rows, 420/420
+    resource rows, 432/432 allocation rows и 252/252 allocation-resource rows.
+    Raw SHA-256 —
+    `9396b912f933b2f9bfd1b6b411ae72cf5c5c681f17c5266adbde2f99eaf2ea40`,
+    resource SHA-256 —
+    `870e035b5b1c816c93d48efc1116d7c947f61823b72e45d27abc39ad420cecfe`,
+    summary SHA-256 —
+    `54f39c79fb528276c3c1f06257d1c3a9052948f63ec23b4585e2e9ed9293e356`.
+    Неизменённый X1 подтвердил global scope `0.22-0.24x` H0. X1-PROJECTED
+    быстрее H0 на global scope (`0.50-0.67x`), но медленнее X1
+    (`2.08-2.98x`), а на непустых type scopes обычно проигрывает из-за
+    merge/intersection нескольких projection rows. Сохраняемые projections
+    подтвердили пользу только для селективных `ALL` с ранним пустым
+    пересечением. Полная русская неранжированная таблица находится в
+    `acceptance/hbk-s83-av6-evidence.md`. Пункт OpenSpec 1.24 завершён; 1.15 и
+    T183 остаются открытыми до пользовательского решения. Backend, canonical
+    runtime и production path не изменены.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

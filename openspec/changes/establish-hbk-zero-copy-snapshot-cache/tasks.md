@@ -244,7 +244,7 @@
   против H0 `760.207 ms` / `92,787 KiB`. Полная русская неранжированная
   таблица: `spec/acceptance/hbk-s83-av5-evidence.md`. Никакой backend не выбран;
   1.15 остаётся открытым.
-- [ ] 1.24 Выполнить отдельный S83-AV6 для составной фильтрации
+- [x] 1.24 Выполнить отдельный S83-AV6 для составной фильтрации
   `AvailabilityContext`: сравнить H0, неизменённый X1 и X1-PROJECTED на двух
   зафиксированных наборах в режимах `ANY`/`ALL`. X1-PROJECTED сохраняет ровно
   девять базовых ordered projections для global scope и members всех platform
@@ -258,6 +258,12 @@
   с counters-disabled `System` (9 steady/5 resource samples), allocation
   profile — отдельным counters-enabled binary (3 steady/3 resource samples),
   не используя его latency/RSS/PSS как timing evidence.
+  Завершено: exact parity `12/12`, timing `1 296/1 296`, resource `420/420`,
+  allocation steady `432/432`, allocation resource `252/252`; полная таблица в
+  `spec/acceptance/hbk-s83-av6-evidence.md`. X1 подтвердил global
+  `0.22-0.24x` H0; X1-PROJECTED быстрее H0 на global (`0.50-0.67x`), но
+  медленнее X1 (`2.08-2.98x`) и обычно проигрывает на непустых type scopes.
+  Backend не выбран.
 - [ ] 1.15 Представить пользователю неранжированные свидетельства, включая
   дополнительные таблицы S83-AV1 и S83-AV2. Только после выбора исхода пользователем
   принять или отклонить формат снапшота, назначение канонической

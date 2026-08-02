@@ -1585,6 +1585,16 @@ Type-name lookup и полный payload не зависят от `ANY`/`ALL`, �
 ranking, winner/recommendation; выбор backend и статус 1.15 остаются за
 пользователем.
 
+Финальный S83-AV6 прошёл exact parity `12/12`, timing `1 296/1 296`, resource
+`420/420`, allocation steady `432/432` и allocation resource `252/252`.
+Неизменённый X1 сохранил global scope `0.22-0.24x` H0; X1-PROJECTED показал
+global scope `0.50-0.67x` H0, но `2.08-2.98x` медленнее X1. Для непустых type
+scope сохраняемые projections обычно медленнее из-за merge/intersection
+нескольких ordered rows, а полезный сигнал ограничен селективным `ALL` с
+ранним пустым пересечением. Encoded projected section — `412 317` bytes.
+Полное свидетельство: `spec/acceptance/hbk-s83-av6-evidence.md`. AV6 не меняет
+selection status: backend не выбран, 1.15 остаётся открытым.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения

@@ -47,6 +47,9 @@ Otherwise reconcile the specification files before implementing.
 - `acceptance/hbk-s83-av5-evidence.md`: отдельный неранжированный проход T183 для
   составной гипотезы X1: global SoA, специализированный type-name hash,
   owner-contiguous member range, payload, startup и resource evidence.
+- `acceptance/hbk-s83-av6-evidence.md`: отдельный неранжированный проход T183 для
+  составной фильтрации `AvailabilityContext` в режимах `ANY`/`ALL`, включая
+  H0, неизменённый X1 и X1-PROJECTED с сохраняемыми базовыми проекциями.
 - `implementation/syntax-helper-query-cli.md`: draft architecture for the separate Syntax
   Assistant query/search CLI and its index/relationship model.
 - `implementation/syntax-bsl-provider-plan.md`: ADR-0006 gap analysis, BSL/code-analysis use-case

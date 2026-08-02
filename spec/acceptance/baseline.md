@@ -3041,6 +3041,29 @@ bytes. Полная русская неранжированная сводка �
 пункт 1.23, но не выбирает backend, не меняет shortlist и не закрывает
 пользовательское решение 1.15/T183.
 
+### Дополнительные свидетельства S83-AV6
+
+Отдельный workload S83-AV6 для составной фильтрации `AvailabilityContext`
+завершён: 12/12 parity-записей, 1,296/1,296 timing rows, 420/420 resource
+rows, 432/432 allocation rows и 252/252 allocation-resource rows успешны. Raw
+SHA-256 —
+`9396b912f933b2f9bfd1b6b411ae72cf5c5c681f17c5266adbde2f99eaf2ea40`,
+resource SHA-256 —
+`870e035b5b1c816c93d48efc1116d7c947f61823b72e45d27abc39ad420cecfe`,
+summary SHA-256 —
+`54f39c79fb528276c3c1f06257d1c3a9052948f63ec23b4585e2e9ed9293e356`.
+
+Для global scope неизменённый X1 подтверждает `0.22-0.24x` H0, а
+X1-PROJECTED с сохраняемыми базовыми проекциями даёт `0.50-0.67x` H0, но
+остаётся `2.08-2.98x` медленнее X1. Для непустых type scopes projections
+обычно проигрывают из-за runtime merge/intersection нескольких поконтекстных
+rows; полезный сигнал найден только для селективного `ALL` с ранним пустым
+пересечением. X1-PROJECTED добавляет `412,317` bytes encoded projected section
+и около `308 KiB` PSS относительно X1. Полная русская неранжированная сводка
+находится в [свидетельствах S83-AV6](hbk-s83-av6-evidence.md). AV6 закрывает
+измерительный пункт 1.24, но не выбирает backend, не меняет canonical runtime
+и не закрывает пользовательское решение 1.15/T183.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

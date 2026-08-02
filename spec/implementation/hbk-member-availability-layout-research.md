@@ -423,6 +423,31 @@ baseline, X1 применяет `ANY`/`ALL` к одному availability-word п
 Проверка охватывает все типы в артефакте, но timed type scope — только пять
 consumer anchors. Она не хранит готовые комбинации и не выбирает победителя.
 
+## Результат S83-AV6
+
+S83-AV6 завершён без выбора backend. X1-PROJECTED хранит все девять базовых
+поконтекстных projection rows для global scope и immediate members всех
+`1 749` platform types; encoded projected section занимает `412 317` bytes,
+а файл больше X1 на `412 421` bytes.
+
+Подтверждена только часть гипотезы: для global scope X1-PROJECTED быстрее H0
+(`0.50-0.67x`), но медленнее неизменённого X1 (`2.08-2.98x`). Для непустых
+type scopes базовые projections обычно хуже и H0, и X1, потому что owner range
+короткий, а `ANY`/`ALL` runtime merge/intersection просматривает дублирующиеся
+строки universal/многоконтекстных фактов. Полезный сигнал найден в селективном
+`ALL`, где intersection быстро обнаруживает пустой результат: `p90/p99` для
+`thin_web_thick_client all` потребляют `0` projected input entries и дают
+`0.18-0.44x` X1.
+
+Вывод для дальнейших гипотез: сохраняемые projections имеют смысл
+рассматривать как специализированные структуры для редких селективных
+пересечений или для уже готовых consumer sets, но не как общий replacement для
+owner-contiguous members одного типа. Для основной нагрузки `v8-context`
+сильным компонентным сигналом остаётся X1 availability-word scan для global
+scope и близкое хранение type + members.
+
+Полная таблица: `spec/acceptance/hbk-s83-av6-evidence.md`.
+
 ## Воспроизводимость corpus facts AV4
 
 Финальный AV4 использует только provenance-rich frozen provider
