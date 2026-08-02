@@ -1298,6 +1298,20 @@ Behavioral parity AV4 до performance доказывает:
 - bounds/alignment/endian/platform/source/schema/mask/context validation и
   независимую проверку повреждённых range/bitmap/CSR sections.
 
+Предварительная проверка frozen schema16 provider выявила, что
+`document_metadata.source_*` заполнены только для query-family фактов,
+хотя таблицы уже содержат нужные nullable колонки. До заморозки
+AV4 provider поток `syntax index` обязан сохранить уже имеющиеся в
+provenance-rich extraction model `source_hbk_path`, `source_locale`, optional
+`source_toc_path`, `source_html_path` и `source_page_title` для всех
+HBK-derived records. После этого provider пересобирается из того же
+HBK/extraction-11, а новые bytes/SHA-256 становятся AV4 identity.
+Это обогащение содержимого уже существующих колонок, а не
+изменение provider table layout или extraction schema. Прежний
+provider SHA не допускается в AV4 performance/parity, а новый provider до
+запуска кандидатов проходит exact logical-content проверку без
+provenance относительно прежнего frozen provider.
+
 AV4 manifest до performance дополнительно проверяется относительно frozen
 provider SHA-256 и обязан хранить 500/101 global kind counts, девять exact
 global context counts, logical ID/member count каждого anchor и canonical

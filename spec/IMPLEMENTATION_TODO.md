@@ -225,7 +225,13 @@ type-reference conclusions live in
     AoS/SoA masks, dense bitmaps и direct CSR rows; corpus-wide AV3 остаётся
     stress-only. Resolve/precedence/effective selection остаются во
     `v8-context`; ranking и выбор canonical варианта запрещены до решения
-    пользователя.
+    пользователя. При запуске AV4 выявлено, что прежний frozen
+    schema16 provider не заполняет уже существующие
+    `document_metadata.source_*` для type/member/callable. Первый
+    активный AV4 step — сохранить provenance в `syntax index`,
+    пересобрать provider из того же HBK/extraction-11, доказать
+    exact logical-content parity без provenance со старым provider и
+    заморозить новый bytes/SHA до повторной проверки H_AV4.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their
