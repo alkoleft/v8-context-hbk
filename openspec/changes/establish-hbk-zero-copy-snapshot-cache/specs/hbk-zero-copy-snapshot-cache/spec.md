@@ -151,6 +151,38 @@ memory-mapped кандидат и архивный кандидат с пров�
 - **AND** AV4 SHALL NOT ранжировать варианты, выбирать canonical runtime или
   объединять ветвь без явного решения пользователя.
 
+#### Scenario: Составная гипотеза проверяется отдельным workload
+
+- **WHEN** после AV4 выполняется S83-AV5 для проверки составного кандидата
+  `S83-X1`
+- **THEN** он SHALL использовать отдельные versioned query-manifest,
+  benchmark, resource, raw, resource-raw, parity, lookup-parity,
+  preflight-smoke, summary и orchestration schema и отдельный results
+  namespace, не изменяя
+  замороженные AV4 `/v2` harness, артефакты или результаты
+- **AND** `S83-X1` SHALL сочетать SoA locator/mask/kind columns только для
+  filtered global scope, специализированный отображённый в память
+  open-address hash только для platform-type-by-name и простой
+  `member_start/member_count` плюс owner-contiguous AoS
+  `{locator:u32, availability_word:u16, kind:u8, reserved:u8}` только для
+  непосредственных members одного типа
+- **AND** cold payload SHALL оставаться отдельным R1-derived представлением и
+  SHALL измеряться тем же отдельным full-payload workload без скрытого lookup
+  или фильтрации внутри timed interval
+- **AND** H0/C0, I1 lookup reference, R2-AOS member-layout reference,
+  R2-SOA global-layout reference и `S83-X1` SHALL быть повторно запущены одним
+  frozen AV5 harness на точных HBK/provider/anchors/contexts AV4
+- **AND** до performance `S83-X1` SHALL пройти точный H0 parity порядка,
+  owner, kind, availability, provenance, primary/alias/miss lookup с пустым
+  miss scope и полного payload type/method/property
+- **AND** результаты SHALL отдельно показывать steady global scope, type
+  lookup, type scope каждого anchor/context, end-to-end lookup + scope,
+  full payload, startup/first operations, allocations, faults, RSS/PSS,
+  artifact bytes и bytes каждого hot/hash section
+- **AND** AV5 SHALL NOT вводить aggregate score, rank, winner,
+  recommendation/canonical fields, изменять shortlist, выбирать production-
+  формат или объединять ветвь без отдельного решения пользователя.
+
 #### Scenario: Сравниваются гипотезы организации данных
 
 - **WHEN** исследование оценивает layout, lookup-индексы, проверяемый

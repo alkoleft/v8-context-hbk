@@ -428,6 +428,39 @@ Module events не входят в AV4: они зависят от `ModuleContex
 downstream. Пять frozen type anchors публикуются раздельными строками и не
 агрегируются в общий score.
 
+После решения пользователя продолжить измерения отдельный workload
+`S83-AV5` проверяет ровно одну явно составную гипотезу `S83-X1`. Это не
+расширение и не исправление замороженного AV4 `/v2`: AV5 получает собственные
+versioned schema, manifest, raw/resource/parity/summary и target namespace.
+
+`S83-X1` ответвляется от точного AV4 `R2-AOS` commit и намеренно сочетает три
+ранее изолированных сигнала:
+
+1. глобальные locator/mask/kind хранятся отдельными SoA columns по форме
+   `R2-SOA`, потому что этот вариант дал минимальное steady global-scope время;
+2. только `platform_types_by_name` получает I1-подобную отображённую в память
+   open-address hash table с проверкой полного нормализованного ключа;
+3. members сохраняют прямой `member_start/member_count` в type head и
+   owner-contiguous восьмибайтовую AoS запись
+   `{locator, availability_word, kind, reserved}` по форме `R2-AOS`.
+
+Остальные sorted lookup и R1 cold payload не изменяются. В частности, AV5 не
+пытается одновременно оптимизировать декодирование полного payload: его
+измерение обязано показать оставшуюся цену без маскировки global/lookup
+выигрышем. У type hash фиксируются load factor не выше `0.5`, hard bound probe
+`64`, проверка hash+полного ключа, bounds/overflow/section validation и
+отдельный footprint. Уникальные magic/backend/layout metadata запрещают
+открыть X1 как R2 или I1.
+
+AV5 повторно запускает в одном frozen harness H0, C0, I1 lookup reference,
+R2-AOS, R2-SOA и X1. Он использует те же девять `AvailabilityContext`, пять
+type anchors, primary/alias/miss формы, payload manifest, iterations и
+границы времени, что AV4; новый manifest обязан воспроизвести AV4 logical
+checksums до performance. Девять steady и пять resource samples выполняются
+последовательно round-robin. Результат сравнивает операции раздельно и не
+содержит score/rank/winner/recommendation/canonical, не меняет shortlist и не
+закрывает пользовательское решение 1.15.
+
 Report/parity/summary используют строгие versioned tagged schema. Compact
 `len/capacity/bytes` допустимы только для materialization; другие operations
 не имитируют отсутствующую retained result memory. Frozen harness проверяет

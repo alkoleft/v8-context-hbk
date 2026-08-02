@@ -319,6 +319,45 @@ lookup-reference. Никакой layout не получает ранг или п
 Это не ranking: результаты относятся к разным операциям и не дают layout,
 доминирующего одновременно по global scope, type scope, lookup и payload.
 
+## Опровергаемая составная гипотеза S83-AV5
+
+Пользователь разрешил следующий измерительный раунд, но не выбор backend.
+`S83-X1` фиксируется до реализации как составная гипотеза с тремя уже
+измеренными причинными источниками:
+
+| Часть | Зафиксированная форма | Причинный reference |
+| --- | --- | --- |
+| filtered global scope | отдельные owner-independent SoA columns `locator:u32`, `availability_word:u16`, `kind:u8` | `R2-SOA` |
+| type-by-name lookup | одна mapped open-address table над группами sorted `PlatformTypeNames`, bucket `{hash:u64,start:u32,count:u32}`, load factor `<= 0.5`, max probe `64`, обязательная проверка полного ключа | `I1` |
+| filtered members одного типа | direct `member_start/member_count` и owner-contiguous AoS `{locator:u32,availability_word:u16,kind:u8,reserved:u8}` | `R2-AOS` |
+| полный payload | неизменённые R1 fixed heads/ranges/cold arenas | `R2-AOS`/`R2-SOA` |
+
+X1 ответвляется от точного AV4 R2-AOS commit
+`1ab6ef419771c824f6377daa7f2a8aec56d2bc21`. Перенос global SoA обязан
+воспроизвести структуру R2-SOA commit
+`dc46c4b54d137cd5ac67d4781477462e9f817cf3`; type hash переносит только
+алгоритм platform-type name lookup из I1 commit
+`a7faf33518d59905e0f6a557ab9841cd0fff1910`, а не все 26 I1 индексов.
+Уникальная artifact identity не позволяет открыть X1 reader как R2/I1.
+
+Проверяемые ожидания, не являющиеся gates выбора:
+
+1. X1 сохраняет steady global scope в пределах `5%` от повторно измеренного
+   R2-SOA, иначе перенос SoA считается неэквивалентным по стоимости.
+2. X1 type-by-name находится в пределах `5%` от повторно измеренного I1 либо
+   быстрее него; иначе специализированный hash не воспроизводит I1 signal.
+3. X1 type scope каждого anchor/context находится в пределах `5%` от
+   повторно измеренного R2-AOS; anchors не агрегируются.
+4. End-to-end lookup+scope сравнивается отдельно с H0/C0 и причинными
+   references; улучшение одной части не скрывает регрессию другой.
+5. Full payload, startup, allocations, faults, RSS/PSS, artifact и hot/hash
+   bytes публикуются независимо. Неизменённый payload допускает ожидаемую
+   R2-level цену, но она не исключается из таблицы.
+
+Порог `5%` используется только как уже принятая граница межпрогонного шума для
+проверки сохранения локального component signal. Он не создаёт aggregate score,
+eligibility, ranking или автоматический выбор X1.
+
 Решающий workload не перечисляет members всех разных типов. Он использует
 фиксированные типы с 0/median/p90/p99/max диапазонами (`COMОбъект`,
 `ЗначенияПараметровВыводаГруппировкиТаблицыКомпоновкиДанных`,
@@ -384,8 +423,8 @@ ID внутри конкретного run.
 
 Оставшиеся пробелы не относятся к полноте AV4 matrix. Linux perf counters на
 текущем хосте недоступны из-за `kernel.perf_event_paranoid=4`; это фиксируется
-как evidence gap, а не устраняется изменением sysctl. Также не измерена новая
-составная гипотеза, которая могла бы совместить SoA/AoS global hot path, owned-
-уровень small type scope, I1 lookup и более быстрый payload. Нужна ли такая
-гипотеза и допустима ли её дополнительная сложность, решает пользователь после
-неранжированного сравнения.
+как evidence gap, а не устраняется изменением sysctl. Составная гипотеза теперь
+явно разрешена пользователем как отдельный S83-AV5 и остаётся неизмеренной до
+завершения его parity/performance/resource matrix. AV5 не включает отдельную
+оптимизацию payload: эта цена остаётся наблюдаемой и не скрывается за SoA/hash
+выигрышем.

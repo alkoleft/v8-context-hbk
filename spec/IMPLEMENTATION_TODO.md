@@ -102,6 +102,11 @@ type-reference conclusions live in
         и девяти `AvailabilityContext`; сравнить `member_start/count`,
         AoS/SoA, dense bitmap и direct CSR, сохранив payload/resource evidence
         и не перенося downstream resolve или выбор backend в HBK.
+    11. по явному пользовательскому направлению выполнить отдельный S83-AV5:
+        в одном `S83-X1` artifact совместить global SoA columns, только один
+        I1-подобный type-name hash и простой direct owner-contiguous member AOS
+        range; повторно измерить H0/C0/I1/R2-AOS/R2-SOA/X1, не изменяя AV4,
+        shortlist, production path или статус пользовательского выбора.
   - Проверка:
     строгая валидация OpenSpec; format/check/test для зафиксированной базы и
     каждой ветви кандидата; проверка точных корпуса и checksum;
@@ -111,7 +116,9 @@ type-reference conclusions live in
     AV3 preliminary parity/format/alignment/bounds smoke; затем заменяющий его
     в решении AV4 parity global scope и scope одного type для всех девяти
     контекстов, тесты direct type range/AoS/SoA/bitmap/CSR и последовательный
-    warm-only consumer-scope benchmark;
+    warm-only consumer-scope benchmark; затем AV5 exact parity и отдельные
+    sequential steady/resource строки X1 и его причинных references по тому же
+    consumer-scope contract;
     независимая проверка безопасности и производительности.
   - Граница завершения:
     обновить устойчивый acceptance baseline всеми измеренными строками и
@@ -270,6 +277,11 @@ type-reference conclusions live in
     остаётся открытой на пользовательском решении: R2 layout не становятся
     новым shortlist, backend не выбран, canonical runtime и production-path не
     изменены.
+    Пользователь разрешил следующий измерительный раунд, но не выбрал backend:
+    отдельный S83-AV5 проверит `S83-X1` с global SoA, специализированным
+    type-name hash и owner-contiguous member AOS range. Frozen identity,
+    registry, lineage, parity и measurement matrix зафиксированы в контракте
+    до реализации. Пункт OpenSpec 1.23 активен; 1.15 и T183 остаются открытыми.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

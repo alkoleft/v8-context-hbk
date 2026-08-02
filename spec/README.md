@@ -32,8 +32,8 @@ Otherwise reconcile the specification files before implementing.
 - `implementation/hbk-zero-copy-snapshot-experiment.md`: реестр гипотез zero-copy-снапшота T183,
   воспроизводимый протокол сравнения, изоляция ветвей/worktree и граница принятия решения.
 - `implementation/hbk-member-availability-layout-research.md`: первичные источники, оценки
-  footprint и опровергаемые гипотезы AV3/AV4 для hot-layout global/type scopes и
-  `AvailabilityContext`.
+  footprint и опровергаемые гипотезы AV3/AV4/AV5 для hot-layout global/type scopes,
+  `AvailabilityContext` и составного X1-кандидата.
 - `acceptance/hbk-zero-copy-snapshot-evidence.md`: неранжированные измерения кандидатов T183,
   полный разбор поведенческой эквивалентности, результаты отдельных операций и итоги
   зафиксированных критериев.

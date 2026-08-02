@@ -1103,6 +1103,17 @@ A0/I1/P1/R1. I1 участвует только как lookup reference. Все 
 production dependency или стабилизацию публичного storage trait без отдельного
 решения пользователя.
 
+Post-AV4 S83-AV5 разрешает один явно составной, но по-прежнему изолированный
+кандидат `S83-X1`. Он ответвляется от frozen R2-AOS и меняет только три
+зарегистрированные runtime-части: global hot section принимает SoA форму
+R2-SOA, type-name lookup получает одну специализированную mapped open-address
+hash table, а type members сохраняют прямой owner-contiguous AOS range R2-AOS.
+Все остальные lookup и R1-derived cold payload остаются неизменными. Для X1
+обязательны отдельные magic/backend/layout metadata, branch/worktree,
+versioned harness/results и parity; он не добавляется в AV4 registry, публичный
+API или production path и не становится shortlist/canonical кандидатом без
+последующего пользовательского решения.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

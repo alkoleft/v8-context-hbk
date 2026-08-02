@@ -207,6 +207,21 @@
   долговечные результаты — `spec/acceptance/hbk-s83-av4-evidence.md`. Все
   строки совпали с H0 transcript, R2 layout остались неранжированными
   гипотезами, выбор не сделан.
+- [ ] 1.23 Выполнить отдельный S83-AV5 для выбранного пользователем направления
+  составной гипотезы, не меняя замороженный AV4 `/v2`. В собственной
+  ветке/worktree `S83-X1` совместить global SoA locator/mask/kind columns,
+  специализированный I1-подобный open-address hash только для lookup platform
+  type по имени и простой direct `member_start/count` плюс owner-contiguous
+  AoS range непосредственных members типа; сохранить R1 cold payload и
+  остальные lookup без изменений. До performance зафиксировать новые schema,
+  registry и точное происхождение; повторно запустить H0/C0, I1, R2-AOS,
+  R2-SOA и X1 одним frozen harness на тех же HBK/provider/contexts/anchors.
+  Сначала доказать exact H0 parity global/type scope, primary/alias/miss,
+  provenance и full payload; затем последовательно измерить steady global,
+  type lookup, per-anchor/context type scope, lookup+scope, payload,
+  startup/first operations, allocations, faults, RSS/PSS и section/artifact
+  bytes. Результаты опубликовать отдельной русской неранжированной таблицей;
+  не менять shortlist, не выбирать и не сливать backend и не закрывать 1.15.
 - [ ] 1.15 Представить пользователю неранжированные свидетельства, включая
   дополнительные таблицы S83-AV1 и S83-AV2. Только после выбора исхода пользователем
   принять или отклонить формат снапшота, назначение канонической

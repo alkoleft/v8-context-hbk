@@ -1392,6 +1392,107 @@ operations, payload, memory, artifact/hot-section bytes и physical work, а
 workload, но не выбирает backend, не назначает canonical runtime и не разрешает
 production-миграцию.
 
+## Frozen S83-AV5 composite hypothesis and protocol
+
+Пользователь разрешил следующий измерительный раунд в направлении «global hot
+layout + специализированный I1-подобный type hash lookup + максимально простой
+owner-contiguous member range». Это разрешение относится только к новой
+гипотезе и не является выбором первого места. AV4 `/v2` остаётся неизменным.
+
+### Frozen identity and lineage
+
+Новый workload имеет идентичность
+`s83-av5-composite-scope-cache/v1` и отдельные schema:
+
+- `hbk-s83-av5-query-manifest/v1`;
+- `hbk-s83-av5-benchmark/v1`;
+- `hbk-s83-av5-resource/v1`;
+- `hbk-s83-av5-raw/v1`;
+- `hbk-s83-av5-resource-raw/v1`;
+- `hbk-s83-av5-parity/v1`;
+- `hbk-s83-av5-lookup-parity/v1`;
+- `hbk-s83-av5-preflight-smoke/v1`;
+- `hbk-s83-av5-summary/v1`;
+- `hbk-s83-av5-orchestration/v1`.
+
+Он использует те же точные входы AV4: HBK
+`5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`,
+provider
+`f626207a93f99eecbb6c76fb13482058e32c4c4d404c84bb33b45abde45233bc`,
+platform `8.3.27.1859`, locale `ru`, provider schema `16`, extraction schema
+`11`, девять `AvailabilityContext`, пять anchors и primary/alias/miss query
+forms. Новый manifest строится H0 в собственном namespace и до performance
+обязан повторить AV4 logical counts/checksums, owner identities и anchor member
+counts; его общий SHA фиксируется только после построения, потому что schema
+identity намеренно новая.
+
+`S83-X1` ответвляется от AV4 R2-AOS commit
+`1ab6ef419771c824f6377daa7f2a8aec56d2bc21` в ветвь
+`experiment/hbk-zero-copy-s83-av5-x1-composite`. Единственный X1 artifact
+использует magic `HBKFX1\0\0`, layout `1`, backend identity
+`s83-x1-global-soa-type-hash-member-aos` и record-layout identity
+`fixed-head-range-x1-global-soa-type-hash-member-aos-provenance-v1`.
+Идентичность не совместима с R2/I1 reader.
+
+### Frozen X1 data structures
+
+X1 сохраняет R1 fixed heads, nested arenas, sorted non-type-name indexes,
+immutability/locking и cold payload R2-AOS. Он меняет только:
+
+1. global hot path на отдельные owner-independent sections
+   `global_locator:u32[]`, `global_availability_word:u16[]`,
+   `global_kind:u8[]` по точной логической форме R2-SOA;
+2. `platform_types_by_name` на одну mapped open-address table над уже
+   отсортированными группами `PlatformTypeNames`; bucket имеет
+   `{hash:u64,start:u32,count:u32}`, capacity — степень двойки, load factor не
+   выше `0.5`, linear probing ограничен `64`, а совпадение hash всегда
+   подтверждается сравнением полного нормализованного ключа;
+3. type-member hot path оставляет direct `member_start/member_count` и
+   owner-contiguous AOS records
+   `{locator:u32,availability_word:u16,kind:u8,reserved:u8}` без второго owner
+   index или prefiltered rows.
+
+Type hash получает собственную проверяемую section с bounds, overflow,
+capacity/load/probe, group range, key equality и exact coverage validation.
+Hot-section evidence отдельно публикует type ranges, member AOS, три global SoA
+columns и type-hash buckets/header. Полный payload не оптимизируется в AV5 и
+остаётся обязательной измеряемой строкой.
+
+### Frozen registry and matrix
+
+| Backend | Роль | Global/type scope | Type lookup | Payload/resource |
+| --- | --- | --- | --- | --- |
+| `S83-H0` | единственный SQL baseline | да | да | да |
+| `S83-C0` | owned-cache control | да | да | да |
+| `S83-I1` | causal type-hash reference | нет | да | только first type lookup |
+| `S83-R2-AOS` | causal member-AOS reference | да | да | да |
+| `S83-R2-SOA` | causal global-SoA reference | да | да | да |
+| `S83-X1` | composite hypothesis | да | да | да |
+
+Операции и границы времени повторяют AV4: `global_scope_borrowed`,
+`global_scope_collect`, `type_by_name`, `type_scope_borrowed`,
+`type_scope_collect`, `type_lookup_scope_collect` для primary/alias/miss,
+отдельные full payload type/method/property и resource operations
+`first_global_scope`, `first_type_lookup`, `first_type_lookup_scope`,
+`retained_scope_sets`. Iterations, девять steady samples, пять resource samples,
+warmup, allocator projection и process isolation сохраняются без изменений.
+Процессы выполняются последовательно round-robin; performance начинается
+только после parity и preflight smoke всей registry.
+
+Parity X1 побайтно сравнивает с H0 ordered global/type locator streams,
+owner/kind/logical identity, universal/explicit availability, provenance,
+primary/alias/miss с нулём owners и пустым miss scope, а также полный payload
+type/method/property. `ModuleContextKind`, module events, corpus-wide members,
+precedence, ambiguity resolution и `effective_members` отсутствуют.
+
+Сводка сохраняет per-context/per-anchor строки и не содержит aggregate score,
+`rank`, `winner`, `recommendation`, `canonical` или их русские эквиваленты.
+Для проверки сохранения component signal отдельно, без автоматического выбора,
+сопоставляются X1 с повторно измеренными R2-SOA global, I1 type lookup и
+R2-AOS type scope при границе `5%`; full payload/startup/memory/footprint не
+сворачиваются с ними в общий результат. AV5 не меняет frozen gates, shortlist,
+production path или статус `selection = pending-user-decision`.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения

@@ -74,6 +74,14 @@
   `member_start/count` в type head, AoS/SoA masks, dense bitmaps и direct CSR
   rows в отдельных ветках, не ранжируя результаты и не перенося
   resolve/precedence/effective selection из `v8-context` в HBK.
+- После пользовательского решения продолжить исследование отдельным S83-AV5:
+  проверить один составной кандидат `S83-X1`, который сочетает SoA hot layout
+  только для filtered global scope, специализированный I1-подобный
+  open-address hash только для lookup platform type по имени и максимально
+  простой owner-contiguous AoS range непосредственных members типа. AV5
+  использует новый version/results namespace, повторно измеряет H0/C0 и
+  причинные reference I1/R2-AOS/R2-SOA и не является выбором победителя,
+  production-формата или canonical runtime.
 - Отдельно решить, производится ли готовый снапшот конвейером сборки/дистрибуции
   HBK или создаётся локально при промахе кеша. Локально построенный снапшот не
   может улучшить самый первый запуск, во время которого он строится.

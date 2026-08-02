@@ -221,6 +221,17 @@ and the limiting storage or translation component before adding broader optimiza
   layout-гипотезами и не становятся production-кандидатами или новым shortlist
   автоматически. Результат публикуется по каждому context/anchor без aggregate
   score, ranking или выбора canonical runtime.
+- Отдельный post-AV4 workload S83-AV5 должен проверить выбранное пользователем
+  направление составной гипотезы `S83-X1`, не изменяя frozen AV4 `/v2`.
+  Составной кандидат фиксируется до кода: SoA global locator/mask/kind columns,
+  I1-подобный open-address hash только для lookup platform type по имени и
+  direct `member_start/count` плюс простой owner-contiguous AoS range
+  непосредственных members. R1 cold payload и остальные lookup остаются
+  неизменёнными и измеряются явно. AV5 использует отдельные schema/results,
+  повторно запускает H0/C0 и причинные references I1/R2-AOS/R2-SOA одним
+  harness, требует точный H0 parity до performance и публикует операции,
+  anchors и contexts без aggregate score, ranking, изменения shortlist или
+  выбора canonical runtime.
 - Свидетельства использования ресурсов должны различать сохраняемую приватную
   heap-память и отображённые/общие страницы, а также фиксировать аллокации,
   пиковый RSS, устойчивые RSS/PSS, суммарный многопроцессный PSS, page faults и
