@@ -232,6 +232,16 @@ type-reference conclusions live in
     пересобрать provider из того же HBK/extraction-11, доказать
     exact logical-content parity без provenance со старым provider и
     заморозить новый bytes/SHA до повторной проверки H_AV4.
+    Provider пересобран текущим producer `0.2.4` в
+    `shcntx_ru.8.3.27.1859.schema16.av4-provenance.release.sqlite`:
+    `220,270,592` bytes / SHA-256
+    `f626207a93f99eecbb6c76fb13482058e32c4c4d404c84bb33b45abde45233bc`.
+    Schema и все 16 non-metadata tables точно равны прежнему provider;
+    logical projection `document_metadata` без `source_*` точно равна;
+    все `25,052/25,052` documents имеют HBK/locale/HTML/title provenance,
+    а 607 ранее заполненных source records не изменились. Operational
+    meta ожидаемо отличается по `built_at`, `builder_version` и новому
+    `source_index_identity`; semantic meta из locale/HBK/schema versions равна.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

@@ -1325,7 +1325,7 @@ cargo run -p syntax-helper-search --release \
   --features snapshot-experiment-alloc \
   --example measure_hbk_s83_av4 -- \
   manifest sql-owned \
-  target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.release.sqlite \
+  target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.av4-provenance.release.sqlite \
   > target/hbk-s83-av4/query-manifest.json
 ```
 
