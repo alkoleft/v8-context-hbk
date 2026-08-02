@@ -73,7 +73,7 @@ noise status каждой отдельной строки. Компактные 
 остаются локальными для текущего run и не объявляются стабильными между
 поколениями снапшота.
 
-## Ветки и неизменяемые артефакты
+## Ветки и артефакты
 
 | Backend | Роль | Commit | Runtime-артефакт, bytes | SHA-256 |
 | --- | --- | --- | ---: | --- |
@@ -87,7 +87,10 @@ noise status каждой отдельной строки. Компактные 
 | `S83-R2-BITSET` | dense context bitmaps | `1111a715e45947ea73385067c10e576609658040` | 18,763,784 | `39d5ca0dd70de12e9adfce1fe7ec7c0a0f47b01727f56959d4b6c448783485ad` |
 | `S83-R2-CSR` | direct context rows | `416d81a30bf4a9e21b2d7cff14c0a3adb1cbabce` | 19,161,431 | `72a6283a2c42770fae93ceb20e65d9bd6aedf5528c804140d54be74ffeec90f4` |
 
-Все candidate/cache артефакты имеют mode `0444`.
+Все измеренные бинарные артефакты I1, R1, R1-DIRECT и R2 имеют mode `0444`.
+Контрольные H0 provider и C0 owned cache не являются кандидатами snapshot
+format; их файловые permissions не используются как evidence неизменяемой
+публикации кандидата.
 
 ## Steady filtered global scope
 
