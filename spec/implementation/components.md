@@ -1093,6 +1093,16 @@ production-каталоги.
 проходит все зафиксированные числовые критерии, поэтому граница компонента
 остаётся экспериментальной и ни одна реализация не продвигается.
 
+Корректирующий S83-AV4 сохраняет эту изоляцию и проверяет только consumer hot
+layout поверх R1. `R1-DIRECT` является причинным control для прямого
+`member_start/count` в fixed type head. `R2-AOS`, `R2-SOA`, `R2-BITSET` и
+`R2-CSR` являются layout-экспериментами global/type scope, а не новыми
+production cache-format кандидатами и не заменой пользовательского shortlist
+A0/I1/P1/R1. I1 участвует только как lookup reference. Все candidate branches
+и артефакты остаются изолированными; AV4 parity/performance не разрешают merge,
+production dependency или стабилизацию публичного storage trait без отдельного
+решения пользователя.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

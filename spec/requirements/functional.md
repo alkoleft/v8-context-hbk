@@ -838,6 +838,12 @@ The resolver API must be source-neutral and fact-oriented:
 - list members for one resolved owner identity; an omitted member name must enumerate the complete
   raw member set for that owner within the optional query kind, before downstream availability or
   selection filtering;
+- allow an HBK-backed provider to expose a separate source-local scope operation that preserves
+  owner identity and source order while filtering global facts or the direct `Property`/`Method`
+  members of one already resolved platform type by `AvailabilityContext`; this operation returns
+  candidates, does not replace the raw-member operation, and must not apply cross-provider
+  composition, precedence, ambiguity resolution, `effective_members` selection or module-event
+  augmentation owned by `v8-context`;
 - retrieve domain-specific global context scopes when a static analyzer needs the complete set of
   globally visible facts; the first required scopes are BSL and SDBL/query language contexts;
 - list global methods and global properties through the explicit global-context scope without

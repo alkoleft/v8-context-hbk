@@ -667,6 +667,14 @@ summary SHA-256 —
    полного глобального метода и callable payload; пустой availability включён
    во все результаты, фильтр использует только `AvailabilityContext`, а
    `ModuleContextKind` отсутствует в query, metadata и результате.
+9. Для AV2: ordered compact sets непосредственных members и полный payload
+   type/method/property совпадают с H0 по каждому `AvailabilityContext`; lookup,
+   borrowed iteration, compact materialization и payload имеют раздельные
+   границы времени.
+10. Для AV4: точный ordered global scope и scope одного fixed type совпадают с
+    H0 по всем девяти `AvailabilityContext`; primary/alias возвращают expected
+    owner, miss — ноль owners и пустой scope; type/member/callable provenance и
+    normalized payload входят в transcript.
 
 H1 не доказывает ни один полный логический слой или слой адаптера, а также не
 проходит smoke из 25 операций. H2 доказывает манифест из 25 операций и широкую
@@ -703,6 +711,10 @@ Downstream-изменение
 - `identity_policy`: нет постоянных универсальных ID и повторного использования
   ID между поколениями;
 - `overlay_owner`: вне HBK, во владении downstream-стороны BSL/метаданных;
+- `availability_boundary`: HBK может применять source-local
+  `AvailabilityContext` filter и возвращать ordered candidate stream;
+  cross-provider composition, precedence, ambiguity, effective selection и
+  добавление module events остаются в `v8-context`;
 - `active_candidate_shortlist`: `A0`, `I1`, `P1`, `R1`; конкретный формат и
   состав возможностей ещё не приняты;
 - `promotion_state`: победитель не выбран, канонического zero-copy-артефакта нет;
@@ -736,9 +748,38 @@ Downstream-изменение
 коммиты и evidence исключённых вариантов сохраняются как происхождение решения.
 Текущий owned-путь снапшота/кэша остаётся каноническим, поскольку финальный
 результат не выбран, а долговременное production-решение не приняло замену.
-S83-AV1 и S83-AV2 добавляют сравнение filtered enumeration, lookup, borrowed
-iteration, compact set materialization и payload access, но не являются новыми
-критериями автоматического допуска.
+S83-AV1, S83-AV2 и S83-AV4 добавляют сравнение filtered enumeration, lookup,
+borrowed iteration, compact set materialization, payload access и hot-layout
+физической работы, но не являются новыми критериями автоматического допуска.
 Подробные дополнительные таблицы находятся в
 [S83-AV1 evidence](hbk-s83-av1-evidence.md) и
-[S83-AV2 evidence](hbk-s83-av2-evidence.md).
+[S83-AV2 evidence](hbk-s83-av2-evidence.md); корректирующий проход описан в
+[S83-AV4 evidence](hbk-s83-av4-evidence.md).
+
+## Корректирующие неранжированные свидетельства S83-AV4
+
+S83-AV4 `/v2` завершён на harness-коммите
+`97fa011d292ab0b243b484749e3f4ce5d22909e6`: 74/74 parity-записи,
+17,793/17,793 performance-строки и 5,841/5,841 resource-строка успешны. Raw
+SHA-256 —
+`e5c909b0b3eb179ccaa14d4574399e716fc1868a5ebfe28b306f4ba44b482f48`,
+resource SHA-256 —
+`df262ad87f122bef1b7aaf91d5334b6b3281644b7d67996b17a81a09a1d36216`,
+summary SHA-256 —
+`1a263c9ce171052f337b4eeb7116df26e7105996b7d409f1cd120bcc43777d9e`.
+
+Все четыре R2 layout быстрее H0/C0 на steady filtered global scope; медианы
+per-context медиан compact materialization равны AOS `10.681 us`, SOA
+`8.636 us`, BITSET `13.753 us`, CSR `12.041 us` против H0 `43.821 us`.
+При этом ни один R2 layout не быстрее H0/C0 на isolated type scope по всему
+набору anchors, а mapped full payload и end-to-end lookup + scope остаются
+медленнее owned controls. Resource evidence показывает R1/R2 retained PSS
+`43,604-44,076 KiB` против H0 `92,798 KiB` и C0 `71,216 KiB`, а I1 сохраняет
+отдельный first type lookup signal `1.173 us` при одном resource sample.
+
+Русская компактная таблица, provenance, размеры артефактов/hot sections,
+physical-work evidence и caveats по шуму находятся в
+[свидетельствах S83-AV4](hbk-s83-av4-evidence.md). R2 остаются производными
+layout-гипотезами, а не новым shortlist. Состояние решения остаётся
+`selection = pending-user-decision`; никакой backend не выбран и canonical
+runtime не изменён.

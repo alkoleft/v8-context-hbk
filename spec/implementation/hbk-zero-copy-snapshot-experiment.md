@@ -1352,6 +1352,46 @@ versions, counts, anchors или row checksums не совпадают с regist
 `recommendation` и `canonical` запрещены. Даже вариант, обогнавший H0, остаётся
 только измеренной гипотезой до явного решения пользователя.
 
+#### Зафиксированный измеренный проход S83-AV4
+
+Чистый последовательный проход AV4 `/v2` завершён на harness-коммите
+`97fa011d292ab0b243b484749e3f4ce5d22909e6`. Manifest имеет SHA-256
+`15fbf865cd3d96d0c4df6fe23dee09a1d22bf08fd340d0c82663314187d5b394`.
+Получены точные ожидаемые объёмы: 74/74 parity-записи со статусом `pass`,
+17,793/17,793 performance-строки и 5,841/5,841 resource-строка. Raw SHA-256 —
+`e5c909b0b3eb179ccaa14d4574399e716fc1868a5ebfe28b306f4ba44b482f48`,
+resource SHA-256 —
+`df262ad87f122bef1b7aaf91d5334b6b3281644b7d67996b17a81a09a1d36216`,
+summary SHA-256 —
+`1a263c9ce171052f337b4eeb7116df26e7105996b7d409f1cd120bcc43777d9e`.
+
+Все четыре R2 hot-layout гипотезы быстрее H0/C0 на steady filtered global
+scope. Медианы девяти per-context медиан `global_scope_collect` равны H0
+`43.821 us`, C0 `43.692 us`, AOS `10.681 us`, SOA `8.636 us`, BITSET
+`13.753 us`, CSR `12.041 us`. R1 и R1-DIRECT дают соответственно
+`196.598 us` и `196.912 us`, поэтому одна только прямая ссылка
+`member_start/count` не объясняет выигрыш R2.
+
+На isolated type scope ни один R2 layout не быстрее H0/C0 во всех anchors.
+Для median anchor `borrowed / collect` составляют H0 `155 / 197 ns`, AOS
+`179 / 224 ns`, SOA `245 / 291 ns`, BITSET `388 / 438 ns`, CSR
+`280 / 313 ns`; AOS ближе остальных layout к owned controls. На полном
+type/method/property payload mapped R1/R2 строки также медленнее H0/C0.
+
+Resource evidence показывает другой компромисс: entry-to-ready R1/R2 находится
+в диапазоне `77.995-83.727 ms` против H0 `764.276 ms` и C0 `66.672 ms`, а
+retained PSS R1/R2 — `43,604-44,076 KiB` против H0 `92,798 KiB` и C0
+`71,216 KiB`. I1 сохраняет отдельный first type lookup signal `1.173 us`
+против H0 `2.977 us`, но по frozen suite не предоставляет scope/payload.
+
+Русская компактная сводка по context/anchor/query form, startup, first
+operations, payload, memory, artifact/hot-section bytes и physical work, а
+также путь к полной generated summary находятся в
+[свидетельствах S83-AV4](../acceptance/hbk-s83-av4-evidence.md). Результат
+имеет `selection = pending-user-decision`: он завершает измерительный AV4
+workload, но не выбирает backend, не назначает canonical runtime и не разрешает
+production-миграцию.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения

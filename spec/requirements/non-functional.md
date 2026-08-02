@@ -206,6 +206,21 @@ and the limiting storage or translation component before adding broader optimiza
   остальных операций используется allocator/process-boundary memory. H0
   остаётся единственной baseline-строкой, C0 — control;
   performance кандидата учитывается только после точного parity с H0.
+- Корректирующий workload S83-AV4 должен отражать фактический consumer scope:
+  filtered platform global methods/properties, lookup platform type и filtered
+  `Property`/`Method` scope только одного найденного типа. Он должен отдельно
+  измерять borrowed iteration, compact `u32` locator set, end-to-end
+  primary/alias/miss lookup + scope и полный payload type/method/property для
+  пяти зафиксированных anchors `zero/median/p90/p99/max` и всех девяти
+  `AvailabilityContext`. `ModuleContextKind`, module events, обход members всех
+  типов, precedence, ambiguity resolution и `effective_members` не входят в
+  решающую storage-нагрузку. До performance обязателен точный H0 parity order,
+  owner, kind, availability, provenance, payload и composite lookup/scope,
+  включая пустой miss scope. `R1-DIRECT` изолирует только эффект
+  `member_start/count`; AoS, SoA, dense bitmap и direct CSR являются отдельными
+  layout-гипотезами и не становятся production-кандидатами или новым shortlist
+  автоматически. Результат публикуется по каждому context/anchor без aggregate
+  score, ranking или выбора canonical runtime.
 - Свидетельства использования ресурсов должны различать сохраняемую приватную
   heap-память и отображённые/общие страницы, а также фиксировать аллокации,
   пиковый RSS, устойчивые RSS/PSS, суммарный многопроцессный PSS, page faults и

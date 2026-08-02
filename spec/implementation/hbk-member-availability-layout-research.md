@@ -1,6 +1,6 @@
 # Исследование layout доступности members HBK
 
-Дата: 2026-08-01.
+Дата: 2026-08-01. Результаты AV4 актуализированы 2026-08-02.
 
 Назначение: собрать первичные основания для следующей гипотезы горячего
 представления `TypeMember` availability и owner/member lookup после S83-AV2.
@@ -305,6 +305,20 @@ lookup-reference. Никакой layout не получает ранг или п
    производной веткой только если scalar SoA/mask остаётся bottleneck и доступны
    сравнимые hardware-counter или disassembly evidence.
 
+Результат проверки гипотез после полного AV4 `/v2`:
+
+| Гипотеза | Результат | Измеренное основание |
+| --- | --- | --- |
+| `R1-DIRECT` устраняет значимую цену owner-range lookup | смешанный, недостаточный эффект | zero-anchor улучшился относительно R1, но median/p90/max R1-DIRECT остаются многократно медленнее H0/C0; global scope не улучшился |
+| AOS/SoA обгоняют H0 на коротких type ranges | опровергнуто для isolated type scope | median collect: H0 `197 ns`, AOS `224 ns`, SOA `291 ns`; AOS остаётся ближайшим layout |
+| BITSET выигрывает global и p99/max type scopes | подтверждено только для global | global collect `13.753 us` против H0 `43.821 us`; p99/max type collect `684/12,416 ns` против H0 `546/4,775 ns` |
+| CSR выигрывает global и большие type scopes | подтверждено только для global | global collect `12.041 us`, physical entries равны returned locators; p99/max type collect `551/10,617 ns` против H0 `546/4,775 ns` |
+| Hot/cold co-location улучшает hot path без payload-регрессии | смешанный сигнал | все R2 быстрее H0 на global scope, но full type/method/property payload примерно в `2.1-2.5x` медленнее H0/C0 |
+| Scalar SoA/mask остаётся проверяемой альтернативой SIMD | подтверждено для global hot path | SOA global collect `8.636 us`, AOS `10.681 us`; SIMD не потребовался для получения выигрыша над H0 |
+
+Это не ranking: результаты относятся к разным операциям и не дают layout,
+доминирующего одновременно по global scope, type scope, lookup и payload.
+
 Решающий workload не перечисляет members всех разных типов. Он использует
 фиксированные типы с 0/median/p90/p99/max диапазонами (`COMОбъект`,
 `ЗначенияПараметровВыводаГруппировкиТаблицыКомпоновкиДанных`,
@@ -315,10 +329,13 @@ lookup-reference. Никакой layout не получает ранг или п
 
 ## Воспроизводимость corpus facts AV4
 
-Counts выше получены только из frozen provider
-`target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.release.sqlite`
-с SHA-256
-`55c2e09971712a13a49cbcf5889f203d7a9dfcec22aa0d333247ae722f6f0fab`:
+Финальный AV4 использует только provenance-rich frozen provider
+`target/snapshot-materialization/shcntx_ru.8.3.27.1859.schema16.av4-provenance.release.sqlite`,
+`220,270,592` bytes, SHA-256
+`f626207a93f99eecbb6c76fb13482058e32c4c4d404c84bb33b45abde45233bc`.
+Прежний provider SHA `55c2e099...` не допускается в AV4 performance/parity.
+Query manifest `/v2` имеет `16,428,376` bytes и SHA-256
+`15fbf865cd3d96d0c4df6fe23dee09a1d22bf08fd340d0c82663314187d5b394`:
 
 ```bash
 sqlite3 -readonly PROVIDER \
@@ -341,7 +358,7 @@ jq '[.types[].member_count] | sort
     | {count:length,zero:map(select(.==0))|length,
        median:.[length/2|floor],p90:.[length*90/100|floor],
        p99:.[length*99/100|floor],max:.[-1],sum:add,avg:(add/length)}' \
-  target/hbk-s83-av3/query-manifest.json
+  target/hbk-s83-av4-v2-final/manifest.json
 
 jq '[.types[] | select(.primary=="COMОбъект" or
       .primary=="ЗначенияПараметровВыводаГруппировкиТаблицыКомпоновкиДанных" or
@@ -349,25 +366,26 @@ jq '[.types[] | select(.primary=="COMОбъект" or
       .primary=="ОбъектМетаданных: ПланВидовРасчета" or
       .primary=="БиблиотекаКартинок")
       | {logical_id,primary,member_count}]' \
-  target/hbk-s83-av3/query-manifest.json
+  target/hbk-s83-av4-v2-final/manifest.json
 ```
 
-Здесь `PROVIDER` заменяется указанным точным путём. AV4 manifest до любого
-performance run обязан повторить эти counts, записать logical ID и member count
-каждого anchor и canonical checksum каждой global/type context row. Числовые
-locator являются session-local и поэтому не сохраняются как долговечная
-идентичность; manifest связывает locator с logical ID внутри конкретного run.
+Здесь `PROVIDER` заменяется указанным точным путём. Финальный manifest повторил
+counts, logical ID/member count каждого anchor и canonical checksum каждой
+global/type context row. Числовые locator являются session-local и поэтому не
+сохраняются как долговечная идентичность; manifest связывает locator с logical
+ID внутри конкретного run.
 
 ## Уверенность и пробелы
 
-Уверенность средне-высокая для оценок footprint и выбора проверяемых структур,
-средняя — для направления изменения скорости. Первичные источники подтверждают
-bitmap, CSR и columnar/hot-cold layout как подходящие инструменты, но не
-доказывают победителя на этом corpus.
+Уверенность высокая для corpus-local AV4 wall-time/resource результатов:
+74/74 parity, 17,793/17,793 performance и 5,841/5,841 resource rows завершены
+последовательно. Полные результаты находятся в
+[свидетельствах S83-AV4](../acceptance/hbk-s83-av4-evidence.md).
 
-Недостающее evidence — AV4 harness, точный parity global/type scopes и
-последовательные измерения отдельных ветвей. Linux perf counters на текущем
-хосте недоступны из-за `kernel.perf_event_paranoid=4`; это фиксируется как
-evidence gap, а не устраняется изменением sysctl. Обязательными остаются wall
-time, allocation calls/bytes, faults, RSS/PSS, artifact bytes и
-`logical_domain_count`/`physical_entries_examined`/`returned_count`.
+Оставшиеся пробелы не относятся к полноте AV4 matrix. Linux perf counters на
+текущем хосте недоступны из-за `kernel.perf_event_paranoid=4`; это фиксируется
+как evidence gap, а не устраняется изменением sysctl. Также не измерена новая
+составная гипотеза, которая могла бы совместить SoA/AoS global hot path, owned-
+уровень small type scope, I1 lookup и более быстрый payload. Нужна ли такая
+гипотеза и допустима ли её дополнительная сложность, решает пользователь после
+неранжированного сравнения.

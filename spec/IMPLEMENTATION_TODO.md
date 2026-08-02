@@ -96,6 +96,12 @@ type-reference conclusions live in
        как lookup-reference, но не смешивать archive/producer/layout оси;
        выполнить новый H0 parity/performance run без возврата исключённых
        F0/L1/D1 и без выбора победителя.
+    10. заменить решающую corpus-wide нагрузку AV3 корректирующим S83-AV4:
+        последовательно измерить filtered global scope, type lookup и filtered
+        `Property`/`Method` scope только одного найденного type по пяти anchors
+        и девяти `AvailabilityContext`; сравнить `member_start/count`,
+        AoS/SoA, dense bitmap и direct CSR, сохранив payload/resource evidence
+        и не перенося downstream resolve или выбор backend в HBK.
   - Проверка:
     строгая валидация OpenSpec; format/check/test для зафиксированной базы и
     каждой ветви кандидата; проверка точных корпуса и checksum;
@@ -187,7 +193,7 @@ type-reference conclusions live in
     `c16fc9d5935e429e6b4684ed2348140521433f1157a938429f2d288c0efd984e`,
     summary SHA-256 —
     `a1b362b4d7e65a8233a6cde3736095287dd9c90bf1f0b152b558a907d78ab8d6`.
-    Полная русская неранжированная таблица находится в
+    Русская компактная неранжированная таблица находится в
     `acceptance/hbk-s83-av1-evidence.md`. T183 остаётся открытой до решения
     пользователя; ни один вариант не выбран и не назначен каноническим.
     Пользователь выбрал для следующей ревизии S83-AV2 форму результата A:
@@ -217,7 +223,7 @@ type-reference conclusions live in
     eligibility, merge или выбора канонического варианта. Предварительный AV3
     реализовал R1-derived AoS/SoA/bitmap/CSR artifacts и прошёл локальные smoke,
     но его corpus-wide enumeration members всех типов исключена из решающей
-    нагрузки после сверки с `v8-context`. Следующий разрешённый шаг — S83-AV4:
+    нагрузки после сверки с `v8-context`. Заменивший его S83-AV4 проверяет
     filtered platform global scope, type lookup и filtered properties/methods
     только одного найденного type. Module events исключены; каждый fixed type
     anchor/context публикуется отдельно. AV4 проверяет `member_start/count` в
@@ -227,8 +233,8 @@ type-reference conclusions live in
     `v8-context`; ranking и выбор canonical варианта запрещены до решения
     пользователя. При запуске AV4 выявлено, что прежний frozen
     schema16 provider не заполняет уже существующие
-    `document_metadata.source_*` для type/member/callable. Первый
-    активный AV4 step — сохранить provenance в `syntax index`,
+    `document_metadata.source_*` для type/member/callable. Подготовительный
+    AV4 step сохранил provenance в `syntax index`,
     пересобрать provider из того же HBK/extraction-11, доказать
     exact logical-content parity без provenance со старым provider и
     заморозить новый bytes/SHA до повторной проверки H_AV4.
@@ -250,6 +256,20 @@ type-reference conclusions live in
     пустой scope, ambiguous/wrong-owner отклоняются; transcript хранит
     composite lookup/scope rows. Все schemas/workload получают `/v2`,
     а ранее созданные AV4 `/v1` artifacts не допускаются к замерам.
+    Чистый последовательный AV4 `/v2` завершён на harness-коммите
+    `97fa011d292ab0b243b484749e3f4ce5d22909e6`: 74/74 parity-записи,
+    17,793/17,793 performance-строки и 5,841/5,841 resource-строка успешны.
+    Raw SHA-256 —
+    `e5c909b0b3eb179ccaa14d4574399e716fc1868a5ebfe28b306f4ba44b482f48`,
+    resource SHA-256 —
+    `df262ad87f122bef1b7aaf91d5334b6b3281644b7d67996b17a81a09a1d36216`,
+    summary SHA-256 —
+    `1a263c9ce171052f337b4eeb7116df26e7105996b7d409f1cd120bcc43777d9e`.
+    Полная русская неранжированная таблица находится в
+    `acceptance/hbk-s83-av4-evidence.md`. AV4 измерения завершены, но T183
+    остаётся открытой на пользовательском решении: R2 layout не становятся
+    новым shortlist, backend не выбран, canonical runtime и production-path не
+    изменены.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

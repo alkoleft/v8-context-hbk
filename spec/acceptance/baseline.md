@@ -2949,7 +2949,7 @@ callable lookup, но этот локальный выигрыш не перен
 filtered-members показатель. C0 остаётся контрольной строкой и близок к H0 на
 lookup/enumeration, при этом быстрее H0 на части payload-операций.
 
-Полная русская неранжированная сводка находится в
+Русская компактная неранжированная сводка находится в
 [свидетельствах S83-AV2](hbk-s83-av2-evidence.md). Сырые JSONL, логи и
 сгенерированные summary остаются service data в
 `target/hbk-s83-av2/run-80ec7bb-9x/`. Ни один кандидат не выбран, не
@@ -2976,6 +2976,41 @@ page-layout эффекта, `D1` исключён из-за переноса val
 `shortlist-four-pending-final-decision`: это не ranking, не eligibility и не
 назначение канонического runtime. Все четыре активных кандидата по-прежнему не
 проходят полный набор frozen numerical gates.
+
+### Дополнительные свидетельства S83-AV4
+
+Корректирующий consumer-scope workload S83-AV4 `/v2` завершён на
+harness-коммите `97fa011d292ab0b243b484749e3f4ce5d22909e6`. Provenance-rich
+provider имеет `220,270,592` bytes / SHA-256
+`f626207a93f99eecbb6c76fb13482058e32c4c4d404c84bb33b45abde45233bc`,
+manifest — `16,428,376` bytes / SHA-256
+`15fbf865cd3d96d0c4df6fe23dee09a1d22bf08fd340d0c82663314187d5b394`.
+
+Все 74 parity-записи, 17,793 performance-строки и 5,841 resource-строка
+успешны. Raw SHA-256 —
+`e5c909b0b3eb179ccaa14d4574399e716fc1868a5ebfe28b306f4ba44b482f48`,
+resource SHA-256 —
+`df262ad87f122bef1b7aaf91d5334b6b3281644b7d67996b17a81a09a1d36216`,
+summary SHA-256 —
+`1a263c9ce171052f337b4eeb7116df26e7105996b7d409f1cd120bcc43777d9e`.
+
+AV4 подтверждает, что zero-copy hot layout может обогнать owned H0 baseline на
+filtered global enumeration: медианы per-context медиан
+`global_scope_collect` равны H0 `43.821 us`, C0 `43.692 us`, AOS
+`10.681 us`, SOA `8.636 us`, BITSET `13.753 us`, CSR `12.041 us`.
+Одновременно ни один R2 layout не выигрывает у H0/C0 на isolated type scope по
+всему набору anchors; mapped full payload и end-to-end lookup + scope также
+медленнее owned controls. Entry-to-ready R1/R2 составляет
+`77.995-83.727 ms`, retained PSS — `43,604-44,076 KiB`; H0 имеет
+`764.276 ms` / `92,798 KiB`, C0 — `66.672 ms` / `71,216 KiB`. I1 сохраняет
+отдельный first type lookup `1.173 us`, но не участвует в scope/payload suites.
+
+Полная русская неранжированная сводка находится в
+[свидетельствах S83-AV4](hbk-s83-av4-evidence.md). Сырые JSONL и generated
+summary остаются service data в
+`v8-context-hbk-wt-84-scope-harness/target/hbk-s83-av4-v2-final/run-final-sequential-20260802-clean-1/`.
+R2 являются layout-гипотезами, а не новым shortlist. Ни один backend не выбран,
+не рекомендован и не назначен canonical runtime.
 
 Baseline update rule:
 
