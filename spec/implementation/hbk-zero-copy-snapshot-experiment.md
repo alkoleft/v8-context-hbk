@@ -1276,6 +1276,14 @@ Hardware perf counters являются необязательными: на т�
 недоступны при `kernel.perf_event_paranoid=4`, и harness фиксирует этот evidence
 gap без изменения системной политики.
 
+Чтение уже проверенного query manifest и подготовка его нетаймируемых locator
+таблиц являются harness setup между `ready` и запуском первой операции. Они не
+входят ни в backend `entry_to_ready`, ни в `first_operation` и не
+приписываются кандидату как startup/query cost. `phase_order` перечисляет
+измеряемые фазы, а не утверждает непрерывное покрытие всего wall-clock процесса.
+При этом сам frozen primary/alias/miss type lookup и последующий scope filter
+для startup-строки выполняются внутри `first_operation`.
+
 Behavioral parity AV4 до performance доказывает:
 
 - точный ordered global locator/kind/logical-ID stream и universal/explicit
