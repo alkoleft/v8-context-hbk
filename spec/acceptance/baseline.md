@@ -3012,6 +3012,35 @@ summary остаются service data в
 R2 являются layout-гипотезами, а не новым shortlist. Ни один backend не выбран,
 не рекомендован и не назначен canonical runtime.
 
+### Дополнительные свидетельства S83-AV5
+
+Отдельный composite workload S83-AV5 завершён на harness-коммите
+`73abb871fdac91f5395f43289f1d23431365ebe1`: 47/47 parity-записей,
+11,124/11,124 performance-строк и 3,655/3,655 resource-строк успешны. Raw
+SHA-256 —
+`f8a796d9b01016df068e378771b8468e1a3df9122a53e4a7c2558fd934145af0`,
+resource SHA-256 —
+`5f26035946da2efed0411e812ac5989b7f44394ec78550ecf081b6b1dcc0eb0b`,
+summary SHA-256 —
+`377cf05b8c70ee9cb96d5c1787d5baf085e58cad9ea9c13548088cc82f949b6c`.
+
+X1 повторно подтверждает общий mapped global-layout signal относительно H0:
+медиана per-context медиан `global_scope_collect` равна `11.220 us` против H0
+`44.058 us`. При этом точная стоимость R2-SOA не воспроизведена в frozen
+границе `5%`: X1 медленнее R2-SOA более чем на `5%` в 8/9 contexts для
+borrowed и 8/9 для collect. Type-name hash воспроизводит I1 steady lookup:
+X1 `813 ns/query`, I1 `780 ns/query`, отношение `1.042x`. Type scope сохраняет
+стоимость R2-AOS в 86/90 точных operation/anchor/context сравнений, но на
+основных непустых anchors остаётся медленнее H0. Full payload X1 находится в
+`1.001-1.014x` R2-AOS и `2.11-2.49x` H0.
+
+Entry-to-ready X1 составляет `80.901 ms`, retained PSS — `43,880 KiB`, artifact
+— `19,033,826` bytes; H0 имеет `760.207 ms`, `92,787 KiB` и `220,270,592`
+bytes. Полная русская неранжированная сводка находится в
+[свидетельствах S83-AV5](hbk-s83-av5-evidence.md). AV5 закрывает измерительный
+пункт 1.23, но не выбирает backend, не меняет shortlist и не закрывает
+пользовательское решение 1.15/T183.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

@@ -1493,6 +1493,36 @@ R2-AOS type scope при границе `5%`; full payload/startup/memory/footpr
 сворачиваются с ними в общий результат. AV5 не меняет frozen gates, shortlist,
 production path или статус `selection = pending-user-decision`.
 
+### Измеренный результат S83-AV5
+
+Чистый последовательный run
+`s83-av5-final-sequential-2026-08-02-x1-fixed-identity` завершён: exact parity
+`47/47`, performance `11,124/11,124`, resource `3,655/3,655`. Raw SHA-256 —
+`f8a796d9b01016df068e378771b8468e1a3df9122a53e4a7c2558fd934145af0`,
+resource SHA-256 —
+`5f26035946da2efed0411e812ac5989b7f44394ec78550ecf081b6b1dcc0eb0b`,
+summary SHA-256 —
+`377cf05b8c70ee9cb96d5c1787d5baf085e58cad9ea9c13548088cc82f949b6c`.
+
+Frozen component expectations дали раздельный результат:
+
+- X1 type-name lookup `813 ns/query` против I1 `780 ns/query`, то есть
+  `1.042x`, находится в границе `5%`;
+- X1 global borrowed/collect быстрее H0, но медленнее R2-SOA более чем на `5%`
+  в 8/9 contexts каждой операции, поэтому точный перенос global component cost
+  не подтверждён;
+- X1 type scope находится в границе R2-AOS для 86/90 точных
+  operation/anchor/context строк, но формальное ожидание «каждая строка» не
+  выполнено;
+- payload остаётся в `1.001-1.014x` R2-AOS и `2.11-2.49x` H0;
+- X1 entry-to-ready `80.901 ms`, PSS `43,880 KiB`, artifact `19,033,826`
+  bytes против H0 `760.207 ms`, `92,787 KiB`, `220,270,592` bytes.
+
+Полный per-context/per-anchor результат и caveats по noise находятся в
+`../acceptance/hbk-s83-av5-evidence.md`. AV5 завершает измерительный раунд, но
+не создаёт aggregate score, не меняет shortlist и оставляет
+`selection = pending-user-decision`.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения

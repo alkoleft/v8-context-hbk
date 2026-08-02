@@ -44,6 +44,9 @@ Otherwise reconcile the specification files before implementing.
 - `acceptance/hbk-s83-av4-evidence.md`: корректирующий неранжированный проход T183 по
   фактическим hot paths `v8-context`: filtered global scope, scope одного типа,
   end-to-end type lookup, payload, startup, retained memory и hot-layout evidence.
+- `acceptance/hbk-s83-av5-evidence.md`: отдельный неранжированный проход T183 для
+  составной гипотезы X1: global SoA, специализированный type-name hash,
+  owner-contiguous member range, payload, startup и resource evidence.
 - `implementation/syntax-helper-query-cli.md`: draft architecture for the separate Syntax
   Assistant query/search CLI and its index/relationship model.
 - `implementation/syntax-bsl-provider-plan.md`: ADR-0006 gap analysis, BSL/code-analysis use-case

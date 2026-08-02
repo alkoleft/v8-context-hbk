@@ -783,3 +783,29 @@ physical-work evidence и caveats по шуму находятся в
 layout-гипотезами, а не новым shortlist. Состояние решения остаётся
 `selection = pending-user-decision`; никакой backend не выбран и canonical
 runtime не изменён.
+
+## Составные неранжированные свидетельства S83-AV5
+
+S83-AV5 завершён на harness-коммите
+`73abb871fdac91f5395f43289f1d23431365ebe1`. Все 47 parity-записей прошли,
+11,124 performance- и 3,655 resource-строк имеют статус `ok`. Raw SHA-256 —
+`f8a796d9b01016df068e378771b8468e1a3df9122a53e4a7c2558fd934145af0`,
+resource SHA-256 —
+`5f26035946da2efed0411e812ac5989b7f44394ec78550ecf081b6b1dcc0eb0b`,
+summary SHA-256 —
+`377cf05b8c70ee9cb96d5baf085e58cad9ea9c13548088cc82f949b6c`.
+
+Составной X1 даёт `11.220 us` на filtered global collect против H0
+`44.058 us`, `813 ns/query` на type-name lookup против H0 `853` и I1 `780`,
+`80.901 ms` entry-to-ready и `43,880 KiB` PSS против H0 `760.207 ms` и
+`92,787 KiB`. Одновременно он не сохраняет R2-SOA global cost в пределах `5%`
+для 16/18 context-operation строк, сохраняет R2-AOS type-scope cost только в
+86/90 точных строк и остаётся медленнее H0 на основных непустых type scopes и
+full payload.
+
+Полный разбор по context/anchor/query form, resource noise и frozen component
+expectations находится в
+[свидетельствах S83-AV5](hbk-s83-av5-evidence.md). Результат смешанный и
+причинно разложенный; он не является ranking или автоматическим выбором X1.
+Shortlist, production path и canonical runtime не изменены, решение остаётся
+`selection = pending-user-decision`.

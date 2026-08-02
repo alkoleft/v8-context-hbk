@@ -277,15 +277,18 @@ type-reference conclusions live in
     остаётся открытой на пользовательском решении: R2 layout не становятся
     новым shortlist, backend не выбран, canonical runtime и production-path не
     изменены.
-    Пользователь разрешил следующий измерительный раунд, но не выбрал backend:
-    отдельный S83-AV5 проверит `S83-X1` с global SoA, специализированным
-    type-name hash и owner-contiguous member AOS range. Frozen identity,
-    registry, lineage, parity и measurement matrix зафиксированы в контракте
-    до реализации. В 1.23 отдельно записаны уже подтверждённые сильные
-    компонентные сигналы AV4: global SoA, I1 type-name hash и общий
-    mmap startup/PSS; owner-contiguous member range и X1 как композиция пока
-    не подтверждены. Пункт OpenSpec 1.23 активен; 1.15 и T183 остаются
-    открытыми.
+    Пользователь разрешил измерительный раунд, но не выбрал backend. Отдельный
+    S83-AV5 завершён на harness commit
+    `73abb871fdac91f5395f43289f1d23431365ebe1`: exact parity `47/47`,
+    performance `11,124/11,124`, resource `3,655/3,655`. X1 сохраняет общий
+    global-layout выигрыш против H0 и I1-подобный type-name hash в `1.042x`
+    I1, но не сохраняет R2-SOA global cost в пределах `5%` для 16/18 строк и
+    имеет четыре малых выхода за R2-AOS type-scope boundary; основные непустые
+    type scopes и full payload остаются медленнее H0. Полная русская
+    неранжированная таблица находится в
+    `acceptance/hbk-s83-av5-evidence.md`. Пункт OpenSpec 1.23 завершён; 1.15 и
+    T183 остаются открытыми до пользовательского решения. Shortlist,
+    canonical runtime и production path не изменены.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

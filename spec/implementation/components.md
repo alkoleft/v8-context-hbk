@@ -1114,6 +1114,16 @@ versioned harness/results и parity; он не добавляется в AV4 reg
 API или production path и не становится shortlist/canonical кандидатом без
 последующего пользовательского решения.
 
+Измерительный S83-AV5 завершён. X1 прошёл exact parity и подтвердил, что
+составной artifact технически может совместить три формы, сохранив отдельную
+identity и narrow public boundary. Измерения одновременно ограничивают вывод:
+X1 сохраняет I1 type-name lookup в пределах `5%`, но не сохраняет R2-SOA global
+cost в 16/18 context-operation строк и имеет четыре небольших отклонения от
+R2-AOS type-scope `5%` boundary. Поэтому этот модульный шов доказан как
+реализуемый, но X1 не продвигается в production и не считается выбранной
+реализацией. Полные числа находятся в
+`../acceptance/hbk-s83-av5-evidence.md`.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:
