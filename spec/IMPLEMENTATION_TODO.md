@@ -281,7 +281,11 @@ type-reference conclusions live in
     отдельный S83-AV5 проверит `S83-X1` с global SoA, специализированным
     type-name hash и owner-contiguous member AOS range. Frozen identity,
     registry, lineage, parity и measurement matrix зафиксированы в контракте
-    до реализации. Пункт OpenSpec 1.23 активен; 1.15 и T183 остаются открытыми.
+    до реализации. В 1.23 отдельно записаны уже подтверждённые сильные
+    компонентные сигналы AV4: global SoA, I1 type-name hash и общий
+    mmap startup/PSS; owner-contiguous member range и X1 как композиция пока
+    не подтверждены. Пункт OpenSpec 1.23 активен; 1.15 и T183 остаются
+    открытыми.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their
