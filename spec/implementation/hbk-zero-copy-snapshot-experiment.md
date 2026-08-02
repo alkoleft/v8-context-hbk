@@ -1155,10 +1155,21 @@ platform global scope с фильтром по `AvailabilityContext`, выпол
 `all_types_member_stress_diagnostic`. Его предварительные artifacts, parity
 smoke и timings не могут участвовать в сравнении, назначении первого места или
 выборе canonical runtime. Решающий layout workload получает отдельные версии
-`hbk-s83-av4-query-manifest/v1`, `hbk-s83-av4-benchmark/v1`,
-`hbk-s83-av4-parity/v1`, `hbk-s83-av4-summary/v1` и
-`s83-av4-consumer-scope-layout/v1`; H0/C0 и все применимые варианты запускаются
+`hbk-s83-av4-query-manifest/v2`, `hbk-s83-av4-benchmark/v2`,
+`hbk-s83-av4-parity/v2`, `hbk-s83-av4-summary/v2` и
+`s83-av4-consumer-scope-layout/v2`; H0/C0 и все применимые варианты запускаются
 заново одним frozen harness.
+
+Предварительная ревизия AV4 `/v1` не является performance
+evidence. Она не включала provenance в normalized payload и в
+`type_lookup_scope_collect` считала lookup, но всегда читала scope
+предварительно разрешённого primary owner; поэтом miss ошибочно
+возвращал непустой scope. `/v2` делает provenance обязательной
+частью transcript/timed payload и формирует scope только из
+фактического результа lookup. Primary/alias обязаны вернуть ровно
+один expected owner; miss обязан вернуть ноль owners и пустой
+compact scope. Ambiguous и wrong-owner lookup отклоняются, а не
+выбирают hidden winner.
 
 В AV4 термин `type_scope` означает ordered candidate members одного уже
 найденного platform type. Он включает непосредственные `Property` и `Method`,
@@ -1289,6 +1300,9 @@ Behavioral parity AV4 до performance доказывает:
 - точный ordered global locator/kind/logical-ID stream и universal/explicit
   availability для каждого context;
 - точный type primary/alias/miss lookup;
+- точный end-to-end `type_lookup_scope_collect`: фактические
+  lookup results и compact scope для каждого anchor/query-form/context,
+  включая пустой miss scope;
 - точный owner, kind (`Property`/`Method`), logical ID, order и availability каждого member пяти
   anchors для каждого context;
 - полный нормализованный payload type, method/callable и property, включая

@@ -242,6 +242,14 @@ type-reference conclusions live in
     а 607 ранее заполненных source records не изменились. Operational
     meta ожидаемо отличается по `built_at`, `builder_version` и новому
     `source_index_identity`; semantic meta из locale/HBK/schema versions равна.
+    Независимая ревизия H_AV4 заблокировала `/v1`: baseline
+    composite lookup всегда сканировал pre-resolved primary owner,
+    поэтом miss возвращал непустой scope, а parity не хранила
+    composite results. Активный harness поднят на AV4 `/v2`:
+    primary/alias требуют exact expected owner, miss — ноль owners и
+    пустой scope, ambiguous/wrong-owner отклоняются; transcript хранит
+    composite lookup/scope rows. Все schemas/workload получают `/v2`,
+    а ранее созданные AV4 `/v1` artifacts не допускаются к замерам.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their
