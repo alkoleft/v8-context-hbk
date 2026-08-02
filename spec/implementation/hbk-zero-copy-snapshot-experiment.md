@@ -1523,6 +1523,58 @@ Frozen component expectations дали раздельный результат:
 не создаёт aggregate score, не меняет shortlist и оставляет
 `selection = pending-user-decision`.
 
+## Зафиксированный протокол S83-AV6: составные фильтры и сохраняемые проекции
+
+S83-AV6 — отдельный namespace, не изменяющий frozen AV5. Сравниваются ровно
+три backend: SQL-to-owned baseline `S83-H0`, неизменённый `S83-X1` с одним
+сканированием availability-word и `S83-X1-PROJECTED` с сохраняемыми базовыми
+проекциями. X1-PROJECTED имеет уникальные magic/backend/layout identity и
+содержит полный X1 artifact плюс следующие проверяемые секции:
+
+- девять ordered global locator rows;
+- directory диапазонов и девять ordered member locator rows для каждого из
+  всех 1 749 platform types корпуса, а не только измеряемых anchors;
+- точные размеры секций, offsets/counts, bounds, monotonicity, отсутствие
+  дубликатов и эквивалентность исходному availability-word.
+
+Готовые результаты запросов, два замороженных benchmark-набора и таблица всех
+512 масок в артефакте запрещены. Universal facts входят в каждую базовую
+поконтекстную проекцию. Runtime `ANY` делает ordered union с дедупликацией,
+`ALL` — ordered intersection. Borrowed path использует ограниченное числом
+контекстов состояние и не выделяет heap; collect отдельно материализует
+`u32` locator set.
+
+Заморожены четыре selector-комбинации:
+
+| context_set | contexts | match_mode |
+| --- | --- | --- |
+| `server_thick_client` | `server`, `thick_client` | `any` |
+| `server_thick_client` | `server`, `thick_client` | `all` |
+| `thin_web_thick_client` | `thin_client`, `web_client`, `thick_client` | `any` |
+| `thin_web_thick_client` | `thin_client`, `web_client`, `thick_client` | `all` |
+
+Пустой список запроса и повтор контекста не допускаются. Пустой availability
+означает universal. `ANY` включает universal либо факт с хотя бы одним
+контекстом набора; `ALL` включает universal либо факт со всеми контекстами
+набора. `ModuleContextKind` не участвует. Каждый факт возвращается один раз в
+каноническом порядке H0.
+
+Steady-матрица содержит `global_scope_borrowed`, `global_scope_collect`,
+`type_scope_borrowed` и `type_scope_collect` для пяти AV5 anchors: 48 строк на
+backend/sample, 9 последовательных round-robin samples, 1 296 raw rows и 144
+summary groups для трёх backend. Global выполняется 1 000 раз, type scope —
+10 000 раз. Parity содержит global и пять type scopes для каждой из 12
+backend/selector пар. Resource-проход имеет по пять последовательных samples
+`first_global_scope`, `first_type_scope` каждого anchor и
+`retained_scope_sets` каждого selector, фиксируя entry-to-ready, allocation
+calls/bytes, faults, RSS/PSS, artifact bytes и projected-section bytes.
+
+Type-name lookup и полный payload не зависят от `ANY`/`ALL`, поэтому AV6 не
+перезапускает их и не смешивает AV5 числа с новой выборкой. Evidence даёт
+ссылку на AV5 для этих операций. Результаты публикуются без aggregate score,
+ranking, winner/recommendation; выбор backend и статус 1.15 остаются за
+пользователем.
+
 ## Обязательный поведенческий эталон
 
 Эквивалентность — независимый обязательный критерий допуска. Значения

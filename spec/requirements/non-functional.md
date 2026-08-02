@@ -232,6 +232,19 @@ and the limiting storage or translation component before adding broader optimiza
   harness, требует точный H0 parity до performance и публикует операции,
   anchors и contexts без aggregate score, ranking, изменения shortlist или
   выбора canonical runtime.
+- Отдельный post-AV5 workload S83-AV6 должен сравнить H0, неизменённый X1 и
+  X1 с сохраняемыми базовыми поконтекстными проекциями для двух непустых
+  наборов `AvailabilityContext` в режимах `ANY`/`ALL`. Пустой availability
+  означает universal; `ANY` принимает пересечение, `ALL` — наличие всех
+  запрошенных контекстов; результат дедуплицирован и сохраняет порядок H0.
+  Проекционный артефакт хранит по одной упорядоченной проекции на каждый из
+  девяти контекстов для global scope и непосредственных members каждого типа,
+  но не готовые benchmark-комбинации и не все маски. Borrowed iteration не
+  материализует набор, collect формирует compact `u32` locators. Измеряются
+  steady global/type scope, allocations, first scope, retained memory,
+  entry-to-ready, RSS/PSS и artifact/section bytes. Type lookup/full payload
+  остаются ссылочными результатами AV5. Ни score, ни ranking, ни выбор backend
+  из AV6 автоматически не следуют.
 - Свидетельства использования ресурсов должны различать сохраняемую приватную
   heap-память и отображённые/общие страницы, а также фиксировать аллокации,
   пиковый RSS, устойчивые RSS/PSS, суммарный многопроцессный PSS, page faults и

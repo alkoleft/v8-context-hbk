@@ -244,6 +244,17 @@
   против H0 `760.207 ms` / `92,787 KiB`. Полная русская неранжированная
   таблица: `spec/acceptance/hbk-s83-av5-evidence.md`. Никакой backend не выбран;
   1.15 остаётся открытым.
+- [ ] 1.24 Выполнить отдельный S83-AV6 для составной фильтрации
+  `AvailabilityContext`: сравнить H0, неизменённый X1 и X1-PROJECTED на двух
+  зафиксированных наборах в режимах `ANY`/`ALL`. X1-PROJECTED сохраняет ровно
+  девять базовых ordered projections для global scope и members всех platform
+  types; комбинации строятся runtime ordered union/intersection без
+  дубликатов и с порядком H0. До performance пройти exact parity, затем
+  последовательно измерить steady borrowed/collect global и five-anchor type
+  scope, allocations, first scope, retained sets, startup, RSS/PSS и
+  artifact/projected-section bytes. Не сохранять benchmark-комбинации/все
+  маски, не перезапускать неизменившиеся lookup/payload как AV6 и не выбирать
+  backend без решения пользователя.
 - [ ] 1.15 Представить пользователю неранжированные свидетельства, включая
   дополнительные таблицы S83-AV1 и S83-AV2. Только после выбора исхода пользователем
   принять или отклонить формат снапшота, назначение канонической

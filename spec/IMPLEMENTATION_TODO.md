@@ -107,6 +107,11 @@ type-reference conclusions live in
         I1-подобный type-name hash и простой direct owner-contiguous member AOS
         range; повторно измерить H0/C0/I1/R2-AOS/R2-SOA/X1, не изменяя AV4,
         shortlist, production path или статус пользовательского выбора.
+    12. выполнить отдельный S83-AV6: для двух наборов `AvailabilityContext` и
+        режимов `ANY`/`ALL` сравнить H0, неизменённый X1 и X1-PROJECTED с
+        девятью базовыми сохраняемыми проекциями global scope и members всех
+        типов; измерить steady borrowed/collect и цену artifact/startup/memory,
+        не сохраняя готовые комбинации и не выбирая backend.
   - Проверка:
     строгая валидация OpenSpec; format/check/test для зафиксированной базы и
     каждой ветви кандидата; проверка точных корпуса и checksum;
@@ -118,7 +123,8 @@ type-reference conclusions live in
     контекстов, тесты direct type range/AoS/SoA/bitmap/CSR и последовательный
     warm-only consumer-scope benchmark; затем AV5 exact parity и отдельные
     sequential steady/resource строки X1 и его причинных references по тому же
-    consumer-scope contract;
+    consumer-scope contract; затем AV6 parity и последовательные steady/resource
+    строки H0/X1/X1-PROJECTED для четырёх составных selectors;
     независимая проверка безопасности и производительности.
   - Граница завершения:
     обновить устойчивый acceptance baseline всеми измеренными строками и

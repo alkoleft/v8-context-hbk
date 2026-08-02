@@ -183,6 +183,35 @@ memory-mapped кандидат и архивный кандидат с пров�
   recommendation/canonical fields, изменять shortlist, выбирать production-
   формат или объединять ветвь без отдельного решения пользователя.
 
+#### Scenario: Проверяются составные фильтры AvailabilityContext и сохраняемые проекции
+
+- **WHEN** после AV5 выполняется отдельный S83-AV6 для фильтрации scope по
+  нескольким `AvailabilityContext`
+- **THEN** он SHALL сравнить только H0, неизменённый X1 и отдельный
+  X1-PROJECTED на наборах `[server, thick_client]` и
+  `[thin_client, web_client, thick_client]`, каждый в режимах `ANY` и `ALL`
+- **AND** пустой availability SHALL означать universal, `ANY` SHALL принимать
+  universal или наличие хотя бы одного запрошенного контекста, а `ALL` SHALL
+  принимать universal или наличие всех запрошенных контекстов
+- **AND** каждый факт SHALL появляться не более одного раза, SHALL сохраняться
+  порядок H0, а `ModuleContextKind` SHALL NOT участвовать в фильтре
+- **AND** X1-PROJECTED SHALL сохранять ровно девять базовых поконтекстных
+  проекций для global scope и непосредственных members всех platform types и
+  SHALL NOT сохранять benchmark-комбинации, готовые `ANY`/`ALL` результаты или
+  таблицу всех возможных масок
+- **AND** runtime `ANY` SHALL выполнять ordered union с дедупликацией, runtime
+  `ALL` — ordered intersection, borrowed iteration SHALL NOT материализовать
+  результат или выделять heap, а collect SHALL материализовать compact `u32`
+  locator set
+- **AND** до performance обе строки X1 SHALL пройти точный H0 parity global
+  scope и scope пяти AV5 type anchors для всех четырёх selector-комбинаций
+- **AND** результаты SHALL отдельно публиковать steady borrowed/collect time и
+  allocations для global/type scope, а также entry-to-ready, first scope,
+  retained compact sets, RSS/PSS, artifact bytes и projected-section bytes
+- **AND** AV6 SHALL NOT повторно относить неизменившиеся type-name lookup/full
+  payload к новому измерению, вводить aggregate score/rank/winner или выбирать
+  production/canonical backend без решения пользователя.
+
 #### Scenario: Сравниваются гипотезы организации данных
 
 - **WHEN** исследование оценивает layout, lookup-индексы, проверяемый

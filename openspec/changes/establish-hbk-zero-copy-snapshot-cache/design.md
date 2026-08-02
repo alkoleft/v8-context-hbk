@@ -481,6 +481,30 @@ anchors. Это смешанный результат составления к�
 назначается production/canonical реализацией и пункт 1.15 остаётся открытым.
 Полное evidence находится в `spec/acceptance/hbk-s83-av5-evidence.md`.
 
+Следующий отдельный workload `S83-AV6` проверяет, меняется ли вывод для
+комбинированной фильтрации `AvailabilityContext`. Он не изменяет AV5 и
+сравнивает только `S83-H0`, неизменённый `S83-X1` и новую гипотезу
+`S83-X1-PROJECTED`. Заморожены два непустых набора контекстов:
+`server_thick_client = [server, thick_client]` и
+`thin_web_thick_client = [thin_client, web_client, thick_client]`, каждый в
+режимах `ANY` и `ALL`. Пустой availability означает universal;
+`ANY` принимает universal либо пересечение с набором, `ALL` — universal либо
+наличие каждого контекста набора. Один логический факт выдаётся не более одного
+раза, а порядок совпадает с H0.
+
+`S83-X1-PROJECTED` сохраняет для всех platform types и global scope ровно
+девять базовых упорядоченных проекций — по одной на каждый поддерживаемый
+контекст. Он не сохраняет два benchmark-набора, готовые `ANY`/`ALL` результаты
+или все 512 масок. `ANY` выполняет ordered union с дедупликацией, `ALL` —
+ordered intersection, обе операции сохраняют канонический owner-local/global
+порядок. Borrowed path не материализует выходной набор и не выделяет heap;
+collect явно создаёт компактный `u32` locator set. AV6 измеряет steady global
+scope и scope одного из пяти AV5 type anchors, отдельно borrowed/collect,
+а resource-проход фиксирует entry-to-ready, first scope, retained compact sets,
+RSS/PSS, artifact и projected-section bytes. Type-name lookup и full payload не
+зависят от режима фильтра и в AV6 не перезапускаются: их AV5 результаты лишь
+связываются ссылкой. AV6 не вводит score/rank/winner и не закрывает 1.15.
+
 Команды кандидатов, уже формирующие замороженный конверт измерений, напрямую
 используют точки входа `run-command` и `record-parity` неизменяемого harness.
 Сбор данных о выделениях кандидата и четырёх читателях использует тонкий внешний
