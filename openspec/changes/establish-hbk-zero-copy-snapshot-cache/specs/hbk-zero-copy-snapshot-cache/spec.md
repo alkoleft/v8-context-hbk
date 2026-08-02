@@ -208,6 +208,10 @@ memory-mapped кандидат и архивный кандидат с пров�
 - **AND** результаты SHALL отдельно публиковать steady borrowed/collect time и
   allocations для global/type scope, а также entry-to-ready, first scope,
   retained compact sets, RSS/PSS, artifact bytes и projected-section bytes
+- **AND** timing profile SHALL использовать release binary с прямым `System`
+  без allocation counters, allocation profile SHALL использовать отдельный
+  release binary с counters, а его latency/RSS/PSS SHALL NOT смешиваться с
+  timing profile
 - **AND** AV6 SHALL NOT повторно относить неизменившиеся type-name lookup/full
   payload к новому измерению, вводить aggregate score/rank/winner или выбирать
   production/canonical backend без решения пользователя.

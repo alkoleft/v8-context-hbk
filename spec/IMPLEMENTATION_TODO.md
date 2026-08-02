@@ -111,7 +111,9 @@ type-reference conclusions live in
         режимов `ANY`/`ALL` сравнить H0, неизменённый X1 и X1-PROJECTED с
         девятью базовыми сохраняемыми проекциями global scope и members всех
         типов; измерить steady borrowed/collect и цену artifact/startup/memory,
-        не сохраняя готовые комбинации и не выбирая backend.
+        не сохраняя готовые комбинации и не выбирая backend; разделить
+        counters-disabled timing и отдельный counters-enabled allocation
+        profile, не смешивая их время и process memory.
   - Проверка:
     строгая валидация OpenSpec; format/check/test для зафиксированной базы и
     каждой ветви кандидата; проверка точных корпуса и checksum;

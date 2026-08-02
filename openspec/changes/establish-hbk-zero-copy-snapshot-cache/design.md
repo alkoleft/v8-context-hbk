@@ -505,6 +505,13 @@ RSS/PSS, artifact и projected-section bytes. Type-name lookup и full payload �
 зависят от режима фильтра и в AV6 не перезапускаются: их AV5 результаты лишь
 связываются ссылкой. AV6 не вводит score/rank/winner и не закрывает 1.15.
 
+Времена AV6 снимаются release binaries с counters-disabled
+`snapshot-experiment`/прямым `System`. Отдельные binaries с
+`snapshot-experiment-alloc` дают три allocation samples steady и resource
+строк; их времена и process memory не подменяют timing profile. Это сохраняет
+общий протокол эксперимента и не добавляет allocator atomics в сравниваемый
+collect hot path.
+
 Команды кандидатов, уже формирующие замороженный конверт измерений, напрямую
 используют точки входа `run-command` и `record-parity` неизменяемого harness.
 Сбор данных о выделениях кандидата и четырёх читателях использует тонкий внешний

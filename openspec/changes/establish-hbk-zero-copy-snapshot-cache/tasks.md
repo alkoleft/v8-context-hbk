@@ -254,7 +254,10 @@
   scope, allocations, first scope, retained sets, startup, RSS/PSS и
   artifact/projected-section bytes. Не сохранять benchmark-комбинации/все
   маски, не перезапускать неизменившиеся lookup/payload как AV6 и не выбирать
-  backend без решения пользователя.
+  backend без решения пользователя. Timing запускать отдельным release binary
+  с counters-disabled `System` (9 steady/5 resource samples), allocation
+  profile — отдельным counters-enabled binary (3 steady/3 resource samples),
+  не используя его latency/RSS/PSS как timing evidence.
 - [ ] 1.15 Представить пользователю неранжированные свидетельства, включая
   дополнительные таблицы S83-AV1 и S83-AV2. Только после выбора исхода пользователем
   принять или отклонить формат снапшота, назначение канонической

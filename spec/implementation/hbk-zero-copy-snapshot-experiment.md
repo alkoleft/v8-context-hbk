@@ -1561,13 +1561,23 @@ S83-AV6 — отдельный namespace, не изменяющий frozen AV5. 
 
 Steady-матрица содержит `global_scope_borrowed`, `global_scope_collect`,
 `type_scope_borrowed` и `type_scope_collect` для пяти AV5 anchors: 48 строк на
-backend/sample, 9 последовательных round-robin samples, 1 296 raw rows и 144
-summary groups для трёх backend. Global выполняется 1 000 раз, type scope —
-10 000 раз. Parity содержит global и пять type scopes для каждой из 12
-backend/selector пар. Resource-проход имеет по пять последовательных samples
-`first_global_scope`, `first_type_scope` каждого anchor и
-`retained_scope_sets` каждого selector, фиксируя entry-to-ready, allocation
-calls/bytes, faults, RSS/PSS, artifact bytes и projected-section bytes.
+backend/sample, 9 последовательных round-robin samples времени, 1 296 timing
+raw rows и 144 summary groups для трёх backend. Global выполняется 1 000 раз,
+type scope — 10 000 раз. Parity содержит global и пять type scopes для каждой
+из 12 backend/selector пар. Resource-проход времени/памяти имеет по пять
+последовательных samples `first_global_scope`, `first_type_scope` каждого
+anchor и `retained_scope_sets` каждого selector: всего 420 resource rows.
+
+Timing binaries собираются только с `snapshot-experiment`: экспериментальный
+аллокатор делегирует напрямую `System`, а counters выключены. Аллокации
+измеряются отдельными release binaries с `snapshot-experiment-alloc` в
+отдельном target directory: три samples тех же steady rows (432 allocation
+rows) и три samples resource rows (252 allocation-resource rows). Их latency,
+RSS/PSS и faults не смешиваются с timing profile; summary берёт time/memory
+только из timing profile, allocation calls/bytes — только из allocation
+profile. Оба профиля имеют явную schema identity, проходят smoke и фиксируют
+одинаковые source commit/artifact/manifest. Так atomic counters не искажают
+финальные времена collect-операций.
 
 Type-name lookup и полный payload не зависят от `ANY`/`ALL`, поэтому AV6 не
 перезапускает их и не смешивает AV5 числа с новой выборкой. Evidence даёт
