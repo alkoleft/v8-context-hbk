@@ -627,3 +627,122 @@ workspace, clippy и strict OpenSpec прошли. Allocation-enabled прове
 ровно один request-local `String` allocation без reallocation для одного raw
 name argument. X1 остаётся private и non-canonical. Следующий slice — 3.5,
 stable-slot shared/exclusive lock и atomic immutable generation publication.
+
+## Task-local plan: OpenSpec 3.5 — stable slot и immutable publication
+
+Этот slice закрывает unsafe precondition task 3.2: mapped generation открывается
+только под shared lock стабильного логического slot, а единственная product
+операция изменения публикует новый immutable файл под fail-fast exclusive lock.
+Catalog/analyzer migration и превращение mapped storage в public
+`HbkFactSnapshot::worker_handle` остаются в 4.4, чтобы незавершённый mapped
+snapshot нельзя было открыть через public API с пустым/owned fallback surface.
+
+### Layout и lock contract
+
+Один slot root содержит только:
+
+- `snapshot.lock` — стабильный inode/lock target; не переименовывается и не
+  удаляется;
+- `generations/generation-<artifact-sha256>.x1` — read-only immutable files;
+- `current` — UTF-8 имя одного generation без `/`, `\\`, `..` или абсолютного
+  пути;
+- временные файлы с process/counter suffix, удаляемые только под exclusive lock.
+
+Используются стабилизированные в Rust 1.89 `std::fs::File::{lock_shared,
+try_lock}`; новая crate dependency не нужна. Reader блокирующе получает shared
+lock до чтения `current` и удерживает сам `File` до drop mapped owner. Writer
+использует только `try_lock`; `TryLockError::WouldBlock` немедленно становится
+typed `SearchError::SnapshotInUse { path }`, без retry/sleep/timeout.
+
+Lock является OS advisory coordination boundary для всех product операций, а
+read-only permissions generation/current — только дополнительный диагностический
+инвариант, не safety mechanism. Threat model ограничен доверенным service-data
+slot, который изменяют только cooperating HBK setup/runtime процессы. Любая
+поддерживаемая попытка обновления при активном reader получает
+`snapshot-in-use`; произвольный same-user или privileged процесс, игнорирующий
+lock и меняющий permissions/inode/bytes, находится вне принятого contract.
+Portable advisory lock физически не запрещает такую внешнюю мутацию, поэтому
+3.5 не заявляет OS-level immutability против произвольного локального процесса
+и не делает mapped owner public для недоверенного произвольного path.
+
+### Reader и publication algorithm
+
+1. Private trusted-slot open открывает существующий `snapshot.lock`, получает
+   shared lock, читает/проверяет `current`, затем вызывает единственный полный
+   validator и `X1MappedGeneration::open` для указанного generation.
+   Lock file и mmap owner живут в одном owner; SQL/HBK/rebuild/fallback нет.
+2. `HbkFactSnapshotBuildReport::publish_x1_generation(slot)` создаёт slot layout,
+   получает exclusive lock fail-fast, пишет generation через task 3.1 writer в
+   `create_new` temp и полностью перепроверяет его. Operation удаляет при
+   ошибке только temp paths, которые сама успешно создала; чужие/stale temp и
+   любые другие slot files не сканируются и не удаляются в 3.5.
+3. Artifact SHA-256 определяет immutable target name. Если target уже есть,
+   writer требует stable regular non-symlink file, повторно вычисляет его full
+   artifact SHA-256, проверяет полную identity/bytes и переиспользует только при
+   exact match; corrupt target отклоняется. Существующий generation никогда не
+   усекается и не заменяется.
+4. Новый target публикуется rename temp -> generation и `fsync` generation dir.
+   Затем новый read-only pointer temp записывается/`fsync`-ится и атомарно
+   заменяет `current`; slot dir `fsync` завершает publication. До generation
+   rename ошибка оставляет old current; после generation rename, но до pointer
+   rename допустим orphan immutable generation и old current; после pointer
+   rename, но до финального directory `fsync` recovery может увидеть old либо
+   new pointer, но ни один принятый pointer не ссылается на partial generation.
+   Partial/corrupt pointer никогда не принимается и fail-closed.
+5. Старые generation не удаляются в 3.5. Замена HBK/source публикует новый
+   generation только после drop всех старых readers и создаёт новое
+   session-local ID space для последующих opens. Retention/GC и видимый учёт
+   orphan/stale generation bytes явно принадлежат conditional cleanup 7.2, а не
+   скрытой автоматической уборке этого slice.
+
+### API и guards
+
+- Public build/setup surface получает только publication report и typed
+  `snapshot-in-use`; private slot reader возвращает единственный
+  `X1MappedGeneration`, не вторую public entity/catalog family.
+- Slot root и `generations/` проверяются `symlink_metadata` как реальные
+  directories, не symlink. `snapshot.lock`, `current`, target generation и
+  созданные temp проверяются как non-symlink regular files; после open file
+  metadata сверяется с pre-open metadata по supported Linux device/inode, чтобы
+  обнаружить replacement race. Pointer parser принимает ровно
+  `generation-<64 lowercase hex>.x1\n`, затем присоединяет только basename к
+  уже проверенному `generations/`; свободный path, separator, `..` и symlink
+  запрещены. Missing/corrupt components fail-closed typed artifact error.
+- Первый writer создаёт directories idempotently, затем пытается `create_new`
+  стабильный empty `snapshot.lock`; `AlreadyExists` разрешает только проверенный
+  regular non-symlink lock. Concurrent first writers открывают один и тот же
+  stable inode и расходятся на `try_lock`; reader никогда не создаёт missing
+  lock. Замена lock inode во время open обнаруживается pre/post metadata check.
+- Lock acquisition предшествует чтению discovery metadata и mapping; writer
+  lock предшествует cleanup/build/publication. Lock target никогда не меняется.
+- Единственный `unsafe Mmap::map` остаётся в `X1MappedGeneration::open`. Его
+  private caller proof действует внутри явно принятого trusted/cooperating slot
+  contract: shared lock удерживается тем же owner, product writer не может
+  получить exclusive lock, generation никогда не изменяется in-place,
+  pre/post-open inode проверен, mutable mapping/raw cast/transmute отсутствуют.
+  Это не доказательство против внешнего процесса, нарушающего threat model.
+- Explicit task 3.1 `write_x1_generation` остаётся build-only `create_new` API;
+  runtime consumer не может открыть его без slot lifecycle.
+
+### Behavior tests и commit gate
+
+- Два concurrent reader handle удерживают shared lock; publisher немедленно
+  получает exact `SnapshotInUse`, не создаёт temp/generation и не меняет
+  `current`. После drop всех readers publication проходит.
+- Reader видит только old либо new fully validated generation. Publication не
+  может идти одновременно с живым старым owner; после его drop следующая
+  session открывает новый current.
+- Missing/corrupt/traversal pointer, identity mismatch, existing exact/corrupt
+  generation и injected failures до generation rename, между generation и
+  pointer rename, после pointer rename проверяют old-or-new valid recovery и
+  отсутствие partial pointer.
+- Symlink tests покрывают slot root, generations dir, lock, current, generation
+  target и temp candidate; unrelated/stale files остаются нетронутыми.
+- Source replacement test проверяет изоляцию двух последовательных sessions и
+  новое logical mapping, но не сравнивает numeric IDs как durable identity и не
+  выполняет их migration.
+- Source/unsafe review перечисляет каждый private mmap caller, поле owner с
+  shared lock и drop/lifetime chain views -> mapped generation; product writer
+  всегда exclusive, нет in-place write, wait/retry,
+  SQL/HBK fallback или public второй snapshot owner. Package/workspace tests,
+  clippy, strict OpenSpec и diff check обязательны до отметки 3.5.
