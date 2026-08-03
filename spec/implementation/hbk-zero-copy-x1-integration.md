@@ -900,3 +900,65 @@ handles); SHA-256 нормализованного ordered transcript —
 Package all-feature tests, explicit frozen probe, clippy, fmt, diff check и
 независимый review прошли. Следующий slice — 4.4 unified
 read/catalog/resolver seam; X1 остаётся non-canonical.
+
+## Task-local plan: OpenSpec 4.4 — unified read/catalog/resolver seam
+
+Slice доказывает, что существующие BSL/SDBL catalogs и compatibility
+resolvers могут работать на mapped X1 без второй entity family,
+owned materialization и скрытого SQL/HBK fallback. H0 owned path остаётся
+только как сравнительный oracle до gate 4.6.
+
+### 4.4a — owner, views и static read dispatch
+
+1. `HbkFactSnapshot` остаётся единственным public owner. Его закрытое
+   storage различает owned build/oracle и `X1StableSlotGeneration`; mapped
+   variant удерживает mmap, file и shared slot lock до drop последнего
+   `Arc`.
+2. Public fail-closed `HbkFactSnapshot::open_x1_slot` принимает внешне
+   заданный `HbkFactSnapshotExpectation` с platform version, locale,
+   source locale и source HBK SHA-256. Expectation не извлекается из
+   artifact, open не читает SQLite/HBK и не fallback-ит.
+3. `HbkFactReadHandle` остаётся единственным read interface. Его private
+   representation — `Owned | Mapped`; каждый lookup/range возвращает
+   именованный static enum iterator. `Box<dyn Iterator>` и seam-only
+   `Vec<ID>` запрещены.
+4. Одна public storage-neutral family `Hbk*View<'a>` покрывает name,
+   type/member/callable/signature/parameter/global/query/enum/type-ref/template
+   payload. Views возвращаются by value, содержат только borrowed
+   owned record или private X1 view и не материализуют payload. `X1*`
+   типы не выходят из `syntax-helper-search`.
+5. Существующие owned constructors/record access остаются для build,
+   H0 oracle и experiments до условного cleanup. Production catalogs не
+   имеют к ним доступа.
+
+### 4.4b — catalogs и compatibility adapters
+
+1. `HbkBslContextCatalog` и `HbkSdblQueryCatalog` продолжают удерживать
+   `Arc<HbkFactSnapshot>`, но выдают только strings, locators и
+   storage-neutral views через `HbkFactReadHandle`. Owned `snapshot()` access
+   удаляется из production surface.
+2. `PlatformSnapshotSource`, `QueryTableSnapshotSource` и mapping helpers
+   переводятся на view accessors. Intermediate ID collections, нужные
+   только для перехода через seam, удаляются; существующие response
+   `Vec` на resolver boundary остаются допустимыми.
+3. Public H0 constructors from `SearchIndex`/пути сохраняются временно
+   для парной 4.4/4.5 проверки; они не вызываются X1 open и
+   становятся cleanup-candidates только после pass 4.6.
+
+### 4.4c — parity, concurrency, allocation и fallback proof
+
+1. Deterministic transcript охватывает direct BSL/SDBL catalogs и оба
+   compatibility adapters на одной real-shaped fixture. Owned и mapped
+   results сравниваются exact, затем один mapped owner повторяет
+   прогоны последовательно и из concurrent threads.
+2. Fixture публикует X1 slot, открывает mapped snapshot, делает
+   source HBK и SQLite недоступными и повторяет catalog/resolver
+   transcript. X1 branch не имеет fallback; проверка не модифицирует
+   frozen source inputs.
+3. Allocation probe изолированно проверяет borrowed global/member/query
+   enumeration. Provider allocations равны нулю; аллокации публичных
+   compatibility DTO в этот gate не входят.
+4. Commit gate: package/workspace tests, focused parity/concurrency/no-fallback/
+   allocation probes, package clippy, fmt, strict OpenSpec, diff check и
+   независимый review. Slice не меняет canonical source и не удаляет H0;
+   следующий gate — real `v8-context` A/B 4.5.
