@@ -384,6 +384,12 @@ type-reference conclusions live in
     `acceptance/hbk-x1-int-evidence.md`. Следующий активный пункт — отдельный
     canonical cutover 5.1 с последующим inventory-scoped cleanup. T183 остаётся
     открытой до завершения cutover, structural guards и уборки.
+    До изменения кода принят точный cutover/deletion ledger
+    `implementation/hbk-zero-copy-x1-cutover-inventory.md`: он фиксирует
+    downstream границу private benchmark/integration harness, replacement
+    owners, проверки и обязательный preserve-list SQLite build/search/debug.
+    Независимый skeptic-review принял план без оставшихся high/critical
+    блокеров; cleanup cache/examples отделён в задачи 7.2–7.3.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

@@ -204,6 +204,69 @@ oracles сохранены. Полная matrix, producer cost и service-data m
 находятся в `acceptance/hbk-x1-int-evidence.md`. Результат разрешает отдельный
 canonical cutover ниже, но не подменяет его.
 
+## Task-local plan: OpenSpec 5.1–5.3 — canonical cutover
+
+Этот этап начинается только после принятого 4.6 pass и не меняет отдельные
+SQLite search/debug contracts.
+
+1. Единственный canonical runtime constructor становится
+   `HbkFactSnapshot::open(slot, &expectation)`: он открывает только validated
+   mapped stable-slot generation. Experiment-name `open_x1_slot` удаляется, а
+   все runtime/tests переходят на canonical имя без compatibility alias.
+2. `PlatformSnapshotSource` и `QueryTableSnapshotSource` сохраняют только
+   constructors от одного caller-owned `Arc<HbkFactSnapshot>`. Их
+   SQLite-to-owned `from_index`/`open_read_only_with_source_id` удаляются;
+   adapters не получают второй storage owner и не открывают provider input.
+3. Owned materialization переименовывается в explicit build-only API
+   `build_from_provider_path/index[_with_stage_timings]`. Оно используется
+   только publisher/setup, fixtures и принятыми parity probes. Ни один catalog,
+   resolver или analyzer runtime path не может его вызвать.
+4. Downstream `v8-context` private analyzer benchmark/integration arm открывает
+   только mapped snapshot. Это единственный существующий executable consumer;
+   отдельного non-benchmark product composition root сейчас нет. H0 сохраняется
+   исключительно как явно выбранный test-only baseline и не является product/
+   runtime config или fallback. Downstream принимает mapped HBK base dictionary
+   и generation-local IDs в tasks 1.14/1.14a/1.14b.
+5. После behavior/package/workspace/clippy/fmt/OpenSpec проверок независимый
+   review подтверждает cutover. Отдельная уборка выполняется только задачами
+   7.2–7.3 по точному ledger из
+   `hbk-zero-copy-x1-cutover-inventory.md`; она не смешивается с 5.x.
+
+### Structure impact
+
+- Reused: `HbkFactSnapshot`, stable-slot owner/lock, full X1 validator,
+  `HbkFactReadHandle`, `Hbk*View`, BSL/SDBL catalogs, snapshot adapters и один
+  caller-owned `Arc`.
+- Renamed: generic runtime open и explicit provider-to-owned build helpers;
+  X1 on-disk magic/layout identity не переименовывается.
+- Deleted in 5.x: three resolver SQLite-to-snapshot constructors and the
+  experiment-name runtime open. Legacy cache/examples are only 7.x candidates.
+- Preserved: SQLite `SearchIndex`, its builder/schema/locking, SQL
+  `PlatformSearchSource`/`LanguageSearchSource`, CLI/search/debug use cases,
+  setup publisher, parity fixtures and accepted Markdown evidence.
+- Downstream changed: only canonical snapshot construction/docs/guards and
+  dependency result; semantic precedence, availability, BSL/SDBL selection,
+  metadata, transport and checkpoint schema are unchanged.
+
+### Reintroduction guard
+
+Single allowed runtime flow:
+
+```text
+stable X1 slot -> HbkFactSnapshot::open -> Arc -> catalogs/views -> consumer
+```
+
+Structural tests fail if snapshot adapters or downstream X1 arm name
+`SearchIndex`, provider paths, `from_path`/`from_index`, owned-cache types,
+HBK readers or fallback. Separate guards require build APIs to carry
+`build_from_provider_` names. Existing lifecycle/no-source regression proves
+typed open before traversal, shared lock ownership and continued operation
+without SQLite/HBK. Retired cache magic/API/example guards belong to 7.x.
+
+Exact consumers, actions, replacements, verification and the mandatory
+SQLite/build/search/debug preserve-list are fixed in
+`hbk-zero-copy-x1-cutover-inventory.md`; category-level deletion is forbidden.
+
 ## Условный cutover и cleanup
 
 При полном pass отдельная проверенная задача:

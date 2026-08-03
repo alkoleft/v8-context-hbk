@@ -368,6 +368,10 @@
 
 ## 5. Условный canonical cutover и удаление дубликатов
 
+- [x] 5.0 Зафиксировать до удаления точный path/symbol inventory каждого
+  runtime/build/cache пути с consumer search, действием, replacement owner и
+  проверкой; отдельно перечислить сохраняемые SQLite build/search/debug/CLI
+  контракты и фактическую downstream benchmark/product границу.
 - [ ] 5.1 Только после полного X1-INT pass перенести каждого runtime-потребителя каталога с десериализованного
   хранилища в куче на заимствованные представления снапшота, сохранив наблюдаемое
   поведение запросов.
@@ -397,6 +401,8 @@
   модели сущностей.
 - [ ] 7.2 После cutover выполнить scoped garbage inventory и удалить только
   доказанно заменённые runtime loaders/models/indexes/tests/features/dependencies;
-  сохранить экспериментальные ветки/evidence и отдельные search/debug contracts.
+  сохранить экспериментальные ветки/evidence и отдельные search/debug contracts;
+  выполнять только строки exact ledger из
+  `spec/implementation/hbk-zero-copy-x1-cutover-inventory.md`.
 - [ ] 7.3 Проверить итоговый diff на дублирующие модели, словари, индексы, loaders,
   fallback-чтения и цепочки преобразований до завершения изменения.
