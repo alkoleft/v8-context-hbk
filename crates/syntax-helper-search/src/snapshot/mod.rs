@@ -33,7 +33,7 @@ pub use experiment_oracle::{
 pub use memory::{HbkFactSnapshotIndexMemory, HbkFactSnapshotMemory, HbkFactSnapshotMemoryEntry};
 pub use read::HbkFactSnapshotCounts;
 pub use types::*;
-pub use x1_format::HbkFactSnapshotArtifactWriteReport;
+pub use x1_format::{HbkFactSnapshotArtifactPublicationReport, HbkFactSnapshotArtifactWriteReport};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkFactSnapshot {

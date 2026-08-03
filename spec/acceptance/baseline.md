@@ -3124,6 +3124,17 @@ relation kind. Pre-normalized steady lookup/range traversal дал `0` allocatio
 один request-local `String` allocation без reallocation. X1 всё ещё private и
 non-canonical; безопасный stable-slot lifecycle 3.5 остаётся следующим gate.
 
+Task 3.5 реализовал stable-slot publication и session lock: package tests
+`104/104`, all-features `106 passed` с тремя штатно ignored allocation probes,
+полный workspace, package clippy, fmt, strict OpenSpec и независимое review
+прошли. Два concurrent reader удерживают shared lock, writer fail-fast
+возвращает `SnapshotInUse`; после drop generation публикуется через immutable
+content-addressed file и atomic `current`. Crash tests до generation, между
+generation/current и после current сохраняют только valid old-or-new recovery.
+Missing/corrupt/oversized/non-regular/symlink slot components и ancestors
+fail-closed; X1 открывается после удаления source HBK и provider SQLite без
+fallback. X1 остаётся private и non-canonical до X1-INT.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

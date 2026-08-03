@@ -1,9 +1,12 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Cursor, Read, Write};
 use std::ops::Range;
-use std::path::Path;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
+use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
 use memmap2::Mmap;
 use sha2::{Digest, Sha256};
@@ -26,6 +29,16 @@ const SECTION_ALIGNMENT: usize = 8;
 const MAX_ARTIFACT_BYTES: u64 = 256 * 1024 * 1024;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+const X1_SLOT_LOCK_FILE: &str = "snapshot.lock";
+const X1_SLOT_GENERATIONS_DIR: &str = "generations";
+const X1_SLOT_CURRENT_FILE: &str = "current";
+const X1_GENERATION_PREFIX: &str = "generation-";
+const X1_GENERATION_SUFFIX: &str = ".x1";
+const SHA256_HEX_LEN: usize = 64;
+const X1_CURRENT_POINTER_LEN: usize =
+    X1_GENERATION_PREFIX.len() + SHA256_HEX_LEN + X1_GENERATION_SUFFIX.len() + 1;
+
+static X1_PUBLICATION_NONCE: AtomicU64 = AtomicU64::new(0);
 
 fn x1_normalize_lookup_key(value: &str) -> String {
     let mut normalized = String::with_capacity(value.len());
@@ -70,10 +83,21 @@ pub struct HbkFactSnapshotArtifactWriteReport {
     pub provider_sha256: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HbkFactSnapshotArtifactPublicationReport {
+    pub artifact_bytes: u64,
+    pub artifact_sha256: String,
+    pub generation_file_name: String,
+    pub platform_version: String,
+    pub source_sha256: String,
+    pub provider_sha256: String,
+    pub reused_existing_generation: bool,
+}
+
 #[allow(dead_code)]
 struct X1MappedGeneration {
-    _file: File,
     mmap: Mmap,
+    _file: File,
     sections: Vec<Section>,
     counts: HbkFactSnapshotCounts,
     source_locale: StringId,
@@ -85,14 +109,15 @@ impl X1MappedGeneration {
     /// # Safety
     ///
     /// The caller must guarantee that the explicit generation file cannot be
-    /// modified or truncated for the returned owner's lifetime. Task 3.5 will
-    /// uphold this precondition with the stable-slot shared reader lock before
-    /// this becomes a public runtime open operation.
+    /// modified or truncated for the returned owner's lifetime. The stable-slot
+    /// owner upholds this with its shared reader lock; direct test callers own
+    /// and keep their isolated read-only generation unchanged.
     unsafe fn open(path: &Path, expected: &X1RuntimeExpectation) -> Result<Self, SearchError> {
-        let before = fs::metadata(path).map_err(|source| SearchError::Io {
+        let before = fs::symlink_metadata(path).map_err(|source| SearchError::Io {
             path: path.to_path_buf(),
             source,
         })?;
+        validate_stable_regular_file_metadata(path, &before, "X1 generation")?;
         validate_generation_metadata(path, &before)?;
 
         let file = File::open(path).map_err(|source| SearchError::Io {
@@ -103,6 +128,12 @@ impl X1MappedGeneration {
             path: path.to_path_buf(),
             source,
         })?;
+        validate_same_file(
+            path,
+            &before,
+            &file_metadata,
+            "X1 generation changed while opening",
+        )?;
         validate_generation_metadata(path, &file_metadata)?;
         if file_metadata.len() != before.len() {
             return Err(snapshot_artifact_invalid(
@@ -140,16 +171,27 @@ impl X1MappedGeneration {
             source,
         })?;
         validate_generation_metadata(path, &after)?;
-        if after.len() != file_metadata.len() {
-            return Err(snapshot_artifact_invalid(
-                path,
-                "X1 artifact size changed while validating mapping",
-            ));
-        }
+        validate_same_file(
+            path,
+            &file_metadata,
+            &after,
+            "X1 artifact changed while validating mapping",
+        )?;
+        let path_after = fs::symlink_metadata(path).map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        validate_stable_regular_file_metadata(path, &path_after, "X1 generation")?;
+        validate_same_file(
+            path,
+            &file_metadata,
+            &path_after,
+            "X1 generation path changed while opening",
+        )?;
 
         Ok(Self {
-            _file: file,
             mmap,
+            _file: file,
             sections,
             counts,
             source_locale,
@@ -178,6 +220,92 @@ impl X1MappedGeneration {
 
     fn records<T: BinaryValue>(&self, section: S, range: X1Range) -> X1RecordIter<'_, T> {
         X1RecordIter::new(self.vector(section), range)
+    }
+}
+
+/// Owns the shared slot lock after the mapped generation so Rust drops the
+/// mapping before releasing the lock. This remains crate-private until the
+/// catalog/runtime migration in OpenSpec task 4.4.
+#[allow(dead_code)]
+pub(super) struct X1StableSlotGeneration {
+    generation: X1MappedGeneration,
+    _shared_lock: File,
+}
+
+#[allow(dead_code)]
+impl X1StableSlotGeneration {
+    fn open(slot_path: &Path, expected: &X1RuntimeExpectation) -> Result<Self, SearchError> {
+        reject_symlink_path_components(slot_path)?;
+        validate_stable_directory(slot_path, "X1 snapshot slot")?;
+        let generations_path = slot_path.join(X1_SLOT_GENERATIONS_DIR);
+        validate_stable_directory(&generations_path, "X1 generations directory")?;
+
+        let lock_path = slot_path.join(X1_SLOT_LOCK_FILE);
+        let lock_file = open_stable_regular_file(&lock_path, false, "X1 slot lock")?;
+        File::lock_shared(&lock_file).map_err(|source| SearchError::Io {
+            path: lock_path.clone(),
+            source,
+        })?;
+        validate_open_file_path(&lock_path, &lock_file, "X1 slot lock changed after locking")?;
+
+        let current_path = slot_path.join(X1_SLOT_CURRENT_FILE);
+        let generation_file_name = read_current_pointer(&current_path)?;
+        let generation_path = generations_path.join(generation_file_name);
+        validate_generation_content_address(&generation_path)?;
+
+        // SAFETY: The stable slot is a trusted service-data boundary. This
+        // owner holds the slot's shared lock until after `generation` is
+        // dropped, all cooperating publishers require its exclusive lock,
+        // generations are never modified in place, and `open` verifies the
+        // generation's non-symlink stable inode before and after mapping.
+        let generation = unsafe { X1MappedGeneration::open(&generation_path, expected) }?;
+
+        Ok(Self {
+            generation,
+            _shared_lock: lock_file,
+        })
+    }
+
+    fn read_handle(&self) -> X1MappedReadHandle<'_> {
+        self.generation.read_handle()
+    }
+
+    fn artifact_len(&self) -> usize {
+        self.generation.artifact_len()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum X1PublicationFailurePoint {
+    BeforeGeneration,
+    GenerationPublished,
+    CurrentPublished,
+}
+
+#[derive(Debug, Clone)]
+struct X1PublicationOptions {
+    nonce: String,
+    fail_at: Option<X1PublicationFailurePoint>,
+    #[cfg(test)]
+    lock_hook: Option<X1PublicationLockHook>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone)]
+struct X1PublicationLockHook {
+    acquired: std::sync::Arc<std::sync::Barrier>,
+    release: std::sync::Arc<std::sync::Barrier>,
+}
+
+impl X1PublicationOptions {
+    fn production() -> Self {
+        let sequence = X1_PUBLICATION_NONCE.fetch_add(1, AtomicOrdering::Relaxed);
+        Self {
+            nonce: format!("{}-{sequence}", std::process::id()),
+            fail_at: None,
+            #[cfg(test)]
+            lock_hook: None,
+        }
     }
 }
 
@@ -2191,6 +2319,692 @@ impl HbkFactSnapshotBuildReport {
             source,
         })
     }
+
+    /// Publishes this snapshot into a stable content-addressed X1 slot.
+    ///
+    /// Publication is fail-fast while any mapped reader owns a shared slot
+    /// lock. Existing immutable generations are reused only after their full
+    /// content hash and artifact identity have been validated.
+    pub fn publish_x1_generation(
+        &self,
+        slot_path: impl AsRef<Path>,
+    ) -> Result<HbkFactSnapshotArtifactPublicationReport, SearchError> {
+        self.publish_x1_generation_with_options(
+            slot_path.as_ref(),
+            X1PublicationOptions::production(),
+        )
+    }
+
+    fn publish_x1_generation_with_options(
+        &self,
+        slot_path: &Path,
+        options: X1PublicationOptions,
+    ) -> Result<HbkFactSnapshotArtifactPublicationReport, SearchError> {
+        reject_symlink_path_components(slot_path)?;
+        ensure_stable_directory(slot_path, "X1 snapshot slot")?;
+        let generations_path = slot_path.join(X1_SLOT_GENERATIONS_DIR);
+        ensure_stable_directory(&generations_path, "X1 generations directory")?;
+
+        let lock_path = slot_path.join(X1_SLOT_LOCK_FILE);
+        let lock_file = open_or_create_stable_lock(&lock_path)?;
+        match File::try_lock(&lock_file) {
+            Ok(()) => {}
+            Err(TryLockError::WouldBlock) => {
+                return Err(SearchError::SnapshotInUse {
+                    path: slot_path.to_path_buf(),
+                });
+            }
+            Err(TryLockError::Error(source)) => {
+                return Err(SearchError::Io {
+                    path: lock_path,
+                    source,
+                });
+            }
+        }
+        validate_open_file_path(
+            &slot_path.join(X1_SLOT_LOCK_FILE),
+            &lock_file,
+            "X1 slot lock changed after locking",
+        )?;
+        #[cfg(test)]
+        if let Some(hook) = &options.lock_hook {
+            hook.acquired.wait();
+            hook.release.wait();
+        }
+        reject_symlink_path_components(slot_path)?;
+        validate_stable_directory(slot_path, "X1 snapshot slot")?;
+        validate_stable_directory(&generations_path, "X1 generations directory")?;
+        validate_current_before_publication(slot_path)?;
+
+        let identity = artifact_identity(self).map_err(|source| SearchError::Io {
+            path: self.cache_index_path.clone(),
+            source,
+        })?;
+        let stage_path = generations_path.join(format!(".generation-{}.tmp", options.nonce));
+        let pointer_temp_path = slot_path.join(format!(".current-{}.tmp", options.nonce));
+        reject_existing_temp_candidate(&stage_path)?;
+        reject_existing_temp_candidate(&pointer_temp_path)?;
+
+        let mut owns_stage = false;
+        let mut owns_pointer_temp = false;
+        let result = (|| {
+            let written = self.write_x1_generation(&stage_path)?;
+            owns_stage = true;
+            let stage_bytes = read_stable_generation(&stage_path, "X1 generation temp")?;
+            validate_mmap_expected(&stage_bytes, Some(&identity)).map_err(|source| {
+                SearchError::SnapshotArtifact {
+                    path: stage_path.clone(),
+                    source: artifact_error_from_io(source),
+                }
+            })?;
+            let artifact_sha256 = bytes_sha256(&stage_bytes);
+            let generation_file_name = generation_file_name(&artifact_sha256)?;
+            let generation_path = generations_path.join(&generation_file_name);
+
+            inject_publication_failure(
+                options.fail_at,
+                X1PublicationFailurePoint::BeforeGeneration,
+                &stage_path,
+            )?;
+
+            let reused_existing_generation = match fs::symlink_metadata(&generation_path) {
+                Ok(metadata) => {
+                    validate_stable_regular_file_metadata(
+                        &generation_path,
+                        &metadata,
+                        "X1 generation target",
+                    )?;
+                    validate_generation_metadata(&generation_path, &metadata)?;
+                    let existing =
+                        read_stable_generation(&generation_path, "X1 generation target")?;
+                    let existing_sha = bytes_sha256(&existing);
+                    if existing_sha != artifact_sha256 {
+                        return Err(snapshot_artifact_invalid(
+                            &generation_path,
+                            "existing X1 generation content does not match its content-addressed name",
+                        ));
+                    }
+                    validate_mmap_expected(&existing, Some(&identity)).map_err(|source| {
+                        SearchError::SnapshotArtifact {
+                            path: generation_path.clone(),
+                            source: artifact_error_from_io(source),
+                        }
+                    })?;
+                    if existing != stage_bytes {
+                        return Err(snapshot_artifact_invalid(
+                            &generation_path,
+                            "existing X1 generation bytes differ from staged generation",
+                        ));
+                    }
+                    remove_owned_temp(&stage_path)?;
+                    owns_stage = false;
+                    true
+                }
+                Err(source) if source.kind() == io::ErrorKind::NotFound => {
+                    fs::rename(&stage_path, &generation_path).map_err(|source| {
+                        SearchError::Io {
+                            path: generation_path.clone(),
+                            source,
+                        }
+                    })?;
+                    owns_stage = false;
+                    validate_openable_stable_file(&generation_path, "X1 generation target")?;
+                    sync_directory(&generations_path)?;
+                    false
+                }
+                Err(source) => {
+                    return Err(SearchError::Io {
+                        path: generation_path,
+                        source,
+                    });
+                }
+            };
+
+            inject_publication_failure(
+                options.fail_at,
+                X1PublicationFailurePoint::GenerationPublished,
+                &generation_path,
+            )?;
+
+            let pointer = format!("{generation_file_name}\n");
+            let mut pointer_temp = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&pointer_temp_path)
+                .map_err(|source| SearchError::Io {
+                    path: pointer_temp_path.clone(),
+                    source,
+                })?;
+            owns_pointer_temp = true;
+            pointer_temp
+                .write_all(pointer.as_bytes())
+                .and_then(|()| pointer_temp.sync_all())
+                .map_err(|source| SearchError::Io {
+                    path: pointer_temp_path.clone(),
+                    source,
+                })?;
+            let mut permissions = pointer_temp
+                .metadata()
+                .map_err(|source| SearchError::Io {
+                    path: pointer_temp_path.clone(),
+                    source,
+                })?
+                .permissions();
+            permissions.set_readonly(true);
+            pointer_temp
+                .set_permissions(permissions)
+                .and_then(|()| pointer_temp.sync_all())
+                .map_err(|source| SearchError::Io {
+                    path: pointer_temp_path.clone(),
+                    source,
+                })?;
+            drop(pointer_temp);
+            validate_openable_stable_file(&pointer_temp_path, "X1 current temp")?;
+
+            let current_path = slot_path.join(X1_SLOT_CURRENT_FILE);
+            fs::rename(&pointer_temp_path, &current_path).map_err(|source| SearchError::Io {
+                path: current_path.clone(),
+                source,
+            })?;
+            owns_pointer_temp = false;
+            assert_current_pointer(&current_path, &generation_file_name)?;
+
+            inject_publication_failure(
+                options.fail_at,
+                X1PublicationFailurePoint::CurrentPublished,
+                &current_path,
+            )?;
+            sync_directory(slot_path)?;
+
+            Ok(HbkFactSnapshotArtifactPublicationReport {
+                artifact_bytes: written.artifact_bytes,
+                artifact_sha256,
+                generation_file_name,
+                platform_version: written.platform_version,
+                source_sha256: written.source_sha256,
+                provider_sha256: written.provider_sha256,
+                reused_existing_generation,
+            })
+        })();
+
+        if owns_stage {
+            let _ = fs::remove_file(&stage_path);
+        }
+        if owns_pointer_temp {
+            let _ = fs::remove_file(&pointer_temp_path);
+        }
+        result
+    }
+}
+
+fn reject_symlink_path_components(path: &Path) -> Result<(), SearchError> {
+    let mut current = if path.is_absolute() {
+        PathBuf::new()
+    } else {
+        std::env::current_dir().map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?
+    };
+    let mut missing_component_seen = false;
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => current.push(prefix.as_os_str()),
+            Component::RootDir => current.push(component.as_os_str()),
+            Component::CurDir => continue,
+            Component::ParentDir => {
+                return Err(snapshot_artifact_invalid(
+                    path,
+                    "X1 slot path must not contain parent-directory components",
+                ));
+            }
+            Component::Normal(value) => current.push(value),
+        }
+        if missing_component_seen {
+            continue;
+        }
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(snapshot_artifact_invalid(
+                    &current,
+                    "X1 slot path contains a symlink component",
+                ));
+            }
+            Ok(_) => {}
+            Err(source) if source.kind() == io::ErrorKind::NotFound => {
+                missing_component_seen = true;
+            }
+            Err(source) => {
+                return Err(SearchError::Io {
+                    path: current,
+                    source,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn ensure_stable_directory(path: &Path, description: &'static str) -> Result<(), SearchError> {
+    match fs::create_dir_all(path) {
+        Ok(()) => validate_stable_directory(path, description),
+        Err(source) => Err(SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
+fn validate_stable_directory(path: &Path, description: &'static str) -> Result<(), SearchError> {
+    let before = stable_path_metadata(path, description)?;
+    if before.file_type().is_symlink() || !before.file_type().is_dir() {
+        return Err(snapshot_artifact_invalid(path, description));
+    }
+    let directory = File::open(path).map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let opened = directory.metadata().map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let after = fs::symlink_metadata(path).map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if after.file_type().is_symlink() || !after.file_type().is_dir() {
+        return Err(snapshot_artifact_invalid(path, description));
+    }
+    validate_same_file(path, &before, &opened, "X1 directory changed while opening")?;
+    validate_same_file(
+        path,
+        &opened,
+        &after,
+        "X1 directory path changed while opening",
+    )
+}
+
+fn open_or_create_stable_lock(path: &Path) -> Result<File, SearchError> {
+    match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(file) => {
+            validate_open_file_path(path, &file, "X1 slot lock changed while creating")?;
+            Ok(file)
+        }
+        Err(source) if source.kind() == io::ErrorKind::AlreadyExists => {
+            open_stable_regular_file(path, true, "X1 slot lock")
+        }
+        Err(source) => Err(SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
+fn open_stable_regular_file(
+    path: &Path,
+    writable: bool,
+    description: &'static str,
+) -> Result<File, SearchError> {
+    let before = stable_path_metadata(path, description)?;
+    validate_stable_regular_file_metadata(path, &before, description)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(writable)
+        .open(path)
+        .map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    validate_open_file_path_against(path, &file, &before, description)?;
+    Ok(file)
+}
+
+fn stable_path_metadata(
+    path: &Path,
+    missing_message: &'static str,
+) -> Result<fs::Metadata, SearchError> {
+    fs::symlink_metadata(path).map_err(|source| {
+        if source.kind() == io::ErrorKind::NotFound {
+            snapshot_artifact_invalid(path, missing_message)
+        } else {
+            SearchError::Io {
+                path: path.to_path_buf(),
+                source,
+            }
+        }
+    })
+}
+
+fn validate_openable_stable_file(
+    path: &Path,
+    description: &'static str,
+) -> Result<(), SearchError> {
+    open_stable_regular_file(path, false, description).map(drop)
+}
+
+fn validate_open_file_path(
+    path: &Path,
+    file: &File,
+    description: &'static str,
+) -> Result<(), SearchError> {
+    let before = fs::symlink_metadata(path).map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    validate_stable_regular_file_metadata(path, &before, description)?;
+    validate_open_file_path_against(path, file, &before, description)
+}
+
+fn validate_open_file_path_against(
+    path: &Path,
+    file: &File,
+    before: &fs::Metadata,
+    description: &'static str,
+) -> Result<(), SearchError> {
+    let opened = file.metadata().map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    validate_stable_regular_file_metadata(path, &opened, description)?;
+    let after = fs::symlink_metadata(path).map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    validate_stable_regular_file_metadata(path, &after, description)?;
+    validate_same_file(path, before, &opened, description)?;
+    validate_same_file(path, &opened, &after, description)
+}
+
+fn validate_stable_regular_file_metadata(
+    path: &Path,
+    metadata: &fs::Metadata,
+    message: &'static str,
+) -> Result<(), SearchError> {
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        return Err(snapshot_artifact_invalid(path, message));
+    }
+    Ok(())
+}
+
+fn validate_same_file(
+    path: &Path,
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+    message: &'static str,
+) -> Result<(), SearchError> {
+    #[cfg(unix)]
+    let same_identity = before.dev() == after.dev() && before.ino() == after.ino();
+    #[cfg(not(unix))]
+    let same_identity = before.len() == after.len();
+    if !same_identity || before.len() != after.len() {
+        return Err(snapshot_artifact_invalid(path, message));
+    }
+    Ok(())
+}
+
+fn read_stable_generation(path: &Path, description: &'static str) -> Result<Vec<u8>, SearchError> {
+    let mut file = open_stable_regular_file(path, false, description)?;
+    let metadata = file.metadata().map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    validate_generation_metadata(path, &metadata)?;
+    let len = usize::try_from(metadata.len()).map_err(|_| {
+        snapshot_artifact_invalid(path, "X1 generation length does not fit address space")
+    })?;
+    let mut bytes = vec![0_u8; len];
+    file.read_exact(&mut bytes)
+        .map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    validate_open_file_path(path, &file, "X1 generation changed while reading")?;
+    Ok(bytes)
+}
+
+fn hash_stable_generation(path: &Path, description: &'static str) -> Result<String, SearchError> {
+    let mut file = open_stable_regular_file(path, false, description)?;
+    let metadata = file.metadata().map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    validate_generation_metadata(path, &metadata)?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut total = 0_u64;
+    loop {
+        let read = file.read(&mut buffer).map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        if read == 0 {
+            break;
+        }
+        total = total.saturating_add(read as u64);
+        digest.update(&buffer[..read]);
+    }
+    if total != metadata.len() {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 generation length changed while hashing",
+        ));
+    }
+    validate_open_file_path(path, &file, "X1 generation changed while hashing")?;
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn bytes_sha256(bytes: &[u8]) -> String {
+    let mut digest = Sha256::new();
+    digest.update(bytes);
+    format!("{:x}", digest.finalize())
+}
+
+fn generation_file_name(artifact_sha256: &str) -> Result<String, SearchError> {
+    if artifact_sha256.len() != SHA256_HEX_LEN
+        || !artifact_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(snapshot_artifact_invalid(
+            Path::new(X1_SLOT_CURRENT_FILE),
+            "X1 artifact SHA-256 is not lowercase hexadecimal",
+        ));
+    }
+    Ok(format!(
+        "{X1_GENERATION_PREFIX}{artifact_sha256}{X1_GENERATION_SUFFIX}"
+    ))
+}
+
+fn parse_current_pointer(path: &Path, bytes: &[u8]) -> Result<String, SearchError> {
+    if bytes.len() != X1_CURRENT_POINTER_LEN || bytes.last() != Some(&b'\n') {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 current pointer has invalid length or terminator",
+        ));
+    }
+    let file_name = std::str::from_utf8(&bytes[..bytes.len() - 1])
+        .map_err(|_| snapshot_artifact_invalid(path, "X1 current pointer is not valid UTF-8"))?;
+    let hash = file_name
+        .strip_prefix(X1_GENERATION_PREFIX)
+        .and_then(|value| value.strip_suffix(X1_GENERATION_SUFFIX))
+        .ok_or_else(|| {
+            snapshot_artifact_invalid(path, "X1 current pointer has invalid generation name")
+        })?;
+    if hash.len() != SHA256_HEX_LEN
+        || !hash
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 current pointer hash is not lowercase hexadecimal",
+        ));
+    }
+    Ok(file_name.to_string())
+}
+
+fn read_current_pointer(path: &Path) -> Result<String, SearchError> {
+    let mut file = open_stable_regular_file(path, false, "X1 current pointer")?;
+    let metadata = file.metadata().map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if !metadata.permissions().readonly() {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 current pointer is not read-only",
+        ));
+    }
+    if metadata.len() != X1_CURRENT_POINTER_LEN as u64 {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 current pointer has invalid byte length",
+        ));
+    }
+    let mut bytes = [0_u8; X1_CURRENT_POINTER_LEN];
+    file.read_exact(&mut bytes)
+        .map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    validate_open_file_path(path, &file, "X1 current pointer changed while reading")?;
+    parse_current_pointer(path, &bytes)
+}
+
+fn assert_current_pointer(path: &Path, expected: &str) -> Result<(), SearchError> {
+    let actual = read_current_pointer(path)?;
+    if actual != expected {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 current pointer does not name the published generation",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_current_before_publication(slot_path: &Path) -> Result<(), SearchError> {
+    let current_path = slot_path.join(X1_SLOT_CURRENT_FILE);
+    match fs::symlink_metadata(&current_path) {
+        Ok(_) => {
+            let generation_name = read_current_pointer(&current_path)?;
+            let generation_path = slot_path
+                .join(X1_SLOT_GENERATIONS_DIR)
+                .join(generation_name);
+            let bytes = read_stable_generation(&generation_path, "X1 current generation")?;
+            validate_generation_content_address_bytes(&generation_path, &bytes)?;
+            validate_mmap_expected(&bytes, None).map_err(|source| {
+                SearchError::SnapshotArtifact {
+                    path: generation_path,
+                    source: artifact_error_from_io(source),
+                }
+            })?;
+            Ok(())
+        }
+        Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(SearchError::Io {
+            path: current_path,
+            source,
+        }),
+    }
+}
+
+fn validate_generation_content_address(path: &Path) -> Result<(), SearchError> {
+    let actual_hash = hash_stable_generation(path, "X1 current generation")?;
+    validate_generation_content_address_hash(path, &actual_hash)
+}
+
+fn validate_generation_content_address_bytes(path: &Path, bytes: &[u8]) -> Result<(), SearchError> {
+    validate_generation_content_address_hash(path, &bytes_sha256(bytes))
+}
+
+fn validate_generation_content_address_hash(
+    path: &Path,
+    actual_hash: &str,
+) -> Result<(), SearchError> {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| {
+            snapshot_artifact_invalid(path, "X1 generation file name is not valid UTF-8")
+        })?;
+    let expected_hash = file_name
+        .strip_prefix(X1_GENERATION_PREFIX)
+        .and_then(|value| value.strip_suffix(X1_GENERATION_SUFFIX))
+        .ok_or_else(|| {
+            snapshot_artifact_invalid(path, "X1 generation file name is not content-addressed")
+        })?;
+    if expected_hash.len() != SHA256_HEX_LEN
+        || !expected_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 generation file name hash is invalid",
+        ));
+    }
+    if actual_hash != expected_hash {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 generation content does not match current content address",
+        ));
+    }
+    Ok(())
+}
+
+fn reject_existing_temp_candidate(path: &Path) -> Result<(), SearchError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(snapshot_artifact_invalid(
+            path,
+            "X1 publication temp candidate is a symlink",
+        )),
+        Ok(_) => Err(snapshot_artifact_invalid(
+            path,
+            "X1 publication temp candidate already exists",
+        )),
+        Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
+fn remove_owned_temp(path: &Path) -> Result<(), SearchError> {
+    fs::remove_file(path).map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+fn sync_directory(path: &Path) -> Result<(), SearchError> {
+    let directory = File::open(path).map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    directory.sync_all().map_err(|source| SearchError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+fn inject_publication_failure(
+    configured: Option<X1PublicationFailurePoint>,
+    current: X1PublicationFailurePoint,
+    path: &Path,
+) -> Result<(), SearchError> {
+    if configured == Some(current) {
+        return Err(SearchError::Io {
+            path: path.to_path_buf(),
+            source: io::Error::other(format!("injected X1 publication failure at {current:?}")),
+        });
+    }
+    Ok(())
 }
 
 fn write_x1_generation(
@@ -5127,6 +5941,8 @@ fn invalid_data(message: &'static str) -> io::Error {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -5429,6 +6245,545 @@ mod tests {
 
         assert!(report.write_x1_generation(&artifact).is_err());
         assert_eq!(fs::read(&artifact).unwrap(), original);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_slot_publishes_reuses_and_opens_without_source_or_sql_provider() {
+        let root = temp_path("x1-slot-publish");
+        let input_root = root.join("input");
+        let slot = root.join("slot");
+        let (report, identity, source, index) =
+            fixture_build_report(&input_root, b"first source generation");
+        let expected_counts = report.snapshot.counts();
+
+        let first = report.publish_x1_generation(&slot).unwrap();
+        assert!(!first.reused_existing_generation);
+        assert_eq!(first.artifact_sha256.len(), SHA256_HEX_LEN);
+        assert_eq!(
+            fs::read_to_string(slot.join(X1_SLOT_CURRENT_FILE)).unwrap(),
+            format!("{}\n", first.generation_file_name)
+        );
+        let generation = slot
+            .join(X1_SLOT_GENERATIONS_DIR)
+            .join(&first.generation_file_name);
+        assert_eq!(file_sha256(&generation).unwrap(), first.artifact_sha256);
+
+        let second = report.publish_x1_generation(&slot).unwrap();
+        assert!(second.reused_existing_generation);
+        assert_eq!(second.generation_file_name, first.generation_file_name);
+        assert_eq!(
+            slot_generation_names(&slot),
+            vec![first.generation_file_name]
+        );
+
+        fs::remove_file(source).unwrap();
+        fs::remove_file(index).unwrap();
+        let mapped = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
+        assert_eq!(mapped.artifact_len() as u64, first.artifact_bytes);
+        assert_eq!(mapped.generation.counts, expected_counts);
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_slot_shared_readers_block_publication_without_touching_slot() {
+        let root = temp_path("x1-slot-lock");
+        let slot = root.join("slot");
+        let (report, identity, _, _) =
+            fixture_build_report(&root.join("input"), b"locked source generation");
+        report.publish_x1_generation(&slot).unwrap();
+        let first = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
+        let second = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
+        let current_before = fs::read(slot.join(X1_SLOT_CURRENT_FILE)).unwrap();
+        let entries_before = slot_tree_names(&slot);
+
+        assert!(matches!(
+            report.publish_x1_generation(&slot),
+            Err(SearchError::SnapshotInUse { path }) if path == slot
+        ));
+        assert_eq!(
+            fs::read(slot.join(X1_SLOT_CURRENT_FILE)).unwrap(),
+            current_before
+        );
+        assert_eq!(slot_tree_names(&slot), entries_before);
+
+        drop(first);
+        assert!(matches!(
+            report.publish_x1_generation(&slot),
+            Err(SearchError::SnapshotInUse { .. })
+        ));
+        drop(second);
+        assert!(
+            report
+                .publish_x1_generation(&slot)
+                .unwrap()
+                .reused_existing_generation
+        );
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_slot_concurrent_first_setup_uses_one_stable_lock_inode() {
+        use std::sync::{Arc, Barrier};
+
+        let root = temp_path("x1-slot-first-setup");
+        let slot = root.join("slot");
+        let (report, _, _, _) =
+            fixture_build_report(&root.join("input"), b"concurrent first setup");
+        let acquired = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let worker_report = report.clone();
+        let worker_slot = slot.clone();
+        let worker_acquired = Arc::clone(&acquired);
+        let worker_release = Arc::clone(&release);
+        let worker = std::thread::spawn(move || {
+            worker_report.publish_x1_generation_with_options(
+                &worker_slot,
+                X1PublicationOptions {
+                    nonce: "first-writer".to_string(),
+                    fail_at: None,
+                    lock_hook: Some(X1PublicationLockHook {
+                        acquired: worker_acquired,
+                        release: worker_release,
+                    }),
+                },
+            )
+        });
+
+        acquired.wait();
+        assert!(matches!(
+            report.publish_x1_generation(&slot),
+            Err(SearchError::SnapshotInUse { path }) if path == slot
+        ));
+        release.wait();
+        assert!(worker.join().unwrap().is_ok());
+        assert!(slot.join(X1_SLOT_LOCK_FILE).is_file());
+        assert_eq!(slot_generation_names(&slot).len(), 1);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_slot_pointer_parser_and_content_address_fail_closed() {
+        let pointer_path = Path::new("current");
+        let valid_name = format!(
+            "{X1_GENERATION_PREFIX}{}{X1_GENERATION_SUFFIX}",
+            "a".repeat(SHA256_HEX_LEN)
+        );
+        assert_eq!(
+            parse_current_pointer(pointer_path, format!("{valid_name}\n").as_bytes()).unwrap(),
+            valid_name
+        );
+        for invalid in [
+            b"".as_slice(),
+            b"../generation.x1\n".as_slice(),
+            format!(
+                "{X1_GENERATION_PREFIX}{}{X1_GENERATION_SUFFIX}\n",
+                "A".repeat(SHA256_HEX_LEN)
+            )
+            .as_bytes(),
+            format!(
+                "{X1_GENERATION_PREFIX}{}{X1_GENERATION_SUFFIX}",
+                "a".repeat(SHA256_HEX_LEN)
+            )
+            .as_bytes(),
+        ] {
+            assert!(parse_current_pointer(pointer_path, invalid).is_err());
+        }
+
+        let root = temp_path("x1-slot-content-address");
+        let slot = root.join("slot");
+        let (report, identity, _, _) =
+            fixture_build_report(&root.join("input"), b"content-address source");
+        let published = report.publish_x1_generation(&slot).unwrap();
+        let original = slot
+            .join(X1_SLOT_GENERATIONS_DIR)
+            .join(&published.generation_file_name);
+        let wrong_name = format!(
+            "{X1_GENERATION_PREFIX}{}{X1_GENERATION_SUFFIX}",
+            "0".repeat(SHA256_HEX_LEN)
+        );
+        let wrong = slot.join(X1_SLOT_GENERATIONS_DIR).join(&wrong_name);
+        fs::copy(&original, &wrong).unwrap();
+        make_readonly(&wrong);
+        overwrite_readonly(
+            &slot.join(X1_SLOT_CURRENT_FILE),
+            format!("{wrong_name}\n").as_bytes(),
+        );
+        assert!(matches!(
+            X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+        assert!(matches!(
+            report.publish_x1_generation(&slot),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_slot_rejects_corrupt_existing_generation_without_replacing_it() {
+        let root = temp_path("x1-slot-corrupt-existing");
+        let slot = root.join("slot");
+        let (report, _, _, _) =
+            fixture_build_report(&root.join("input"), b"corrupt existing source");
+        let publication = report.publish_x1_generation(&slot).unwrap();
+        let generation_path = slot
+            .join(X1_SLOT_GENERATIONS_DIR)
+            .join(publication.generation_file_name);
+        fs::remove_file(slot.join(X1_SLOT_CURRENT_FILE)).unwrap();
+        let mut corrupt = fs::read(&generation_path).unwrap();
+        let last = corrupt.len() - 1;
+        corrupt[last] ^= 0x5a;
+        overwrite_readonly(&generation_path, &corrupt);
+
+        assert!(matches!(
+            report.publish_x1_generation(&slot),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+        assert_eq!(fs::read(&generation_path).unwrap(), corrupt);
+        assert!(!slot.join(X1_SLOT_CURRENT_FILE).exists());
+        assert_eq!(slot_generation_names(&slot).len(), 1);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_slot_failure_phases_leave_only_valid_recovery_states() {
+        let root = temp_path("x1-slot-failures");
+        let (old_report, old_identity, _, _) =
+            fixture_build_report(&root.join("old-input"), b"old source generation");
+        let (new_report, new_identity, _, _) =
+            fixture_build_report(&root.join("new-input"), b"new source generation");
+        let new_counts = new_report.snapshot.counts();
+
+        let before_slot = root.join("before");
+        let old_before = old_report.publish_x1_generation(&before_slot).unwrap();
+        let old_before_pointer = fs::read(before_slot.join(X1_SLOT_CURRENT_FILE)).unwrap();
+        let stale = before_slot.join("unrelated-stale.tmp");
+        fs::write(&stale, b"owned by another operation").unwrap();
+        assert!(
+            new_report
+                .publish_x1_generation_with_options(
+                    &before_slot,
+                    X1PublicationOptions {
+                        nonce: "before".to_string(),
+                        fail_at: Some(X1PublicationFailurePoint::BeforeGeneration),
+                        lock_hook: None,
+                    },
+                )
+                .is_err()
+        );
+        assert!(stale.exists());
+        assert_eq!(
+            fs::read(before_slot.join(X1_SLOT_CURRENT_FILE)).unwrap(),
+            old_before_pointer
+        );
+        assert_eq!(slot_generation_names(&before_slot).len(), 1);
+        assert_eq!(
+            slot_generation_names(&before_slot),
+            vec![old_before.generation_file_name]
+        );
+        assert!(
+            !before_slot
+                .join(X1_SLOT_GENERATIONS_DIR)
+                .join(".generation-before.tmp")
+                .exists()
+        );
+        let old_session =
+            X1StableSlotGeneration::open(&before_slot, &runtime_expectation(&old_identity))
+                .unwrap();
+        drop(old_session);
+
+        let between_slot = root.join("between");
+        old_report.publish_x1_generation(&between_slot).unwrap();
+        let old_between_pointer = fs::read(between_slot.join(X1_SLOT_CURRENT_FILE)).unwrap();
+        assert!(
+            new_report
+                .publish_x1_generation_with_options(
+                    &between_slot,
+                    X1PublicationOptions {
+                        nonce: "between".to_string(),
+                        fail_at: Some(X1PublicationFailurePoint::GenerationPublished),
+                        lock_hook: None,
+                    },
+                )
+                .is_err()
+        );
+        assert_eq!(
+            fs::read(between_slot.join(X1_SLOT_CURRENT_FILE)).unwrap(),
+            old_between_pointer
+        );
+        assert_eq!(slot_generation_names(&between_slot).len(), 2);
+        let old_session =
+            X1StableSlotGeneration::open(&between_slot, &runtime_expectation(&old_identity))
+                .unwrap();
+        drop(old_session);
+
+        let after_slot = root.join("after");
+        old_report.publish_x1_generation(&after_slot).unwrap();
+        assert!(
+            new_report
+                .publish_x1_generation_with_options(
+                    &after_slot,
+                    X1PublicationOptions {
+                        nonce: "after".to_string(),
+                        fail_at: Some(X1PublicationFailurePoint::CurrentPublished),
+                        lock_hook: None,
+                    },
+                )
+                .is_err()
+        );
+        let mapped =
+            X1StableSlotGeneration::open(&after_slot, &runtime_expectation(&new_identity)).unwrap();
+        assert_eq!(mapped.generation.counts, new_counts);
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_slot_source_replacement_isolated_by_exclusive_publication() {
+        let root = temp_path("x1-slot-source-replacement");
+        let slot = root.join("slot");
+        let (first_report, first_identity, _, _) =
+            fixture_build_report(&root.join("first-input"), b"first logical source");
+        let (second_report, second_identity, _, _) =
+            fixture_build_report(&root.join("second-input"), b"second logical source");
+        let first_publication = first_report.publish_x1_generation(&slot).unwrap();
+        let first_session =
+            X1StableSlotGeneration::open(&slot, &runtime_expectation(&first_identity)).unwrap();
+
+        assert!(matches!(
+            second_report.publish_x1_generation(&slot),
+            Err(SearchError::SnapshotInUse { .. })
+        ));
+        assert_eq!(first_session.generation.identity, first_identity);
+        drop(first_session);
+
+        let second_publication = second_report.publish_x1_generation(&slot).unwrap();
+        assert_ne!(
+            first_publication.generation_file_name,
+            second_publication.generation_file_name
+        );
+        let second_session =
+            X1StableSlotGeneration::open(&slot, &runtime_expectation(&second_identity)).unwrap();
+        assert_eq!(second_session.generation.identity, second_identity);
+        assert_eq!(slot_generation_names(&slot).len(), 2);
+
+        drop(second_session);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_slot_reader_rejects_missing_non_regular_and_corrupt_components() {
+        let root = temp_path("x1-slot-invalid-components");
+        let slot = root.join("slot");
+        let (report, identity, _, _) =
+            fixture_build_report(&root.join("input"), b"invalid component source");
+        let expectation = runtime_expectation(&identity);
+        let publication = report.publish_x1_generation(&slot).unwrap();
+
+        let lock_path = slot.join(X1_SLOT_LOCK_FILE);
+        fs::remove_file(&lock_path).unwrap();
+        assert!(matches!(
+            X1StableSlotGeneration::open(&slot, &expectation),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+        fs::create_dir(&lock_path).unwrap();
+        assert!(matches!(
+            X1StableSlotGeneration::open(&slot, &expectation),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+        fs::remove_dir(&lock_path).unwrap();
+        fs::write(&lock_path, b"").unwrap();
+
+        let current_path = slot.join(X1_SLOT_CURRENT_FILE);
+        fs::remove_file(&current_path).unwrap();
+        assert!(matches!(
+            X1StableSlotGeneration::open(&slot, &expectation),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+        fs::write(&current_path, b"../not-a-generation\n").unwrap();
+        make_readonly(&current_path);
+        assert!(matches!(
+            X1StableSlotGeneration::open(&slot, &expectation),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        make_writable(&current_path);
+        let huge_current = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&current_path)
+            .unwrap();
+        huge_current.set_len(MAX_ARTIFACT_BYTES + 1).unwrap();
+        drop(huge_current);
+        make_readonly(&current_path);
+        assert!(matches!(
+            X1StableSlotGeneration::open(&slot, &expectation),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        overwrite_readonly(
+            &current_path,
+            format!("{}\n", publication.generation_file_name).as_bytes(),
+        );
+        let generation_path = slot
+            .join(X1_SLOT_GENERATIONS_DIR)
+            .join(publication.generation_file_name);
+        fs::remove_file(&generation_path).unwrap();
+        assert!(matches!(
+            X1StableSlotGeneration::open(&slot, &expectation),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+        let huge_generation = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&generation_path)
+            .unwrap();
+        huge_generation.set_len(MAX_ARTIFACT_BYTES + 1).unwrap();
+        drop(huge_generation);
+        make_readonly(&generation_path);
+        assert!(matches!(
+            X1StableSlotGeneration::open(&slot, &expectation),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn x1_slot_rejects_symlinked_layout_and_temp_components() {
+        let root = temp_path("x1-slot-symlinks");
+        fs::create_dir_all(&root).unwrap();
+        let (report, identity, _, _) =
+            fixture_build_report(&root.join("input"), b"symlink source generation");
+
+        let actual_slot = root.join("actual-slot");
+        fs::create_dir(&actual_slot).unwrap();
+        let linked_slot = root.join("linked-slot");
+        symlink(&actual_slot, &linked_slot).unwrap();
+        assert!(matches!(
+            report.publish_x1_generation(&linked_slot),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        let ancestor_target = root.join("ancestor-target");
+        fs::create_dir(&ancestor_target).unwrap();
+        let ancestor_link = root.join("ancestor-link");
+        symlink(&ancestor_target, &ancestor_link).unwrap();
+        assert!(matches!(
+            report.publish_x1_generation(ancestor_link.join("nested-slot")),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        let generations_slot = root.join("generations-slot");
+        fs::create_dir(&generations_slot).unwrap();
+        let actual_generations = root.join("actual-generations");
+        fs::create_dir(&actual_generations).unwrap();
+        symlink(
+            &actual_generations,
+            generations_slot.join(X1_SLOT_GENERATIONS_DIR),
+        )
+        .unwrap();
+        assert!(matches!(
+            report.publish_x1_generation(&generations_slot),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        let lock_slot = root.join("lock-slot");
+        fs::create_dir_all(lock_slot.join(X1_SLOT_GENERATIONS_DIR)).unwrap();
+        let lock_target = root.join("lock-target");
+        fs::write(&lock_target, b"").unwrap();
+        symlink(&lock_target, lock_slot.join(X1_SLOT_LOCK_FILE)).unwrap();
+        assert!(matches!(
+            report.publish_x1_generation(&lock_slot),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        let published_slot = root.join("published-slot");
+        let publication = report.publish_x1_generation(&published_slot).unwrap();
+        let reader_ancestor_link = root.join("reader-ancestor-link");
+        symlink(&root, &reader_ancestor_link).unwrap();
+        assert!(matches!(
+            X1StableSlotGeneration::open(
+                &reader_ancestor_link.join("published-slot"),
+                &runtime_expectation(&identity),
+            ),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+        let current_path = published_slot.join(X1_SLOT_CURRENT_FILE);
+        let current_target = root.join("current-target");
+        fs::write(&current_target, fs::read(&current_path).unwrap()).unwrap();
+        fs::remove_file(&current_path).unwrap();
+        symlink(&current_target, &current_path).unwrap();
+        assert!(matches!(
+            X1StableSlotGeneration::open(&published_slot, &runtime_expectation(&identity)),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+        assert!(matches!(
+            report.publish_x1_generation(&published_slot),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        fs::remove_file(&current_path).unwrap();
+        fs::copy(&current_target, &current_path).unwrap();
+        make_readonly(&current_path);
+        let generation_path = published_slot
+            .join(X1_SLOT_GENERATIONS_DIR)
+            .join(publication.generation_file_name);
+        let generation_target = root.join("generation-target");
+        fs::rename(&generation_path, &generation_target).unwrap();
+        symlink(&generation_target, &generation_path).unwrap();
+        assert!(matches!(
+            X1StableSlotGeneration::open(&published_slot, &runtime_expectation(&identity)),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        let temp_slot = root.join("temp-slot");
+        fs::create_dir_all(temp_slot.join(X1_SLOT_GENERATIONS_DIR)).unwrap();
+        let temp_target = root.join("temp-target");
+        fs::write(&temp_target, b"").unwrap();
+        symlink(
+            &temp_target,
+            temp_slot
+                .join(X1_SLOT_GENERATIONS_DIR)
+                .join(".generation-fixed.tmp"),
+        )
+        .unwrap();
+        assert!(matches!(
+            report.publish_x1_generation_with_options(
+                &temp_slot,
+                X1PublicationOptions {
+                    nonce: "fixed".to_string(),
+                    fail_at: None,
+                    lock_hook: None,
+                },
+            ),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        let pointer_temp_slot = root.join("pointer-temp-slot");
+        fs::create_dir_all(pointer_temp_slot.join(X1_SLOT_GENERATIONS_DIR)).unwrap();
+        symlink(&temp_target, pointer_temp_slot.join(".current-pointer.tmp")).unwrap();
+        assert!(matches!(
+            report.publish_x1_generation_with_options(
+                &pointer_temp_slot,
+                X1PublicationOptions {
+                    nonce: "pointer".to_string(),
+                    fail_at: None,
+                    lock_hook: None,
+                },
+            ),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -7431,6 +8786,83 @@ mod tests {
                 _ => panic!("mapped template binding differs from owned payload"),
             }
         }
+    }
+
+    fn fixture_build_report(
+        root: &Path,
+        source_bytes: &[u8],
+    ) -> (
+        HbkFactSnapshotBuildReport,
+        X1ArtifactIdentity,
+        PathBuf,
+        PathBuf,
+    ) {
+        let source_dir = root.join("8.3.27.1859");
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("shcntx_ru.hbk");
+        fs::write(&source, source_bytes).unwrap();
+        let index_path = root.join("provider.sqlite");
+        let metadata = IndexMetadata {
+            locale: "ru".to_string(),
+            source_locale: "ru".to_string(),
+            source_hbk: source.to_string_lossy().into_owned(),
+            source_extraction_schema_version: SUPPORTED_EXTRACTION_SCHEMA,
+        };
+        build_index_from_builder(&index_path, &metadata, fixture_index_builder(&source)).unwrap();
+        let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path).unwrap();
+        let identity = artifact_identity(&report).unwrap();
+        (report, identity, source, index_path)
+    }
+
+    fn make_readonly(path: &Path) {
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+
+    fn overwrite_readonly(path: &Path, bytes: &[u8]) {
+        make_writable(path);
+        fs::write(path, bytes).unwrap();
+        make_readonly(path);
+    }
+
+    fn make_writable(path: &Path) {
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        #[cfg(unix)]
+        permissions.set_mode(permissions.mode() | 0o200);
+        #[cfg(not(unix))]
+        permissions.set_readonly(false);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+
+    fn slot_generation_names(slot: &Path) -> Vec<String> {
+        let generations = slot.join(X1_SLOT_GENERATIONS_DIR);
+        if !generations.exists() {
+            return Vec::new();
+        }
+        let mut names = fs::read_dir(generations)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| {
+                name.starts_with(X1_GENERATION_PREFIX) && name.ends_with(X1_GENERATION_SUFFIX)
+            })
+            .collect::<Vec<_>>();
+        names.sort();
+        names
+    }
+
+    fn slot_tree_names(slot: &Path) -> Vec<String> {
+        let mut names = fs::read_dir(slot)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        names.extend(
+            slot_generation_names(slot)
+                .into_iter()
+                .map(|name| format!("{X1_SLOT_GENERATIONS_DIR}/{name}")),
+        );
+        names.sort();
+        names
     }
 
     fn temp_path(name: &str) -> PathBuf {

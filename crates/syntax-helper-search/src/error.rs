@@ -16,6 +16,10 @@ pub enum SearchError {
     WriterLockTimeout {
         path: PathBuf,
     },
+    #[error("HBK fact snapshot slot is in use: {}", path.display())]
+    SnapshotInUse {
+        path: PathBuf,
+    },
     #[error("search index does not exist: {}", path.display())]
     MissingIndex {
         path: PathBuf,

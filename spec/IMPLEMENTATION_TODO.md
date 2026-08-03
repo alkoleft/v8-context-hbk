@@ -349,9 +349,14 @@ type-reference conclusions live in
     аллокаций. OpenSpec 3.4 завершён: `StringOrder`, persisted type-name hash,
     sorted indexes и CSR ranges покрывают всю private lookup-таблицу
     `HbkFactReadHandle` с owned parity, deterministic multi-hit order и
-    zero-allocation pre-normalized path. Следующий активный пункт — 3.5:
-    stable-slot shared reader/fail-fast writer lock и atomic immutable
-    generation publication.
+    zero-allocation pre-normalized path. OpenSpec 3.5 завершён: stable-slot
+    session удерживает shared lock до drop, publisher использует fail-fast
+    exclusive lock, immutable content-addressed generation и atomic `current`;
+    corrupt/oversized/non-regular/symlink components и ancestors fail-closed,
+    все три crash window сохраняют valid old-or-new recovery, а open после
+    удаления HBK/SQLite не имеет fallback. Package tests `104/104`, полный
+    workspace, package clippy, strict OpenSpec и независимое review прошли.
+    Следующий активный пункт — 4.1, полная compatibility/lifecycle matrix.
     T183 остаётся открытой на implementation/X1-INT; canonical
     cutover и garbage cleanup условны и выполняются отдельными milestones.
 

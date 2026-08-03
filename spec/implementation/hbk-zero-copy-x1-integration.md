@@ -746,3 +746,31 @@ Portable advisory lock физически не запрещает такую в�
   всегда exclusive, нет in-place write, wait/retry,
   SQL/HBK fallback или public второй snapshot owner. Package/workspace tests,
   clippy, strict OpenSpec и diff check обязательны до отметки 3.5.
+
+### Результат OpenSpec 3.5
+
+Slice завершён. Public build/setup API публикует content-addressed immutable
+generation через fail-fast exclusive `std::fs::File` lock и возвращает
+`SnapshotInUse`, пока хотя бы один private mapped session удерживает shared
+lock. `current` заменяется атомарно только после полной записи, проверки и
+`fsync` generation; старые и orphan generation намеренно не удаляются до
+условной уборки 7.2.
+
+Private stable-slot reader проверяет точный pointer grammar, platform/locale/
+source identity, content address, размер, permissions, структуру X1 и Linux
+device/inode до typed access. Slot path и его существующие ancestors, lock,
+pointer, generation и temp components не могут быть symlink; oversized pointer
+и generation отклоняются до неограниченного чтения или хеширования. Mmap,
+read-only file и shared-lock file принадлежат одному owner и уничтожаются в
+порядке mapping -> generation file -> lock.
+
+Lifecycle tests покрывают два concurrent reader, fail-fast writer, concurrent
+first setup, exact generation reuse, corrupt/missing/non-regular/symlink
+components и ancestors, три publication failure window с old-or-new recovery,
+source replacement между sessions, сохранение чужих temp и open после удаления
+HBK/SQLite. Package tests `104/104`, all-features `106 passed` с тремя штатно
+ignored allocation probes, полный workspace, package clippy, fmt, strict
+OpenSpec и независимое unsafe/code review прошли. Workspace-wide clippy на
+Rust 1.95 по-прежнему имеет два unrelated pre-existing lint в
+`syntax-helper-extract`; slice их не меняет. X1 остаётся private и
+non-canonical. Следующий gate — OpenSpec 4.1 compatibility/lifecycle matrix.

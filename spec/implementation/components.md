@@ -1175,7 +1175,16 @@ type-name index, а остальные name/owner/template/availability/relation
 читают существующие sorted/CSR sections. Multi-hit order и ambiguity совпали с
 owned `HbkFactReadHandle`; pre-normalized steady lookup не аллоцирует result
 collections или entity DTO. Public owner и защита неизменности generation
-остаются единственным следующим component slice 3.5.
+оставались следующим component slice 3.5.
+
+OpenSpec 3.5 завершил stable-slot lifecycle. Build/setup publisher использует
+fail-fast exclusive standard-library file lock, content-addressed immutable
+generation и atomic `current`; mapped session удерживает shared lock до drop.
+Pointer, slot ancestors и все файловые компоненты проходят fail-closed
+non-symlink/device/inode/size validation, а generation не изменяется in-place.
+Private reader продолжает работать после удаления HBK/SQLite и не имеет
+fallback. Public runtime owner и catalog integration всё ещё запрещены до
+полной compatibility/lifecycle matrix 4.1 и последующих X1-INT slices.
 
 ## Implementation Dependencies
 

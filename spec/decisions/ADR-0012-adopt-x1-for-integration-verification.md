@@ -128,8 +128,9 @@ search/debug artifact. Решение удаляет его только из an
   `crates/context-resolver-search/src/snapshot_adapter.rs`, downstream
   `v8-context/crates/analyze-project/src/benchmark/` и его platform catalog
   construction.
-- Dependencies: использовать существующие `memmap2`, `fs2` и текущие workspace
-  crates; не добавлять новый storage/index crate без отдельного решения.
+- Dependencies: использовать существующий `memmap2`, стабилизированные
+  `std::fs::File` locks и текущие workspace crates; не добавлять новый
+  storage/index crate без отдельного решения.
 - Pattern: один provider-owned snapshot owner и существующий read/catalog seam;
   явные setup build и fail-closed runtime open.
 - Avoid: whole-branch merge, compatibility DTO/adapter, hidden fallback,
@@ -175,6 +176,9 @@ search/debug artifact. Решение удаляет его только из an
       реализованы без entity materialization и steady allocations.
 - [x] Private base-dictionary/reverse/provider lookup surface реализован с
       owned parity, persisted indexes и zero-allocation pre-normalized path.
+- [x] Stable-slot shared-reader/fail-fast-writer lifecycle и atomic immutable
+      generation publication реализованы; public runtime open остаётся закрыт
+      до X1-INT compatibility/catalog integration.
 - [ ] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
 - [ ] X1 проходит все X1-INT performance/resource gates.
 - [ ] Canonical cutover и последующий scoped cleanup завершены отдельными
