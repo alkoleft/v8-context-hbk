@@ -1193,6 +1193,13 @@ content-address guards, но отклоняется единым full byte-valid
 concurrent sessions используют один lifecycle; local IDs не получают durable
 семантики. Следующий component gate — full-corpus storage parity 4.2.
 
+OpenSpec 4.2 прошёл full-corpus storage parity на frozen S83 provider: один
+test-only comparator обошёл dictionary, десять fact families, nested payload,
+availability/available-since и provenance через owned build и mapped stable
+slot. X1 artifact сохранил exact `12,430,416` bytes/SHA. Это не вводит runtime
+owned coexistence: owned сторона остаётся build/oracle scope. Следующий
+component gate — full-corpus lookup/index parity 4.3.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

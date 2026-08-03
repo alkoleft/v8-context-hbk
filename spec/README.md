@@ -39,6 +39,8 @@ Otherwise reconcile the specification files before implementing.
 - `acceptance/hbk-zero-copy-snapshot-evidence.md`: неранжированные измерения кандидатов T183,
   полный разбор поведенческой эквивалентности, результаты отдельных операций и итоги
   зафиксированных критериев.
+- `acceptance/hbk-x1-int-evidence.md`: выполняемые full-corpus, catalog/resolver
+  и analyzer свидетельства X1-INT; не разрешает cutover до полного gate pass.
 - `acceptance/hbk-s83-av1-evidence.md`: дополнительный неранжированный проход T183 для
   полной enumeration глобальных BSL-методов с фильтром только по `AvailabilityContext`.
 - `acceptance/hbk-s83-av2-evidence.md`: дополнительный неранжированный проход T183 для

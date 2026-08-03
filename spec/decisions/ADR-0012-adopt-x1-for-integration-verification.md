@@ -181,6 +181,8 @@ search/debug artifact. Решение удаляет его только из an
       до X1-INT compatibility/catalog integration.
 - [x] Stable-slot compatibility/lifecycle matrix проверяет все identity/version
       mismatch и corruption classes через единый full validator.
+- [x] Frozen S83 full-corpus storage payload, availability и provenance
+      совпадают между owned build oracle и mapped X1.
 - [ ] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
 - [ ] X1 проходит все X1-INT performance/resource gates.
 - [ ] Canonical cutover и последующий scoped cleanup завершены отдельными

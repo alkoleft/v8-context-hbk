@@ -7053,180 +7053,58 @@ mod tests {
         write_readonly_artifact(&artifact, &bytes);
         let mapped =
             open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
-        let read = mapped.read_handle();
+        assert_forward_payload_eq(&snapshot, &mapped);
 
-        assert_eq!(read.source_locale(), "ru");
-        assert_eq!(read.string(StringId(1)), snapshot.string(StringId(1)));
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
 
-        let platform_type = read.platform_type(HbkPlatformTypeId(0));
-        let owned_type = snapshot.platform_type(HbkPlatformTypeId(0));
-        assert_eq!(platform_type.id(), owned_type.id);
-        assert_name(platform_type.name(), &owned_type.name);
-        assert_eq!(
-            platform_type.type_template_key(),
-            owned_type.type_template_key
+    #[test]
+    #[ignore = "requires V8_CONTEXT_HBK_X1_INT_INDEX with the frozen S83 provider index"]
+    fn x1_full_corpus_forward_payload_matches_owned_snapshot() {
+        const INDEX_ENV: &str = "V8_CONTEXT_HBK_X1_INT_INDEX";
+
+        let index_path = std::env::var_os(INDEX_ENV)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| panic!("{INDEX_ENV} must point to the frozen provider SQLite"));
+        let root = temp_path("x1-full-corpus-parity");
+        let slot = root.join("slot");
+        let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path).unwrap();
+        let identity = artifact_identity(&report).unwrap();
+        let publication = report.publish_x1_generation(&slot).unwrap();
+        let mapped = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
+
+        assert_forward_payload_eq(&report.snapshot, &mapped.generation);
+
+        let counts = report.snapshot.counts();
+        println!("x1_full_corpus_parity=pass");
+        println!("provider_index={}", index_path.display());
+        println!("provider_bytes={}", identity.provider_bytes);
+        println!("provider_sha256={}", identity.provider_sha256);
+        println!("source_hbk={}", identity.source_path);
+        println!("source_bytes={}", identity.source_bytes);
+        println!("source_sha256={}", identity.source_sha256);
+        println!("platform_version={}", identity.platform_version);
+        println!("locale={}", identity.locale);
+        println!("source_locale={}", identity.source_locale);
+        println!("provider_schema={}", identity.provider_schema);
+        println!("extraction_schema={}", identity.extraction_schema);
+        println!("artifact_bytes={}", publication.artifact_bytes);
+        println!("artifact_sha256={}", publication.artifact_sha256);
+        println!(
+            "counts strings={} platform_types={} type_members={} callables={} globals={} query_tables={} query_fields={} query_parameters={} language_facts={} enums={} enum_values={}",
+            counts.strings,
+            counts.platform_types,
+            counts.type_members,
+            counts.callables,
+            counts.globals,
+            counts.query_tables,
+            counts.query_fields,
+            counts.query_parameters,
+            counts.language_facts,
+            counts.enums,
+            counts.enum_values,
         );
-        assert_eq!(
-            platform_type.availability_contexts().collect::<Vec<_>>(),
-            owned_type.availability_contexts
-        );
-        let metadata = platform_type.metadata_template().unwrap();
-        let owned_metadata = owned_type.metadata_template.as_ref().unwrap();
-        assert_eq!(metadata.metadata_kind(), owned_metadata.metadata_kind);
-        assert_eq!(
-            metadata.template_parameters().collect::<Vec<_>>(),
-            owned_metadata.template_parameters
-        );
-
-        for (index, owned) in snapshot.type_members.iter().enumerate() {
-            let view = read.type_member(HbkTypeMemberId(index as u32));
-            assert_eq!(view.id(), owned.id);
-            assert_eq!(view.owner(), owned.owner);
-            assert_eq!(view.kind(), owned.kind);
-            assert_name(view.name(), &owned.name);
-            assert_type_refs(view.type_refs(), &owned.type_refs);
-            assert_eq!(
-                view.availability_contexts().collect::<Vec<_>>(),
-                owned.availability_contexts
-            );
-        }
-
-        for (index, owned) in snapshot.callables.iter().enumerate() {
-            let view = read.callable(HbkCallableId(index as u32));
-            assert_eq!(view.id(), owned.id);
-            assert_eq!(view.owner(), owned.owner);
-            assert_eq!(view.kind(), owned.kind);
-            assert_name(view.name(), &owned.name);
-            let signatures = view.signatures().collect::<Vec<_>>();
-            assert_eq!(signatures.len(), owned.signatures.len());
-            for (signature, owned_signature) in signatures.into_iter().zip(&owned.signatures) {
-                assert_eq!(signature.text(), owned_signature.text);
-                let parameters = signature.parameters().collect::<Vec<_>>();
-                assert_eq!(parameters.len(), owned_signature.parameters.len());
-                for (parameter, owned_parameter) in
-                    parameters.into_iter().zip(&owned_signature.parameters)
-                {
-                    assert_eq!(parameter.name(), owned_parameter.name);
-                    assert_eq!(parameter.required(), owned_parameter.required);
-                    assert_type_refs(parameter.type_refs(), &owned_parameter.type_refs);
-                }
-                assert_type_refs(
-                    signature.return_type_refs(),
-                    &owned_signature.return_type_refs,
-                );
-            }
-            assert_type_refs(view.return_type_refs(), &owned.return_type_refs);
-            assert_eq!(
-                view.availability_contexts().collect::<Vec<_>>(),
-                owned.availability_contexts
-            );
-        }
-
-        for (index, owned) in snapshot.globals.iter().enumerate() {
-            let view = read.global(HbkGlobalFactId(index as u32));
-            assert_eq!(view.id(), owned.id);
-            assert_eq!(view.kind(), owned.kind);
-            assert_eq!(view.domain(), owned.domain);
-            assert_name(view.name(), &owned.name);
-            assert_eq!(view.callable(), owned.callable);
-            assert_type_refs(view.type_refs(), &owned.type_refs);
-        }
-
-        let table = read.query_table(HbkQueryTableId(0));
-        let owned_table = snapshot.query_table(HbkQueryTableId(0));
-        assert_eq!(table.id(), owned_table.id);
-        assert_name(table.name(), &owned_table.name);
-        assert_name(
-            table.syntax().unwrap(),
-            owned_table.syntax.as_ref().unwrap(),
-        );
-        assert_eq!(table.identifier(), owned_table.identifier);
-        assert_eq!(table.role(), owned_table.role);
-        assert_eq!(
-            table
-                .owner_path()
-                .map(|name| (name.primary(), name.alias()))
-                .collect::<Vec<_>>(),
-            owned_table
-                .owner_path
-                .iter()
-                .map(|name| (name.primary, name.alias))
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(
-            table.template_parameters().collect::<Vec<_>>(),
-            owned_table.template_parameters
-        );
-
-        let field = read.query_field(HbkQueryFieldId(0));
-        let owned_field = snapshot.query_field(HbkQueryFieldId(0));
-        assert_eq!(field.id(), owned_field.id);
-        assert_eq!(field.owner(), owned_field.owner);
-        assert_name(field.name(), &owned_field.name);
-        assert_type_refs(field.type_refs(), &owned_field.type_refs);
-        assert_eq!(field.note(), owned_field.note);
-
-        let parameter = read.query_parameter(HbkQueryParameterId(0));
-        let owned_parameter = snapshot.query_parameter(HbkQueryParameterId(0));
-        assert_eq!(parameter.id(), owned_parameter.id);
-        assert_eq!(parameter.owner(), owned_parameter.owner);
-        assert_name(parameter.name(), &owned_parameter.name);
-        assert_type_refs(parameter.type_refs(), &owned_parameter.type_refs);
-        assert_eq!(parameter.default_value(), owned_parameter.default_value);
-
-        let language = read.language_fact(HbkLanguageFactId(0));
-        let owned_language = snapshot.language_fact(HbkLanguageFactId(0));
-        assert_eq!(language.id(), owned_language.id);
-        assert_eq!(language.kind(), owned_language.kind);
-        assert_eq!(language.domain(), owned_language.domain);
-        assert_name(language.name(), &owned_language.name);
-        assert_eq!(language.signatures().len(), owned_language.signatures.len());
-        for (signature, owned_signature) in language.signatures().zip(&owned_language.signatures) {
-            assert_eq!(signature.text(), owned_signature.text);
-            assert_eq!(
-                signature.parameters().len(),
-                owned_signature.parameters.len()
-            );
-            for (parameter, owned_parameter) in
-                signature.parameters().zip(&owned_signature.parameters)
-            {
-                assert_eq!(parameter.name(), owned_parameter.name);
-                assert_eq!(parameter.required(), owned_parameter.required);
-                assert_type_refs(parameter.type_refs(), &owned_parameter.type_refs);
-            }
-            assert_type_refs(
-                signature.return_type_refs(),
-                &owned_signature.return_type_refs,
-            );
-        }
-        assert_type_refs(language.type_refs(), &owned_language.type_refs);
-        assert_type_refs(
-            language.return_type_refs(),
-            &owned_language.return_type_refs,
-        );
-
-        let enum_fact = read.enum_fact(HbkEnumId(0));
-        assert_eq!(enum_fact.id(), snapshot.enum_fact(HbkEnumId(0)).id);
-        assert_name(enum_fact.name(), &snapshot.enum_fact(HbkEnumId(0)).name);
-        let enum_value = read.enum_value(HbkEnumValueId(0));
-        assert_eq!(enum_value.id(), snapshot.enum_value(HbkEnumValueId(0)).id);
-        assert_eq!(
-            enum_value.owner(),
-            snapshot.enum_value(HbkEnumValueId(0)).owner
-        );
-        assert_name(
-            enum_value.name(),
-            &snapshot.enum_value(HbkEnumValueId(0)).name,
-        );
-
-        for owned in &snapshot.source_by_fact {
-            let source = read.source(owned.fact).unwrap();
-            assert_eq!(source.hbk_path(), owned.source.hbk_path);
-            assert_eq!(source.locale(), owned.source.locale);
-            assert_eq!(source.toc_path(), owned.source.toc_path);
-            assert_eq!(source.html_path(), owned.source.html_path);
-            assert_eq!(source.page_title(), owned.source.page_title);
-        }
 
         drop(mapped);
         fs::remove_dir_all(root).unwrap();
@@ -8845,6 +8723,321 @@ mod tests {
         let id = StringId(snapshot.strings.len() as u32);
         snapshot.strings.push(value.to_string());
         id
+    }
+
+    fn assert_forward_payload_eq(snapshot: &HbkFactSnapshot, mapped: &X1MappedGeneration) {
+        let read = mapped.read_handle();
+        assert_eq!(mapped.counts, snapshot.counts(), "record-family counts");
+        assert_eq!(
+            Some(read.source_locale()),
+            snapshot.source_locale(),
+            "source locale"
+        );
+        for (index, owned) in snapshot.strings.iter().enumerate() {
+            assert_eq!(
+                read.string(StringId(index as u32)),
+                owned,
+                "strings[{index}]"
+            );
+        }
+
+        for (index, owned) in snapshot.platform_types.iter().enumerate() {
+            let view = read.platform_type(HbkPlatformTypeId(index as u32));
+            assert_eq!(view.id(), owned.id, "platform_types[{index}].id");
+            assert_name(view.name(), &owned.name);
+            assert_eq!(
+                view.type_template_key(),
+                owned.type_template_key,
+                "platform_types[{index}].type_template_key"
+            );
+            assert_eq!(
+                view.availability_contexts().collect::<Vec<_>>(),
+                owned.availability_contexts,
+                "platform_types[{index}].availability_contexts"
+            );
+            match (view.metadata_template(), &owned.metadata_template) {
+                (Some(view), Some(owned)) => {
+                    assert_eq!(
+                        view.metadata_kind(),
+                        owned.metadata_kind,
+                        "platform_types[{index}].metadata_template.metadata_kind"
+                    );
+                    assert_eq!(
+                        view.template_parameters().collect::<Vec<_>>(),
+                        owned.template_parameters,
+                        "platform_types[{index}].metadata_template.template_parameters"
+                    );
+                }
+                (None, None) => {}
+                _ => panic!("platform_types[{index}].metadata_template differs"),
+            }
+        }
+
+        for (index, owned) in snapshot.type_members.iter().enumerate() {
+            let view = read.type_member(HbkTypeMemberId(index as u32));
+            assert_eq!(view.id(), owned.id, "type_members[{index}].id");
+            assert_eq!(view.owner(), owned.owner, "type_members[{index}].owner");
+            assert_eq!(view.kind(), owned.kind, "type_members[{index}].kind");
+            assert_name(view.name(), &owned.name);
+            assert_type_refs(view.type_refs(), &owned.type_refs);
+            assert_eq!(
+                view.availability_contexts().collect::<Vec<_>>(),
+                owned.availability_contexts,
+                "type_members[{index}].availability_contexts"
+            );
+        }
+
+        for (index, owned) in snapshot.callables.iter().enumerate() {
+            let view = read.callable(HbkCallableId(index as u32));
+            assert_eq!(view.id(), owned.id, "callables[{index}].id");
+            assert_eq!(view.owner(), owned.owner, "callables[{index}].owner");
+            assert_eq!(view.kind(), owned.kind, "callables[{index}].kind");
+            assert_name(view.name(), &owned.name);
+            assert_signatures(view.signatures(), &owned.signatures);
+            assert_type_refs(view.return_type_refs(), &owned.return_type_refs);
+            assert_eq!(
+                view.availability_contexts().collect::<Vec<_>>(),
+                owned.availability_contexts,
+                "callables[{index}].availability_contexts"
+            );
+        }
+
+        for (index, owned) in snapshot.globals.iter().enumerate() {
+            let view = read.global(HbkGlobalFactId(index as u32));
+            assert_eq!(view.id(), owned.id, "globals[{index}].id");
+            assert_eq!(view.kind(), owned.kind, "globals[{index}].kind");
+            assert_eq!(view.domain(), owned.domain, "globals[{index}].domain");
+            assert_name(view.name(), &owned.name);
+            assert_eq!(view.callable(), owned.callable, "globals[{index}].callable");
+            assert_type_refs(view.type_refs(), &owned.type_refs);
+        }
+
+        for (index, owned) in snapshot.query_tables.iter().enumerate() {
+            let view = read.query_table(HbkQueryTableId(index as u32));
+            assert_eq!(view.id(), owned.id, "query_tables[{index}].id");
+            assert_name(view.name(), &owned.name);
+            assert_eq!(
+                view.syntax().map(|name| (name.primary(), name.alias())),
+                owned.syntax.as_ref().map(|name| (name.primary, name.alias)),
+                "query_tables[{index}].syntax"
+            );
+            assert_eq!(
+                view.identifier(),
+                owned.identifier,
+                "query_tables[{index}].identifier"
+            );
+            assert_eq!(view.role(), owned.role, "query_tables[{index}].role");
+            assert_eq!(
+                view.owner_path()
+                    .map(|name| (name.primary(), name.alias()))
+                    .collect::<Vec<_>>(),
+                owned
+                    .owner_path
+                    .iter()
+                    .map(|name| (name.primary, name.alias))
+                    .collect::<Vec<_>>(),
+                "query_tables[{index}].owner_path"
+            );
+            assert_eq!(
+                view.template_parameters().collect::<Vec<_>>(),
+                owned.template_parameters,
+                "query_tables[{index}].template_parameters"
+            );
+        }
+
+        for (index, owned) in snapshot.query_fields.iter().enumerate() {
+            let view = read.query_field(HbkQueryFieldId(index as u32));
+            assert_eq!(view.id(), owned.id, "query_fields[{index}].id");
+            assert_eq!(view.owner(), owned.owner, "query_fields[{index}].owner");
+            assert_name(view.name(), &owned.name);
+            assert_type_refs(view.type_refs(), &owned.type_refs);
+            assert_eq!(view.note(), owned.note, "query_fields[{index}].note");
+        }
+
+        for (index, owned) in snapshot.query_parameters.iter().enumerate() {
+            let view = read.query_parameter(HbkQueryParameterId(index as u32));
+            assert_eq!(view.id(), owned.id, "query_parameters[{index}].id");
+            assert_eq!(view.owner(), owned.owner, "query_parameters[{index}].owner");
+            assert_name(view.name(), &owned.name);
+            assert_type_refs(view.type_refs(), &owned.type_refs);
+            assert_eq!(
+                view.default_value(),
+                owned.default_value,
+                "query_parameters[{index}].default_value"
+            );
+        }
+
+        for (index, owned) in snapshot.language_facts.iter().enumerate() {
+            let view = read.language_fact(HbkLanguageFactId(index as u32));
+            assert_eq!(view.id(), owned.id, "language_facts[{index}].id");
+            assert_eq!(view.kind(), owned.kind, "language_facts[{index}].kind");
+            assert_eq!(
+                view.domain(),
+                owned.domain,
+                "language_facts[{index}].domain"
+            );
+            assert_name(view.name(), &owned.name);
+            assert_signatures(view.signatures(), &owned.signatures);
+            assert_type_refs(view.type_refs(), &owned.type_refs);
+            assert_type_refs(view.return_type_refs(), &owned.return_type_refs);
+        }
+
+        for (index, owned) in snapshot.enums.iter().enumerate() {
+            let view = read.enum_fact(HbkEnumId(index as u32));
+            assert_eq!(view.id(), owned.id, "enums[{index}].id");
+            assert_name(view.name(), &owned.name);
+        }
+
+        for (index, owned) in snapshot.enum_values.iter().enumerate() {
+            let view = read.enum_value(HbkEnumValueId(index as u32));
+            assert_eq!(view.id(), owned.id, "enum_values[{index}].id");
+            assert_eq!(view.owner(), owned.owner, "enum_values[{index}].owner");
+            assert_name(view.name(), &owned.name);
+        }
+
+        assert_eq!(
+            mapped.vector(S::AvailabilityByFactKeys).len(),
+            snapshot.availability_by_fact.keys.len(),
+            "availability key count"
+        );
+        assert_eq!(
+            mapped.vector(S::AvailabilityByFactValues).len(),
+            snapshot.availability_by_fact.values.len(),
+            "availability value count"
+        );
+        assert_eq!(
+            mapped.vector(S::AvailabilitySinceByFact).len(),
+            snapshot.availability_since_by_fact.len(),
+            "available-since count"
+        );
+        assert_eq!(
+            mapped.vector(S::SourceByFact).len(),
+            snapshot.source_by_fact.len(),
+            "provenance count"
+        );
+        let owned_read = snapshot.worker_handle();
+        for fact in all_fact_refs(snapshot) {
+            assert_eq!(
+                read.availability_contexts(fact).collect::<Vec<_>>(),
+                owned_read.availability_contexts(fact),
+                "availability contexts for {fact:?}"
+            );
+            assert_eq!(
+                read.available_since(fact),
+                owned_read.available_since(fact),
+                "available since for {fact:?}"
+            );
+            let owned_source = snapshot
+                .source_by_fact
+                .binary_search_by(|candidate| candidate.fact.cmp(&fact))
+                .ok()
+                .map(|index| snapshot.source_by_fact[index].source);
+            assert_fact_source(read.source(fact), owned_source, fact);
+        }
+    }
+
+    fn all_fact_refs(snapshot: &HbkFactSnapshot) -> Vec<HbkFactRef> {
+        let counts = snapshot.counts();
+        let mut facts = Vec::with_capacity(
+            counts.platform_types
+                + counts.type_members
+                + counts.callables
+                + counts.globals
+                + counts.query_tables
+                + counts.query_fields
+                + counts.query_parameters
+                + counts.language_facts
+                + counts.enums
+                + counts.enum_values,
+        );
+        facts.extend(
+            (0..counts.platform_types)
+                .map(|index| HbkFactRef::PlatformType(HbkPlatformTypeId(index as u32))),
+        );
+        facts.extend(
+            (0..counts.type_members)
+                .map(|index| HbkFactRef::TypeMember(HbkTypeMemberId(index as u32))),
+        );
+        facts.extend(
+            (0..counts.callables).map(|index| HbkFactRef::Callable(HbkCallableId(index as u32))),
+        );
+        facts.extend(
+            (0..counts.globals).map(|index| HbkFactRef::Global(HbkGlobalFactId(index as u32))),
+        );
+        facts.extend(
+            (0..counts.query_tables)
+                .map(|index| HbkFactRef::QueryTable(HbkQueryTableId(index as u32))),
+        );
+        facts.extend(
+            (0..counts.query_fields)
+                .map(|index| HbkFactRef::QueryField(HbkQueryFieldId(index as u32))),
+        );
+        facts.extend(
+            (0..counts.query_parameters)
+                .map(|index| HbkFactRef::QueryParameter(HbkQueryParameterId(index as u32))),
+        );
+        facts.extend(
+            (0..counts.language_facts)
+                .map(|index| HbkFactRef::LanguageFact(HbkLanguageFactId(index as u32))),
+        );
+        facts.extend((0..counts.enums).map(|index| HbkFactRef::Enum(HbkEnumId(index as u32))));
+        facts.extend(
+            (0..counts.enum_values)
+                .map(|index| HbkFactRef::EnumValue(HbkEnumValueId(index as u32))),
+        );
+        facts
+    }
+
+    fn assert_signatures<'a>(
+        views: impl ExactSizeIterator<Item = X1SignatureView<'a>>,
+        owned: &[HbkSignature],
+    ) {
+        assert_eq!(views.len(), owned.len());
+        for (view, owned) in views.zip(owned) {
+            assert_eq!(view.text(), owned.text);
+            let parameters = view.parameters();
+            assert_eq!(parameters.len(), owned.parameters.len());
+            for (view, owned) in parameters.zip(&owned.parameters) {
+                assert_eq!(view.name(), owned.name);
+                assert_eq!(view.required(), owned.required);
+                assert_type_refs(view.type_refs(), &owned.type_refs);
+            }
+            assert_type_refs(view.return_type_refs(), &owned.return_type_refs);
+        }
+    }
+
+    fn assert_fact_source(
+        view: Option<X1FactSourceView>,
+        owned: Option<HbkFactSource>,
+        fact: HbkFactRef,
+    ) {
+        match (view, owned) {
+            (Some(view), Some(owned)) => {
+                assert_eq!(
+                    view.hbk_path(),
+                    owned.hbk_path,
+                    "source hbk path for {fact:?}"
+                );
+                assert_eq!(view.locale(), owned.locale, "source locale for {fact:?}");
+                assert_eq!(
+                    view.toc_path(),
+                    owned.toc_path,
+                    "source TOC path for {fact:?}"
+                );
+                assert_eq!(
+                    view.html_path(),
+                    owned.html_path,
+                    "source HTML path for {fact:?}"
+                );
+                assert_eq!(
+                    view.page_title(),
+                    owned.page_title,
+                    "source page title for {fact:?}"
+                );
+            }
+            (None, None) => {}
+            _ => panic!("source presence differs for {fact:?}"),
+        }
     }
 
     fn assert_name(view: X1NameView, owned: &HbkName) {

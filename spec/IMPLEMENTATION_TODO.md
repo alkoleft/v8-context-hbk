@@ -361,7 +361,12 @@ type-reference conclusions live in
     magic/layout/schema/truncation/checksum/section corruptions проходят
     discovery guards и отклоняются общим byte-validator. Package tests
     `106/106`, полный workspace, package clippy, strict OpenSpec и независимое
-    review прошли. Следующий активный пункт — 4.2, full-corpus storage parity.
+    review прошли. OpenSpec 4.2 завершён на frozen S83 provider: exact X1
+    `12,430,416` bytes/SHA, dictionary `71,073`, все десять fact families,
+    nested payload, availability/available-since и provenance совпали с owned
+    build oracle; explicit ignored corpus probe и независимый review прошли.
+    Детали записаны в `acceptance/hbk-x1-int-evidence.md`. Следующий активный
+    пункт — 4.3, full-corpus lookup parity.
     T183 остаётся открытой на implementation/X1-INT; canonical
     cutover и garbage cleanup условны и выполняются отдельными milestones.
 

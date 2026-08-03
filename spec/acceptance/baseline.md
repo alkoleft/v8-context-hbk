@@ -3143,6 +3143,16 @@ truncation/checksum/section corruption сначала проходят корр�
 content-address checks, затем отклоняются общим full byte-validator. Lifecycle
 3.5 остаётся единственным runtime boundary; X1 всё ещё private/non-canonical.
 
+Task 4.2 прошёл full-corpus storage parity на frozen S83 provider: exact X1
+artifact `12,430,416` bytes /
+`0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`.
+Comparator подтвердил dictionary `71,073`, types/members/callables/globals
+`1,749/18,004/8,299/601`, query `53/498/56`, enums `670/2,934`, все nested
+поля, availability, available-since и provenance. Language facts равны нулю во
+frozen provider и покрыты общим fixture comparator. Explicit corpus probe,
+package tests/clippy/fmt/diff и независимый review прошли; детали находятся в
+`hbk-x1-int-evidence.md`. Lookup/catalog/analyzer gates ещё открыты.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

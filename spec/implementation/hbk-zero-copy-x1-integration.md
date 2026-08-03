@@ -844,3 +844,21 @@ API. Он не добавляет production exporter, DTO или второй o
   успешный результат; raw stdout остаётся service data. Commit gate включает
   fixture/package/workspace tests, explicit full-corpus run, package clippy,
   fmt, strict OpenSpec, diff check и независимое review.
+
+### Результат OpenSpec 4.2
+
+Full-corpus storage parity прошёл на frozen S83 provider. Общий comparator
+совпадает для dictionary и всех десяти fact families, каждого nested payload,
+availability, available-since и provenance. X1 generation снова имеет
+`12,430,416` bytes и SHA-256
+`0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`.
+
+Counts: `71,073` strings, `1,749` types, `18,004` members, `8,299`
+callables, `601` globals, `53/498/56` query tables/fields/parameters, `0`
+language facts и `670/2,934` enums/values. Fixture тем же comparator покрывает
+language facts, отсутствующие во frozen corpus. Explicit ignored probe прошёл
+за диагностические `71.73 s`; это build/comparison time, не performance gate.
+Package tests `106 passed / 1 ignored`, package clippy, fmt, diff check и
+независимый review прошли. Полная команда и counts записаны в
+`acceptance/hbk-x1-int-evidence.md`. Следующий slice — 4.3 full-corpus lookup
+parity; X1 остаётся private/non-canonical.
