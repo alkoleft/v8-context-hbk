@@ -774,3 +774,30 @@ OpenSpec и независимое unsafe/code review прошли. Workspace-wi
 Rust 1.95 по-прежнему имеет два unrelated pre-existing lint в
 `syntax-helper-extract`; slice их не меняет. X1 остаётся private и
 non-canonical. Следующий gate — OpenSpec 4.1 compatibility/lifecycle matrix.
+
+## Task-local plan: OpenSpec 4.1 — compatibility/lifecycle matrix
+
+Этот slice не добавляет второй validator и не открывает public runtime API. Он
+собирает уже реализованные 3.2/3.5 инварианты в проверку реального stable-slot
+open, чтобы дальнейшая catalog integration опиралась на один доказанный
+lifecycle boundary.
+
+- Valid published slot открывается повторно и из нескольких concurrent
+  sessions с одной внешней expectation. Старый session удерживает shared lock,
+  replacement fail-fast отклоняется, после drop новая generation открывается
+  только с новой expectation; старые session-local ID не мигрируются и не
+  сравниваются как durable identity.
+- На valid generation каждая mismatch expectation отдельно проверяет exact
+  platform version, locale, source locale и HBK SHA. Ошибка обязана сохранять
+  поле `CompatibilityMismatch`, а не превращаться в rebuild/fallback.
+- Для magic, binary layout, extraction/provider schema, truncation, checksum и
+  section corruption тест строит content-addressed read-only generation и
+  корректный `current`, чтобы пройти discovery/content-address guards и
+  доказать отказ именно общего full byte-validator через stable-slot open.
+- Missing/corrupt pointer, concurrent readers, blocked update, atomic
+  publication, source replacement и symlink/oversize guards переиспользуют
+  behavior tests 3.5; прямые unsafe explicit-generation tests остаются только
+  unit evidence validator, не поддерживаемым runtime path.
+- Commit gate: package/workspace tests, package clippy, fmt, strict OpenSpec,
+  diff check и независимый review. X1 остаётся private/non-canonical; следующий
+  slice 4.2 проверяет полный production corpus, а не fixture-only counts.
