@@ -132,6 +132,16 @@ enum HbkPropertyViewInner<'a> {
     Global(HbkGlobalFactView<'a>),
 }
 
+impl HbkPropertyView<'_> {
+    /// Returns the generation-local source identifier of the contained HBK fact.
+    pub fn source_id(self) -> StringId {
+        match self.inner {
+            HbkPropertyViewInner::Member(member) => member.id(),
+            HbkPropertyViewInner::Global(global) => global.id(),
+        }
+    }
+}
+
 impl<'a> HbkTypeMemberView<'a> {
     /// Returns a property role only when the member kind proves that semantic.
     pub fn property_role(self) -> Option<HbkPropertyView<'a>> {

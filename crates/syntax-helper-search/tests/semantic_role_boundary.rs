@@ -73,6 +73,7 @@ fn role_module_has_only_direct_views_and_one_filtered_property_seam() {
     }
     assert_eq!(source.matches("pub struct HbkPropertyView").count(), 1);
     assert_eq!(source.matches("pub fn property_role").count(), 2);
+    assert_eq!(source.matches("pub fn source_id").count(), 1);
     assert!(source.contains("Member(HbkTypeMemberView<'a>)"));
     assert!(source.contains("Global(HbkGlobalFactView<'a>)"));
     assert!(source.contains("HbkLanguageDomain::Bsl"));
@@ -84,7 +85,7 @@ fn role_module_has_only_direct_views_and_one_filtered_property_seam() {
         "struct SemanticIndex",
         "struct SemanticRegistry",
         "fn match_argument_count",
-        "-> String",
+        "-> String {",
         "-> Vec<",
         "Box<dyn",
         "name: String",

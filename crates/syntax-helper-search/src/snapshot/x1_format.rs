@@ -6193,6 +6193,9 @@ mod tests {
         let mapped_member = mapped_read.type_member(HbkTypeMemberId(0));
         let owned_property = owned_member.property_role().unwrap();
         let mapped_property = mapped_member.property_role().unwrap();
+        assert_eq!(owned_property.source_id(), owned_member.id());
+        assert_eq!(mapped_property.source_id(), mapped_member.id());
+        assert_eq!(owned_property.source_id(), mapped_property.source_id());
         assert_eq!(PropertyView::name(&owned_property), "Value");
         assert_eq!(
             PropertyView::name(&owned_property),
@@ -6233,6 +6236,12 @@ mod tests {
         let mapped_global = mapped_read.global_fact(HbkGlobalFactId(2));
         let owned_global_property = owned_global.property_role().unwrap();
         let mapped_global_property = mapped_global.property_role().unwrap();
+        assert_eq!(owned_global_property.source_id(), owned_global.id());
+        assert_eq!(mapped_global_property.source_id(), mapped_global.id());
+        assert_eq!(
+            owned_global_property.source_id(),
+            mapped_global_property.source_id()
+        );
         assert_eq!(PropertyView::name(&owned_global_property), "ThinGlobal");
         assert_eq!(
             PropertyView::name(&owned_global_property),
