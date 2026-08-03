@@ -217,3 +217,111 @@ conversion paths. Экспериментальные ветки и durable evide
 - `v8-context` не удерживает copied selected entity shapes; только AIR-001/
   AIR-002 operation-local flow.
 - Benchmark module не содержит private provider reader, parser или verifier.
+
+## Task-local plan: OpenSpec 3.1 — writer и полная byte-validation
+
+Этот slice реализует только детерминированное производство X1 generation и его
+проверку. Он не добавляет runtime mmap-open, catalog views, slot/current
+publication или переключение потребителей: это отдельные пункты 3.2–3.5.
+
+### Контракт slice
+
+1. Добавить один закрытый deep module `snapshot/x1_format.rs`. Он владеет X1
+   header/directory/record encoding и полной проверкой байтов, но не вводит
+   второй snapshot owner или public record/view family.
+2. Добавить на существующий `HbkFactSnapshotBuildReport` build-only операцию
+   записи нового immutable generation file. Writer не принимает свободную
+   строку версии. Extraction/build boundary выводит typed platform version из
+   канонического version-directory исходного HBK (`…/<major.minor.patch.build>/
+   shcntx_*.hbk`), сохраняет эту привязку в build report и отклоняет источник,
+   для которого привязка отсутствует или неоднозначна. Writer выводит
+   provenance из фактического SQLite/HBK input, повторно сверяет canonical HBK
+   path, вычисляет SHA-256 внутри процесса, пишет только в несуществующий
+   generation path и не является runtime open/fallback. В task 3.2 runtime
+   caller обязан передать ожидаемую platform version из выбранной установки и
+   reader сравнивает её с проверенной header-привязкой.
+3. Кодировать только принятые X1 части: основной flat payload, global SoA,
+   collision-safe type-name hash и owner-contiguous member AoS/range. Не
+   кодировать X1-PROJECTED, готовые context combinations или experiment-only
+   metadata.
+4. Перед успешным возвратом проверить in-memory bytes и повторно прочитанный
+   generation file: magic/layout/extraction/provider schema, exact platform
+   version, locale/source identity, artifact/payload integrity, directory
+   order/non-overlap/alignment/bounds, UTF-8, tags, ranges, CSR/sort/hash и
+   owner-contiguous invariants.
+5. Сохранить детерминизм: одинаковый snapshot и compatibility input дают
+   одинаковые байты независимо от пути output и времени запуска. В header не
+   попадают `built_at`, mtime или абсолютный путь provider SQLite; source HBK
+   path сохраняется только как provenance.
+6. Добавить behavior tests для byte-for-byte repeat, collision chain в
+   type-name hash, отсутствия
+   corpus-specific constants/projected sections, неверных версий/identity,
+   truncation/checksum/directory/range/tag/UTF-8 corruption и отказа
+   перезаписывать существующий generation. Unit fixtures создают реальный
+   минимальный HBK-файл внутри version-directory во временном каталоге; они не
+   зависят от `/opt/1cv8`.
+
+### Полный section manifest
+
+Task 3.1 кодирует весь observable owned snapshot, а не только hot path. Имена
+ниже являются private physical roles; ни один из них не входит в public API.
+
+| Observable owner / lookup | X1 sections, кодируемые в 3.1 |
+|---|---|
+| Строковый словарь | `Strings`, `StringOrder`, `SourceLocale` в header |
+| Platform types | `PlatformTypes`, `PlatformTypeIds`, `PlatformTypeNames`, `PlatformTypeTemplates`, `PlatformTypeNameHash` |
+| Type members | `TypeMembers`, `MemberIds`, `MembersByOwnerKeys/Offsets/Values`, `TypeMemberRanges`, `MemberAvailabilityHot`, `MembersByOwnerName`, `MembersByOwnerNameKind` |
+| Callables/constructors/module events | `Callables`, `CallableIds`, `CallablesByOwnerKeys/Offsets/Values`, `CallablesByOwnerName`, `ConstructorsByTypeKeys/Offsets/Values`, `ModuleEventNames`, `ModuleContextsByDomainLanguageKind` |
+| Globals | `Globals`, `GlobalNames`, `GlobalsByDomainNameKind`, `GlobalAvailabilityLocators/Masks/Kinds` |
+| SDBL tables | `QueryTables`, `QueryTableIds`, `QueryTableNames`, `QueryTableSyntaxNames`, `QueryTableIdentifiers` |
+| SDBL fields/parameters | `QueryFields`, `QueryFieldsByTableKeys/Offsets/Values`, `QueryFieldsByTableName`, `QueryParameters`, `QueryParametersByTableKeys/Offsets/Values`, `QueryParametersByTableName` |
+| Language facts | `LanguageFacts`, `LanguageIds`, `LanguageNames` |
+| Enums | `Enums`, `EnumIds`, `EnumNames`, `EnumValues`, `EnumValueIds`, `EnumValuesByEnumKeys/Offsets/Values`, `EnumValuesByEnumName` |
+| Nested payload | `MetadataTemplates`, `Signatures`, `Parameters`, `TypeRefs`, `TemplateBindings`, `TemplateArguments`, `Names`, `StringIds` |
+| Fact state/provenance | `FactIds`, `AvailabilityByFactKeys/Offsets/Values`, `AvailabilitySinceByFact`, `SourceByFact`, `RelationsBySourceKindKeys/Offsets/Values` |
+| Artifact provenance | header identity fields и `CompatibilityMetadata` |
+
+Ничего из текущих `HbkFactSnapshot`/`HbkFactReadHandle` observable facts или
+lookup не откладывается. `X1-PROJECTED` sections отсутствуют. Task 3.2
+переиспользует этот же validator перед созданием typed mmap views; второй
+validator или ослабленный runtime subset запрещён.
+
+### Structure impact
+
+- Единственный владелец semantic facts остаётся `HbkFactSnapshot`; writer
+  читает его приватные поля внутри `snapshot` и создаёт только transient bytes.
+- Новый публичный surface ограничен build input/report/error и методом
+  существующего build report. Section IDs, offsets и flat record types остаются
+  private.
+- В runtime не добавляется второй graph, cache, dictionary, catalog, adapter
+  или fallback. `SearchIndex` используется только до завершения build report.
+- Новая dependency допустима только для SHA-256 provenance; storage/index crate
+  не добавляется.
+
+### Reintroduction guard
+
+- Production source scan не находит `REQUIRED_*`, `experiment_*`,
+  `X1_PROJECTED`, benchmark paths/schema или готовые availability projections.
+- Tests доказывают `create_new`: существующий generation не изменяется.
+- Platform-version test доказывает отказ extraction/build boundary при
+  несовпадении version-directory и заявленной/выбранной установки, а task 3.2
+  добавит отказ open при несовпадении expected version с header.
+- Collision test использует детерминированные разные ключи с одним initial
+  bucket при штатной bucket-width; поиск настоящей 64-bit hash collision и
+  test-only production hasher не требуются.
+- Writer module не экспортирует reader/views и не импортируется catalog/
+  resolver crates до task 3.2–3.4.
+- Commit diff ограничен format/writer, его behavior tests, dependency и
+  обязательной актуализацией spec/task ledger.
+
+### Проверка и commit gate
+
+- `cargo fmt --check`;
+- focused `syntax-helper-search` X1 writer/validator tests;
+- `cargo test -p syntax-helper-search`;
+- `cargo clippy -p syntax-helper-search --all-targets -- -D warnings`;
+- real frozen input: два generation получают одинаковый SHA-256, затем один
+  generation проходит standalone validation без runtime fallback;
+- strict OpenSpec validation, `git diff --check`, независимые skeptic-review и
+  codebase-design review; только после этого пункт 3.1 и долгосрочный ledger
+  отмечаются завершёнными отдельным commit.
