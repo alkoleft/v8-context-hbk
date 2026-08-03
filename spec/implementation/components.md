@@ -1160,8 +1160,14 @@ runtime platform/locale/source identity без чтения SQLite/HBK, удер
 и mapping вместе и не открывает entity API до завершения borrowed views и
 stable-slot locking. Полный validator task 3.1 остаётся единственной проверкой
 формата для writer и mmap-open.
-Следующий component slice переиспользует этот validator до создания borrowed
-typed mmap views; второй validator и owned fallback запрещены.
+
+OpenSpec 3.3 добавил поверх этого owner закрытые by-value borrowed views всего
+существующего forward payload и lazy nested iterators. Provider-native
+`ANY`/`ALL` enumeration читает persisted hot arrays для globals и только
+непосредственных members одного известного type owner. Steady traversal полного
+nested fixture payload и provenance подтверждён с нулём аллокаций. Следующий
+component slice добавляет только base-dictionary/reverse provider lookup;
+второй validator, public X1 entity family и owned fallback запрещены.
 
 ## Implementation Dependencies
 

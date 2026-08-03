@@ -214,8 +214,11 @@ conversion paths. Экспериментальные ветки и durable evide
 - Production artifact не содержит X1-PROJECTED sections или готовые context
   combinations.
 - Нет второй provider entity/read/catalog family или копии HBK dictionary.
-- `v8-context` не удерживает copied selected entity shapes; только AIR-001/
-  AIR-002 operation-local flow.
+- `v8-context` не удерживает copied selected entity shapes: после операции
+  допустимы только canonical key, source tier/ordinal и существующий locator;
+  provider view, name/signature/parameters и selected entity cache не живут
+  дольше вызова. Owned resolver DTO допустим только на существующей
+  compatibility boundary и не является HBK storage.
 - Benchmark module не содержит private provider reader, parser или verifier.
 
 ## Task-local plan: OpenSpec 3.1 — writer и полная byte-validation
@@ -431,3 +434,90 @@ magic/layout/schema, expectation, truncation/checksum/section, writable и
 non-regular negative cases; независимые unsafe/code/skeptic reviews не нашли
 блокеров. Следующий slice — OpenSpec 3.3, borrowed payload access внутри
 единственного snapshot/read-handle interface.
+
+## Task-local plan: OpenSpec 3.3 — borrowed forward payload
+
+Этот slice реализует только forward/ID/range чтение уже проверенного mapped
+generation и две приоритетные provider-native операции фильтрации. Reverse
+dictionary/name/relation lookup остаётся в 3.4, а safe public open, slot lock и
+publication — в 3.5. До них текущие owned catalogs остаются H0 baseline и не
+маскируют mapped path fallback-ом.
+
+### Контракт slice
+
+1. `X1MappedGeneration` получает закрытый read handle. View возвращается by
+   value и содержит только `&X1MappedGeneration` плюс Copy head/range; ссылка на
+   временно декодированный record не возвращается. Nested names, signatures,
+   parameters, type refs, template bindings/arguments и string-id arenas
+   обходятся ленивыми exact-size iterators, привязанными к lifetime owner.
+2. Forward views покрывают все поля уже существующих `HbkPlatformType`,
+   `HbkTypeMember`, `HbkCallable`, `HbkGlobalFact`, `HbkQueryTable`,
+   `HbkQueryField`, `HbkQueryParameter`, `HbkLanguageFact`, `HbkEnum`,
+   `HbkEnumValue` и их nested records. «Поля документации» в этом slice означают
+   только уже принятые source provenance `hbk_path/locale/toc_path/html_path/
+   page_title`; новые markdown/body/description payload не добавляются.
+3. После полного validator доступ к проверенным IDs/ranges является
+   infallible internal invariant. Record bytes по-прежнему декодируются через
+   `BinaryValue` by value; raw casts, `transmute`, self-references и owned
+   `Hbk*`/`Vec` materialization запрещены.
+4. Добавить borrowed filtered global traversal и filtered members одного уже
+   известного type owner. Filter принимает маску frozen `AvailabilityContext`
+   и режим `ANY`/`ALL`; universal проходит всегда, `ANY(empty)` принимает только
+   universal, `ALL(empty)` принимает все. `ModuleContextKind` не принимается.
+   Возвращаются только session-local typed IDs/views в исходном порядке.
+5. В 3.3 mapped view family остаётся закрытой внутри единственного
+   `snapshot/x1_format.rs` building block и не создаёт второй public owner,
+   catalog/source или generic semantic-read trait. В 3.5 она становится
+   внутренним storage единственного `HbkFactSnapshot`/`HbkFactReadHandle`; public
+   catalog migration проверяется end-to-end в 4.4.
+6. Локальное operation-lifetime правило: downstream может скопировать только
+   canonical key, source tier/ordinal и существующий locator, но не может
+   удерживать provider entity view, name, signature, parameters или selected
+   entity cache после операции. Owned resolver DTO допустим только на
+   существующей compatibility boundary и не является HBK storage.
+
+### Non-goals и guards
+
+- Не реализовывать name/alias/template/relation lookup, reverse string ID,
+  public `HbkFactSnapshot::open`, locks/publication, ensure/rebuild, resolver
+  switch или SQL cleanup.
+- Не переносить широкий экспериментальный `semantic_read.rs`, public flat/X1
+  record family, boxed/dyn iterator bridge, `Arc<Mutex<_>>`, `Box::leak`,
+  `'static`, retained copied entity cache или `X1-PROJECTED`.
+- Не кэшировать decoded provider entities. Допустимо один раз сохранить только
+  малую таблицу проверенных section descriptors/views внутри mmap owner.
+
+### Behavior tests и commit gate
+
+- Fixture parity сравнивает каждое forward observable поле и nested order
+  mapped views с owned H0, включая property/method, callable overloads,
+  signatures/parameters/return refs, global method/property, SDBL/language/
+  enums, provenance и universal/explicit availability.
+- Filter tests покрывают `ANY`/`ALL`, один и несколько контекстов, empty request,
+  universal, non-match, kind filtering и только members одного owner.
+- Отдельный allocation-enabled focused binary/test подтверждает ноль provider
+  allocation blocks/bytes для steady filtered globals, known-type members и
+  полного nested payload traversal; setup/open не входит в steady interval.
+- Views/iterators заимствуют owner; compile-smoke и API-shape test не допускают
+  `'static`, owned entity return или view после drop owner.
+- Source scan нового path не находит SQL/HBK/materialization/fallback,
+  `experiment_*`, projected sections, generic semantic trait, boxed iterator
+  или copied provider cache. Package/workspace tests, clippy, strict OpenSpec,
+  diff check и независимый code/skeptic review обязательны до отметки 3.3.
+
+### Результат OpenSpec 3.3
+
+Slice завершён. Закрытый `X1MappedReadHandle` читает из проверенного mapping
+узкие by-value views всех существующих payload families, лениво обходит
+signatures, parameters, type refs, template bindings, names и string-ID ranges,
+а также выполняет provider-native `ANY`/`ALL` enumeration globals и
+непосредственных members одного известного type owner. `ModuleContextKind` не
+участвует в фильтре.
+
+Fixture parity покрывает все forward поля и provenance для всех десяти
+вариантов `HbkFactRef`. Отдельный allocation-enabled тест после прогрева
+проходит весь nested payload, обе filtered operations и provenance с нулём
+allocation/reallocation calls и нулём allocated bytes. Package tests `93/93`,
+полный workspace, clippy, strict OpenSpec и независимое ревью прошли. Family
+остаётся private: public open, reverse lookup и migration каталогов не
+выполнялись. Следующий slice — OpenSpec 3.4, base dictionary и provider lookup.

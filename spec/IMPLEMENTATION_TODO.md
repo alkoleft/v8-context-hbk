@@ -342,8 +342,12 @@ type-reference conclusions live in
     runtime expectation `platform/locale/source-locale/HBK SHA`; runtime-open
     не читает SQLite/HBK и не выполняет fallback. Unsafe boundary остаётся
     закрытым и требует гарантированно неизменяемый explicit generation до
-    stable-slot lock в 3.5. Следующий активный пункт — 3.3: borrowed payload
-    views через единственный `HbkFactSnapshot`/`HbkFactReadHandle` interface.
+    stable-slot lock в 3.5. OpenSpec 3.3 завершён: private by-value borrowed
+    views покрывают весь forward payload и provenance, provider-native
+    `ANY`/`ALL` фильтрует globals и непосредственные members одного известного
+    owner, а полный steady nested fixture traversal подтверждён с нулём
+    аллокаций. Следующий активный пункт — 3.4: base dictionary, reverse lookup и
+    provider lookup без entity-shaped DTO.
     T183 остаётся открытой на implementation/X1-INT; canonical
     cutover и garbage cleanup условны и выполняются отдельными milestones.
 

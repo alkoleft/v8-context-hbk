@@ -171,6 +171,8 @@ search/debug artifact. Решение удаляет его только из an
       без включения runtime source.
 - [x] Private validated read-only mmap generation реализован без SQL/HBK
       fallback; public open остаётся закрытым до borrowed views и slot lock.
+- [x] Private borrowed forward views и provider-native `ANY`/`ALL` traversal
+      реализованы без entity materialization и steady allocations.
 - [ ] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
 - [ ] X1 проходит все X1-INT performance/resource gates.
 - [ ] Canonical cutover и последующий scoped cleanup завершены отдельными

@@ -63,7 +63,7 @@ pub struct HbkFactSnapshotArtifactWriteReport {
 struct X1MappedGeneration {
     _file: File,
     mmap: Mmap,
-    _sections: Vec<Section>,
+    sections: Vec<Section>,
     counts: HbkFactSnapshotCounts,
     source_locale: StringId,
     identity: X1ArtifactIdentity,
@@ -139,7 +139,7 @@ impl X1MappedGeneration {
         Ok(Self {
             _file: file,
             mmap,
-            _sections: sections,
+            sections,
             counts,
             source_locale,
             identity,
@@ -148,6 +148,869 @@ impl X1MappedGeneration {
 
     fn artifact_len(&self) -> usize {
         self.mmap.len()
+    }
+
+    fn read_handle(&self) -> X1MappedReadHandle<'_> {
+        X1MappedReadHandle { generation: self }
+    }
+
+    fn vector(&self, section: S) -> VectorView<'_> {
+        VectorView::new(section_bytes(&self.mmap, &self.sections, section))
+            .expect("X1 generation was fully validated before access")
+    }
+
+    fn record<T: BinaryValue>(&self, section: S, index: usize) -> T {
+        self.vector(section)
+            .get(index)
+            .expect("X1 record was fully validated before access")
+    }
+
+    fn records<T: BinaryValue>(&self, section: S, range: X1Range) -> X1RecordIter<'_, T> {
+        X1RecordIter::new(self.vector(section), range)
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum X1AvailabilityMode {
+    Any,
+    All,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct X1AvailabilityFilter {
+    requested_mask: u16,
+    mode: X1AvailabilityMode,
+}
+
+#[allow(dead_code)]
+impl X1AvailabilityFilter {
+    fn from_codes<'a>(
+        codes: impl IntoIterator<Item = &'a str>,
+        mode: X1AvailabilityMode,
+    ) -> io::Result<Self> {
+        let mut requested_mask = 0_u16;
+        for code in codes {
+            requested_mask |= x1_context_code_bit(code)
+                .ok_or_else(|| invalid_data("unknown X1 availability context filter"))?;
+        }
+        Ok(Self {
+            requested_mask,
+            mode,
+        })
+    }
+
+    #[inline]
+    fn includes(self, availability_word: u16) -> bool {
+        if availability_word & X1_HAS_EXPLICIT_DECLARATION == 0 {
+            return true;
+        }
+        let available = availability_word & X1_CONTEXT_BITS;
+        match self.mode {
+            X1AvailabilityMode::Any => available & self.requested_mask != 0,
+            X1AvailabilityMode::All => available & self.requested_mask == self.requested_mask,
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct X1MappedReadHandle<'a> {
+    generation: &'a X1MappedGeneration,
+}
+
+#[allow(dead_code)]
+impl<'a> X1MappedReadHandle<'a> {
+    fn string(self, id: StringId) -> &'a str {
+        self.generation
+            .vector(S::Strings)
+            .get_str(id.0 as usize)
+            .expect("X1 string was fully validated before access")
+    }
+
+    fn source_locale(self) -> &'a str {
+        self.string(self.generation.source_locale)
+    }
+
+    fn platform_type(self, id: HbkPlatformTypeId) -> X1PlatformTypeView<'a> {
+        X1PlatformTypeView {
+            handle: self,
+            head: self.generation.record(S::PlatformTypes, id.0 as usize),
+        }
+    }
+
+    fn type_member(self, id: HbkTypeMemberId) -> X1TypeMemberView<'a> {
+        X1TypeMemberView {
+            handle: self,
+            head: self.generation.record(S::TypeMembers, id.0 as usize),
+        }
+    }
+
+    fn callable(self, id: HbkCallableId) -> X1CallableView<'a> {
+        X1CallableView {
+            handle: self,
+            head: self.generation.record(S::Callables, id.0 as usize),
+        }
+    }
+
+    fn global(self, id: HbkGlobalFactId) -> X1GlobalFactView<'a> {
+        X1GlobalFactView {
+            handle: self,
+            head: self.generation.record(S::Globals, id.0 as usize),
+        }
+    }
+
+    fn query_table(self, id: HbkQueryTableId) -> X1QueryTableView<'a> {
+        X1QueryTableView {
+            handle: self,
+            head: self.generation.record(S::QueryTables, id.0 as usize),
+        }
+    }
+
+    fn query_field(self, id: HbkQueryFieldId) -> X1QueryFieldView<'a> {
+        X1QueryFieldView {
+            handle: self,
+            head: self.generation.record(S::QueryFields, id.0 as usize),
+        }
+    }
+
+    fn query_parameter(self, id: HbkQueryParameterId) -> X1QueryParameterView<'a> {
+        X1QueryParameterView {
+            handle: self,
+            head: self.generation.record(S::QueryParameters, id.0 as usize),
+        }
+    }
+
+    fn language_fact(self, id: HbkLanguageFactId) -> X1LanguageFactView<'a> {
+        X1LanguageFactView {
+            handle: self,
+            head: self.generation.record(S::LanguageFacts, id.0 as usize),
+        }
+    }
+
+    fn enum_fact(self, id: HbkEnumId) -> X1EnumView {
+        X1EnumView {
+            head: self.generation.record(S::Enums, id.0 as usize),
+        }
+    }
+
+    fn enum_value(self, id: HbkEnumValueId) -> X1EnumValueView {
+        X1EnumValueView {
+            head: self.generation.record(S::EnumValues, id.0 as usize),
+        }
+    }
+
+    fn source(self, fact: HbkFactRef) -> Option<X1FactSourceView> {
+        let sources = self.generation.vector(S::SourceByFact);
+        binary_search_view(&sources, |candidate: FactSourceLookup| {
+            candidate.fact.cmp(&fact)
+        })
+        .ok()
+        .map(|index| X1FactSourceView {
+            source: sources
+                .get::<FactSourceLookup>(index)
+                .expect("X1 source lookup was fully validated before access")
+                .source,
+        })
+    }
+
+    fn filtered_globals(
+        self,
+        filter: X1AvailabilityFilter,
+        kind: Option<HbkGlobalFactKind>,
+    ) -> X1FilteredGlobalIter<'a> {
+        X1FilteredGlobalIter {
+            locators: self.generation.vector(S::GlobalAvailabilityHot),
+            masks: self.generation.vector(S::GlobalAvailabilityMasks),
+            kinds: self.generation.vector(S::GlobalAvailabilityKinds),
+            index: 0,
+            filter,
+            kind,
+        }
+    }
+
+    fn filtered_members(
+        self,
+        owner: HbkPlatformTypeId,
+        filter: X1AvailabilityFilter,
+        kind: Option<HbkTypeMemberKind>,
+    ) -> X1FilteredMemberIter<'a> {
+        let range = self
+            .generation
+            .vector(S::TypeMemberRanges)
+            .get::<X1TypeMemberRangeHot>(owner.0 as usize)
+            .expect("X1 member owner range was fully validated before access");
+        X1FilteredMemberIter {
+            hot: self.generation.vector(S::MemberAvailabilityHot),
+            index: range.member_start as usize,
+            end: (range.member_start + range.member_count) as usize,
+            filter,
+            kind,
+        }
+    }
+}
+
+#[allow(dead_code)]
+struct X1RecordIter<'a, T> {
+    view: VectorView<'a>,
+    index: usize,
+    end: usize,
+    marker: std::marker::PhantomData<T>,
+}
+
+impl<'a, T> X1RecordIter<'a, T> {
+    fn new(view: VectorView<'a>, range: X1Range) -> Self {
+        let range = range
+            .as_usize()
+            .expect("X1 range was fully validated before access");
+        Self {
+            view,
+            index: range.start,
+            end: range.end,
+            marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: BinaryValue> Iterator for X1RecordIter<'_, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index == self.end {
+            return None;
+        }
+        let index = self.index;
+        self.index += 1;
+        Some(
+            self.view
+                .get(index)
+                .expect("X1 nested record was fully validated before access"),
+        )
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
+    }
+}
+
+impl<T: BinaryValue> ExactSizeIterator for X1RecordIter<'_, T> {
+    fn len(&self) -> usize {
+        self.end - self.index
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct X1FilteredGlobalIter<'a> {
+    locators: VectorView<'a>,
+    masks: VectorView<'a>,
+    kinds: VectorView<'a>,
+    index: usize,
+    filter: X1AvailabilityFilter,
+    kind: Option<HbkGlobalFactKind>,
+}
+
+impl<'a> Iterator for X1FilteredGlobalIter<'a> {
+    type Item = HbkGlobalFactId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.index < self.locators.len() {
+            let index = self.index;
+            self.index += 1;
+            let word = self
+                .masks
+                .get::<u16>(index)
+                .expect("X1 global mask was fully validated before access");
+            if !self.filter.includes(word) {
+                continue;
+            }
+            let actual_kind = x1_global_kind_from_tag(
+                self.kinds
+                    .get::<u8>(index)
+                    .expect("X1 global kind was fully validated before access"),
+            )
+            .expect("X1 global kind was fully validated before access");
+            if self.kind.is_some_and(|kind| kind != actual_kind) {
+                continue;
+            }
+            let id = self
+                .locators
+                .get::<u32>(index)
+                .expect("X1 global locator was fully validated before access");
+            return Some(HbkGlobalFactId(id));
+        }
+        None
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct X1FilteredMemberIter<'a> {
+    hot: VectorView<'a>,
+    index: usize,
+    end: usize,
+    filter: X1AvailabilityFilter,
+    kind: Option<HbkTypeMemberKind>,
+}
+
+impl<'a> Iterator for X1FilteredMemberIter<'a> {
+    type Item = HbkTypeMemberId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.index < self.end {
+            let index = self.index;
+            self.index += 1;
+            let hot = self
+                .hot
+                .get_x1_available_member_hot(index)
+                .expect("X1 member hot record was fully validated before access");
+            if !self.filter.includes(hot.availability_word) {
+                continue;
+            }
+            let actual_kind = x1_member_kind_from_tag(hot.kind)
+                .expect("X1 member kind was fully validated before access");
+            if self.kind.is_some_and(|kind| kind != actual_kind) {
+                continue;
+            }
+            return Some(HbkTypeMemberId(hot.member_id));
+        }
+        None
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct X1NameView {
+    head: X1NameHead,
+}
+
+#[allow(dead_code)]
+impl X1NameView {
+    fn primary(self) -> StringId {
+        self.head.primary
+    }
+
+    fn alias(self) -> Option<StringId> {
+        (self.head.alias != NONE_U32).then_some(StringId(self.head.alias))
+    }
+}
+
+fn x1_template_key(head: X1TemplateKeyHead) -> Option<HbkPlatformTypeTemplateKey> {
+    (head != X1TemplateKeyHead::NONE).then_some(HbkPlatformTypeTemplateKey {
+        family: StringId(head.family),
+        variant: StringId(head.variant),
+    })
+}
+
+fn x1_optional_string(value: u32) -> Option<StringId> {
+    (value != NONE_U32).then_some(StringId(value))
+}
+
+macro_rules! x1_mapped_view {
+    ($name:ident, $head:ty) => {
+        #[allow(dead_code)]
+        #[derive(Clone, Copy)]
+        struct $name<'a> {
+            handle: X1MappedReadHandle<'a>,
+            head: $head,
+        }
+    };
+}
+
+x1_mapped_view!(X1PlatformTypeView, X1PlatformTypeHead);
+x1_mapped_view!(X1MetadataTemplateView, X1MetadataTemplateHead);
+x1_mapped_view!(X1TypeMemberView, X1TypeMemberHead);
+x1_mapped_view!(X1CallableView, X1CallableHead);
+x1_mapped_view!(X1SignatureView, X1SignatureHead);
+x1_mapped_view!(X1ParameterView, X1ParameterHead);
+x1_mapped_view!(X1GlobalFactView, X1GlobalFactHead);
+x1_mapped_view!(X1QueryTableView, X1QueryTableHead);
+x1_mapped_view!(X1QueryFieldView, X1QueryFieldHead);
+x1_mapped_view!(X1QueryParameterView, X1QueryParameterHead);
+x1_mapped_view!(X1LanguageFactView, X1LanguageFactHead);
+x1_mapped_view!(X1TypeRefView, X1TypeRefHead);
+x1_mapped_view!(X1TemplateBindingView, X1TemplateBindingHead);
+
+#[allow(dead_code)]
+impl<'a> X1PlatformTypeView<'a> {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+
+    fn metadata_template(self) -> Option<X1MetadataTemplateView<'a>> {
+        (self.head.metadata_template != NONE_U32).then(|| X1MetadataTemplateView {
+            handle: self.handle,
+            head: self
+                .handle
+                .generation
+                .record(S::MetadataTemplates, self.head.metadata_template as usize),
+        })
+    }
+
+    fn type_template_key(self) -> Option<HbkPlatformTypeTemplateKey> {
+        x1_template_key(self.head.type_template_key)
+    }
+
+    fn availability_contexts(self) -> X1RecordIter<'a, StringId> {
+        self.handle
+            .generation
+            .records(S::StringIds, self.head.availability_contexts)
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1MetadataTemplateView<'a> {
+    fn metadata_kind(self) -> StringId {
+        self.head.metadata_kind
+    }
+
+    fn template_parameters(self) -> X1RecordIter<'a, StringId> {
+        self.handle
+            .generation
+            .records(S::StringIds, self.head.template_parameters)
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1TypeMemberView<'a> {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn owner(self) -> HbkPlatformTypeId {
+        self.head.owner
+    }
+
+    fn kind(self) -> HbkTypeMemberKind {
+        self.head.kind
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+
+    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::TypeRefs, self.head.type_refs)
+            .map(move |head| X1TypeRefView { handle, head })
+    }
+
+    fn availability_contexts(self) -> X1RecordIter<'a, StringId> {
+        self.handle
+            .generation
+            .records(S::StringIds, self.head.availability_contexts)
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1CallableView<'a> {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn owner(self) -> Option<HbkPlatformTypeId> {
+        (self.head.owner != NONE_U32).then_some(HbkPlatformTypeId(self.head.owner))
+    }
+
+    fn kind(self) -> HbkCallableKind {
+        self.head.kind
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+
+    fn signatures(self) -> impl ExactSizeIterator<Item = X1SignatureView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::Signatures, self.head.signatures)
+            .map(move |head| X1SignatureView { handle, head })
+    }
+
+    fn return_type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::TypeRefs, self.head.return_type_refs)
+            .map(move |head| X1TypeRefView { handle, head })
+    }
+
+    fn availability_contexts(self) -> X1RecordIter<'a, StringId> {
+        self.handle
+            .generation
+            .records(S::StringIds, self.head.availability_contexts)
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1SignatureView<'a> {
+    fn text(self) -> StringId {
+        self.head.text
+    }
+
+    fn parameters(self) -> impl ExactSizeIterator<Item = X1ParameterView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::Parameters, self.head.parameters)
+            .map(move |head| X1ParameterView { handle, head })
+    }
+
+    fn return_type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::TypeRefs, self.head.return_type_refs)
+            .map(move |head| X1TypeRefView { handle, head })
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1ParameterView<'a> {
+    fn name(self) -> StringId {
+        self.head.name
+    }
+
+    fn required(self) -> bool {
+        self.head.required
+    }
+
+    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::TypeRefs, self.head.type_refs)
+            .map(move |head| X1TypeRefView { handle, head })
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1GlobalFactView<'a> {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn kind(self) -> HbkGlobalFactKind {
+        self.head.kind
+    }
+
+    fn domain(self) -> HbkLanguageDomain {
+        self.head.domain
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+
+    fn callable(self) -> Option<HbkCallableId> {
+        (self.head.callable != NONE_U32).then_some(HbkCallableId(self.head.callable))
+    }
+
+    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::TypeRefs, self.head.type_refs)
+            .map(move |head| X1TypeRefView { handle, head })
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1QueryTableView<'a> {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+
+    fn syntax(self) -> Option<X1NameView> {
+        self.head.syntax_present.then_some(X1NameView {
+            head: self.head.syntax,
+        })
+    }
+
+    fn identifier(self) -> Option<StringId> {
+        x1_optional_string(self.head.identifier)
+    }
+
+    fn role(self) -> Option<model::QueryTableRole> {
+        match self.head.role {
+            0 => None,
+            1 => Some(model::QueryTableRole::Primary),
+            2 => Some(model::QueryTableRole::Additional),
+            3 => Some(model::QueryTableRole::Unknown),
+            _ => unreachable!("X1 query-table role was fully validated before access"),
+        }
+    }
+
+    fn owner_path(self) -> impl ExactSizeIterator<Item = X1NameView> + 'a {
+        self.handle
+            .generation
+            .records(S::Names, self.head.owner_path)
+            .map(|head| X1NameView { head })
+    }
+
+    fn template_parameters(self) -> X1RecordIter<'a, StringId> {
+        self.handle
+            .generation
+            .records(S::StringIds, self.head.template_parameters)
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1QueryFieldView<'a> {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn owner(self) -> HbkQueryTableId {
+        self.head.owner
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+
+    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::TypeRefs, self.head.type_refs)
+            .map(move |head| X1TypeRefView { handle, head })
+    }
+
+    fn note(self) -> Option<StringId> {
+        x1_optional_string(self.head.note)
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1QueryParameterView<'a> {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn owner(self) -> HbkQueryTableId {
+        self.head.owner
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+
+    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::TypeRefs, self.head.type_refs)
+            .map(move |head| X1TypeRefView { handle, head })
+    }
+
+    fn default_value(self) -> Option<StringId> {
+        x1_optional_string(self.head.default_value)
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1LanguageFactView<'a> {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn kind(self) -> SearchDocumentKind {
+        self.head.kind
+    }
+
+    fn domain(self) -> HbkLanguageDomain {
+        self.head.domain
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+
+    fn signatures(self) -> impl ExactSizeIterator<Item = X1SignatureView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::Signatures, self.head.signatures)
+            .map(move |head| X1SignatureView { handle, head })
+    }
+
+    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::TypeRefs, self.head.type_refs)
+            .map(move |head| X1TypeRefView { handle, head })
+    }
+
+    fn return_type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+        let handle = self.handle;
+        handle
+            .generation
+            .records(S::TypeRefs, self.head.return_type_refs)
+            .map(move |head| X1TypeRefView { handle, head })
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
+struct X1EnumView {
+    head: X1EnumHead,
+}
+
+#[allow(dead_code)]
+impl X1EnumView {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
+struct X1EnumValueView {
+    head: X1EnumValueHead,
+}
+
+#[allow(dead_code)]
+impl X1EnumValueView {
+    fn id(self) -> StringId {
+        self.head.id
+    }
+
+    fn owner(self) -> HbkEnumId {
+        self.head.owner
+    }
+
+    fn name(self) -> X1NameView {
+        X1NameView {
+            head: self.head.name,
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum X1TypeRefTargetKind {
+    Ok,
+    Unresolved,
+    Ambiguous,
+}
+
+#[allow(dead_code)]
+impl<'a> X1TypeRefView<'a> {
+    fn name(self) -> StringId {
+        self.head.name
+    }
+
+    fn target_kind(self) -> X1TypeRefTargetKind {
+        match self.head.target_tag {
+            0 => X1TypeRefTargetKind::Ok,
+            1 => X1TypeRefTargetKind::Unresolved,
+            2 => X1TypeRefTargetKind::Ambiguous,
+            _ => unreachable!("X1 type-ref target was fully validated before access"),
+        }
+    }
+
+    fn target_ok(self) -> Option<StringId> {
+        (self.head.target_tag == 0).then_some(StringId(self.head.target_ok))
+    }
+
+    fn ambiguous_targets(self) -> X1RecordIter<'a, StringId> {
+        self.handle
+            .generation
+            .records(S::StringIds, self.head.ambiguous_targets)
+    }
+
+    fn type_template_key(self) -> Option<HbkPlatformTypeTemplateKey> {
+        x1_template_key(self.head.type_template_key)
+    }
+
+    fn template_binding(self) -> Option<X1TemplateBindingView<'a>> {
+        (self.head.template_binding != NONE_U32).then(|| X1TemplateBindingView {
+            handle: self.handle,
+            head: self
+                .handle
+                .generation
+                .record(S::TemplateBindings, self.head.template_binding as usize),
+        })
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> X1TemplateBindingView<'a> {
+    fn template_key(self) -> HbkPlatformTypeTemplateKey {
+        x1_template_key(self.head.template_key)
+            .expect("X1 template binding key was fully validated before access")
+    }
+
+    fn arguments(self) -> X1RecordIter<'a, model::TemplateParameterBinding> {
+        self.handle
+            .generation
+            .records(S::TemplateArguments, self.head.arguments)
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
+struct X1FactSourceView {
+    source: HbkFactSource,
+}
+
+#[allow(dead_code)]
+impl X1FactSourceView {
+    fn hbk_path(self) -> StringId {
+        self.source.hbk_path
+    }
+
+    fn locale(self) -> StringId {
+        self.source.locale
+    }
+
+    fn toc_path(self) -> Option<StringId> {
+        self.source.toc_path
+    }
+
+    fn html_path(self) -> StringId {
+        self.source.html_path
+    }
+
+    fn page_title(self) -> StringId {
+        self.source.page_title
     }
 }
 
@@ -3577,6 +4440,10 @@ mod tests {
 
     use super::*;
 
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    #[global_allocator]
+    static X1_TEST_ALLOCATOR: HbkSnapshotExperimentAllocator = HbkSnapshotExperimentAllocator;
+
     #[test]
     fn x1_encoding_is_deterministic_and_fully_validated() {
         let snapshot = fixture_snapshot();
@@ -3970,6 +4837,479 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn x1_mapped_forward_payload_matches_owned_fixture() {
+        let root = temp_path("x1-forward-payload");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("generation.x1");
+        let identity = test_identity();
+        let snapshot = forward_payload_fixture_snapshot();
+        let bytes = encode_snapshot_with_identity(&snapshot, &identity).unwrap();
+        write_readonly_artifact(&artifact, &bytes);
+        let mapped =
+            open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
+        let read = mapped.read_handle();
+
+        assert_eq!(read.source_locale(), "ru");
+        assert_eq!(read.string(StringId(1)), snapshot.string(StringId(1)));
+
+        let platform_type = read.platform_type(HbkPlatformTypeId(0));
+        let owned_type = snapshot.platform_type(HbkPlatformTypeId(0));
+        assert_eq!(platform_type.id(), owned_type.id);
+        assert_name(platform_type.name(), &owned_type.name);
+        assert_eq!(
+            platform_type.type_template_key(),
+            owned_type.type_template_key
+        );
+        assert_eq!(
+            platform_type.availability_contexts().collect::<Vec<_>>(),
+            owned_type.availability_contexts
+        );
+        let metadata = platform_type.metadata_template().unwrap();
+        let owned_metadata = owned_type.metadata_template.as_ref().unwrap();
+        assert_eq!(metadata.metadata_kind(), owned_metadata.metadata_kind);
+        assert_eq!(
+            metadata.template_parameters().collect::<Vec<_>>(),
+            owned_metadata.template_parameters
+        );
+
+        for (index, owned) in snapshot.type_members.iter().enumerate() {
+            let view = read.type_member(HbkTypeMemberId(index as u32));
+            assert_eq!(view.id(), owned.id);
+            assert_eq!(view.owner(), owned.owner);
+            assert_eq!(view.kind(), owned.kind);
+            assert_name(view.name(), &owned.name);
+            assert_type_refs(view.type_refs(), &owned.type_refs);
+            assert_eq!(
+                view.availability_contexts().collect::<Vec<_>>(),
+                owned.availability_contexts
+            );
+        }
+
+        for (index, owned) in snapshot.callables.iter().enumerate() {
+            let view = read.callable(HbkCallableId(index as u32));
+            assert_eq!(view.id(), owned.id);
+            assert_eq!(view.owner(), owned.owner);
+            assert_eq!(view.kind(), owned.kind);
+            assert_name(view.name(), &owned.name);
+            let signatures = view.signatures().collect::<Vec<_>>();
+            assert_eq!(signatures.len(), owned.signatures.len());
+            for (signature, owned_signature) in signatures.into_iter().zip(&owned.signatures) {
+                assert_eq!(signature.text(), owned_signature.text);
+                let parameters = signature.parameters().collect::<Vec<_>>();
+                assert_eq!(parameters.len(), owned_signature.parameters.len());
+                for (parameter, owned_parameter) in
+                    parameters.into_iter().zip(&owned_signature.parameters)
+                {
+                    assert_eq!(parameter.name(), owned_parameter.name);
+                    assert_eq!(parameter.required(), owned_parameter.required);
+                    assert_type_refs(parameter.type_refs(), &owned_parameter.type_refs);
+                }
+                assert_type_refs(
+                    signature.return_type_refs(),
+                    &owned_signature.return_type_refs,
+                );
+            }
+            assert_type_refs(view.return_type_refs(), &owned.return_type_refs);
+            assert_eq!(
+                view.availability_contexts().collect::<Vec<_>>(),
+                owned.availability_contexts
+            );
+        }
+
+        for (index, owned) in snapshot.globals.iter().enumerate() {
+            let view = read.global(HbkGlobalFactId(index as u32));
+            assert_eq!(view.id(), owned.id);
+            assert_eq!(view.kind(), owned.kind);
+            assert_eq!(view.domain(), owned.domain);
+            assert_name(view.name(), &owned.name);
+            assert_eq!(view.callable(), owned.callable);
+            assert_type_refs(view.type_refs(), &owned.type_refs);
+        }
+
+        let table = read.query_table(HbkQueryTableId(0));
+        let owned_table = snapshot.query_table(HbkQueryTableId(0));
+        assert_eq!(table.id(), owned_table.id);
+        assert_name(table.name(), &owned_table.name);
+        assert_name(
+            table.syntax().unwrap(),
+            owned_table.syntax.as_ref().unwrap(),
+        );
+        assert_eq!(table.identifier(), owned_table.identifier);
+        assert_eq!(table.role(), owned_table.role);
+        assert_eq!(
+            table
+                .owner_path()
+                .map(|name| (name.primary(), name.alias()))
+                .collect::<Vec<_>>(),
+            owned_table
+                .owner_path
+                .iter()
+                .map(|name| (name.primary, name.alias))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            table.template_parameters().collect::<Vec<_>>(),
+            owned_table.template_parameters
+        );
+
+        let field = read.query_field(HbkQueryFieldId(0));
+        let owned_field = snapshot.query_field(HbkQueryFieldId(0));
+        assert_eq!(field.id(), owned_field.id);
+        assert_eq!(field.owner(), owned_field.owner);
+        assert_name(field.name(), &owned_field.name);
+        assert_type_refs(field.type_refs(), &owned_field.type_refs);
+        assert_eq!(field.note(), owned_field.note);
+
+        let parameter = read.query_parameter(HbkQueryParameterId(0));
+        let owned_parameter = snapshot.query_parameter(HbkQueryParameterId(0));
+        assert_eq!(parameter.id(), owned_parameter.id);
+        assert_eq!(parameter.owner(), owned_parameter.owner);
+        assert_name(parameter.name(), &owned_parameter.name);
+        assert_type_refs(parameter.type_refs(), &owned_parameter.type_refs);
+        assert_eq!(parameter.default_value(), owned_parameter.default_value);
+
+        let language = read.language_fact(HbkLanguageFactId(0));
+        let owned_language = snapshot.language_fact(HbkLanguageFactId(0));
+        assert_eq!(language.id(), owned_language.id);
+        assert_eq!(language.kind(), owned_language.kind);
+        assert_eq!(language.domain(), owned_language.domain);
+        assert_name(language.name(), &owned_language.name);
+        assert_eq!(language.signatures().len(), owned_language.signatures.len());
+        for (signature, owned_signature) in language.signatures().zip(&owned_language.signatures) {
+            assert_eq!(signature.text(), owned_signature.text);
+            assert_eq!(
+                signature.parameters().len(),
+                owned_signature.parameters.len()
+            );
+            for (parameter, owned_parameter) in
+                signature.parameters().zip(&owned_signature.parameters)
+            {
+                assert_eq!(parameter.name(), owned_parameter.name);
+                assert_eq!(parameter.required(), owned_parameter.required);
+                assert_type_refs(parameter.type_refs(), &owned_parameter.type_refs);
+            }
+            assert_type_refs(
+                signature.return_type_refs(),
+                &owned_signature.return_type_refs,
+            );
+        }
+        assert_type_refs(language.type_refs(), &owned_language.type_refs);
+        assert_type_refs(
+            language.return_type_refs(),
+            &owned_language.return_type_refs,
+        );
+
+        let enum_fact = read.enum_fact(HbkEnumId(0));
+        assert_eq!(enum_fact.id(), snapshot.enum_fact(HbkEnumId(0)).id);
+        assert_name(enum_fact.name(), &snapshot.enum_fact(HbkEnumId(0)).name);
+        let enum_value = read.enum_value(HbkEnumValueId(0));
+        assert_eq!(enum_value.id(), snapshot.enum_value(HbkEnumValueId(0)).id);
+        assert_eq!(
+            enum_value.owner(),
+            snapshot.enum_value(HbkEnumValueId(0)).owner
+        );
+        assert_name(
+            enum_value.name(),
+            &snapshot.enum_value(HbkEnumValueId(0)).name,
+        );
+
+        for owned in &snapshot.source_by_fact {
+            let source = read.source(owned.fact).unwrap();
+            assert_eq!(source.hbk_path(), owned.source.hbk_path);
+            assert_eq!(source.locale(), owned.source.locale);
+            assert_eq!(source.toc_path(), owned.source.toc_path);
+            assert_eq!(source.html_path(), owned.source.html_path);
+            assert_eq!(source.page_title(), owned.source.page_title);
+        }
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_mapped_filters_globals_and_known_owner_members_with_any_all_semantics() {
+        let root = temp_path("x1-forward-filter");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("generation.x1");
+        let identity = test_identity();
+        let snapshot = forward_payload_fixture_snapshot();
+        let bytes = encode_snapshot_with_identity(&snapshot, &identity).unwrap();
+        write_readonly_artifact(&artifact, &bytes);
+        let mapped =
+            open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
+        let read = mapped.read_handle();
+
+        let any_server =
+            X1AvailabilityFilter::from_codes(["server"], X1AvailabilityMode::Any).unwrap();
+        let all_server_thin =
+            X1AvailabilityFilter::from_codes(["server", "thin_client"], X1AvailabilityMode::All)
+                .unwrap();
+        let any_empty =
+            X1AvailabilityFilter::from_codes(std::iter::empty(), X1AvailabilityMode::Any).unwrap();
+        let all_empty =
+            X1AvailabilityFilter::from_codes(std::iter::empty(), X1AvailabilityMode::All).unwrap();
+
+        assert_eq!(
+            read.filtered_members(HbkPlatformTypeId(0), any_server, None)
+                .collect::<Vec<_>>(),
+            vec![HbkTypeMemberId(0), HbkTypeMemberId(1)]
+        );
+        assert_eq!(
+            read.filtered_members(HbkPlatformTypeId(0), all_server_thin, None)
+                .collect::<Vec<_>>(),
+            vec![HbkTypeMemberId(0)]
+        );
+        assert_eq!(
+            read.filtered_members(
+                HbkPlatformTypeId(0),
+                all_empty,
+                Some(HbkTypeMemberKind::Method),
+            )
+            .collect::<Vec<_>>(),
+            vec![HbkTypeMemberId(1), HbkTypeMemberId(2)]
+        );
+        assert_eq!(
+            read.filtered_members(HbkPlatformTypeId(1), any_server, None)
+                .collect::<Vec<_>>(),
+            vec![HbkTypeMemberId(3)]
+        );
+        assert_eq!(
+            read.filtered_globals(any_empty, None).collect::<Vec<_>>(),
+            vec![HbkGlobalFactId(0)]
+        );
+        assert_eq!(
+            read.filtered_globals(any_server, None).collect::<Vec<_>>(),
+            vec![HbkGlobalFactId(0), HbkGlobalFactId(1)]
+        );
+        assert_eq!(
+            read.filtered_globals(all_server_thin, None)
+                .collect::<Vec<_>>(),
+            vec![HbkGlobalFactId(0), HbkGlobalFactId(1)]
+        );
+        assert_eq!(
+            read.filtered_globals(all_empty, Some(HbkGlobalFactKind::Method))
+                .collect::<Vec<_>>(),
+            vec![HbkGlobalFactId(0), HbkGlobalFactId(1)]
+        );
+        assert!(
+            X1AvailabilityFilter::from_codes(["module_context_kind"], X1AvailabilityMode::Any,)
+                .is_err()
+        );
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_mapped_handles_and_views_carry_the_generation_lifetime() {
+        fn handle<'a>(generation: &'a X1MappedGeneration) -> X1MappedReadHandle<'a> {
+            generation.read_handle()
+        }
+        fn platform_type<'a>(handle: X1MappedReadHandle<'a>) -> X1PlatformTypeView<'a> {
+            handle.platform_type(HbkPlatformTypeId(0))
+        }
+
+        let _: for<'a> fn(&'a X1MappedGeneration) -> X1MappedReadHandle<'a> = handle;
+        let _: for<'a> fn(X1MappedReadHandle<'a>) -> X1PlatformTypeView<'a> = platform_type;
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    #[test]
+    #[ignore = "run alone to isolate process-global allocation counters"]
+    fn x1_mapped_steady_filtered_and_nested_traversal_allocates_nothing() {
+        let root = temp_path("x1-forward-allocation");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("generation.x1");
+        let identity = test_identity();
+        let snapshot = forward_payload_fixture_snapshot();
+        let bytes = encode_snapshot_with_identity(&snapshot, &identity).unwrap();
+        write_readonly_artifact(&artifact, &bytes);
+        let mapped =
+            open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
+        let read = mapped.read_handle();
+        let filter = X1AvailabilityFilter::from_codes(["server"], X1AvailabilityMode::Any).unwrap();
+
+        for _ in 0..8 {
+            traverse_steady_payload(read, filter);
+        }
+        let before = experiment_allocation_snapshot();
+        for _ in 0..128 {
+            traverse_steady_payload(read, filter);
+        }
+        let delta = experiment_allocation_snapshot().delta_since(before);
+
+        assert_eq!(delta.allocation_calls, 0);
+        assert_eq!(delta.reallocation_calls, 0);
+        assert_eq!(delta.allocated_bytes, 0);
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    fn traverse_steady_payload(read: X1MappedReadHandle<'_>, filter: X1AvailabilityFilter) {
+        std::hint::black_box(read.source_locale());
+        for id in [HbkPlatformTypeId(0), HbkPlatformTypeId(1)] {
+            let platform_type = read.platform_type(id);
+            std::hint::black_box(platform_type.id());
+            black_box_name(read, platform_type.name());
+            std::hint::black_box(platform_type.type_template_key());
+            for availability in platform_type.availability_contexts() {
+                std::hint::black_box(read.string(availability));
+            }
+            if let Some(metadata) = platform_type.metadata_template() {
+                std::hint::black_box(read.string(metadata.metadata_kind()));
+                for parameter in metadata.template_parameters() {
+                    std::hint::black_box(read.string(parameter));
+                }
+            }
+        }
+        for id in read.filtered_globals(filter, None) {
+            let global = read.global(id);
+            std::hint::black_box(global.id());
+            std::hint::black_box(global.kind());
+            std::hint::black_box(global.domain());
+            black_box_name(read, global.name());
+            std::hint::black_box(global.callable());
+            black_box_type_refs(read, global.type_refs());
+        }
+        for id in read.filtered_members(HbkPlatformTypeId(0), filter, None) {
+            let member = read.type_member(id);
+            std::hint::black_box(member.id());
+            std::hint::black_box(member.owner());
+            std::hint::black_box(member.kind());
+            black_box_name(read, member.name());
+            black_box_type_refs(read, member.type_refs());
+            for availability in member.availability_contexts() {
+                std::hint::black_box(read.string(availability));
+            }
+        }
+        for id in [HbkCallableId(0), HbkCallableId(1)] {
+            let callable = read.callable(id);
+            std::hint::black_box(callable.id());
+            std::hint::black_box(callable.owner());
+            std::hint::black_box(callable.kind());
+            black_box_name(read, callable.name());
+            for signature in callable.signatures() {
+                black_box_signature(read, signature);
+            }
+            black_box_type_refs(read, callable.return_type_refs());
+            for availability in callable.availability_contexts() {
+                std::hint::black_box(read.string(availability));
+            }
+        }
+
+        let table = read.query_table(HbkQueryTableId(0));
+        std::hint::black_box(table.id());
+        black_box_name(read, table.name());
+        if let Some(syntax) = table.syntax() {
+            black_box_name(read, syntax);
+        }
+        std::hint::black_box(table.identifier());
+        std::hint::black_box(table.role());
+        for owner in table.owner_path() {
+            black_box_name(read, owner);
+        }
+        for parameter in table.template_parameters() {
+            std::hint::black_box(read.string(parameter));
+        }
+
+        let field = read.query_field(HbkQueryFieldId(0));
+        std::hint::black_box(field.id());
+        std::hint::black_box(field.owner());
+        black_box_name(read, field.name());
+        black_box_type_refs(read, field.type_refs());
+        std::hint::black_box(field.note());
+
+        let parameter = read.query_parameter(HbkQueryParameterId(0));
+        std::hint::black_box(parameter.id());
+        std::hint::black_box(parameter.owner());
+        black_box_name(read, parameter.name());
+        black_box_type_refs(read, parameter.type_refs());
+        std::hint::black_box(parameter.default_value());
+
+        let language = read.language_fact(HbkLanguageFactId(0));
+        std::hint::black_box(language.id());
+        std::hint::black_box(language.kind());
+        std::hint::black_box(language.domain());
+        black_box_name(read, language.name());
+        for signature in language.signatures() {
+            black_box_signature(read, signature);
+        }
+        black_box_type_refs(read, language.type_refs());
+        black_box_type_refs(read, language.return_type_refs());
+
+        let enum_fact = read.enum_fact(HbkEnumId(0));
+        std::hint::black_box(enum_fact.id());
+        black_box_name(read, enum_fact.name());
+        let enum_value = read.enum_value(HbkEnumValueId(0));
+        std::hint::black_box(enum_value.id());
+        std::hint::black_box(enum_value.owner());
+        black_box_name(read, enum_value.name());
+
+        for fact in [
+            HbkFactRef::PlatformType(HbkPlatformTypeId(0)),
+            HbkFactRef::TypeMember(HbkTypeMemberId(0)),
+            HbkFactRef::Callable(HbkCallableId(0)),
+            HbkFactRef::Global(HbkGlobalFactId(0)),
+            HbkFactRef::QueryTable(HbkQueryTableId(0)),
+            HbkFactRef::QueryField(HbkQueryFieldId(0)),
+            HbkFactRef::QueryParameter(HbkQueryParameterId(0)),
+            HbkFactRef::LanguageFact(HbkLanguageFactId(0)),
+            HbkFactRef::Enum(HbkEnumId(0)),
+            HbkFactRef::EnumValue(HbkEnumValueId(0)),
+        ] {
+            let source = read.source(fact).unwrap();
+            std::hint::black_box(source.hbk_path());
+            std::hint::black_box(source.locale());
+            std::hint::black_box(source.toc_path());
+            std::hint::black_box(source.html_path());
+            std::hint::black_box(source.page_title());
+        }
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    fn black_box_name(read: X1MappedReadHandle<'_>, name: X1NameView) {
+        std::hint::black_box(read.string(name.primary()));
+        if let Some(alias) = name.alias() {
+            std::hint::black_box(read.string(alias));
+        }
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    fn black_box_signature(read: X1MappedReadHandle<'_>, signature: X1SignatureView<'_>) {
+        std::hint::black_box(read.string(signature.text()));
+        for parameter in signature.parameters() {
+            std::hint::black_box(read.string(parameter.name()));
+            std::hint::black_box(parameter.required());
+            black_box_type_refs(read, parameter.type_refs());
+        }
+        black_box_type_refs(read, signature.return_type_refs());
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    fn black_box_type_refs<'a>(
+        read: X1MappedReadHandle<'a>,
+        type_refs: impl ExactSizeIterator<Item = X1TypeRefView<'a>>,
+    ) {
+        for type_ref in type_refs {
+            std::hint::black_box(read.string(type_ref.name()));
+            std::hint::black_box(type_ref.target_kind());
+            std::hint::black_box(type_ref.target_ok());
+            for target in type_ref.ambiguous_targets() {
+                std::hint::black_box(read.string(target));
+            }
+            std::hint::black_box(type_ref.type_template_key());
+            if let Some(binding) = type_ref.template_binding() {
+                std::hint::black_box(binding.template_key());
+                for argument in binding.arguments() {
+                    std::hint::black_box(argument);
+                }
+            }
+        }
+    }
+
     fn test_identity() -> X1ArtifactIdentity {
         X1ArtifactIdentity {
             source_path: "/tmp/8.3.0.0/fixture.hbk".to_string(),
@@ -4152,7 +5492,7 @@ mod tests {
         HbkFactSource {
             hbk_path: StringId(4),
             locale: StringId(0),
-            toc_path: None,
+            toc_path: Some(StringId(3)),
             html_path: StringId(2),
             page_title: StringId(1),
         }
@@ -4211,6 +5551,384 @@ mod tests {
         snapshot.members_by_owner =
             CsrIndex::from_pairs(vec![(HbkPlatformTypeId(0), HbkTypeMemberId(0))]);
         snapshot
+    }
+
+    fn forward_payload_fixture_snapshot() -> HbkFactSnapshot {
+        let mut snapshot = template_binding_fixture_snapshot();
+        let server = push_fixture_string(&mut snapshot, "server");
+        let thin = push_fixture_string(&mut snapshot, "thin_client");
+        let web = push_fixture_string(&mut snapshot, "web_client");
+        let second_type_id = push_fixture_string(&mut snapshot, "platform_type:Second");
+        let second_type_name = push_fixture_string(&mut snapshot, "Second");
+        let second_type_key = push_fixture_string(&mut snapshot, "second");
+        snapshot.platform_types.push(HbkPlatformType {
+            id: second_type_id,
+            name: HbkName {
+                primary: second_type_name,
+                alias: None,
+            },
+            metadata_template: None,
+            type_template_key: None,
+            availability_contexts: vec![server],
+        });
+        snapshot.platform_type_ids.push(IdLookup {
+            key: second_type_id,
+            value: HbkPlatformTypeId(1),
+        });
+        snapshot
+            .platform_type_ids
+            .sort_by_key(|lookup| snapshot.strings[lookup.key.0 as usize].clone());
+        snapshot.platform_type_names.push(NameLookup {
+            key: second_type_key,
+            value: HbkPlatformTypeId(1),
+        });
+        snapshot
+            .platform_type_names
+            .sort_by_key(|lookup| snapshot.strings[lookup.key.0 as usize].clone());
+
+        let method_id = push_fixture_string(&mut snapshot, "member:ServerMethod");
+        let method_name = push_fixture_string(&mut snapshot, "ServerMethod");
+        let thin_method_id = push_fixture_string(&mut snapshot, "member:ThinMethod");
+        let thin_method_name = push_fixture_string(&mut snapshot, "ThinMethod");
+        let second_member_id = push_fixture_string(&mut snapshot, "member:SecondValue");
+        let second_member_name = push_fixture_string(&mut snapshot, "SecondValue");
+        snapshot.type_members[0].availability_contexts.clear();
+        snapshot.type_members.push(HbkTypeMember {
+            id: method_id,
+            owner: HbkPlatformTypeId(0),
+            kind: HbkTypeMemberKind::Method,
+            name: HbkName {
+                primary: method_name,
+                alias: None,
+            },
+            type_refs: Vec::new(),
+            availability_contexts: vec![server],
+        });
+        snapshot.type_members.push(HbkTypeMember {
+            id: thin_method_id,
+            owner: HbkPlatformTypeId(0),
+            kind: HbkTypeMemberKind::Method,
+            name: HbkName {
+                primary: thin_method_name,
+                alias: None,
+            },
+            type_refs: Vec::new(),
+            availability_contexts: vec![thin, web],
+        });
+        snapshot.type_members.push(HbkTypeMember {
+            id: second_member_id,
+            owner: HbkPlatformTypeId(1),
+            kind: HbkTypeMemberKind::Property,
+            name: HbkName {
+                primary: second_member_name,
+                alias: None,
+            },
+            type_refs: Vec::new(),
+            availability_contexts: Vec::new(),
+        });
+        snapshot.members_by_owner = CsrIndex::from_pairs(vec![
+            (HbkPlatformTypeId(0), HbkTypeMemberId(0)),
+            (HbkPlatformTypeId(0), HbkTypeMemberId(1)),
+            (HbkPlatformTypeId(0), HbkTypeMemberId(2)),
+            (HbkPlatformTypeId(1), HbkTypeMemberId(3)),
+        ]);
+
+        let callable_id = push_fixture_string(&mut snapshot, "callable:ServerMethod");
+        let callable_name = push_fixture_string(&mut snapshot, "ServerMethodCallable");
+        let global_callable_id = push_fixture_string(&mut snapshot, "callable:GlobalMethod");
+        let global_callable_name = push_fixture_string(&mut snapshot, "GlobalMethodCallable");
+        let signature_text = push_fixture_string(&mut snapshot, "ServerMethod(Value)");
+        let parameter_name = push_fixture_string(&mut snapshot, "Value");
+        let return_name = push_fixture_string(&mut snapshot, "Boolean");
+        let parameter_ref = HbkTypeRef {
+            name: snapshot.type_members[0].type_refs[0].name,
+            target: HbkTypeRefTarget::Unresolved,
+            type_template_key: None,
+            template_binding: None,
+        };
+        let return_ref = HbkTypeRef {
+            name: return_name,
+            target: HbkTypeRefTarget::Ok(return_name),
+            type_template_key: None,
+            template_binding: None,
+        };
+        snapshot.type_members[2].type_refs = vec![HbkTypeRef {
+            name: return_name,
+            target: HbkTypeRefTarget::Ambiguous(vec![return_name, parameter_ref.name]),
+            type_template_key: None,
+            template_binding: None,
+        }];
+        let signature = HbkSignature {
+            text: signature_text,
+            parameters: vec![HbkParameter {
+                name: parameter_name,
+                required: true,
+                type_refs: vec![parameter_ref.clone()],
+            }],
+            return_type_refs: vec![return_ref.clone()],
+        };
+        snapshot.callables = vec![
+            HbkCallable {
+                id: callable_id,
+                owner: Some(HbkPlatformTypeId(0)),
+                kind: HbkCallableKind::Method,
+                name: HbkName {
+                    primary: callable_name,
+                    alias: None,
+                },
+                signatures: vec![signature.clone()],
+                return_type_refs: vec![return_ref.clone()],
+                availability_contexts: vec![server],
+            },
+            HbkCallable {
+                id: global_callable_id,
+                owner: None,
+                kind: HbkCallableKind::GlobalMethod,
+                name: HbkName {
+                    primary: global_callable_name,
+                    alias: None,
+                },
+                signatures: vec![signature.clone()],
+                return_type_refs: vec![return_ref.clone()],
+                availability_contexts: Vec::new(),
+            },
+        ];
+
+        let global_universal_id = push_fixture_string(&mut snapshot, "global:Universal");
+        let global_universal_name = push_fixture_string(&mut snapshot, "Universal");
+        let global_server_id = push_fixture_string(&mut snapshot, "global:Server");
+        let global_server_name = push_fixture_string(&mut snapshot, "ServerGlobal");
+        let global_thin_id = push_fixture_string(&mut snapshot, "global:Thin");
+        let global_thin_name = push_fixture_string(&mut snapshot, "ThinGlobal");
+        snapshot.globals = vec![
+            HbkGlobalFact {
+                id: global_universal_id,
+                kind: HbkGlobalFactKind::Method,
+                domain: HbkLanguageDomain::Bsl,
+                name: HbkName {
+                    primary: global_universal_name,
+                    alias: None,
+                },
+                callable: Some(HbkCallableId(1)),
+                type_refs: Vec::new(),
+            },
+            HbkGlobalFact {
+                id: global_server_id,
+                kind: HbkGlobalFactKind::Method,
+                domain: HbkLanguageDomain::Bsl,
+                name: HbkName {
+                    primary: global_server_name,
+                    alias: None,
+                },
+                callable: Some(HbkCallableId(1)),
+                type_refs: Vec::new(),
+            },
+            HbkGlobalFact {
+                id: global_thin_id,
+                kind: HbkGlobalFactKind::Property,
+                domain: HbkLanguageDomain::Bsl,
+                name: HbkName {
+                    primary: global_thin_name,
+                    alias: None,
+                },
+                callable: None,
+                type_refs: vec![return_ref.clone()],
+            },
+        ];
+        snapshot.availability_by_fact = CsrIndex::from_pairs(vec![
+            (HbkFactRef::Global(HbkGlobalFactId(1)), server),
+            (HbkFactRef::Global(HbkGlobalFactId(1)), thin),
+            (HbkFactRef::Global(HbkGlobalFactId(2)), thin),
+        ]);
+
+        let table_id = push_fixture_string(&mut snapshot, "query_table:Sales");
+        let table_name = push_fixture_string(&mut snapshot, "Sales");
+        let table_alias = push_fixture_string(&mut snapshot, "Продажи");
+        let syntax_name = push_fixture_string(&mut snapshot, "SalesSyntax");
+        let identifier = push_fixture_string(&mut snapshot, "SALES");
+        let field_id = push_fixture_string(&mut snapshot, "query_field:Amount");
+        let field_name = push_fixture_string(&mut snapshot, "Amount");
+        let field_note = push_fixture_string(&mut snapshot, "Money value");
+        let query_parameter_id = push_fixture_string(&mut snapshot, "query_parameter:Period");
+        let query_parameter_name = push_fixture_string(&mut snapshot, "Period");
+        let default_value = push_fixture_string(&mut snapshot, "Today");
+        snapshot.query_tables = vec![HbkQueryTable {
+            id: table_id,
+            name: HbkName {
+                primary: table_name,
+                alias: Some(table_alias),
+            },
+            syntax: Some(HbkName {
+                primary: syntax_name,
+                alias: None,
+            }),
+            identifier: Some(identifier),
+            role: Some(model::QueryTableRole::Additional),
+            owner_path: vec![HbkName {
+                primary: table_name,
+                alias: Some(table_alias),
+            }],
+            template_parameters: vec![parameter_name],
+        }];
+        snapshot.query_fields = vec![HbkQueryField {
+            id: field_id,
+            owner: HbkQueryTableId(0),
+            name: HbkName {
+                primary: field_name,
+                alias: None,
+            },
+            type_refs: vec![return_ref.clone()],
+            note: Some(field_note),
+        }];
+        snapshot.query_parameters = vec![HbkQueryParameter {
+            id: query_parameter_id,
+            owner: HbkQueryTableId(0),
+            name: HbkName {
+                primary: query_parameter_name,
+                alias: None,
+            },
+            type_refs: vec![parameter_ref.clone()],
+            default_value: Some(default_value),
+        }];
+
+        let language_id = push_fixture_string(&mut snapshot, "language:Function");
+        let language_name = push_fixture_string(&mut snapshot, "LanguageFunction");
+        snapshot.language_facts = vec![HbkLanguageFact {
+            id: language_id,
+            kind: SearchDocumentKind::LanguageFunction,
+            domain: HbkLanguageDomain::Bsl,
+            name: HbkName {
+                primary: language_name,
+                alias: None,
+            },
+            signatures: vec![signature],
+            type_refs: vec![parameter_ref],
+            return_type_refs: vec![return_ref],
+        }];
+
+        let enum_id = push_fixture_string(&mut snapshot, "enum:Color");
+        let enum_name = push_fixture_string(&mut snapshot, "Color");
+        let enum_value_id = push_fixture_string(&mut snapshot, "enum_value:Red");
+        let enum_value_name = push_fixture_string(&mut snapshot, "Red");
+        snapshot.enums = vec![HbkEnum {
+            id: enum_id,
+            name: HbkName {
+                primary: enum_name,
+                alias: None,
+            },
+        }];
+        snapshot.enum_values = vec![HbkEnumValue {
+            id: enum_value_id,
+            owner: HbkEnumId(0),
+            name: HbkName {
+                primary: enum_value_name,
+                alias: None,
+            },
+        }];
+
+        let source = test_source();
+        snapshot.source_by_fact = vec![
+            FactSourceLookup {
+                fact: HbkFactRef::PlatformType(HbkPlatformTypeId(0)),
+                source,
+            },
+            FactSourceLookup {
+                fact: HbkFactRef::TypeMember(HbkTypeMemberId(0)),
+                source,
+            },
+            FactSourceLookup {
+                fact: HbkFactRef::Callable(HbkCallableId(0)),
+                source,
+            },
+            FactSourceLookup {
+                fact: HbkFactRef::Global(HbkGlobalFactId(0)),
+                source,
+            },
+            FactSourceLookup {
+                fact: HbkFactRef::QueryTable(HbkQueryTableId(0)),
+                source,
+            },
+            FactSourceLookup {
+                fact: HbkFactRef::QueryField(HbkQueryFieldId(0)),
+                source,
+            },
+            FactSourceLookup {
+                fact: HbkFactRef::QueryParameter(HbkQueryParameterId(0)),
+                source,
+            },
+            FactSourceLookup {
+                fact: HbkFactRef::LanguageFact(HbkLanguageFactId(0)),
+                source,
+            },
+            FactSourceLookup {
+                fact: HbkFactRef::Enum(HbkEnumId(0)),
+                source,
+            },
+            FactSourceLookup {
+                fact: HbkFactRef::EnumValue(HbkEnumValueId(0)),
+                source,
+            },
+        ];
+        snapshot.source_by_fact.sort_by_key(|lookup| lookup.fact);
+
+        snapshot
+    }
+
+    fn push_fixture_string(snapshot: &mut HbkFactSnapshot, value: &str) -> StringId {
+        if let Some(index) = snapshot
+            .strings
+            .iter()
+            .position(|candidate| candidate == value)
+        {
+            return StringId(index as u32);
+        }
+        let id = StringId(snapshot.strings.len() as u32);
+        snapshot.strings.push(value.to_string());
+        id
+    }
+
+    fn assert_name(view: X1NameView, owned: &HbkName) {
+        assert_eq!(view.primary(), owned.primary);
+        assert_eq!(view.alias(), owned.alias);
+    }
+
+    fn assert_type_refs<'a>(
+        views: impl ExactSizeIterator<Item = X1TypeRefView<'a>>,
+        owned: &[HbkTypeRef],
+    ) {
+        assert_eq!(views.len(), owned.len());
+        for (view, owned) in views.zip(owned) {
+            assert_eq!(view.name(), owned.name);
+            assert_eq!(view.type_template_key(), owned.type_template_key);
+            match &owned.target {
+                HbkTypeRefTarget::Ok(id) => {
+                    assert_eq!(view.target_kind(), X1TypeRefTargetKind::Ok);
+                    assert_eq!(view.target_ok(), Some(*id));
+                    assert_eq!(view.ambiguous_targets().len(), 0);
+                }
+                HbkTypeRefTarget::Unresolved => {
+                    assert_eq!(view.target_kind(), X1TypeRefTargetKind::Unresolved);
+                    assert_eq!(view.target_ok(), None);
+                    assert_eq!(view.ambiguous_targets().len(), 0);
+                }
+                HbkTypeRefTarget::Ambiguous(ids) => {
+                    assert_eq!(view.target_kind(), X1TypeRefTargetKind::Ambiguous);
+                    assert_eq!(view.target_ok(), None);
+                    assert_eq!(view.ambiguous_targets().collect::<Vec<_>>(), *ids);
+                }
+            }
+            match (&view.template_binding(), &owned.template_binding) {
+                (Some(binding), Some(owned_binding)) => {
+                    assert_eq!(binding.template_key(), owned_binding.template_key);
+                    assert_eq!(
+                        binding.arguments().collect::<Vec<_>>(),
+                        owned_binding.arguments
+                    );
+                }
+                (None, None) => {}
+                _ => panic!("mapped template binding differs from owned payload"),
+            }
+        }
     }
 
     fn temp_path(name: &str) -> PathBuf {

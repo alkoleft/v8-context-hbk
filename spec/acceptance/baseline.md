@@ -3102,8 +3102,18 @@ Artifact identity сохранил exact platform `8.3.27.1859`, HBK SHA-256
 и provider SHA-256
 `317f3cdd914e635c89b975bf9ebcf28238bdbabd54e455121a083558d4e05f5e`.
 Writer/validator прошёл corruption, version/source binding, deterministic
-collision-chain, create-new/no-overwrite и full crate verification. X1 остаётся
-non-canonical; следующий gate — immutable mmap-open 3.2.
+collision-chain, create-new/no-overwrite и full crate verification. Task 3.2
+добавил immutable mmap-open, но X1 остался private и non-canonical.
+
+Task 3.3 подтвердил borrowed forward payload поверх validated mapping:
+package tests `93/93`, полный workspace, clippy и strict OpenSpec прошли.
+Fixture parity охватывает все существующие entity payload families, nested
+signatures/parameters/type refs/template bindings, availability и provenance
+для всех десяти вариантов `HbkFactRef`. Изолированный steady-тест с feature
+`snapshot-experiment-alloc` подтвердил `0` allocations, `0` reallocations и
+`0` allocated bytes для filtered globals, members одного известного owner и
+полного nested fixture traversal. X1 всё ещё private и non-canonical; reverse
+lookup, safe public lifecycle и X1-INT остаются следующими gates.
 
 Baseline update rule:
 
