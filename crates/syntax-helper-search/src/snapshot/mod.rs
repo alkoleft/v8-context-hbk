@@ -10,10 +10,12 @@ mod materialize;
 mod memory;
 mod read;
 mod types;
+mod x1_format;
 
 use indexes::{
-    CsrIndex, FactStringLookup, GlobalNameKindLookup, IdLookup, MemberNameKindLookup,
-    ModuleContextLookup, NameLookup, OwnerNameLookup, RelationLookupKey, TypeTemplateLookup,
+    CsrIndex, FactSourceLookup, FactStringLookup, GlobalNameKindLookup, IdLookup,
+    MemberNameKindLookup, ModuleContextLookup, NameLookup, OwnerNameLookup, RelationLookupKey,
+    TypeTemplateLookup,
 };
 
 pub use binary_cache::{HbkFactSnapshotCacheLoadReport, HbkFactSnapshotCacheStatus};
@@ -31,6 +33,7 @@ pub use experiment_oracle::{
 pub use memory::{HbkFactSnapshotIndexMemory, HbkFactSnapshotMemory, HbkFactSnapshotMemoryEntry};
 pub use read::HbkFactSnapshotCounts;
 pub use types::*;
+pub use x1_format::HbkFactSnapshotArtifactWriteReport;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkFactSnapshot {
@@ -79,6 +82,7 @@ pub struct HbkFactSnapshot {
     enum_values_by_enum_name: Vec<OwnerNameLookup<HbkEnumId, HbkEnumValueId>>,
     availability_by_fact: CsrIndex<HbkFactRef, StringId>,
     availability_since_by_fact: Vec<FactStringLookup>,
+    source_by_fact: Vec<FactSourceLookup>,
     relations_by_source_kind: CsrIndex<RelationLookupKey, HbkFactRef>,
 }
 

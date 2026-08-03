@@ -167,6 +167,8 @@ search/debug artifact. Решение удаляет его только из an
 - [x] Gates, lifecycle, recovery и роли SQLite определены до implementation.
 - [x] Владение availability и downstream effective selection разделено.
 - [x] План запрещает параллельный owned graph и compatibility fallback.
+- [x] Non-canonical X1 generation writer и полный byte-validator реализованы
+      без включения runtime source.
 - [ ] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
 - [ ] X1 проходит все X1-INT performance/resource gates.
 - [ ] Canonical cutover и последующий scoped cleanup завершены отдельными

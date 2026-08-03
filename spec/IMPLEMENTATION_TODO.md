@@ -332,9 +332,12 @@ type-reference conclusions live in
     кандидат, X1-PROJECTED отклонён, X1 остаётся non-canonical до полного pass.
     ADR-0012 и `implementation/hbk-zero-copy-x1-integration.md` фиксируют
     production-source/API ledger, exact inputs, analyzer scenarios, semantic/
-    performance/resource gates, lifecycle и recovery. Следующий активный пункт
-    OpenSpec — 3.1: детерминированный production X1 writer/validator согласно
-    единому mapped snapshot/read interface без параллельной entity-модели.
+    performance/resource gates, lifecycle и recovery. OpenSpec 3.1 завершён:
+    build-only production X1 writer/validator создаёт детерминированный
+    read-only artifact `12,430,416` bytes с SHA-256
+    `0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`
+    на frozen input и не включает его как runtime source. Следующий активный
+    пункт — 3.2: immutable mmap-open с переиспользованием того же validator.
     T183 остаётся открытой на implementation/X1-INT; canonical
     cutover и garbage cleanup условны и выполняются отдельными milestones.
 

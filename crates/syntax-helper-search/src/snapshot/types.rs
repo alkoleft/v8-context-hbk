@@ -106,6 +106,15 @@ pub struct HbkCallable {
     pub availability_contexts: Vec<StringId>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct HbkFactSource {
+    pub(super) hbk_path: StringId,
+    pub(super) locale: StringId,
+    pub(super) toc_path: Option<StringId>,
+    pub(super) html_path: StringId,
+    pub(super) page_title: StringId,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkSignature {
     pub text: StringId,

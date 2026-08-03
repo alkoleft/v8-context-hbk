@@ -5,7 +5,7 @@ use super::*;
 
 const MAGIC: &[u8; 8] = b"HBKFSN1\0";
 const CACHE_FORMAT_VERSION: u32 = 3;
-const SNAPSHOT_LAYOUT_VERSION: u32 = 3;
+const SNAPSHOT_LAYOUT_VERSION: u32 = 4;
 const SNAPSHOT_LAYOUT_FLAGS: u64 = 0;
 const MAX_CACHE_PAYLOAD_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_CACHE_STRING_BYTES: usize = 16 * 1024 * 1024;
@@ -27,13 +27,13 @@ pub enum HbkFactSnapshotCacheStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CacheMetadata {
-    provider_schema_version: u32,
+    pub(super) provider_schema_version: u32,
     source_index_bytes: u64,
     source_index_identity_hash: u64,
     locale: String,
     source_locale: String,
     source_hbk: String,
-    source_extraction_schema_version: u32,
+    pub(super) source_extraction_schema_version: u32,
     snapshot_layout_version: u32,
     snapshot_layout_flags: u64,
 }
@@ -117,6 +117,7 @@ fn write_binary_cache(
     metadata: &CacheMetadata,
     snapshot: &HbkFactSnapshot,
 ) -> io::Result<()> {
+    validate_source_by_fact(snapshot)?;
     let mut payload_writer = BinaryWriter::new(Vec::new());
     snapshot.write_to(&mut payload_writer)?;
     let payload = payload_writer.into_inner();
@@ -185,7 +186,105 @@ fn read_binary_cache(path: &Path, expected: &CacheMetadata) -> Result<HbkFactSna
         Err(source) => return Err(source.to_string()),
     }
     let mut payload_reader = BinaryReader::new(Cursor::new(payload));
-    HbkFactSnapshot::read_from(&mut payload_reader).map_err(|source| source.to_string())
+    let snapshot =
+        HbkFactSnapshot::read_from(&mut payload_reader).map_err(|source| source.to_string())?;
+    if payload_reader.inner.position() != header.payload_len {
+        return Err("HBK fact snapshot payload has trailing bytes".to_string());
+    }
+    validate_source_by_fact(&snapshot).map_err(|source| source.to_string())?;
+    Ok(snapshot)
+}
+
+fn validate_source_by_fact(snapshot: &HbkFactSnapshot) -> io::Result<()> {
+    validate_source_entries(
+        SourceValidationBounds::from_snapshot(snapshot),
+        &snapshot.source_by_fact,
+    )
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct SourceValidationBounds {
+    strings: usize,
+    platform_types: usize,
+    type_members: usize,
+    callables: usize,
+    globals: usize,
+    query_tables: usize,
+    query_fields: usize,
+    query_parameters: usize,
+    language_facts: usize,
+    enums: usize,
+    enum_values: usize,
+}
+
+impl SourceValidationBounds {
+    fn from_snapshot(snapshot: &HbkFactSnapshot) -> Self {
+        Self {
+            strings: snapshot.strings.len(),
+            platform_types: snapshot.platform_types.len(),
+            type_members: snapshot.type_members.len(),
+            callables: snapshot.callables.len(),
+            globals: snapshot.globals.len(),
+            query_tables: snapshot.query_tables.len(),
+            query_fields: snapshot.query_fields.len(),
+            query_parameters: snapshot.query_parameters.len(),
+            language_facts: snapshot.language_facts.len(),
+            enums: snapshot.enums.len(),
+            enum_values: snapshot.enum_values.len(),
+        }
+    }
+}
+
+fn validate_source_entries(
+    bounds: SourceValidationBounds,
+    entries: &[FactSourceLookup],
+) -> io::Result<()> {
+    for pair in entries.windows(2) {
+        if pair[0].fact >= pair[1].fact {
+            return Err(invalid_data(
+                "HBK fact snapshot provenance index must be sorted and unique",
+            ));
+        }
+    }
+    for entry in entries {
+        if !fact_ref_is_in_bounds(bounds, entry.fact) {
+            return Err(invalid_data(
+                "HBK fact snapshot provenance fact reference is out of bounds",
+            ));
+        }
+        for string_id in [
+            Some(entry.source.hbk_path),
+            Some(entry.source.locale),
+            entry.source.toc_path,
+            Some(entry.source.html_path),
+            Some(entry.source.page_title),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if string_id.0 as usize >= bounds.strings {
+                return Err(invalid_data(
+                    "HBK fact snapshot provenance string reference is out of bounds",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn fact_ref_is_in_bounds(bounds: SourceValidationBounds, fact: HbkFactRef) -> bool {
+    match fact {
+        HbkFactRef::PlatformType(id) => (id.0 as usize) < bounds.platform_types,
+        HbkFactRef::TypeMember(id) => (id.0 as usize) < bounds.type_members,
+        HbkFactRef::Callable(id) => (id.0 as usize) < bounds.callables,
+        HbkFactRef::Global(id) => (id.0 as usize) < bounds.globals,
+        HbkFactRef::QueryTable(id) => (id.0 as usize) < bounds.query_tables,
+        HbkFactRef::QueryField(id) => (id.0 as usize) < bounds.query_fields,
+        HbkFactRef::QueryParameter(id) => (id.0 as usize) < bounds.query_parameters,
+        HbkFactRef::LanguageFact(id) => (id.0 as usize) < bounds.language_facts,
+        HbkFactRef::Enum(id) => (id.0 as usize) < bounds.enums,
+        HbkFactRef::EnumValue(id) => (id.0 as usize) < bounds.enum_values,
+    }
 }
 
 fn ensure_cache_path_is_not_index_path(
@@ -246,21 +345,21 @@ fn fnv1a_update(mut hash: u64, bytes: &[u8]) -> u64 {
     hash
 }
 
-trait BinaryValue: Sized {
+pub(super) trait BinaryValue: Sized {
     fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()>;
     fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self>;
 }
 
-struct BinaryWriter<W> {
-    inner: W,
+pub(super) struct BinaryWriter<W> {
+    pub(super) inner: W,
 }
 
 impl<W: Write> BinaryWriter<W> {
-    fn new(inner: W) -> Self {
+    pub(super) fn new(inner: W) -> Self {
         Self { inner }
     }
 
-    fn finish(mut self) -> io::Result<()> {
+    pub(super) fn finish(mut self) -> io::Result<()> {
         self.inner.flush()
     }
 
@@ -268,7 +367,7 @@ impl<W: Write> BinaryWriter<W> {
         self.inner.write_all(bytes)
     }
 
-    fn write_u8(&mut self, value: u8) -> io::Result<()> {
+    pub(super) fn write_u8(&mut self, value: u8) -> io::Result<()> {
         self.inner.write_all(&[value])
     }
 
@@ -284,7 +383,7 @@ impl<W: Write> BinaryWriter<W> {
         self.write_u64(value as u64)
     }
 
-    fn write_bool(&mut self, value: bool) -> io::Result<()> {
+    pub(super) fn write_bool(&mut self, value: bool) -> io::Result<()> {
         self.write_u8(u8::from(value))
     }
 
@@ -303,17 +402,17 @@ impl<W: Write> BinaryWriter<W> {
 }
 
 impl<W> BinaryWriter<W> {
-    fn into_inner(self) -> W {
+    pub(super) fn into_inner(self) -> W {
         self.inner
     }
 }
 
-struct BinaryReader<R> {
-    inner: R,
+pub(super) struct BinaryReader<R> {
+    pub(super) inner: R,
 }
 
 impl<R: Read> BinaryReader<R> {
-    fn new(inner: R) -> Self {
+    pub(super) fn new(inner: R) -> Self {
         Self { inner }
     }
 
@@ -321,7 +420,7 @@ impl<R: Read> BinaryReader<R> {
         self.inner.read_exact(bytes)
     }
 
-    fn read_u8(&mut self) -> io::Result<u8> {
+    pub(super) fn read_u8(&mut self) -> io::Result<u8> {
         let mut bytes = [0u8; 1];
         self.inner.read_exact(&mut bytes)?;
         Ok(bytes[0])
@@ -343,7 +442,7 @@ impl<R: Read> BinaryReader<R> {
         usize::try_from(self.read_u64()?).map_err(|_| invalid_data("length does not fit usize"))
     }
 
-    fn read_bool(&mut self) -> io::Result<bool> {
+    pub(super) fn read_bool(&mut self) -> io::Result<bool> {
         match self.read_u8()? {
             0 => Ok(false),
             1 => Ok(true),
@@ -551,6 +650,7 @@ impl BinaryValue for HbkFactSnapshot {
         writer.write_vec(&self.enum_values_by_enum_name)?;
         self.availability_by_fact.write_to(writer)?;
         writer.write_vec(&self.availability_since_by_fact)?;
+        writer.write_vec(&self.source_by_fact)?;
         self.relations_by_source_kind.write_to(writer)
     }
 
@@ -601,6 +701,7 @@ impl BinaryValue for HbkFactSnapshot {
             enum_values_by_enum_name: reader.read_vec()?,
             availability_by_fact: CsrIndex::read_from(reader)?,
             availability_since_by_fact: reader.read_vec()?,
+            source_by_fact: reader.read_vec()?,
             relations_by_source_kind: CsrIndex::read_from(reader)?,
         })
     }
@@ -1267,6 +1368,40 @@ impl BinaryValue for FactStringLookup {
     }
 }
 
+impl BinaryValue for FactSourceLookup {
+    fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
+        self.fact.write_to(writer)?;
+        self.source.write_to(writer)
+    }
+
+    fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self> {
+        Ok(Self {
+            fact: HbkFactRef::read_from(reader)?,
+            source: HbkFactSource::read_from(reader)?,
+        })
+    }
+}
+
+impl BinaryValue for HbkFactSource {
+    fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
+        self.hbk_path.write_to(writer)?;
+        self.locale.write_to(writer)?;
+        self.toc_path.write_to(writer)?;
+        self.html_path.write_to(writer)?;
+        self.page_title.write_to(writer)
+    }
+
+    fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self> {
+        Ok(Self {
+            hbk_path: StringId::read_from(reader)?,
+            locale: StringId::read_from(reader)?,
+            toc_path: Option::<StringId>::read_from(reader)?,
+            html_path: StringId::read_from(reader)?,
+            page_title: StringId::read_from(reader)?,
+        })
+    }
+}
+
 impl BinaryValue for ModuleContextLookup {
     fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
         self.domain.write_to(writer)?;
@@ -1330,4 +1465,122 @@ fn invalid_data(message: &'static str) -> io::Error {
 
 fn invalid_input(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn fact_source_binary_roundtrip_preserves_all_fields() {
+        let source = HbkFactSource {
+            hbk_path: StringId(1),
+            locale: StringId(2),
+            toc_path: Some(StringId(3)),
+            html_path: StringId(4),
+            page_title: StringId(5),
+        };
+
+        assert_eq!(
+            read_binary_value::<HbkFactSource>(&write_binary_value(&source)),
+            source
+        );
+    }
+
+    #[test]
+    fn fact_source_binary_roundtrip_preserves_missing_toc_path() {
+        let source = HbkFactSource {
+            hbk_path: StringId(1),
+            locale: StringId(2),
+            toc_path: None,
+            html_path: StringId(4),
+            page_title: StringId(5),
+        };
+
+        assert_eq!(
+            read_binary_value::<HbkFactSource>(&write_binary_value(&source)),
+            source
+        );
+    }
+
+    #[test]
+    fn fact_source_binary_payload_changes_when_provenance_changes() {
+        let before = HbkFactSource {
+            hbk_path: StringId(1),
+            locale: StringId(2),
+            toc_path: Some(StringId(3)),
+            html_path: StringId(4),
+            page_title: StringId(5),
+        };
+        let after = HbkFactSource {
+            page_title: StringId(6),
+            ..before
+        };
+
+        assert_ne!(write_binary_value(&before), write_binary_value(&after));
+    }
+
+    #[test]
+    fn provenance_cache_validation_rejects_unsorted_or_duplicate_facts() {
+        let first = source_entry(HbkFactRef::PlatformType(HbkPlatformTypeId(0)));
+        let second = source_entry(HbkFactRef::TypeMember(HbkTypeMemberId(0)));
+        assert!(validate_source_entries(source_bounds(), &[first, second]).is_ok());
+        assert!(validate_source_entries(source_bounds(), &[second, first]).is_err());
+        assert!(validate_source_entries(source_bounds(), &[first, first]).is_err());
+    }
+
+    #[test]
+    fn provenance_cache_validation_rejects_invalid_fact_or_string_ids() {
+        let invalid_fact = source_entry(HbkFactRef::EnumValue(HbkEnumValueId(1)));
+        assert!(validate_source_entries(source_bounds(), &[invalid_fact]).is_err());
+
+        let mut invalid_string = source_entry(HbkFactRef::Global(HbkGlobalFactId(0)));
+        invalid_string.source.page_title = StringId(5);
+        assert!(validate_source_entries(source_bounds(), &[invalid_string]).is_err());
+    }
+
+    fn source_bounds() -> SourceValidationBounds {
+        SourceValidationBounds {
+            strings: 5,
+            platform_types: 1,
+            type_members: 1,
+            callables: 1,
+            globals: 1,
+            query_tables: 1,
+            query_fields: 1,
+            query_parameters: 1,
+            language_facts: 1,
+            enums: 1,
+            enum_values: 1,
+        }
+    }
+
+    fn source_entry(fact: HbkFactRef) -> FactSourceLookup {
+        FactSourceLookup {
+            fact,
+            source: HbkFactSource {
+                hbk_path: StringId(0),
+                locale: StringId(1),
+                toc_path: Some(StringId(2)),
+                html_path: StringId(3),
+                page_title: StringId(4),
+            },
+        }
+    }
+
+    fn write_binary_value<T: BinaryValue>(value: &T) -> Vec<u8> {
+        let mut output = Vec::new();
+        {
+            let mut writer = BinaryWriter::new(&mut output);
+            value.write_to(&mut writer).unwrap();
+            writer.finish().unwrap();
+        }
+        output
+    }
+
+    fn read_binary_value<T: BinaryValue>(bytes: &[u8]) -> T {
+        let mut reader = BinaryReader::new(Cursor::new(bytes));
+        T::read_from(&mut reader).unwrap()
+    }
 }

@@ -49,6 +49,16 @@ struct SnapshotMetadataRow {
     query_identifier: Option<String>,
     query_table_role: Option<model::QueryTableRole>,
     template_parameters: Vec<String>,
+    source: Option<SnapshotSourceRow>,
+}
+
+#[derive(Debug, Clone)]
+struct SnapshotSourceRow {
+    hbk_path: String,
+    locale: String,
+    toc_path: Option<String>,
+    html_path: String,
+    page_title: String,
 }
 
 #[derive(Debug, Clone)]
@@ -187,6 +197,7 @@ impl<'a> SnapshotMaterializer<'a> {
 
         let stage_start = start_stage!();
         let mut platform_types = Vec::new();
+        let mut source_by_fact = Vec::new();
         let mut platform_type_by_type_id = BTreeMap::<String, HbkPlatformTypeId>::new();
         let mut platform_type_ids = Vec::new();
         let mut platform_type_names = Vec::new();
@@ -218,6 +229,14 @@ impl<'a> SnapshotMaterializer<'a> {
                 type_template_key,
                 availability_contexts: self.builder.intern_many(&document.availability_contexts),
             });
+            push_source_lookup(
+                &mut source_by_fact,
+                &mut self.builder,
+                HbkFactRef::PlatformType(id),
+                metadata_by_id
+                    .get(document.id.as_str())
+                    .and_then(|metadata| metadata.source.as_ref()),
+            );
             push_id_lookup(&mut platform_type_ids, &mut self.builder, type_id, id);
             push_name_lookups(
                 &mut platform_type_names,
@@ -289,6 +308,14 @@ impl<'a> SnapshotMaterializer<'a> {
                     .unwrap_or_default(),
                 availability_contexts: self.builder.intern_many(&document.availability_contexts),
             });
+            push_source_lookup(
+                &mut source_by_fact,
+                &mut self.builder,
+                HbkFactRef::TypeMember(id),
+                metadata_by_id
+                    .get(document.id.as_str())
+                    .and_then(|metadata| metadata.source.as_ref()),
+            );
             push_id_lookup(&mut member_ids, &mut self.builder, &document.id, id);
             push_owner_name_lookups(
                 &mut members_by_owner_name,
@@ -341,6 +368,14 @@ impl<'a> SnapshotMaterializer<'a> {
                     .unwrap_or_default(),
                 availability_contexts: self.builder.intern_many(&document.availability_contexts),
             });
+            push_source_lookup(
+                &mut source_by_fact,
+                &mut self.builder,
+                HbkFactRef::Callable(id),
+                metadata_by_id
+                    .get(document.id.as_str())
+                    .and_then(|metadata| metadata.source.as_ref()),
+            );
             callables_by_document.insert(document.id.clone(), id);
             push_id_lookup(&mut callable_ids, &mut self.builder, &row.callable_id, id);
             if let Some(owner) = owner {
@@ -386,6 +421,14 @@ impl<'a> SnapshotMaterializer<'a> {
                     .cloned()
                     .unwrap_or_default(),
             });
+            push_source_lookup(
+                &mut source_by_fact,
+                &mut self.builder,
+                HbkFactRef::Global(id),
+                metadata_by_id
+                    .get(document.id.as_str())
+                    .and_then(|metadata| metadata.source.as_ref()),
+            );
             push_name_lookups(&mut global_names, &mut self.builder, &document.name, id);
             let kind = globals[id.0 as usize].kind;
             push_global_name_kind_lookups(
@@ -434,6 +477,12 @@ impl<'a> SnapshotMaterializer<'a> {
                     .map(|row| self.builder.intern_many(&row.template_parameters))
                     .unwrap_or_default(),
             });
+            push_source_lookup(
+                &mut source_by_fact,
+                &mut self.builder,
+                HbkFactRef::QueryTable(id),
+                meta.and_then(|metadata| metadata.source.as_ref()),
+            );
             push_id_lookup(&mut query_table_ids, &mut self.builder, &document.id, id);
             push_name_lookups(
                 &mut query_table_names,
@@ -491,6 +540,12 @@ impl<'a> SnapshotMaterializer<'a> {
                             .unwrap_or_default(),
                         note: meta.and_then(|row| self.builder.intern_option(row.note.as_deref())),
                     });
+                    push_source_lookup(
+                        &mut source_by_fact,
+                        &mut self.builder,
+                        HbkFactRef::QueryField(id),
+                        meta.and_then(|metadata| metadata.source.as_ref()),
+                    );
                     query_field_owner_pairs.push((owner, id));
                     push_owner_name_lookups(
                         &mut query_fields_by_table_name,
@@ -517,6 +572,12 @@ impl<'a> SnapshotMaterializer<'a> {
                             self.builder.intern_option(row.default_value.as_deref())
                         }),
                     });
+                    push_source_lookup(
+                        &mut source_by_fact,
+                        &mut self.builder,
+                        HbkFactRef::QueryParameter(id),
+                        meta.and_then(|metadata| metadata.source.as_ref()),
+                    );
                     query_parameter_owner_pairs.push((owner, id));
                     push_owner_name_lookups(
                         &mut query_parameters_by_table_name,
@@ -559,6 +620,14 @@ impl<'a> SnapshotMaterializer<'a> {
                     .cloned()
                     .unwrap_or_default(),
             });
+            push_source_lookup(
+                &mut source_by_fact,
+                &mut self.builder,
+                HbkFactRef::LanguageFact(id),
+                metadata_by_id
+                    .get(document.id.as_str())
+                    .and_then(|metadata| metadata.source.as_ref()),
+            );
             push_id_lookup(&mut language_ids, &mut self.builder, &document.id, id);
             push_name_lookups(&mut language_names, &mut self.builder, &document.name, id);
         }
@@ -577,6 +646,14 @@ impl<'a> SnapshotMaterializer<'a> {
                 id: self.builder.intern(&document.id),
                 name: self.builder.intern_name(&document.name),
             });
+            push_source_lookup(
+                &mut source_by_fact,
+                &mut self.builder,
+                HbkFactRef::Enum(id),
+                metadata_by_id
+                    .get(document.id.as_str())
+                    .and_then(|metadata| metadata.source.as_ref()),
+            );
             push_id_lookup(&mut enum_ids, &mut self.builder, &document.id, id);
             push_name_lookups(&mut enum_names, &mut self.builder, &document.name, id);
         }
@@ -601,6 +678,14 @@ impl<'a> SnapshotMaterializer<'a> {
                 owner,
                 name: self.builder.intern_name(&document.name),
             });
+            push_source_lookup(
+                &mut source_by_fact,
+                &mut self.builder,
+                HbkFactRef::EnumValue(id),
+                metadata_by_id
+                    .get(document.id.as_str())
+                    .and_then(|metadata| metadata.source.as_ref()),
+            );
             push_id_lookup(&mut enum_value_ids, &mut self.builder, &document.id, id);
             enum_value_owner_pairs.push((owner, id));
             push_owner_name_lookups(
@@ -666,6 +751,7 @@ impl<'a> SnapshotMaterializer<'a> {
         let relation_pairs = relation_pairs(self.index, &mut self.builder, &fact_by_id)?;
         let (availability_pairs, availability_since_by_fact) =
             availability_pairs(&mut self.builder, &fact_by_id, &documents);
+        source_by_fact.sort_by_key(|entry| entry.fact);
         finish_stage!(stage_start, build_fact_ids_relations_availability);
 
         let source_locale = Some(self.builder.intern(&index_metadata.source_locale));
@@ -754,6 +840,7 @@ impl<'a> SnapshotMaterializer<'a> {
             enum_values_by_enum_name,
             availability_by_fact: CsrIndex::from_pairs(availability_pairs),
             availability_since_by_fact,
+            source_by_fact,
             relations_by_source_kind: CsrIndex::from_pairs(relation_pairs),
         };
         finish_stage!(stage_start, assemble_snapshot);
@@ -800,7 +887,8 @@ impl<'a> SnapshotMaterializer<'a> {
             .prepare(
                 "SELECT document_id, owner_path, note, default_value, query_syntax_primary,
                         query_syntax_alias, query_identifier, query_table_role,
-                        template_parameters
+                        template_parameters, source_hbk_path, source_locale,
+                        source_toc_path, source_html_path, source_page_title
                  FROM document_metadata
                  ORDER BY document_id",
             )
@@ -818,6 +906,23 @@ impl<'a> SnapshotMaterializer<'a> {
                         query_identifier: row.get(6)?,
                         query_table_role: role.as_deref().and_then(query_table_role_from_code),
                         template_parameters: split_lines(row.get(8)?),
+                        source: match (
+                            row.get::<_, Option<String>>(9)?,
+                            row.get::<_, Option<String>>(10)?,
+                            row.get::<_, Option<String>>(12)?,
+                            row.get::<_, Option<String>>(13)?,
+                        ) {
+                            (Some(hbk_path), Some(locale), Some(html_path), Some(page_title)) => {
+                                Some(SnapshotSourceRow {
+                                    hbk_path,
+                                    locale,
+                                    toc_path: row.get(11)?,
+                                    html_path,
+                                    page_title,
+                                })
+                            }
+                            _ => None,
+                        },
                     },
                 ))
             })
@@ -1502,6 +1607,30 @@ fn availability_pairs(
     available_since.sort_by_key(|entry| entry.fact);
     available_since.dedup_by_key(|entry| entry.fact);
     (contexts, available_since)
+}
+
+fn push_source_lookup(
+    output: &mut Vec<FactSourceLookup>,
+    builder: &mut SnapshotBuilder,
+    fact: HbkFactRef,
+    source: Option<&SnapshotSourceRow>,
+) {
+    let Some(source) = source else {
+        return;
+    };
+    output.push(FactSourceLookup {
+        fact,
+        source: HbkFactSource {
+            hbk_path: builder.intern(&source.hbk_path),
+            locale: builder.intern(&source.locale),
+            toc_path: source
+                .toc_path
+                .as_deref()
+                .map(|value| builder.intern(value)),
+            html_path: builder.intern(&source.html_path),
+            page_title: builder.intern(&source.page_title),
+        },
+    });
 }
 
 fn relation_pairs(

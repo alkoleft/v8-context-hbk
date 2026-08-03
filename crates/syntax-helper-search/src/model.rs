@@ -421,6 +421,11 @@ impl SearchDocument {
             .and_then(|fact| fact.version.clone());
         self
     }
+
+    fn with_source(mut self, source: &model::SyntaxHelperSource) -> Self {
+        self.source = Some(source.clone());
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

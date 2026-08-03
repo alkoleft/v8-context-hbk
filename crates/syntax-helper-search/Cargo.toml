@@ -9,6 +9,7 @@ snapshot-experiment-alloc = ["snapshot-experiment"]
 
 [dependencies]
 rusqlite.workspace = true
+sha2.workspace = true
 strsim.workspace = true
 syntax-helper-language.workspace = true
 syntax-helper-model.workspace = true

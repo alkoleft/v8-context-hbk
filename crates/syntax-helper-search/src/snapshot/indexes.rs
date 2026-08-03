@@ -51,6 +51,12 @@ pub(super) struct FactStringLookup {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct FactSourceLookup {
+    pub(super) fact: HbkFactRef,
+    pub(super) source: HbkFactSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ModuleContextLookup {
     pub(super) domain: HbkLanguageDomain,
     pub(super) language_key: StringId,

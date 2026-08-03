@@ -199,28 +199,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filter_type = handle.platform_type_by_id("platform_type:ОтборКомпоновкиДанных");
     let query_table_with_field = handle
         .query_tables_by_identifier("Справочник")
-        .into_iter()
         .next()
-        .or_else(|| {
-            handle
-                .query_tables_by_identifier("ОсновнаяТаблица")
-                .into_iter()
-                .next()
-        });
+        .or_else(|| handle.query_tables_by_identifier("ОсновнаяТаблица").next());
     let query_table_with_parameter = handle
         .query_tables_by_identifier("ЗадачаТаблицаЗадачПоИсполнителю")
-        .into_iter()
         .next();
     let query_field_with_type = handle
         .query_tables_by_identifier("БизнесПроцесс")
-        .into_iter()
         .next()
-        .and_then(|table| {
-            handle
-                .query_fields_by_name(table, "Ссылка")
-                .into_iter()
-                .next()
-        });
+        .and_then(|table| handle.query_fields_by_name(table, "Ссылка").next());
 
     measure("exact_fact_id", iterations, || {
         handle.facts_by_id("platform_type:Запрос").len()

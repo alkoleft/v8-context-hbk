@@ -63,7 +63,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             )
-            .with_section_facts(&record.facts),
+            .with_section_facts(&record.facts)
+            .with_source(&record.source),
             DraftIdentity::Immediate(document_identity(
                 SearchDocumentKind::GlobalMethod.as_str(),
                 None,
@@ -85,7 +86,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             )
-            .with_section_facts(&record.facts),
+            .with_section_facts(&record.facts)
+            .with_source(&record.source),
             DraftIdentity::Immediate(document_identity(
                 SearchDocumentKind::GlobalProperty.as_str(),
                 None,
@@ -118,7 +120,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
             record.description.as_deref(),
             String::new(),
         )
-        .with_section_facts(&record.facts);
+        .with_section_facts(&record.facts)
+        .with_source(&record.source);
         if kind == SearchDocumentKind::ModuleEvent {
             document
                 .relation_keys
@@ -159,7 +162,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
             record.description.as_deref(),
             String::new(),
         )
-        .with_section_facts(&record.facts);
+        .with_section_facts(&record.facts)
+        .with_source(&record.source);
         if record.type_kind == model::PlatformTypeKind::MetadataTemplate
             && let Some(metadata_kind) = record.metadata_kind
         {
@@ -239,7 +243,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             )
-            .with_section_facts(&record.facts),
+            .with_section_facts(&record.facts)
+            .with_source(&record.source),
             DraftIdentity::TypeOwned {
                 owner_identity: record.owner_identity,
             },
@@ -259,7 +264,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             )
-            .with_section_facts(&record.facts),
+            .with_section_facts(&record.facts)
+            .with_source(&record.source),
             DraftIdentity::TypeOwned {
                 owner_identity: record.owner_identity,
             },
@@ -341,7 +347,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             )
-            .with_section_facts(&record.facts),
+            .with_section_facts(&record.facts)
+            .with_source(&record.source),
             DraftIdentity::TypeOwned {
                 owner_identity: record.owner_identity,
             },
@@ -367,7 +374,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             )
-            .with_section_facts(&record.facts),
+            .with_section_facts(&record.facts)
+            .with_source(&record.source),
             DraftIdentity::Enum {
                 name_primary: record.name.primary,
                 name_alias: record.name.alias,
@@ -389,7 +397,8 @@ impl model::SyntaxHelperSink for SearchIndexBuilder {
                 record.description.as_deref(),
                 String::new(),
             )
-            .with_section_facts(&record.facts),
+            .with_section_facts(&record.facts)
+            .with_source(&record.source),
             DraftIdentity::EnumValue {
                 owner_identity: record.owner_identity,
             },

@@ -1150,6 +1150,13 @@ Cross-source precedence, ambiguity и effective selection принадлежат
 `v8-context`; downstream удерживает только operation-local control state и не
 копирует HBK dictionary или provider entities.
 
+OpenSpec 3.1 реализовал build-only X1 generation writer и единый полный
+byte-validator без runtime mmap-open. Frozen `8.3.27.1859/ru` artifact имеет
+`12,430,416` bytes и детерминированный SHA-256
+`0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`.
+Следующий component slice переиспользует этот validator до создания borrowed
+typed mmap views; второй validator и owned fallback запрещены.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

@@ -231,10 +231,13 @@ publication или переключение потребителей: это о�
    второй snapshot owner или public record/view family.
 2. Добавить на существующий `HbkFactSnapshotBuildReport` build-only операцию
    записи нового immutable generation file. Writer не принимает свободную
-   строку версии. Extraction/build boundary выводит typed platform version из
-   канонического version-directory исходного HBK (`…/<major.minor.patch.build>/
-   shcntx_*.hbk`), сохраняет эту привязку в build report и отклоняет источник,
-   для которого привязка отсутствует или неоднозначна. Writer выводит
+   строку версии. Report сохраняет provider path и cache metadata, а explicit
+   X1 build boundary выводит typed platform version из канонического
+   version-directory исходного HBK (`…/<major.minor.patch.build>/
+   shcntx_*.hbk`) и отклоняет источник, для которого привязка отсутствует или
+   неоднозначна. Привязка намеренно не дублируется в report как отдельное
+   потенциально устаревшее поле: writer повторно выводит и сверяет её после
+   записи. Writer выводит
    provenance из фактического SQLite/HBK input, повторно сверяет canonical HBK
    path, вычисляет SHA-256 внутри процесса, пишет только в несуществующий
    generation path и не является runtime open/fallback. В task 3.2 runtime
@@ -325,3 +328,28 @@ validator или ослабленный runtime subset запрещён.
 - strict OpenSpec validation, `git diff --check`, независимые skeptic-review и
   codebase-design review; только после этого пункт 3.1 и долгосрочный ledger
   отмечаются завершёнными отдельным commit.
+
+### Результат OpenSpec 3.1
+
+Production X1 writer и единый полный byte-validator реализованы в закрытом
+`snapshot/x1_format.rs`; runtime mmap-open, typed views, slot publication и
+consumer switching не добавлены. Writer использует `create_new`, проверяет
+in-memory и повторно прочитанные bytes, ставит generation read-only и повторно
+сверяет SHA/size/schema/platform/source identity после записи.
+
+`SourceByFact` сохраняется, когда provider index уже содержит нормализованную
+fact provenance. Frozen H0 index был создан до её заполнения, поэтому пустая
+секция является допустимым legacy input; каждая присутствующая запись обязана
+указывать на проверенный HBK и допустимую locale. Artifact-level source path,
+locale, source locale, platform version, HBK/SQLite size и SHA обязательны
+всегда.
+
+На frozen input `8.3.27.1859/ru` два независимых generation дали одинаковые
+`12,430,416` bytes и SHA-256
+`0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`.
+Header подтвердил исходный HBK SHA-256
+`5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`
+и provider SHA-256
+`317f3cdd914e635c89b975bf9ebcf28238bdbabd54e455121a083558d4e05f5e`.
+Следующий последовательный slice — OpenSpec 3.2, immutable mmap-open поверх
+того же validator без второй ослабленной проверки.

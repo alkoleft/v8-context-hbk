@@ -61,6 +61,7 @@ pub struct HbkFactSnapshotIndexMemory {
     pub enum_values_by_enum_name: HbkFactSnapshotMemoryEntry,
     pub availability_by_fact: HbkFactSnapshotMemoryEntry,
     pub availability_since_by_fact: HbkFactSnapshotMemoryEntry,
+    pub source_by_fact: HbkFactSnapshotMemoryEntry,
     pub relations_by_source_kind: HbkFactSnapshotMemoryEntry,
 }
 
@@ -99,6 +100,7 @@ impl HbkFactSnapshotIndexMemory {
             + self.enum_values_by_enum_name.bytes
             + self.availability_by_fact.bytes
             + self.availability_since_by_fact.bytes
+            + self.source_by_fact.bytes
             + self.relations_by_source_kind.bytes
     }
 
@@ -136,6 +138,7 @@ impl HbkFactSnapshotIndexMemory {
             + self.enum_values_by_enum_name.payload_bytes
             + self.availability_by_fact.payload_bytes
             + self.availability_since_by_fact.payload_bytes
+            + self.source_by_fact.payload_bytes
             + self.relations_by_source_kind.payload_bytes
     }
 }
@@ -437,6 +440,7 @@ impl HbkFactSnapshot {
                 enum_values_by_enum_name: vec_memory_entry(&self.enum_values_by_enum_name),
                 availability_by_fact: self.availability_by_fact.memory_entry(),
                 availability_since_by_fact: vec_memory_entry(&self.availability_since_by_fact),
+                source_by_fact: vec_memory_entry(&self.source_by_fact),
                 relations_by_source_kind: self.relations_by_source_kind.memory_entry(),
             },
         }
@@ -447,8 +451,8 @@ pub(super) fn vec_heap_bytes<T>(values: &Vec<T>) -> usize {
     values.capacity() * std::mem::size_of::<T>()
 }
 
-pub(super) fn vec_payload_bytes<T>(values: &Vec<T>) -> usize {
-    values.len() * std::mem::size_of::<T>()
+pub(super) fn vec_payload_bytes<T>(values: &[T]) -> usize {
+    std::mem::size_of_val(values)
 }
 
 pub(super) fn vec_memory_entry<T>(values: &Vec<T>) -> HbkFactSnapshotMemoryEntry {

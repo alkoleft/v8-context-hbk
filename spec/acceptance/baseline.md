@@ -3085,6 +3085,19 @@ rows; полезный сигнал найден только для селек�
 и ADR-0012. AV5/AV6 остаются причинными evidence layout и не подменяют будущую
 accepted X1-INT строку.
 
+### Non-canonical X1 writer/validator
+
+OpenSpec 3.1 завершён без изменения runtime source. На frozen H0 provider input
+два X1 generation побайтово совпали: `12,430,416` bytes, SHA-256
+`0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`.
+Artifact identity сохранил exact platform `8.3.27.1859`, HBK SHA-256
+`5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`
+и provider SHA-256
+`317f3cdd914e635c89b975bf9ebcf28238bdbabd54e455121a083558d4e05f5e`.
+Writer/validator прошёл corruption, version/source binding, deterministic
+collision-chain, create-new/no-overwrite и full crate verification. X1 остаётся
+non-canonical; следующий gate — immutable mmap-open 3.2.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,
