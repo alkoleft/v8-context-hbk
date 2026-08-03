@@ -357,12 +357,12 @@
   счётчики аллокаций для отклонения boxed/dynamic iterator или коллекций ID,
   используемых только для перехода через seam. Существующие публичные response-
   `Vec` на resolver boundary остаются допустимыми.
-- [ ] 4.5 Выполнить frozen X1-INT на `v8-context` scenarios
+- [x] 4.5 Выполнить frozen X1-INT на `v8-context` scenarios
   `prepared_module_context_handle`, `cold_module_context_handle` и
   `prepared_full_module_resolution` двумя A/B wall/heap повторами, отдельно
   измерить первое производство X1 и сохранить raw samples/median/MAD/CPU/RSS/
   heap/allocations без изменения existing benchmark oracle/schema.
-- [ ] 4.6 Применить все ADR-0012 X1-INT gates без aggregate score или waiver.
+- [x] 4.6 Применить все ADR-0012 X1-INT gates без aggregate score или waiver.
   При полном pass записать evidence и разрешить отдельный canonical cutover;
   при любом fail сохранить текущий runtime и не удалять SQL/owned путь.
 

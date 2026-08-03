@@ -3172,6 +3172,17 @@ mapped сторона совпала после удаления HBK/SQLite, в 
 `0` allocations/reallocations/bytes. Frozen 4.2/4.3 artifact и transcript SHA
 не изменились. Следующий gate — real analyzer A/B 4.5; H0 пока не удаляется.
 
+Tasks 4.5–4.6 завершили frozen real `v8-context` X1-INT на revisions
+`v8-context-hbk 464437a` / `v8-context b1cd76d4`. Все 24 отдельных wall/heap
+процесса сохранили effective/full-resolution oracles и прошли каждый парный
+gate без waiver: cold time `0.418-0.422x`, prepared handle `0.938-0.986x`,
+full resolution `0.908-0.925x`, wall RSS `0.348-0.522x`, cold peak heap
+`0.0485x` H0. Первое X1 build-to-ready заняло `4761.942604 ms` при
+`108.609536 MB` peak RSS; artifact остался `12,430,416` bytes с прежним SHA.
+Полный результат находится в `hbk-x1-int-evidence.md`. Отдельный canonical
+cutover теперь разрешён, но ещё не выполнен; H0 code и cleanup сохраняются до
+OpenSpec 5.1–5.3.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

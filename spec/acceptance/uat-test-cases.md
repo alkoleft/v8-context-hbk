@@ -3001,6 +3001,13 @@ Expected result:
 - If any expected result fails, X1 is not made canonical and SQL/owned runtime
   cleanup is not performed.
 
+Execution `2026-08-03`: `PASS` на revisions `v8-context-hbk 464437a` и
+`v8-context b1cd76d4`. Все 24 wall/heap процесса, semantic/lifecycle/
+allocation проверки и каждая парная граница прошли без waiver. Точные числа и
+service-data manifest записаны в
+[`hbk-x1-int-evidence.md`](hbk-x1-int-evidence.md). Результат разрешает, но сам
+по себе не выполняет отдельный canonical cutover.
+
 ## UAT-ERR-001: Missing File Produces Readable CLI Error
 
 Related use cases: UC-HBK-001, UC-HBK-002, UC-SH-001.

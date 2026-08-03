@@ -189,8 +189,8 @@ search/debug artifact. Решение удаляет его только из an
 - [x] Единый `HbkFactReadHandle`/catalog/resolver seam прошёл exact
       owned-to-mapped transcript, no-HBK/SQLite, sequential/concurrent и
       zero-allocation borrowed traversal probes.
-- [ ] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
-- [ ] X1 проходит все X1-INT performance/resource gates.
+- [x] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
+- [x] X1 проходит все X1-INT performance/resource gates.
 - [ ] Canonical cutover и последующий scoped cleanup завершены отдельными
       проверенными задачами.
 

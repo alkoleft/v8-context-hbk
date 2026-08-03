@@ -140,7 +140,8 @@ error. Отдельная setup-операция ensure/rebuild может по�
 | H0 index | `/home/alko/develop/open-source/v8-maintain-projects/v8-context/.v8-context/platform-indexes/8.3.27.1859/shcntx_ru.sqlite`, `204,288,000` bytes, SHA-256 `317f3cdd914e635c89b975bf9ebcf28238bdbabd54e455121a083558d4e05f5e` |
 | Project | `/home/alko/develop/типовые/ssl_3_1/src/cf`; repository revision `b7e627f02fe10028e27bfec99dbc1afa7fd8324d`; generated `.v8-context` excluded |
 | Module | `ОбщегоНазначенияКлиентСервер` |
-| H0 code | `v8-context` `43f4f50f`; `v8-context-hbk` `d6f3960` |
+| Pre-implementation H0 code | `v8-context` `43f4f50f`; `v8-context-hbk` `d6f3960` |
+| Measured common H0/X1 code | `v8-context` `b1cd76d4`; `v8-context-hbk` `464437a` |
 
 ### Сценарии и запуски
 
@@ -161,9 +162,10 @@ Wall-time и `dhat` heap запускаются отдельными проце�
 Для каждой строки сохраняются raw samples, median, MAD, min/max, CPU, peak RSS,
 allocation blocks/bytes, retained и peak heap. При заметной посторонней нагрузке
 или изменении inputs аннулируется и повторяется вся соответствующая пара; gate
-не получает исключение. Raw logs живут вне source до принятия, после чего
-числа добавляются в существующую private JSONL history/checkpoint и русское
-acceptance summary без нового DTO/schema.
+не получает исключение. Raw logs живут вне source. Same-revision четырёхместная
+H0/X1 matrix записывается в owning HBK acceptance summary и не добавляется в
+существующую private JSONL schema, которая представляет только два A/B повтора
+одной реализации; новый DTO/schema не вводится.
 
 ### Semantic и structural gates
 
@@ -190,6 +192,17 @@ acceptance summary без нового DTO/schema.
 
 Все gates обязательны. Aggregate score, ranking, waiver и перенос выигрыша одной
 метрики на провал другой запрещены.
+
+### Результат выполнения
+
+X1-INT `2026-08-03` завершён полным pass на common revisions
+`v8-context b1cd76d4` / `v8-context-hbk 464437a`. В A/B cold median составил
+`0.422186/0.417985x` H0, prepared handle `0.986441/0.938241x`, prepared full
+resolution `0.907735/0.924985x`; wall RSS по трём scenarios находился в
+`0.348-0.522x`, cold peak heap — `0.048543/0.048525x` H0. Exact semantic
+oracles сохранены. Полная matrix, producer cost и service-data manifest
+находятся в `acceptance/hbk-x1-int-evidence.md`. Результат разрешает отдельный
+canonical cutover ниже, но не подменяет его.
 
 ## Условный cutover и cleanup
 

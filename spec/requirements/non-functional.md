@@ -285,8 +285,10 @@ and the limiting storage or translation component before adding broader optimiza
 
 - X1 является единственным X1-INT кандидатом. X1-PROJECTED отклонён и не
   должен появляться в production artifact или runtime path.
-- До результатов X1 остаётся non-canonical production-quality вариантом. H0
-  остаётся baseline и текущим runtime.
+- X1-INT завершён полным pass, зафиксированным в
+  `acceptance/hbk-x1-int-evidence.md`. До отдельного canonical cutover X1
+  остаётся non-canonical production-quality вариантом, а H0 — baseline и
+  текущим runtime.
 - X1-INT должен использовать точные inputs, scenario lifecycle, A/B order,
   sample counts, semantic oracles и числовые gates, зафиксированные в
   `implementation/hbk-zero-copy-x1-integration.md` до implementation.

@@ -375,11 +375,15 @@ type-reference conclusions live in
     `35cb2cff4ba1777e200298a677725fe858b1bcdca5c0497c2a29c115237097c0`
     совпал owned/mapped после удаления HBK/SQLite, в последовательных и
     concurrent повторах. Borrowed filtered member/global/query traversal дал
-    `0` allocations/reallocations/bytes. Детали записаны в
-    `acceptance/hbk-x1-int-evidence.md`. Следующий активный пункт — 4.5,
-    real `v8-context` X1-INT A/B.
-    T183 остаётся открытой на implementation/X1-INT; canonical
-    cutover и garbage cleanup условны и выполняются отдельными milestones.
+    `0` allocations/reallocations/bytes. OpenSpec 4.5–4.6 затем выполнил real
+    `v8-context` X1-INT на revisions `464437a` / `b1cd76d4`: все 24 wall/heap
+    процесса сохранили oracles, cold time составил `0.418-0.422x`, prepared
+    handle `0.938-0.986x`, full resolution `0.908-0.925x`, wall RSS
+    `0.348-0.522x`, cold peak heap `0.0485x` H0. Все gates прошли отдельно в
+    A/B без waiver; детали и service-data manifest записаны в
+    `acceptance/hbk-x1-int-evidence.md`. Следующий активный пункт — отдельный
+    canonical cutover 5.1 с последующим inventory-scoped cleanup. T183 остаётся
+    открытой до завершения cutover, structural guards и уборки.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

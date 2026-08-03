@@ -1216,6 +1216,13 @@ availability traversal использует `ANY`/`ALL` только по
 zero-allocation borrowed traversal прошли. Component остаётся non-canonical до
 real `v8-context` A/B 4.5 и gate 4.6.
 
+OpenSpec 4.5–4.6 завершил real analyzer X1-INT полным pass. В обеих парах X1
+дал cold time `0.418-0.422x` H0, prepared handle `0.938-0.986x`, full
+resolution `0.908-0.925x`, process RSS `0.348-0.522x` и cold peak heap около
+`0.049x`. Semantic oracles `1798` и `2490/2286/204` сохранили exact SHA-256.
+Это разрешает отдельный cutover, но до OpenSpec 5.1 H0 остаётся runtime и
+никакие cleanup-candidates не удаляются.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:
