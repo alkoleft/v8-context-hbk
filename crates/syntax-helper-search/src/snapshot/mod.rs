@@ -8,6 +8,7 @@ mod indexes;
 mod materialize;
 mod memory;
 mod read;
+mod semantic_roles;
 mod types;
 mod views;
 mod x1_format;
@@ -27,6 +28,7 @@ pub use experiment_allocator::{
 };
 pub use memory::{HbkFactSnapshotIndexMemory, HbkFactSnapshotMemory, HbkFactSnapshotMemoryEntry};
 pub use read::HbkFactSnapshotCounts;
+pub use semantic_roles::HbkPropertyView;
 pub use types::*;
 pub use views::*;
 pub use x1_format::{HbkFactSnapshotArtifactPublicationReport, HbkFactSnapshotArtifactWriteReport};

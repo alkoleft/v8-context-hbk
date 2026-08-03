@@ -194,7 +194,14 @@ Recommended dependency layers:
   materialization/read-model APIs. The Rust API may be used to create or open the rebuildable
   provider index, or to materialize/load a provider-owned `HbkFactSnapshot`, but SQLite table names,
   FTS columns, row ids, schema internals and experimental binary-cache layout remain private
-  implementation details.
+  implementation details. Its existing storage-neutral `Hbk*View` family also directly implements
+  the source-neutral borrowed callable/signature/parameter/property/type-declaration roles from the
+  `v8-context-semantic-entities` dependency leaf. Relevant owned view branches retain only the
+  existing snapshot borrow required to resolve dictionary-backed names; X1 branches retain their
+  existing generation handle. One filtered HBK property view covers source-proved type-member and
+  BSL-global properties. This role boundary adds no provider record, common catalog, lookup index,
+  cache/schema field or neutral-crate re-export; availability, source indexes and typed IDs remain
+  HBK-owned.
 - `hbk-book`, `syntax-helper-extract` and `syntax-helper-language`: setup/index-refresh phase only,
   when the embedding application chooses to rebuild HBK-backed provider indexes in process.
 
@@ -865,6 +872,15 @@ CLI or parser dependencies. The platform and first language-domain adapters are 
 `context-resolver-search`. Its explicit `PlatformSearchSource`/`LanguageSearchSource` family
 adapts `SearchIndex` for CLI, debug, index-inspection and local sequential flows. Its snapshot
 family adapts the provider-owned `HbkFactSnapshot` without a SQLite fallback.
+
+The provider-owned storage-neutral views also expose source-proved platform
+callable, signature, parameter, property and type-declaration roles through the
+solution-level `v8-context-semantic-entities` dependency leaf. The roles lend
+the existing names, typed/source identities, overloads, parameters and type
+references; they do not project resolver DTOs or move selection, availability,
+type equality or overload ranking into HBK. The sole filtered property view
+represents the real variation between type-member and BSL-global property
+records and rejects method/event/non-BSL facts.
 
 The snapshot family additionally exposes `HbkBslContextCatalog`, a narrow immutable handle over
 the existing snapshot arenas. It lends typed HBK IDs and records for BSL platform context,

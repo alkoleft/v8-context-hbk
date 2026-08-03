@@ -149,6 +149,38 @@ macro_rules! storage_view {
     };
 }
 
+macro_rules! snapshot_storage_view {
+    ($public:ident, $inner:ident, $owned:ty, $mapped:ty) => {
+        #[derive(Clone, Copy)]
+        pub struct $public<'a> {
+            inner: $inner<'a>,
+        }
+
+        #[derive(Clone, Copy)]
+        enum $inner<'a> {
+            Owned {
+                snapshot: &'a HbkFactSnapshot,
+                value: &'a $owned,
+            },
+            Mapped($mapped),
+        }
+
+        impl<'a> $public<'a> {
+            pub(super) fn owned(snapshot: &'a HbkFactSnapshot, value: &'a $owned) -> Self {
+                Self {
+                    inner: $inner::Owned { snapshot, value },
+                }
+            }
+
+            pub(super) fn mapped(value: $mapped) -> Self {
+                Self {
+                    inner: $inner::Mapped(value),
+                }
+            }
+        }
+    };
+}
+
 storage_view!(
     HbkPlatformTypeView,
     HbkPlatformTypeViewInner,
@@ -161,31 +193,31 @@ storage_view!(
     HbkMetadataTemplate,
     X1MetadataTemplateView<'a>
 );
-storage_view!(
+snapshot_storage_view!(
     HbkTypeMemberView,
     HbkTypeMemberViewInner,
     HbkTypeMember,
     X1TypeMemberView<'a>
 );
-storage_view!(
+snapshot_storage_view!(
     HbkCallableView,
     HbkCallableViewInner,
     HbkCallable,
     X1CallableView<'a>
 );
-storage_view!(
+snapshot_storage_view!(
     HbkSignatureView,
     HbkSignatureViewInner,
     HbkSignature,
     X1SignatureView<'a>
 );
-storage_view!(
+snapshot_storage_view!(
     HbkParameterView,
     HbkParameterViewInner,
     HbkParameter,
     X1ParameterView<'a>
 );
-storage_view!(
+snapshot_storage_view!(
     HbkGlobalFactView,
     HbkGlobalFactViewInner,
     HbkGlobalFact,
@@ -209,7 +241,7 @@ storage_view!(
     HbkQueryParameter,
     X1QueryParameterView<'a>
 );
-storage_view!(
+snapshot_storage_view!(
     HbkLanguageFactView,
     HbkLanguageFactViewInner,
     HbkLanguageFact,
@@ -308,7 +340,10 @@ pub struct HbkSignatureViewIter<'a> {
 }
 
 enum HbkSignatureViewIterInner<'a> {
-    Owned(std::slice::Iter<'a, HbkSignature>),
+    Owned {
+        snapshot: &'a HbkFactSnapshot,
+        values: std::slice::Iter<'a, HbkSignature>,
+    },
     Mapped(X1ViewIter<'a, X1SignatureHead, X1SignatureView<'a>>),
 }
 
@@ -317,7 +352,9 @@ impl<'a> Iterator for HbkSignatureViewIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.inner {
-            HbkSignatureViewIterInner::Owned(values) => values.next().map(HbkSignatureView::owned),
+            HbkSignatureViewIterInner::Owned { snapshot, values } => values
+                .next()
+                .map(|value| HbkSignatureView::owned(snapshot, value)),
             HbkSignatureViewIterInner::Mapped(values) => {
                 values.next().map(HbkSignatureView::mapped)
             }
@@ -333,7 +370,7 @@ impl<'a> Iterator for HbkSignatureViewIter<'a> {
 impl ExactSizeIterator for HbkSignatureViewIter<'_> {
     fn len(&self) -> usize {
         match &self.inner {
-            HbkSignatureViewIterInner::Owned(values) => values.len(),
+            HbkSignatureViewIterInner::Owned { values, .. } => values.len(),
             HbkSignatureViewIterInner::Mapped(values) => values.len(),
         }
     }
@@ -344,7 +381,10 @@ pub struct HbkParameterViewIter<'a> {
 }
 
 enum HbkParameterViewIterInner<'a> {
-    Owned(std::slice::Iter<'a, HbkParameter>),
+    Owned {
+        snapshot: &'a HbkFactSnapshot,
+        values: std::slice::Iter<'a, HbkParameter>,
+    },
     Mapped(X1ViewIter<'a, X1ParameterHead, X1ParameterView<'a>>),
 }
 
@@ -353,7 +393,9 @@ impl<'a> Iterator for HbkParameterViewIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.inner {
-            HbkParameterViewIterInner::Owned(values) => values.next().map(HbkParameterView::owned),
+            HbkParameterViewIterInner::Owned { snapshot, values } => values
+                .next()
+                .map(|value| HbkParameterView::owned(snapshot, value)),
             HbkParameterViewIterInner::Mapped(values) => {
                 values.next().map(HbkParameterView::mapped)
             }
@@ -369,7 +411,7 @@ impl<'a> Iterator for HbkParameterViewIter<'a> {
 impl ExactSizeIterator for HbkParameterViewIter<'_> {
     fn len(&self) -> usize {
         match &self.inner {
-            HbkParameterViewIterInner::Owned(values) => values.len(),
+            HbkParameterViewIterInner::Owned { values, .. } => values.len(),
             HbkParameterViewIterInner::Mapped(values) => values.len(),
         }
     }
@@ -412,19 +454,19 @@ impl ExactSizeIterator for HbkTemplateArgumentIter<'_> {
 impl<'a> HbkPlatformTypeView<'a> {
     pub fn id(self) -> StringId {
         match self.inner {
-            HbkPlatformTypeViewInner::Owned(v) => v.id,
+            HbkPlatformTypeViewInner::Owned(value) => value.id,
             HbkPlatformTypeViewInner::Mapped(v) => v.id(),
         }
     }
     pub fn name(self) -> HbkNameView<'a> {
         match self.inner {
-            HbkPlatformTypeViewInner::Owned(v) => HbkNameView::owned(&v.name),
+            HbkPlatformTypeViewInner::Owned(value) => HbkNameView::owned(&value.name),
             HbkPlatformTypeViewInner::Mapped(v) => HbkNameView::mapped(v.name()),
         }
     }
     pub fn metadata_template(self) -> Option<HbkMetadataTemplateView<'a>> {
         match self.inner {
-            HbkPlatformTypeViewInner::Owned(v) => v
+            HbkPlatformTypeViewInner::Owned(value) => value
                 .metadata_template
                 .as_ref()
                 .map(HbkMetadataTemplateView::owned),
@@ -435,13 +477,15 @@ impl<'a> HbkPlatformTypeView<'a> {
     }
     pub fn type_template_key(self) -> Option<HbkPlatformTypeTemplateKey> {
         match self.inner {
-            HbkPlatformTypeViewInner::Owned(v) => v.type_template_key,
+            HbkPlatformTypeViewInner::Owned(value) => value.type_template_key,
             HbkPlatformTypeViewInner::Mapped(v) => v.type_template_key(),
         }
     }
     pub fn availability_contexts(self) -> HbkStringIdIter<'a> {
         match self.inner {
-            HbkPlatformTypeViewInner::Owned(v) => HbkStringIdIter::owned(&v.availability_contexts),
+            HbkPlatformTypeViewInner::Owned(value) => {
+                HbkStringIdIter::owned(&value.availability_contexts)
+            }
             HbkPlatformTypeViewInner::Mapped(v) => {
                 HbkStringIdIter::mapped(v.availability_contexts())
             }
@@ -471,32 +515,40 @@ impl<'a> HbkMetadataTemplateView<'a> {
 impl<'a> HbkTypeMemberView<'a> {
     pub fn id(self) -> StringId {
         match self.inner {
-            HbkTypeMemberViewInner::Owned(v) => v.id,
+            HbkTypeMemberViewInner::Owned { value, .. } => value.id,
             HbkTypeMemberViewInner::Mapped(v) => v.id(),
         }
     }
     pub fn owner(self) -> HbkPlatformTypeId {
         match self.inner {
-            HbkTypeMemberViewInner::Owned(v) => v.owner,
+            HbkTypeMemberViewInner::Owned { value, .. } => value.owner,
             HbkTypeMemberViewInner::Mapped(v) => v.owner(),
         }
     }
     pub fn kind(self) -> HbkTypeMemberKind {
         match self.inner {
-            HbkTypeMemberViewInner::Owned(v) => v.kind,
+            HbkTypeMemberViewInner::Owned { value, .. } => value.kind,
             HbkTypeMemberViewInner::Mapped(v) => v.kind(),
         }
     }
     pub fn name(self) -> HbkNameView<'a> {
         match self.inner {
-            HbkTypeMemberViewInner::Owned(v) => HbkNameView::owned(&v.name),
+            HbkTypeMemberViewInner::Owned { value, .. } => HbkNameView::owned(&value.name),
             HbkTypeMemberViewInner::Mapped(v) => HbkNameView::mapped(v.name()),
+        }
+    }
+    pub(super) fn primary_name_str(self) -> &'a str {
+        match self.inner {
+            HbkTypeMemberViewInner::Owned { snapshot, value } => {
+                snapshot.string(value.name.primary)
+            }
+            HbkTypeMemberViewInner::Mapped(v) => v.primary_name_str(),
         }
     }
     pub fn type_refs(self) -> HbkTypeRefViewIter<'a> {
         match self.inner {
-            HbkTypeMemberViewInner::Owned(v) => HbkTypeRefViewIter {
-                inner: HbkTypeRefViewIterInner::Owned(v.type_refs.iter()),
+            HbkTypeMemberViewInner::Owned { value, .. } => HbkTypeRefViewIter {
+                inner: HbkTypeRefViewIterInner::Owned(value.type_refs.iter()),
             },
             HbkTypeMemberViewInner::Mapped(v) => HbkTypeRefViewIter {
                 inner: HbkTypeRefViewIterInner::Mapped(v.type_refs()),
@@ -505,7 +557,9 @@ impl<'a> HbkTypeMemberView<'a> {
     }
     pub fn availability_contexts(self) -> HbkStringIdIter<'a> {
         match self.inner {
-            HbkTypeMemberViewInner::Owned(v) => HbkStringIdIter::owned(&v.availability_contexts),
+            HbkTypeMemberViewInner::Owned { value, .. } => {
+                HbkStringIdIter::owned(&value.availability_contexts)
+            }
             HbkTypeMemberViewInner::Mapped(v) => HbkStringIdIter::mapped(v.availability_contexts()),
         }
     }
@@ -514,32 +568,41 @@ impl<'a> HbkTypeMemberView<'a> {
 impl<'a> HbkCallableView<'a> {
     pub fn id(self) -> StringId {
         match self.inner {
-            HbkCallableViewInner::Owned(v) => v.id,
+            HbkCallableViewInner::Owned { value, .. } => value.id,
             HbkCallableViewInner::Mapped(v) => v.id(),
         }
     }
     pub fn owner(self) -> Option<HbkPlatformTypeId> {
         match self.inner {
-            HbkCallableViewInner::Owned(v) => v.owner,
+            HbkCallableViewInner::Owned { value, .. } => value.owner,
             HbkCallableViewInner::Mapped(v) => v.owner(),
         }
     }
     pub fn kind(self) -> HbkCallableKind {
         match self.inner {
-            HbkCallableViewInner::Owned(v) => v.kind,
+            HbkCallableViewInner::Owned { value, .. } => value.kind,
             HbkCallableViewInner::Mapped(v) => v.kind(),
         }
     }
     pub fn name(self) -> HbkNameView<'a> {
         match self.inner {
-            HbkCallableViewInner::Owned(v) => HbkNameView::owned(&v.name),
+            HbkCallableViewInner::Owned { value, .. } => HbkNameView::owned(&value.name),
             HbkCallableViewInner::Mapped(v) => HbkNameView::mapped(v.name()),
+        }
+    }
+    pub(super) fn primary_name_str(self) -> &'a str {
+        match self.inner {
+            HbkCallableViewInner::Owned { snapshot, value } => snapshot.string(value.name.primary),
+            HbkCallableViewInner::Mapped(v) => v.primary_name_str(),
         }
     }
     pub fn signatures(self) -> HbkSignatureViewIter<'a> {
         match self.inner {
-            HbkCallableViewInner::Owned(v) => HbkSignatureViewIter {
-                inner: HbkSignatureViewIterInner::Owned(v.signatures.iter()),
+            HbkCallableViewInner::Owned { snapshot, value } => HbkSignatureViewIter {
+                inner: HbkSignatureViewIterInner::Owned {
+                    snapshot,
+                    values: value.signatures.iter(),
+                },
             },
             HbkCallableViewInner::Mapped(v) => HbkSignatureViewIter {
                 inner: HbkSignatureViewIterInner::Mapped(v.signatures()),
@@ -548,8 +611,8 @@ impl<'a> HbkCallableView<'a> {
     }
     pub fn return_type_refs(self) -> HbkTypeRefViewIter<'a> {
         match self.inner {
-            HbkCallableViewInner::Owned(v) => HbkTypeRefViewIter {
-                inner: HbkTypeRefViewIterInner::Owned(v.return_type_refs.iter()),
+            HbkCallableViewInner::Owned { value, .. } => HbkTypeRefViewIter {
+                inner: HbkTypeRefViewIterInner::Owned(value.return_type_refs.iter()),
             },
             HbkCallableViewInner::Mapped(v) => HbkTypeRefViewIter {
                 inner: HbkTypeRefViewIterInner::Mapped(v.return_type_refs()),
@@ -558,7 +621,9 @@ impl<'a> HbkCallableView<'a> {
     }
     pub fn availability_contexts(self) -> HbkStringIdIter<'a> {
         match self.inner {
-            HbkCallableViewInner::Owned(v) => HbkStringIdIter::owned(&v.availability_contexts),
+            HbkCallableViewInner::Owned { value, .. } => {
+                HbkStringIdIter::owned(&value.availability_contexts)
+            }
             HbkCallableViewInner::Mapped(v) => HbkStringIdIter::mapped(v.availability_contexts()),
         }
     }
@@ -567,14 +632,17 @@ impl<'a> HbkCallableView<'a> {
 impl<'a> HbkSignatureView<'a> {
     pub fn text(self) -> StringId {
         match self.inner {
-            HbkSignatureViewInner::Owned(v) => v.text,
+            HbkSignatureViewInner::Owned { value, .. } => value.text,
             HbkSignatureViewInner::Mapped(v) => v.text(),
         }
     }
     pub fn parameters(self) -> HbkParameterViewIter<'a> {
         match self.inner {
-            HbkSignatureViewInner::Owned(v) => HbkParameterViewIter {
-                inner: HbkParameterViewIterInner::Owned(v.parameters.iter()),
+            HbkSignatureViewInner::Owned { snapshot, value } => HbkParameterViewIter {
+                inner: HbkParameterViewIterInner::Owned {
+                    snapshot,
+                    values: value.parameters.iter(),
+                },
             },
             HbkSignatureViewInner::Mapped(v) => HbkParameterViewIter {
                 inner: HbkParameterViewIterInner::Mapped(v.parameters()),
@@ -583,8 +651,8 @@ impl<'a> HbkSignatureView<'a> {
     }
     pub fn return_type_refs(self) -> HbkTypeRefViewIter<'a> {
         match self.inner {
-            HbkSignatureViewInner::Owned(v) => HbkTypeRefViewIter {
-                inner: HbkTypeRefViewIterInner::Owned(v.return_type_refs.iter()),
+            HbkSignatureViewInner::Owned { value, .. } => HbkTypeRefViewIter {
+                inner: HbkTypeRefViewIterInner::Owned(value.return_type_refs.iter()),
             },
             HbkSignatureViewInner::Mapped(v) => HbkTypeRefViewIter {
                 inner: HbkTypeRefViewIterInner::Mapped(v.return_type_refs()),
@@ -596,20 +664,26 @@ impl<'a> HbkSignatureView<'a> {
 impl<'a> HbkParameterView<'a> {
     pub fn name(self) -> StringId {
         match self.inner {
-            HbkParameterViewInner::Owned(v) => v.name,
+            HbkParameterViewInner::Owned { value, .. } => value.name,
             HbkParameterViewInner::Mapped(v) => v.name(),
+        }
+    }
+    pub(super) fn name_str(self) -> &'a str {
+        match self.inner {
+            HbkParameterViewInner::Owned { snapshot, value } => snapshot.string(value.name),
+            HbkParameterViewInner::Mapped(v) => v.name_str(),
         }
     }
     pub fn required(self) -> bool {
         match self.inner {
-            HbkParameterViewInner::Owned(v) => v.required,
+            HbkParameterViewInner::Owned { value, .. } => value.required,
             HbkParameterViewInner::Mapped(v) => v.required(),
         }
     }
     pub fn type_refs(self) -> HbkTypeRefViewIter<'a> {
         match self.inner {
-            HbkParameterViewInner::Owned(v) => HbkTypeRefViewIter {
-                inner: HbkTypeRefViewIterInner::Owned(v.type_refs.iter()),
+            HbkParameterViewInner::Owned { value, .. } => HbkTypeRefViewIter {
+                inner: HbkTypeRefViewIterInner::Owned(value.type_refs.iter()),
             },
             HbkParameterViewInner::Mapped(v) => HbkTypeRefViewIter {
                 inner: HbkTypeRefViewIterInner::Mapped(v.type_refs()),
@@ -621,38 +695,46 @@ impl<'a> HbkParameterView<'a> {
 impl<'a> HbkGlobalFactView<'a> {
     pub fn id(self) -> StringId {
         match self.inner {
-            HbkGlobalFactViewInner::Owned(v) => v.id,
+            HbkGlobalFactViewInner::Owned { value, .. } => value.id,
             HbkGlobalFactViewInner::Mapped(v) => v.id(),
         }
     }
     pub fn kind(self) -> HbkGlobalFactKind {
         match self.inner {
-            HbkGlobalFactViewInner::Owned(v) => v.kind,
+            HbkGlobalFactViewInner::Owned { value, .. } => value.kind,
             HbkGlobalFactViewInner::Mapped(v) => v.kind(),
         }
     }
     pub fn domain(self) -> HbkLanguageDomain {
         match self.inner {
-            HbkGlobalFactViewInner::Owned(v) => v.domain,
+            HbkGlobalFactViewInner::Owned { value, .. } => value.domain,
             HbkGlobalFactViewInner::Mapped(v) => v.domain(),
         }
     }
     pub fn name(self) -> HbkNameView<'a> {
         match self.inner {
-            HbkGlobalFactViewInner::Owned(v) => HbkNameView::owned(&v.name),
+            HbkGlobalFactViewInner::Owned { value, .. } => HbkNameView::owned(&value.name),
             HbkGlobalFactViewInner::Mapped(v) => HbkNameView::mapped(v.name()),
+        }
+    }
+    pub(super) fn primary_name_str(self) -> &'a str {
+        match self.inner {
+            HbkGlobalFactViewInner::Owned { snapshot, value } => {
+                snapshot.string(value.name.primary)
+            }
+            HbkGlobalFactViewInner::Mapped(v) => v.primary_name_str(),
         }
     }
     pub fn callable(self) -> Option<HbkCallableId> {
         match self.inner {
-            HbkGlobalFactViewInner::Owned(v) => v.callable,
+            HbkGlobalFactViewInner::Owned { value, .. } => value.callable,
             HbkGlobalFactViewInner::Mapped(v) => v.callable(),
         }
     }
     pub fn type_refs(self) -> HbkTypeRefViewIter<'a> {
         match self.inner {
-            HbkGlobalFactViewInner::Owned(v) => HbkTypeRefViewIter {
-                inner: HbkTypeRefViewIterInner::Owned(v.type_refs.iter()),
+            HbkGlobalFactViewInner::Owned { value, .. } => HbkTypeRefViewIter {
+                inner: HbkTypeRefViewIterInner::Owned(value.type_refs.iter()),
             },
             HbkGlobalFactViewInner::Mapped(v) => HbkTypeRefViewIter {
                 inner: HbkTypeRefViewIterInner::Mapped(v.type_refs()),
@@ -787,32 +869,35 @@ impl<'a> HbkQueryParameterView<'a> {
 impl<'a> HbkLanguageFactView<'a> {
     pub fn id(self) -> StringId {
         match self.inner {
-            HbkLanguageFactViewInner::Owned(v) => v.id,
+            HbkLanguageFactViewInner::Owned { value, .. } => value.id,
             HbkLanguageFactViewInner::Mapped(v) => v.id(),
         }
     }
     pub fn kind(self) -> SearchDocumentKind {
         match self.inner {
-            HbkLanguageFactViewInner::Owned(v) => v.kind,
+            HbkLanguageFactViewInner::Owned { value, .. } => value.kind,
             HbkLanguageFactViewInner::Mapped(v) => v.kind(),
         }
     }
     pub fn domain(self) -> HbkLanguageDomain {
         match self.inner {
-            HbkLanguageFactViewInner::Owned(v) => v.domain,
+            HbkLanguageFactViewInner::Owned { value, .. } => value.domain,
             HbkLanguageFactViewInner::Mapped(v) => v.domain(),
         }
     }
     pub fn name(self) -> HbkNameView<'a> {
         match self.inner {
-            HbkLanguageFactViewInner::Owned(v) => HbkNameView::owned(&v.name),
+            HbkLanguageFactViewInner::Owned { value, .. } => HbkNameView::owned(&value.name),
             HbkLanguageFactViewInner::Mapped(v) => HbkNameView::mapped(v.name()),
         }
     }
     pub fn signatures(self) -> HbkSignatureViewIter<'a> {
         match self.inner {
-            HbkLanguageFactViewInner::Owned(v) => HbkSignatureViewIter {
-                inner: HbkSignatureViewIterInner::Owned(v.signatures.iter()),
+            HbkLanguageFactViewInner::Owned { snapshot, value } => HbkSignatureViewIter {
+                inner: HbkSignatureViewIterInner::Owned {
+                    snapshot,
+                    values: value.signatures.iter(),
+                },
             },
             HbkLanguageFactViewInner::Mapped(v) => HbkSignatureViewIter {
                 inner: HbkSignatureViewIterInner::Mapped(v.signatures()),
@@ -821,8 +906,8 @@ impl<'a> HbkLanguageFactView<'a> {
     }
     pub fn type_refs(self) -> HbkTypeRefViewIter<'a> {
         match self.inner {
-            HbkLanguageFactViewInner::Owned(v) => HbkTypeRefViewIter {
-                inner: HbkTypeRefViewIterInner::Owned(v.type_refs.iter()),
+            HbkLanguageFactViewInner::Owned { value, .. } => HbkTypeRefViewIter {
+                inner: HbkTypeRefViewIterInner::Owned(value.type_refs.iter()),
             },
             HbkLanguageFactViewInner::Mapped(v) => HbkTypeRefViewIter {
                 inner: HbkTypeRefViewIterInner::Mapped(v.type_refs()),
@@ -831,8 +916,8 @@ impl<'a> HbkLanguageFactView<'a> {
     }
     pub fn return_type_refs(self) -> HbkTypeRefViewIter<'a> {
         match self.inner {
-            HbkLanguageFactViewInner::Owned(v) => HbkTypeRefViewIter {
-                inner: HbkTypeRefViewIterInner::Owned(v.return_type_refs.iter()),
+            HbkLanguageFactViewInner::Owned { value, .. } => HbkTypeRefViewIter {
+                inner: HbkTypeRefViewIterInner::Owned(value.return_type_refs.iter()),
             },
             HbkLanguageFactViewInner::Mapped(v) => HbkTypeRefViewIter {
                 inner: HbkTypeRefViewIterInner::Mapped(v.return_type_refs()),

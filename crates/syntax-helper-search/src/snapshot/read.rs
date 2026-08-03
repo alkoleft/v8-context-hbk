@@ -974,19 +974,19 @@ impl<'a> HbkFactReadHandle<'a> {
     }
     pub fn type_member(self, id: HbkTypeMemberId) -> HbkTypeMemberView<'a> {
         self.mapped().map_or_else(
-            || HbkTypeMemberView::owned(&self.snapshot.type_members[id.0 as usize]),
+            || HbkTypeMemberView::owned(self.snapshot, &self.snapshot.type_members[id.0 as usize]),
             |mapped| HbkTypeMemberView::mapped(mapped.type_member(id)),
         )
     }
     pub fn callable(self, id: HbkCallableId) -> HbkCallableView<'a> {
         self.mapped().map_or_else(
-            || HbkCallableView::owned(&self.snapshot.callables[id.0 as usize]),
+            || HbkCallableView::owned(self.snapshot, &self.snapshot.callables[id.0 as usize]),
             |mapped| HbkCallableView::mapped(mapped.callable(id)),
         )
     }
     pub fn global_fact(self, id: HbkGlobalFactId) -> HbkGlobalFactView<'a> {
         self.mapped().map_or_else(
-            || HbkGlobalFactView::owned(&self.snapshot.globals[id.0 as usize]),
+            || HbkGlobalFactView::owned(self.snapshot, &self.snapshot.globals[id.0 as usize]),
             |mapped| HbkGlobalFactView::mapped(mapped.global(id)),
         )
     }
@@ -1010,7 +1010,12 @@ impl<'a> HbkFactReadHandle<'a> {
     }
     pub fn language_fact(self, id: HbkLanguageFactId) -> HbkLanguageFactView<'a> {
         self.mapped().map_or_else(
-            || HbkLanguageFactView::owned(&self.snapshot.language_facts[id.0 as usize]),
+            || {
+                HbkLanguageFactView::owned(
+                    self.snapshot,
+                    &self.snapshot.language_facts[id.0 as usize],
+                )
+            },
             |mapped| HbkLanguageFactView::mapped(mapped.language_fact(id)),
         )
     }

@@ -1482,6 +1482,10 @@ impl<'a> X1TypeMemberView<'a> {
         }
     }
 
+    pub(super) fn primary_name_str(self) -> &'a str {
+        self.handle.string(self.head.name.primary)
+    }
+
     pub(super) fn type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
         X1ViewIter::new(
@@ -1516,6 +1520,10 @@ impl<'a> X1CallableView<'a> {
         X1NameView {
             head: self.head.name,
         }
+    }
+
+    pub(super) fn primary_name_str(self) -> &'a str {
+        self.handle.string(self.head.name.primary)
     }
 
     pub(super) fn signatures(self) -> X1ViewIter<'a, X1SignatureHead, X1SignatureView<'a>> {
@@ -1582,6 +1590,10 @@ impl<'a> X1ParameterView<'a> {
         self.head.name
     }
 
+    pub(super) fn name_str(self) -> &'a str {
+        self.handle.string(self.head.name)
+    }
+
     pub(super) fn required(self) -> bool {
         self.head.required
     }
@@ -1614,6 +1626,10 @@ impl<'a> X1GlobalFactView<'a> {
         X1NameView {
             head: self.head.name,
         }
+    }
+
+    pub(super) fn primary_name_str(self) -> &'a str {
+        self.handle.string(self.head.name.primary)
     }
 
     pub(super) fn callable(self) -> Option<HbkCallableId> {
@@ -6057,10 +6073,212 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+    use v8_context_semantic_entities::{
+        ArgumentCountMatch, CallableKind, CallableView, ParameterPassing, ParameterRequirement,
+        ParameterView, PropertyKind, PropertyView, SemanticOrigin, SemanticOwnerKind,
+        SignatureView, TypeDeclarationView, match_argument_count,
+    };
 
     #[cfg(feature = "snapshot-experiment-alloc")]
     #[global_allocator]
     static X1_TEST_ALLOCATOR: HbkSnapshotExperimentAllocator = HbkSnapshotExperimentAllocator;
+
+    #[test]
+    fn semantic_roles_have_owned_and_mapped_parity() {
+        let root = temp_path("x1-semantic-role-parity");
+        let slot = root.join("slot");
+        let identity = test_identity();
+        let owned = forward_payload_fixture_snapshot();
+        let bytes = encode_snapshot_with_identity(&owned, &identity).unwrap();
+        write_content_addressed_test_slot(&slot, &bytes);
+        let mapped = HbkFactSnapshot::open(&slot, &runtime_expectation(&identity)).unwrap();
+        let owned_read = owned.worker_handle();
+        let mapped_read = mapped.worker_handle();
+
+        let owned_callable = owned_read.callable(HbkCallableId(0));
+        let mapped_callable = mapped_read.callable(HbkCallableId(0));
+        assert_eq!(CallableView::name(&owned_callable), "ServerMethodCallable");
+        assert_eq!(
+            CallableView::name(&owned_callable),
+            CallableView::name(&mapped_callable)
+        );
+        assert_eq!(
+            CallableView::origin(&owned_callable),
+            SemanticOrigin::Platform
+        );
+        assert_eq!(
+            CallableView::owner_kind(&owned_callable),
+            SemanticOwnerKind::PlatformType
+        );
+        assert_eq!(
+            CallableView::owner(&owned_callable),
+            Some(HbkPlatformTypeId(0))
+        );
+        assert_eq!(
+            CallableView::owner(&owned_callable),
+            CallableView::owner(&mapped_callable)
+        );
+        assert_eq!(
+            CallableView::callable_kind(&owned_callable),
+            CallableKind::Method
+        );
+        assert_eq!(
+            CallableView::callable_kind(&owned_callable),
+            CallableView::callable_kind(&mapped_callable)
+        );
+        assert!(std::ptr::eq(
+            CallableView::name(&owned_callable).as_ptr(),
+            owned.string(owned.callables[0].name.primary).as_ptr()
+        ));
+
+        let mut owned_signatures = CallableView::signatures(&owned_callable);
+        let mut mapped_signatures = CallableView::signatures(&mapped_callable);
+        assert_eq!(owned_signatures.len(), 1);
+        assert_eq!(owned_signatures.len(), mapped_signatures.len());
+        let owned_signature = owned_signatures.next().unwrap();
+        let mapped_signature = mapped_signatures.next().unwrap();
+        assert_eq!(
+            SignatureView::declared_result_types(&owned_signature)
+                .map(HbkTypeRefView::name)
+                .collect::<Vec<_>>(),
+            SignatureView::declared_result_types(&mapped_signature)
+                .map(HbkTypeRefView::name)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            match_argument_count(&owned_signature, 0),
+            ArgumentCountMatch::DoesNotMatch
+        );
+        assert_eq!(
+            match_argument_count(&owned_signature, 1),
+            ArgumentCountMatch::Matches
+        );
+        assert_eq!(
+            match_argument_count(&owned_signature, 2),
+            ArgumentCountMatch::DoesNotMatch
+        );
+        assert_eq!(
+            match_argument_count(&owned_signature, 1),
+            match_argument_count(&mapped_signature, 1)
+        );
+
+        let mut owned_parameters = SignatureView::parameters(&owned_signature);
+        let mut mapped_parameters = SignatureView::parameters(&mapped_signature);
+        assert_eq!(owned_parameters.len(), mapped_parameters.len());
+        let owned_parameter = owned_parameters.next().unwrap();
+        let mapped_parameter = mapped_parameters.next().unwrap();
+        assert_eq!(ParameterView::name(&owned_parameter), "Value");
+        assert_eq!(
+            ParameterView::name(&owned_parameter),
+            ParameterView::name(&mapped_parameter)
+        );
+        assert_eq!(
+            ParameterView::requirement(&owned_parameter),
+            ParameterRequirement::Required
+        );
+        assert_eq!(
+            ParameterView::passing(&owned_parameter),
+            ParameterPassing::SourceUnspecified
+        );
+        assert_eq!(
+            ParameterView::declared_types(&owned_parameter)
+                .map(HbkTypeRefView::name)
+                .collect::<Vec<_>>(),
+            ParameterView::declared_types(&mapped_parameter)
+                .map(HbkTypeRefView::name)
+                .collect::<Vec<_>>()
+        );
+
+        let owned_member = owned_read.type_member(HbkTypeMemberId(0));
+        let mapped_member = mapped_read.type_member(HbkTypeMemberId(0));
+        let owned_property = owned_member.property_role().unwrap();
+        let mapped_property = mapped_member.property_role().unwrap();
+        assert_eq!(PropertyView::name(&owned_property), "Value");
+        assert_eq!(
+            PropertyView::name(&owned_property),
+            PropertyView::name(&mapped_property)
+        );
+        assert_eq!(
+            PropertyView::origin(&owned_property),
+            SemanticOrigin::Platform
+        );
+        assert_eq!(
+            PropertyView::owner_kind(&owned_property),
+            SemanticOwnerKind::PlatformType
+        );
+        assert_eq!(
+            PropertyView::owner(&owned_property),
+            Some(HbkPlatformTypeId(0))
+        );
+        assert_eq!(
+            PropertyView::property_kind(&owned_property),
+            PropertyKind::Property
+        );
+        assert_eq!(
+            PropertyView::declared_types(&owned_property)
+                .map(HbkTypeRefView::name)
+                .collect::<Vec<_>>(),
+            PropertyView::declared_types(&mapped_property)
+                .map(HbkTypeRefView::name)
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            owned_read
+                .type_member(HbkTypeMemberId(1))
+                .property_role()
+                .is_none()
+        );
+
+        let owned_global = owned_read.global_fact(HbkGlobalFactId(2));
+        let mapped_global = mapped_read.global_fact(HbkGlobalFactId(2));
+        let owned_global_property = owned_global.property_role().unwrap();
+        let mapped_global_property = mapped_global.property_role().unwrap();
+        assert_eq!(PropertyView::name(&owned_global_property), "ThinGlobal");
+        assert_eq!(
+            PropertyView::name(&owned_global_property),
+            PropertyView::name(&mapped_global_property)
+        );
+        assert_eq!(
+            PropertyView::owner_kind(&owned_global_property),
+            SemanticOwnerKind::GlobalContext
+        );
+        assert_eq!(PropertyView::owner(&owned_global_property), None);
+        assert!(
+            owned_read
+                .global_fact(HbkGlobalFactId(0))
+                .property_role()
+                .is_none()
+        );
+
+        let owned_type = owned_read.platform_type(HbkPlatformTypeId(0));
+        let mapped_type = mapped_read.platform_type(HbkPlatformTypeId(0));
+        assert_eq!(
+            TypeDeclarationView::name(&owned_type).primary(),
+            TypeDeclarationView::name(&mapped_type).primary()
+        );
+        assert_eq!(TypeDeclarationView::owner(&owned_type), owned_type.id());
+        assert_eq!(
+            TypeDeclarationView::owner(&owned_type),
+            TypeDeclarationView::owner(&mapped_type)
+        );
+        assert_eq!(
+            TypeDeclarationView::owner_kind(&owned_type),
+            SemanticOwnerKind::PlatformType
+        );
+
+        let mut non_bsl = forward_payload_fixture_snapshot();
+        non_bsl.globals[2].domain = HbkLanguageDomain::Query;
+        assert!(
+            non_bsl
+                .worker_handle()
+                .global_fact(HbkGlobalFactId(2))
+                .property_role()
+                .is_none()
+        );
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn canonical_open_and_artifact_layout_reject_provider_fallbacks_and_projected_sections() {

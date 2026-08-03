@@ -17,7 +17,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.2.5"
+version = "0.2.6"
 edition = "2024"
 
 [workspace.dependencies]
@@ -46,5 +46,6 @@ syntax-helper-language = { path = "crates/syntax-helper-language" }
 syntax-helper-model = { path = "crates/syntax-helper-model" }
 syntax-helper-search = { path = "crates/syntax-helper-search" }
 thiserror = "2.0.17"
+v8-context-semantic-entities = { path = "../v8-context-semantic-entities" }
 winnow = "1.0.2"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

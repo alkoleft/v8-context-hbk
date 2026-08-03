@@ -15,3 +15,4 @@ strsim.workspace = true
 syntax-helper-language.workspace = true
 syntax-helper-model.workspace = true
 thiserror.workspace = true
+v8-context-semantic-entities.workspace = true
