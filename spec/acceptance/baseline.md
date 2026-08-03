@@ -3135,6 +3135,14 @@ Missing/corrupt/oversized/non-regular/symlink slot components и ancestors
 fail-closed; X1 открывается после удаления source HBK и provider SQLite без
 fallback. X1 остаётся private и non-canonical до X1-INT.
 
+Task 4.1 добавил stable-slot compatibility matrix: package tests `106/106`,
+полный workspace, package clippy, fmt, strict OpenSpec и независимый review
+прошли. Exact platform/locale/source-locale/source-SHA mismatch возвращает
+typed compatibility field. Magic/layout/extraction/provider schema,
+truncation/checksum/section corruption сначала проходят корректные discovery и
+content-address checks, затем отклоняются общим full byte-validator. Lifecycle
+3.5 остаётся единственным runtime boundary; X1 всё ещё private/non-canonical.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

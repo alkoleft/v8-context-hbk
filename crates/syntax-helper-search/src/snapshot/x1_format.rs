@@ -6581,6 +6581,109 @@ mod tests {
     }
 
     #[test]
+    fn x1_slot_reports_each_runtime_compatibility_mismatch_without_fallback() {
+        let root = temp_path("x1-slot-compatibility");
+        let slot = root.join("slot");
+        let (report, identity, _, _) =
+            fixture_build_report(&root.join("input"), b"compatibility source");
+        report.publish_x1_generation(&slot).unwrap();
+
+        let mut wrong_platform = runtime_expectation(&identity);
+        wrong_platform.platform_version = "8.3.27.1860".to_string();
+        let mut wrong_locale = runtime_expectation(&identity);
+        wrong_locale.locale = "en".to_string();
+        let mut wrong_source_locale = runtime_expectation(&identity);
+        wrong_source_locale.source_locale = "en".to_string();
+        let mut wrong_source = runtime_expectation(&identity);
+        wrong_source.source_sha256 = "2".repeat(SHA256_HEX_LEN);
+
+        for (field, expectation) in [
+            ("platform_version", wrong_platform),
+            ("locale", wrong_locale),
+            ("source_locale", wrong_source_locale),
+            ("source_sha256", wrong_source),
+        ] {
+            let Err(error) = X1StableSlotGeneration::open(&slot, &expectation) else {
+                panic!("incompatible stable slot must fail closed");
+            };
+            assert!(matches!(
+                error,
+                SearchError::SnapshotArtifact {
+                    source: HbkFactSnapshotArtifactError::CompatibilityMismatch {
+                        field: actual,
+                        ..
+                    },
+                    ..
+                } if actual == field
+            ));
+        }
+
+        let first = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
+        let second = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
+        assert_eq!(first.generation.identity, identity);
+        assert_eq!(second.generation.identity, identity);
+
+        drop(first);
+        drop(second);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_slot_routes_format_corruption_through_the_full_byte_validator() {
+        let root = temp_path("x1-slot-validator-matrix");
+        let identity = test_identity();
+        let bytes = encode_snapshot_with_identity(&fixture_snapshot(), &identity).unwrap();
+        let mut corruptions = Vec::new();
+
+        let mut magic = bytes.clone();
+        magic[0] = b'X';
+        corruptions.push(("magic", magic));
+
+        let mut layout = bytes.clone();
+        layout[8..12].copy_from_slice(&(LAYOUT_VERSION + 1).to_le_bytes());
+        corruptions.push(("layout", layout));
+
+        let mut extraction_schema = bytes.clone();
+        extraction_schema[12..16].copy_from_slice(&(SUPPORTED_EXTRACTION_SCHEMA + 1).to_le_bytes());
+        corruptions.push(("extraction-schema", extraction_schema));
+
+        let mut provider_schema = bytes.clone();
+        provider_schema[16..20].copy_from_slice(&(SUPPORTED_PROVIDER_SCHEMA + 1).to_le_bytes());
+        corruptions.push(("provider-schema", provider_schema));
+
+        corruptions.push(("truncated", bytes[..bytes.len() - 1].to_vec()));
+
+        let mut checksum = bytes.clone();
+        let last = checksum.len() - 1;
+        checksum[last] ^= 0x55;
+        corruptions.push(("checksum", checksum));
+
+        let mut section = bytes;
+        let first_offset = read_u64_at(&section, HEADER_LEN).unwrap();
+        section[HEADER_LEN..HEADER_LEN + 8].copy_from_slice(&(first_offset + 1).to_le_bytes());
+        corruptions.push(("section", section));
+
+        for (name, corrupt) in corruptions {
+            let slot = root.join(name);
+            let generation = write_content_addressed_test_slot(&slot, &corrupt);
+            validate_generation_content_address(&generation).unwrap();
+            assert_eq!(
+                read_current_pointer(&slot.join(X1_SLOT_CURRENT_FILE)).unwrap(),
+                generation.file_name().unwrap().to_string_lossy()
+            );
+            assert!(matches!(
+                X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)),
+                Err(SearchError::SnapshotArtifact {
+                    source: HbkFactSnapshotArtifactError::Invalid { .. },
+                    ..
+                })
+            ));
+        }
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn x1_slot_reader_rejects_missing_non_regular_and_corrupt_components() {
         let root = temp_path("x1-slot-invalid-components");
         let slot = root.join("slot");
@@ -8833,6 +8936,20 @@ mod tests {
         #[cfg(not(unix))]
         permissions.set_readonly(false);
         fs::set_permissions(path, permissions).unwrap();
+    }
+
+    fn write_content_addressed_test_slot(slot: &Path, bytes: &[u8]) -> PathBuf {
+        let generations = slot.join(X1_SLOT_GENERATIONS_DIR);
+        fs::create_dir_all(&generations).unwrap();
+        fs::write(slot.join(X1_SLOT_LOCK_FILE), b"").unwrap();
+        let generation_name = generation_file_name(&bytes_sha256(bytes)).unwrap();
+        let generation = generations.join(&generation_name);
+        write_readonly_artifact(&generation, bytes);
+        write_readonly_artifact(
+            &slot.join(X1_SLOT_CURRENT_FILE),
+            format!("{generation_name}\n").as_bytes(),
+        );
+        generation
     }
 
     fn slot_generation_names(slot: &Path) -> Vec<String> {

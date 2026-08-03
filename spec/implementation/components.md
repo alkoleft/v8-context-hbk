@@ -1186,6 +1186,13 @@ Private reader продолжает работать после удаления
 fallback. Public runtime owner и catalog integration всё ещё запрещены до
 полной compatibility/lifecycle matrix 4.1 и последующих X1-INT slices.
 
+OpenSpec 4.1 подтвердил compatibility/lifecycle matrix именно через stable-slot
+boundary: exact platform/locale/source mismatches сохраняют typed field,
+corrupt magic/layout/schema/checksum/section проходит корректные discovery и
+content-address guards, но отклоняется единым full byte-validator. Повторные и
+concurrent sessions используют один lifecycle; local IDs не получают durable
+семантики. Следующий component gate — full-corpus storage parity 4.2.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

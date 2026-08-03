@@ -356,7 +356,12 @@ type-reference conclusions live in
     все три crash window сохраняют valid old-or-new recovery, а open после
     удаления HBK/SQLite не имеет fallback. Package tests `104/104`, полный
     workspace, package clippy, strict OpenSpec и независимое review прошли.
-    Следующий активный пункт — 4.1, полная compatibility/lifecycle matrix.
+    OpenSpec 4.1 завершён: stable-slot matrix возвращает точные compatibility
+    fields для platform/locale/source mismatch, а content-addressed
+    magic/layout/schema/truncation/checksum/section corruptions проходят
+    discovery guards и отклоняются общим byte-validator. Package tests
+    `106/106`, полный workspace, package clippy, strict OpenSpec и независимое
+    review прошли. Следующий активный пункт — 4.2, full-corpus storage parity.
     T183 остаётся открытой на implementation/X1-INT; canonical
     cutover и garbage cleanup условны и выполняются отдельными milestones.
 

@@ -801,3 +801,20 @@ lifecycle boundary.
 - Commit gate: package/workspace tests, package clippy, fmt, strict OpenSpec,
   diff check и независимый review. X1 остаётся private/non-canonical; следующий
   slice 4.2 проверяет полный production corpus, а не fixture-only counts.
+
+### Результат OpenSpec 4.1
+
+Stable-slot compatibility/lifecycle matrix завершена. На valid published
+generation отдельные opens возвращают точный `CompatibilityMismatch` для
+platform version, locale, source locale и HBK SHA без rebuild/fallback. Для
+magic, layout, extraction/provider schema, truncation, payload checksum и
+section corruption тест сначала отдельно доказывает успешные pointer discovery
+и content-address validation, а затем получает `Invalid` от общего full
+byte-validator через private stable-slot open.
+
+Матрица переиспользует lifecycle evidence 3.5 для concurrent/repeated sessions,
+fail-fast replacement, atomic publication и нового generation после source
+replacement; numeric session-local IDs не сравниваются и не мигрируются.
+Package tests `106/106`, полный workspace, package clippy, fmt, strict OpenSpec,
+diff check и независимый review прошли. X1 остаётся private/non-canonical.
+Следующий slice — 4.2 full-corpus storage parity на frozen S83 input.

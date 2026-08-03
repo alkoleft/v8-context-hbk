@@ -179,6 +179,8 @@ search/debug artifact. Решение удаляет его только из an
 - [x] Stable-slot shared-reader/fail-fast-writer lifecycle и atomic immutable
       generation publication реализованы; public runtime open остаётся закрыт
       до X1-INT compatibility/catalog integration.
+- [x] Stable-slot compatibility/lifecycle matrix проверяет все identity/version
+      mismatch и corruption classes через единый full validator.
 - [ ] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
 - [ ] X1 проходит все X1-INT performance/resource gates.
 - [ ] Canonical cutover и последующий scoped cleanup завершены отдельными
