@@ -351,5 +351,83 @@ Header подтвердил исходный HBK SHA-256
 `5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`
 и provider SHA-256
 `317f3cdd914e635c89b975bf9ebcf28238bdbabd54e455121a083558d4e05f5e`.
-Следующий последовательный slice — OpenSpec 3.2, immutable mmap-open поверх
-того же validator без второй ослабленной проверки.
+Следующий последовательный slice 3.2 зафиксирован ниже и завершён: immutable
+mmap-open переиспользует тот же validator без второй ослабленной проверки.
+
+## Task-local plan: OpenSpec 3.2 — validated mmap generation
+
+Этот slice добавляет низкоуровневого владельца отображённого X1 generation,
+но ещё не делает его публичным `HbkFactSnapshot` runtime и не открывает
+entity/catalog access. Такое разделение необходимо: полный существующий
+`HbkFactReadHandle` становится mapped только в задачах 3.3–3.4, а безопасный
+межпроцессный lifecycle со stable-slot lock — в задаче 3.5.
+
+### Контракт slice
+
+1. Закрытый `snapshot/x1_format.rs` владеет `memmap2::Mmap`, исходным read-only
+   `File`, проверенным directory/counts и compatibility identity. Section IDs,
+   offsets, raw records и mmap не экспортируются из snapshot module.
+2. Open принимает явный generation path и runtime expectation: точные platform
+   version, locale, source locale и SHA-256 выбранного HBK. Он не читает HBK или
+   SQLite, не вызывает `SearchIndex`, owned materialization/binary cache и не
+   выполняет fallback/rebuild.
+3. Сначала проверяются обычный файл, read-only permissions и заявленный размер,
+   затем создаётся read-only file mapping. До сохранения какого-либо typed
+   доступа вызывается тот же полный `validate_mmap_expected`; отдельного
+   облегчённого runtime-validator нет. Header/compatibility metadata обязаны
+   совпасть с runtime expectation, а provider identity проверяется на внутреннюю
+   согласованность artifact без доступа к provider input.
+4. В этом slice mapping доступен только внутри format module и его behavior
+   tests. Без shared stable-slot lock он является low-level building block для
+   гарантированно неизменяемого explicit generation path, а не законченным
+   concurrent runtime API. Safe public `HbkFactSnapshot::open` появляется
+   только после 3.3–3.5; 3.2 не заявляет защиту от внешнего truncate/chmod/write.
+5. Ошибки filesystem/map сохраняют path и source; повреждение или
+   compatibility mismatch возвращаются отдельной typed snapshot-artifact
+   ошибкой. Invalid open ничего не изменяет и не запускает setup.
+
+### Non-goals и guards
+
+- Не добавлять catalog/entity views, dictionary lookup, availability traversal,
+  slot/current pointer, locks, publication, ensure/rebuild или consumer switch.
+- Не добавлять второй публичный snapshot owner, mapped DTO/record family,
+  `X1-PROJECTED`, experiment API или owned fallback.
+- Единственный `unsafe` участок — file-backed mmap constructor с `SAFETY`
+  контрактом immutable generation; raw struct casts/transmute не используются.
+- Runtime-open path source scan не находит `SearchIndex`, HBK reader,
+  `from_path`, `from_index`, `from_path_with_binary_cache` или owned graph
+  construction.
+
+### Behavior tests и commit gate
+
+- Mapping живёт вместе с private owner, проходит full validator и даёт те же
+  counts/identity, что standalone byte validation.
+- Open проходит после удаления/недоступности SQLite и HBK inputs.
+- Open отклоняет writable/non-regular generation, неверные magic/layout/schema,
+  platform/locale/source-locale/source-SHA expectation, truncation, checksum и
+  section corruption.
+- Отдельный test подтверждает, что validation failure не возвращает mapping;
+  borrow/lifetime typed views в 3.2 ещё отсутствуют и поэтому не могут пережить
+  owner.
+- `cargo fmt --check`, focused mmap tests, package tests/clippy, full workspace
+  tests, strict OpenSpec validation, `git diff --check`, unsafe/skeptic/code
+  review проходят до отметки 3.2 отдельным commit.
+
+### Результат OpenSpec 3.2
+
+Закрытый `X1MappedGeneration` удерживает исходный read-only `File`,
+`memmap2::Mmap`, проверенный directory/counts и compatibility identity. Open
+проверяет regular/read-only metadata до и после mapping, повторно использует
+полный task 3.1 validator и отдельно сверяет runtime expectation по platform
+version, locale, source locale и HBK SHA-256. Corruption и compatibility
+mismatch отделены от filesystem/map ошибок типом snapshot-artifact error.
+
+Mapping ещё не экспортирован как `HbkFactSnapshot::open`: его `unsafe` boundary
+явно требует неизменяемости explicit generation на всё время жизни owner, что
+в production будет обеспечено stable-slot shared lock в 3.5. В этом slice нет
+typed entity views, SQL/HBK access, owned materialization, fallback, rebuild,
+publication или consumer switching. Focused tests и полный workspace подтвердили
+magic/layout/schema, expectation, truncation/checksum/section, writable и
+non-regular negative cases; независимые unsafe/code/skeptic reviews не нашли
+блокеров. Следующий slice — OpenSpec 3.3, borrowed payload access внутри
+единственного snapshot/read-handle interface.

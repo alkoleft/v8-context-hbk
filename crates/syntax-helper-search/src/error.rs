@@ -55,6 +55,24 @@ pub enum SearchError {
         path: PathBuf,
         key: &'static str,
     },
+    #[error("invalid HBK fact snapshot artifact '{}': {source}", path.display())]
+    SnapshotArtifact {
+        path: PathBuf,
+        #[source]
+        source: HbkFactSnapshotArtifactError,
+    },
+}
+
+#[derive(Debug, Error)]
+pub enum HbkFactSnapshotArtifactError {
+    #[error("{message}")]
+    Invalid { message: String },
+    #[error("compatibility mismatch for {field}: expected '{expected}', got '{actual}'")]
+    CompatibilityMismatch {
+        field: &'static str,
+        expected: String,
+        actual: String,
+    },
 }
 
 impl SearchError {

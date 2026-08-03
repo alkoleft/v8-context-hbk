@@ -337,7 +337,13 @@ type-reference conclusions live in
     read-only artifact `12,430,416` bytes с SHA-256
     `0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`
     на frozen input и не включает его как runtime source. Следующий активный
-    пункт — 3.2: immutable mmap-open с переиспользованием того же validator.
+    пункт 3.2 завершён: private `X1MappedGeneration` удерживает read-only file и
+    mmap, проверяет regular/read-only generation, полный общий validator и
+    runtime expectation `platform/locale/source-locale/HBK SHA`; runtime-open
+    не читает SQLite/HBK и не выполняет fallback. Unsafe boundary остаётся
+    закрытым и требует гарантированно неизменяемый explicit generation до
+    stable-slot lock в 3.5. Следующий активный пункт — 3.3: borrowed payload
+    views через единственный `HbkFactSnapshot`/`HbkFactReadHandle` interface.
     T183 остаётся открытой на implementation/X1-INT; canonical
     cutover и garbage cleanup условны и выполняются отдельными milestones.
 

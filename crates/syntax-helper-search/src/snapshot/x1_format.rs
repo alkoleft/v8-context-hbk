@@ -5,6 +5,7 @@ use std::io::{self, Cursor, Read, Write};
 use std::ops::Range;
 use std::path::Path;
 
+use memmap2::Mmap;
 use sha2::{Digest, Sha256};
 
 use super::binary_cache::{BinaryReader, BinaryValue, BinaryWriter};
@@ -41,12 +42,113 @@ struct X1ArtifactIdentity {
     extraction_schema: u32,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct X1RuntimeExpectation {
+    platform_version: String,
+    locale: String,
+    source_locale: String,
+    source_sha256: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkFactSnapshotArtifactWriteReport {
     pub artifact_bytes: u64,
     pub platform_version: String,
     pub source_sha256: String,
     pub provider_sha256: String,
+}
+
+#[allow(dead_code)]
+struct X1MappedGeneration {
+    _file: File,
+    mmap: Mmap,
+    _sections: Vec<Section>,
+    counts: HbkFactSnapshotCounts,
+    source_locale: StringId,
+    identity: X1ArtifactIdentity,
+}
+
+#[allow(dead_code)]
+impl X1MappedGeneration {
+    /// # Safety
+    ///
+    /// The caller must guarantee that the explicit generation file cannot be
+    /// modified or truncated for the returned owner's lifetime. Task 3.5 will
+    /// uphold this precondition with the stable-slot shared reader lock before
+    /// this becomes a public runtime open operation.
+    unsafe fn open(path: &Path, expected: &X1RuntimeExpectation) -> Result<Self, SearchError> {
+        let before = fs::metadata(path).map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        validate_generation_metadata(path, &before)?;
+
+        let file = File::open(path).map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let file_metadata = file.metadata().map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        validate_generation_metadata(path, &file_metadata)?;
+        if file_metadata.len() != before.len() {
+            return Err(snapshot_artifact_invalid(
+                path,
+                "X1 artifact size changed before mapping",
+            ));
+        }
+
+        // SAFETY: The caller guarantees that this explicit generation cannot
+        // be modified or truncated while the returned owner exists. The file
+        // is opened read-only, no mutable mapping is created, and typed access
+        // remains unavailable until the full byte validator succeeds.
+        let mmap = unsafe { Mmap::map(&file) }.map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        if mmap.len() as u64 != file_metadata.len() {
+            return Err(snapshot_artifact_invalid(
+                path,
+                "X1 mapped artifact size does not match file metadata",
+            ));
+        }
+
+        let (sections, counts, source_locale, identity) = validate_mmap_expected(&mmap, None)
+            .map_err(|source| SearchError::SnapshotArtifact {
+                path: path.to_path_buf(),
+                source: artifact_error_from_io(source),
+            })?;
+        validate_runtime_expectation(path, expected, &identity)?;
+        let source_locale = source_locale.ok_or_else(|| {
+            snapshot_artifact_invalid(path, "X1 source locale dictionary reference is missing")
+        })?;
+        let after = file.metadata().map_err(|source| SearchError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        validate_generation_metadata(path, &after)?;
+        if after.len() != file_metadata.len() {
+            return Err(snapshot_artifact_invalid(
+                path,
+                "X1 artifact size changed while validating mapping",
+            ));
+        }
+
+        Ok(Self {
+            _file: file,
+            mmap,
+            _sections: sections,
+            counts,
+            source_locale,
+            identity,
+        })
+    }
+
+    fn artifact_len(&self) -> usize {
+        self.mmap.len()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -663,6 +765,95 @@ fn artifact_identity(report: &HbkFactSnapshotBuildReport) -> io::Result<X1Artifa
 
 fn search_as_io(error: SearchError) -> io::Error {
     io::Error::other(error)
+}
+
+fn validate_generation_metadata(path: &Path, metadata: &fs::Metadata) -> Result<(), SearchError> {
+    if !metadata.file_type().is_file() {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 generation path is not a regular file",
+        ));
+    }
+    if !metadata.permissions().readonly() {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 generation file is not read-only",
+        ));
+    }
+    let len = metadata.len();
+    if len < HEADER_LEN as u64 {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 artifact header is truncated",
+        ));
+    }
+    if len > MAX_ARTIFACT_BYTES {
+        return Err(snapshot_artifact_invalid(
+            path,
+            "X1 artifact exceeds maximum supported size",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_runtime_expectation(
+    path: &Path,
+    expected: &X1RuntimeExpectation,
+    actual: &X1ArtifactIdentity,
+) -> Result<(), SearchError> {
+    validate_expected_field(
+        path,
+        "platform_version",
+        &expected.platform_version,
+        &actual.platform_version,
+    )?;
+    validate_expected_field(path, "locale", &expected.locale, &actual.locale)?;
+    validate_expected_field(
+        path,
+        "source_locale",
+        &expected.source_locale,
+        &actual.source_locale,
+    )?;
+    validate_expected_field(
+        path,
+        "source_sha256",
+        &expected.source_sha256,
+        &actual.source_sha256,
+    )
+}
+
+fn validate_expected_field(
+    path: &Path,
+    field: &'static str,
+    expected: &str,
+    actual: &str,
+) -> Result<(), SearchError> {
+    if expected == actual {
+        return Ok(());
+    }
+    Err(SearchError::SnapshotArtifact {
+        path: path.to_path_buf(),
+        source: HbkFactSnapshotArtifactError::CompatibilityMismatch {
+            field,
+            expected: expected.to_string(),
+            actual: actual.to_string(),
+        },
+    })
+}
+
+fn snapshot_artifact_invalid(path: &Path, message: &'static str) -> SearchError {
+    SearchError::SnapshotArtifact {
+        path: path.to_path_buf(),
+        source: HbkFactSnapshotArtifactError::Invalid {
+            message: message.to_string(),
+        },
+    }
+}
+
+fn artifact_error_from_io(source: io::Error) -> HbkFactSnapshotArtifactError {
+    HbkFactSnapshotArtifactError::Invalid {
+        message: source.to_string(),
+    }
 }
 
 fn validate_snapshot_source_identity(
@@ -1514,14 +1705,24 @@ fn x1_hash_key(key: &str) -> u64 {
 
 fn validate_mmap(
     bytes: &[u8],
-) -> io::Result<(Vec<Section>, HbkFactSnapshotCounts, Option<StringId>)> {
+) -> io::Result<(
+    Vec<Section>,
+    HbkFactSnapshotCounts,
+    Option<StringId>,
+    X1ArtifactIdentity,
+)> {
     validate_mmap_expected(bytes, None)
 }
 
 fn validate_mmap_expected(
     bytes: &[u8],
     expected_identity: Option<&X1ArtifactIdentity>,
-) -> io::Result<(Vec<Section>, HbkFactSnapshotCounts, Option<StringId>)> {
+) -> io::Result<(
+    Vec<Section>,
+    HbkFactSnapshotCounts,
+    Option<StringId>,
+    X1ArtifactIdentity,
+)> {
     if bytes.len() as u64 > MAX_ARTIFACT_BYTES {
         return Err(invalid_data("X1 artifact exceeds maximum supported size"));
     }
@@ -1655,11 +1856,11 @@ fn validate_mmap_expected(
     validate_typed_sections(bytes, &sections, counts)?;
     validate_template_binding_semantics(bytes, &sections, counts)?;
     validate_fact_source_identity(bytes, &sections, &actual_identity)?;
-    Ok((sections, counts, Some(source_locale)))
+    Ok((sections, counts, Some(source_locale), actual_identity))
 }
 
 fn validate_counts(bytes: &[u8]) -> io::Result<HbkFactSnapshotCounts> {
-    let (sections, counts, _) = validate_mmap(bytes)?;
+    let (sections, counts, _, _) = validate_mmap(bytes)?;
     let _ = sections;
     Ok(counts)
 }
@@ -3383,7 +3584,7 @@ mod tests {
         let second = encode_snapshot(&snapshot).unwrap();
 
         assert_eq!(first, second);
-        let (_, counts, locale) = validate_mmap(&first).unwrap();
+        let (_, counts, locale, _) = validate_mmap(&first).unwrap();
         assert_eq!(counts, snapshot.counts());
         assert_eq!(locale, Some(StringId(0)));
     }
@@ -3425,7 +3626,7 @@ mod tests {
     #[test]
     fn x1_validator_rejects_invalid_utf8_range_and_tag() {
         let bytes = encode_snapshot(&fixture_snapshot()).unwrap();
-        let (sections, _, _) = validate_mmap(&bytes).unwrap();
+        let (sections, _, _, _) = validate_mmap(&bytes).unwrap();
 
         let mut invalid_utf8 = bytes.clone();
         let strings = VectorView::new(section_bytes(&invalid_utf8, &sections, S::Strings)).unwrap();
@@ -3490,7 +3691,7 @@ mod tests {
     #[test]
     fn x1_validator_rejects_fact_provenance_from_another_source() {
         let mut bytes = encode_snapshot(&fixture_snapshot()).unwrap();
-        let (sections, _, _) = validate_mmap(&bytes).unwrap();
+        let (sections, _, _, _) = validate_mmap(&bytes).unwrap();
         let sources = VectorView::new(section_bytes(&bytes, &sections, S::SourceByFact)).unwrap();
         let at = sources.record(0).unwrap().as_ptr() as usize - bytes.as_ptr() as usize;
         bytes[at + 5..at + 9].copy_from_slice(&2_u32.to_le_bytes());
@@ -3502,7 +3703,7 @@ mod tests {
     #[test]
     fn x1_validator_rejects_template_binding_parameter_overflow() {
         let bytes = encode_snapshot(&template_binding_fixture_snapshot()).unwrap();
-        let (sections, _, _) = validate_mmap(&bytes).unwrap();
+        let (sections, _, _, _) = validate_mmap(&bytes).unwrap();
         let arguments =
             VectorView::new(section_bytes(&bytes, &sections, S::TemplateArguments)).unwrap();
         let at = arguments.record(0).unwrap().as_ptr() as usize - bytes.as_ptr() as usize;
@@ -3643,6 +3844,132 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn x1_mapped_generation_opens_without_hbk_or_sql_inputs() {
+        let root = temp_path("x1-mmap-open");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("generation.x1");
+        let identity = test_identity();
+        let bytes = encode_snapshot_with_identity(&fixture_snapshot(), &identity).unwrap();
+        write_readonly_artifact(&artifact, &bytes);
+
+        let mapped =
+            open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
+
+        assert_eq!(mapped.artifact_len(), bytes.len());
+        assert_eq!(mapped.counts, fixture_snapshot().counts());
+        assert_eq!(mapped.source_locale, StringId(0));
+        assert_eq!(mapped.identity, identity);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_mapped_generation_rejects_writable_non_regular_and_mismatched_inputs() {
+        let root = temp_path("x1-mmap-rejects");
+        fs::create_dir_all(&root).unwrap();
+        let identity = test_identity();
+        let bytes = encode_snapshot_with_identity(&fixture_snapshot(), &identity).unwrap();
+        let expectation = runtime_expectation(&identity);
+
+        let writable = root.join("writable.x1");
+        fs::write(&writable, &bytes).unwrap();
+        assert!(matches!(
+            open_controlled_generation(&writable, &expectation),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        assert!(matches!(
+            open_controlled_generation(&root, &expectation),
+            Err(SearchError::SnapshotArtifact { .. })
+        ));
+
+        let readonly = root.join("readonly.x1");
+        write_readonly_artifact(&readonly, &bytes);
+        let mut wrong_platform = expectation.clone();
+        wrong_platform.platform_version = "8.3.0.1".to_string();
+        let mut wrong_locale = expectation.clone();
+        wrong_locale.locale = "en".to_string();
+        let mut wrong_source_locale = expectation.clone();
+        wrong_source_locale.source_locale = "en".to_string();
+        let mut wrong_source = expectation;
+        wrong_source.source_sha256 = "2".repeat(64);
+        for (field, wrong) in [
+            ("platform_version", wrong_platform),
+            ("locale", wrong_locale),
+            ("source_locale", wrong_source_locale),
+            ("source_sha256", wrong_source),
+        ] {
+            assert_compatibility_mismatch(&readonly, &wrong, field);
+        }
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_mapped_generation_uses_full_validator_before_returning_owner() {
+        let root = temp_path("x1-mmap-full-validator");
+        fs::create_dir_all(&root).unwrap();
+        let identity = test_identity();
+        let bytes = encode_snapshot_with_identity(&fixture_snapshot(), &identity).unwrap();
+        let mut corruptions = Vec::new();
+        let mut magic = bytes.clone();
+        magic[0] = b'X';
+        corruptions.push(("magic", magic));
+        let mut layout = bytes.clone();
+        layout[8..12].copy_from_slice(&(LAYOUT_VERSION + 1).to_le_bytes());
+        corruptions.push(("layout", layout));
+        let mut extraction_schema = bytes.clone();
+        extraction_schema[12..16].copy_from_slice(&(SUPPORTED_EXTRACTION_SCHEMA + 1).to_le_bytes());
+        corruptions.push(("extraction-schema", extraction_schema));
+        let mut provider_schema = bytes;
+        provider_schema[16..20].copy_from_slice(&(SUPPORTED_PROVIDER_SCHEMA + 1).to_le_bytes());
+        corruptions.push(("provider-schema", provider_schema));
+
+        for (name, corrupt) in corruptions {
+            let artifact = root.join(format!("corrupt-{name}.x1"));
+            write_readonly_artifact(&artifact, &corrupt);
+            assert!(matches!(
+                open_controlled_generation(&artifact, &runtime_expectation(&identity)),
+                Err(SearchError::SnapshotArtifact {
+                    source: HbkFactSnapshotArtifactError::Invalid { .. },
+                    ..
+                })
+            ));
+        }
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_mapped_generation_rejects_truncation_checksum_and_section_corruption() {
+        let root = temp_path("x1-mmap-corruption");
+        fs::create_dir_all(&root).unwrap();
+        let identity = test_identity();
+        let bytes = encode_snapshot_with_identity(&fixture_snapshot(), &identity).unwrap();
+        let expectation = runtime_expectation(&identity);
+
+        let truncated = root.join("truncated.x1");
+        write_readonly_artifact(&truncated, &bytes[..bytes.len() - 1]);
+        assert!(open_controlled_generation(&truncated, &expectation).is_err());
+
+        let mut checksum = bytes.clone();
+        let last = checksum.len() - 1;
+        checksum[last] ^= 0x55;
+        let checksum_path = root.join("checksum.x1");
+        write_readonly_artifact(&checksum_path, &checksum);
+        assert!(open_controlled_generation(&checksum_path, &expectation).is_err());
+
+        let mut section = bytes;
+        let first_offset = read_u64_at(&section, HEADER_LEN).unwrap();
+        section[HEADER_LEN..HEADER_LEN + 8].copy_from_slice(&(first_offset + 1).to_le_bytes());
+        let section_path = root.join("section.x1");
+        write_readonly_artifact(&section_path, &section);
+        assert!(open_controlled_generation(&section_path, &expectation).is_err());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
     fn test_identity() -> X1ArtifactIdentity {
         X1ArtifactIdentity {
             source_path: "/tmp/8.3.0.0/fixture.hbk".to_string(),
@@ -3657,6 +3984,49 @@ mod tests {
             provider_schema: SUPPORTED_PROVIDER_SCHEMA,
             extraction_schema: SUPPORTED_EXTRACTION_SCHEMA,
         }
+    }
+
+    fn runtime_expectation(identity: &X1ArtifactIdentity) -> X1RuntimeExpectation {
+        X1RuntimeExpectation {
+            platform_version: identity.platform_version.clone(),
+            locale: identity.locale.clone(),
+            source_locale: identity.source_locale.clone(),
+            source_sha256: identity.source_sha256.clone(),
+        }
+    }
+
+    fn open_controlled_generation(
+        path: &Path,
+        expected: &X1RuntimeExpectation,
+    ) -> Result<X1MappedGeneration, SearchError> {
+        // SAFETY: Every test owns its unique temporary generation path, makes
+        // the file read-only before open, and never mutates it while the
+        // returned mapping exists.
+        unsafe { X1MappedGeneration::open(path, expected) }
+    }
+
+    fn assert_compatibility_mismatch(
+        path: &Path,
+        expected: &X1RuntimeExpectation,
+        expected_field: &'static str,
+    ) {
+        let Err(error) = open_controlled_generation(path, expected) else {
+            panic!("mismatched runtime expectation must be rejected");
+        };
+        assert!(matches!(
+            error,
+            SearchError::SnapshotArtifact {
+                source: HbkFactSnapshotArtifactError::CompatibilityMismatch { field, .. },
+                ..
+            } if field == expected_field
+        ));
+    }
+
+    fn write_readonly_artifact(path: &Path, bytes: &[u8]) {
+        fs::write(path, bytes).unwrap();
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(path, permissions).unwrap();
     }
 
     fn rewrite_payload_checksum(bytes: &mut [u8]) {

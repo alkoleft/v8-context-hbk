@@ -1031,6 +1031,7 @@ dependencies = [
 name = "syntax-helper-search"
 version = "0.2.4"
 dependencies = [
+ "memmap2",
  "rusqlite",
  "serde",
  "serde_json",

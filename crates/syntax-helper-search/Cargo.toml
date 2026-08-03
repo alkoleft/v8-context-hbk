@@ -8,6 +8,7 @@ snapshot-experiment = []
 snapshot-experiment-alloc = ["snapshot-experiment"]
 
 [dependencies]
+memmap2.workspace = true
 rusqlite.workspace = true
 sha2.workspace = true
 strsim.workspace = true

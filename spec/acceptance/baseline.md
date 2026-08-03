@@ -3090,6 +3090,13 @@ accepted X1-INT строку.
 OpenSpec 3.1 завершён без изменения runtime source. На frozen H0 provider input
 два X1 generation побайтово совпали: `12,430,416` bytes, SHA-256
 `0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`.
+
+Task 3.2 подтвердил private read-only mmap-open того же artifact без доступа к
+HBK/SQLite: package tests `90/90`, workspace tests, strict OpenSpec и clippy
+прошли. Negative matrix включает writable/non-regular file, magic/layout/
+extraction/provider schema, platform/locale/source-locale/source SHA,
+truncation/checksum/section corruption. Concurrent mutation protection остаётся
+явно отложенной до stable-slot lock в task 3.5.
 Artifact identity сохранил exact platform `8.3.27.1859`, HBK SHA-256
 `5bdf0b3ed89932572c012faddc4d05ebfa2986595cf2849b6eb6e5e65a9a4d48`
 и provider SHA-256

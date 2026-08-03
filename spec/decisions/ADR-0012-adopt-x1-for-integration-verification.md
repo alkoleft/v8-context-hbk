@@ -169,6 +169,8 @@ search/debug artifact. Решение удаляет его только из an
 - [x] План запрещает параллельный owned graph и compatibility fallback.
 - [x] Non-canonical X1 generation writer и полный byte-validator реализованы
       без включения runtime source.
+- [x] Private validated read-only mmap generation реализован без SQL/HBK
+      fallback; public open остаётся закрытым до borrowed views и slot lock.
 - [ ] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
 - [ ] X1 проходит все X1-INT performance/resource gates.
 - [ ] Canonical cutover и последующий scoped cleanup завершены отдельными

@@ -1154,6 +1154,12 @@ OpenSpec 3.1 реализовал build-only X1 generation writer и едины�
 byte-validator без runtime mmap-open. Frozen `8.3.27.1859/ru` artifact имеет
 `12,430,416` bytes и детерминированный SHA-256
 `0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`.
+
+OpenSpec 3.2 добавил закрытый validated file-backed mmap owner. Он сверяет
+runtime platform/locale/source identity без чтения SQLite/HBK, удерживает file
+и mapping вместе и не открывает entity API до завершения borrowed views и
+stable-slot locking. Полный validator task 3.1 остаётся единственной проверкой
+формата для writer и mmap-open.
 Следующий component slice переиспользует этот validator до создания borrowed
 typed mmap views; второй validator и owned fallback запрещены.
 
