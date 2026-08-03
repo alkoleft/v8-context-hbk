@@ -818,3 +818,29 @@ replacement; numeric session-local IDs не сравниваются и не м�
 Package tests `106/106`, полный workspace, package clippy, fmt, strict OpenSpec,
 diff check и независимый review прошли. X1 остаётся private/non-canonical.
 Следующий slice — 4.2 full-corpus storage parity на frozen S83 input.
+
+## Task-local plan: OpenSpec 4.2 — full-corpus storage parity
+
+Slice проверяет весь frozen S83 provider corpus до открытия catalog/runtime
+API. Он не добавляет production exporter, DTO или второй oracle format.
+
+- Общий test-only comparator обходит все records owned build snapshot и
+  private mapped generation по typed ID ranges и сравнивает каждое наблюдаемое
+  поле: name/alias, owner/kind/domain, metadata/template data, signatures,
+  parameters, return/type refs и ambiguous targets, query table syntax/role/
+  owner path, language facts, enums/values, availability и provenance.
+- Dictionary сравнивается по полному ID range внутри одного generation build;
+  это проверка сохранения writer layout, а не обещание durable numeric IDs
+  между независимыми sessions. Counts и source locale сравниваются отдельно.
+- Existing fixture forward-payload test использует тот же comparator, чтобы
+  corpus path не имел отдельной логики сравнения. Full-corpus test является
+  explicit ignored acceptance probe с provider path только через environment;
+  corpus-specific absolute path не попадает в production code.
+- Probe materializes owned H0 только как build/oracle side, публикует X1,
+  открывает его через stable slot и сравнивает весь corpus. После будущего
+  canonical cutover этот owned oracle остаётся test/build-only и не разрешает
+  runtime coexistence.
+- Evidence фиксирует точные frozen input/artifact identities, counts, команду и
+  успешный результат; raw stdout остаётся service data. Commit gate включает
+  fixture/package/workspace tests, explicit full-corpus run, package clippy,
+  fmt, strict OpenSpec, diff check и независимое review.
