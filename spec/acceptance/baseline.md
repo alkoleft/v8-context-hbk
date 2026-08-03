@@ -3115,6 +3115,15 @@ signatures/parameters/type refs/template bindings, availability и provenance
 полного nested fixture traversal. X1 всё ещё private и non-canonical; reverse
 lookup, safe public lifecycle и X1-INT остаются следующими gates.
 
+Task 3.4 подтвердил parity всей private mapped lookup-таблицы с owned
+`HbkFactReadHandle`: package tests `95/95`, полный workspace, clippy и strict
+OpenSpec прошли. Проверены exact/normalized hit/miss, duplicate multi-hit order,
+optional kind, hash collision chain, CSR ranges, availability и normalized
+relation kind. Pre-normalized steady lookup/range traversal дал `0` allocations,
+`0` reallocations и `0` allocated bytes; raw lookup одного name argument дал
+один request-local `String` allocation без reallocation. X1 всё ещё private и
+non-canonical; безопасный stable-slot lifecycle 3.5 остаётся следующим gate.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,

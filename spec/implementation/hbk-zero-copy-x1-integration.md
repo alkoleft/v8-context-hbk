@@ -546,7 +546,8 @@ Public snapshot owner, locks/publication и migration catalogs остаются 
    owned API сейчас возвращает borrowed slice.
 4. Raw compatibility methods выполняют ту же name normalization, что текущий
    `normalize_lookup_key`: удаляют whitespace и применяют Unicode lowercase,
-   создавая не более одного request-local normalized buffer. Они делегируют
+   создавая не более одного request-local normalized buffer на каждый raw
+   аргумент, который требует нормализации. Они делегируют
    private pre-normalized helper, который существует только для проверки
    steady analyzer path и не становится вторым public API family.
    Relation-kind повторяет текущую семантику: нормализуется перед reverse
@@ -607,3 +608,22 @@ Forward entity accessors и `source` уже покрыты 3.3. Safe public
   writer/validator/test fixtures и их build-time `Vec` вне этого scan.
   Package/workspace tests, clippy, strict OpenSpec, diff check и независимое
   ревью обязательны до отметки 3.4.
+
+### Результат OpenSpec 3.4
+
+Slice завершён. Private mapped handle теперь покрывает всю таблицу lookup
+существующего `HbkFactReadHandle`: exact ID, normalized primary/alias,
+owner/name/kind, templates, module contexts/events, query/language/enum,
+availability/available-since и relations. Reverse dictionary использует
+`StringOrder`, type name — единственный persisted X1 hash с проверенной probe
+chain, остальные операции — persisted sorted indexes и CSR ranges. Runtime
+sidecar/rebuild, candidate/result collections и entity DTO не добавлены.
+
+Owned-vs-mapped fixture parity покрывает все method groups, multi-hit order,
+ambiguity, hit/miss, optional kind и normalized relation kind; отдельный mapped
+тест проходит реальную hash collision chain. Package tests `95/95`, полный
+workspace, clippy и strict OpenSpec прошли. Allocation-enabled проверки
+подтвердили ноль allocations для pre-normalized steady lookup/range traversal и
+ровно один request-local `String` allocation без reallocation для одного raw
+name argument. X1 остаётся private и non-canonical. Следующий slice — 3.5,
+stable-slot shared/exclusive lock и atomic immutable generation publication.

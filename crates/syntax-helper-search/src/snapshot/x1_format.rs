@@ -27,6 +27,17 @@ const MAX_ARTIFACT_BYTES: u64 = 256 * 1024 * 1024;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
+fn x1_normalize_lookup_key(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    normalized.extend(
+        value
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .flat_map(char::to_lowercase),
+    );
+    normalized
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct X1ArtifactIdentity {
     source_path: String,
@@ -233,6 +244,542 @@ impl<'a> X1MappedReadHandle<'a> {
         self.string(self.generation.source_locale)
     }
 
+    fn string_id(self, value: &str) -> Option<StringId> {
+        let order = self.generation.vector(S::StringOrder);
+        binary_search_view(&order, |id: StringId| self.string(id).cmp(value))
+            .ok()
+            .map(|index| {
+                order
+                    .get::<StringId>(index)
+                    .expect("X1 string order was fully validated before access")
+            })
+    }
+
+    fn global_fact_ids(self) -> impl ExactSizeIterator<Item = HbkGlobalFactId> + 'a {
+        (0..self.generation.counts.globals).map(|index| HbkGlobalFactId(index as u32))
+    }
+
+    fn query_table_ids(self) -> impl ExactSizeIterator<Item = HbkQueryTableId> + 'a {
+        (0..self.generation.counts.query_tables).map(|index| HbkQueryTableId(index as u32))
+    }
+
+    fn query_field_ids(self) -> impl ExactSizeIterator<Item = HbkQueryFieldId> + 'a {
+        (0..self.generation.counts.query_fields).map(|index| HbkQueryFieldId(index as u32))
+    }
+
+    fn query_parameter_ids(self) -> impl ExactSizeIterator<Item = HbkQueryParameterId> + 'a {
+        (0..self.generation.counts.query_parameters).map(|index| HbkQueryParameterId(index as u32))
+    }
+
+    fn facts_by_id(self, id: &str) -> X1LookupValueIter<'a, IdLookup<HbkFactRef>, HbkFactRef> {
+        self.lookup_id_values(S::FactIds, id, |candidate| candidate.value)
+    }
+
+    fn platform_type_by_id(self, id: &str) -> Option<HbkPlatformTypeId> {
+        self.lookup_id_one(
+            S::PlatformTypeIds,
+            id,
+            |candidate: IdLookup<HbkPlatformTypeId>| candidate.value,
+        )
+    }
+
+    fn platform_types_by_name(
+        self,
+        name: &str,
+    ) -> X1LookupValueIter<'a, NameLookup<HbkPlatformTypeId>, HbkPlatformTypeId> {
+        let normalized = x1_normalize_lookup_key(name);
+        self.platform_types_by_normalized_name(&normalized)
+    }
+
+    fn platform_types_by_normalized_name(
+        self,
+        normalized: &str,
+    ) -> X1LookupValueIter<'a, NameLookup<HbkPlatformTypeId>, HbkPlatformTypeId> {
+        let buckets = self.generation.vector(S::PlatformTypeNameHash);
+        let names = self.generation.vector(S::PlatformTypeNames);
+        let strings = self.generation.vector(S::Strings);
+        let hash = x1_hash_key(normalized);
+        let bucket_index = x1_probe_bucket(&buckets, &names, &strings, hash, normalized)
+            .expect("X1 type-name hash was fully validated before access");
+        let bucket = buckets
+            .get::<X1TypeNameHashBucket>(bucket_index)
+            .expect("X1 type-name hash was fully validated before access");
+        let range = if bucket.count == 0 {
+            0..0
+        } else {
+            let start = bucket.start as usize;
+            start..start + bucket.count as usize
+        };
+        X1LookupValueIter::new(names, range, |candidate| candidate.value)
+    }
+
+    fn platform_types_by_template_key(
+        self,
+        family: &str,
+        variant: &str,
+    ) -> X1LookupValueIter<'a, TypeTemplateLookup<HbkPlatformTypeId>, HbkPlatformTypeId> {
+        let index = self.generation.vector(S::PlatformTypeTemplates);
+        let range = matching_range_view(
+            &index,
+            |candidate: TypeTemplateLookup<HbkPlatformTypeId>| {
+                self.string(candidate.family)
+                    .cmp(family)
+                    .then_with(|| self.string(candidate.variant).cmp(variant))
+            },
+        );
+        X1LookupValueIter::new(index, range, |candidate| candidate.value)
+    }
+
+    fn members_of_type(self, owner: HbkPlatformTypeId) -> X1RecordIter<'a, HbkTypeMemberId> {
+        self.csr_values(
+            S::MembersByOwnerKeys,
+            S::MembersByOwnerOffsets,
+            S::MembersByOwnerValues,
+            owner,
+        )
+    }
+
+    fn member_by_owner_name(
+        self,
+        owner: HbkPlatformTypeId,
+        name: &str,
+    ) -> X1LookupValueIter<'a, OwnerNameLookup<HbkPlatformTypeId, HbkTypeMemberId>, HbkTypeMemberId>
+    {
+        let normalized = x1_normalize_lookup_key(name);
+        self.member_by_owner_normalized_name(owner, &normalized)
+    }
+
+    fn member_by_owner_normalized_name(
+        self,
+        owner: HbkPlatformTypeId,
+        normalized: &str,
+    ) -> X1LookupValueIter<'a, OwnerNameLookup<HbkPlatformTypeId, HbkTypeMemberId>, HbkTypeMemberId>
+    {
+        self.lookup_owner_name_values(S::MembersByOwnerName, owner, normalized, |candidate| {
+            candidate.value
+        })
+    }
+
+    fn member_by_owner_name_kind(
+        self,
+        owner: HbkPlatformTypeId,
+        name: &str,
+        kind: Option<HbkTypeMemberKind>,
+    ) -> X1MemberLookupIter<'a> {
+        let normalized = x1_normalize_lookup_key(name);
+        let Some(kind) = kind else {
+            return X1MemberLookupIter::Name(
+                self.member_by_owner_normalized_name(owner, &normalized),
+            );
+        };
+        let index = self.generation.vector(S::MembersByOwnerNameKind);
+        let range = matching_range_view(&index, |candidate: MemberNameKindLookup| {
+            candidate
+                .owner
+                .cmp(&owner)
+                .then_with(|| self.string(candidate.key).cmp(&normalized))
+                .then_with(|| candidate.kind.cmp(&Some(kind)))
+        });
+        X1MemberLookupIter::NameKind(X1LookupValueIter::new(index, range, |candidate| {
+            candidate.value
+        }))
+    }
+
+    fn callables_of_type(self, owner: HbkPlatformTypeId) -> X1RecordIter<'a, HbkCallableId> {
+        self.csr_values(
+            S::CallablesByOwnerKeys,
+            S::CallablesByOwnerOffsets,
+            S::CallablesByOwnerValues,
+            owner,
+        )
+    }
+
+    fn callable_by_owner_name(
+        self,
+        owner: HbkPlatformTypeId,
+        name: &str,
+    ) -> X1LookupValueIter<'a, OwnerNameLookup<HbkPlatformTypeId, HbkCallableId>, HbkCallableId>
+    {
+        let normalized = x1_normalize_lookup_key(name);
+        self.lookup_owner_name_values(S::CallablesByOwnerName, owner, &normalized, |candidate| {
+            candidate.value
+        })
+    }
+
+    fn constructors_of_type(self, owner: HbkPlatformTypeId) -> X1RecordIter<'a, HbkCallableId> {
+        self.csr_values(
+            S::ConstructorsByTypeKeys,
+            S::ConstructorsByTypeOffsets,
+            S::ConstructorsByTypeValues,
+            owner,
+        )
+    }
+
+    fn globals_by_name(
+        self,
+        name: &str,
+    ) -> X1LookupValueIter<'a, NameLookup<HbkGlobalFactId>, HbkGlobalFactId> {
+        let normalized = x1_normalize_lookup_key(name);
+        self.lookup_name_values(S::GlobalNames, &normalized, |candidate| candidate.value)
+    }
+
+    fn globals_by_domain_name_kind(
+        self,
+        domain: HbkLanguageDomain,
+        name: &str,
+        kind: Option<HbkGlobalFactKind>,
+    ) -> X1LookupValueIter<'a, GlobalNameKindLookup, HbkGlobalFactId> {
+        let normalized = x1_normalize_lookup_key(name);
+        let index = self.generation.vector(S::GlobalsByDomainNameKind);
+        let range = matching_range_view(&index, |candidate: GlobalNameKindLookup| {
+            let ordering = candidate
+                .domain
+                .cmp(&domain)
+                .then_with(|| self.string(candidate.key).cmp(&normalized));
+            kind.map_or(ordering, |kind| {
+                ordering.then_with(|| candidate.kind.cmp(&Some(kind)))
+            })
+        });
+        X1LookupValueIter::new(index, range, |candidate| candidate.value)
+    }
+
+    fn module_events(
+        self,
+        module_context_key: &str,
+    ) -> X1LookupValueIter<'a, OwnerNameLookup<StringId, HbkCallableId>, HbkCallableId> {
+        let normalized = x1_normalize_lookup_key(module_context_key);
+        let index = self.generation.vector(S::ModuleEventNames);
+        let range = matching_range_view(
+            &index,
+            |candidate: OwnerNameLookup<StringId, HbkCallableId>| {
+                self.string(candidate.owner).cmp(&normalized)
+            },
+        );
+        X1LookupValueIter::new(index, range, |candidate| candidate.value)
+    }
+
+    fn module_event_by_context_name(
+        self,
+        module_context_key: &str,
+        name: &str,
+    ) -> X1LookupValueIter<'a, OwnerNameLookup<StringId, HbkCallableId>, HbkCallableId> {
+        let owner = x1_normalize_lookup_key(module_context_key);
+        let normalized = x1_normalize_lookup_key(name);
+        let index = self.generation.vector(S::ModuleEventNames);
+        let range = matching_range_view(
+            &index,
+            |candidate: OwnerNameLookup<StringId, HbkCallableId>| {
+                self.string(candidate.owner)
+                    .cmp(&owner)
+                    .then_with(|| self.string(candidate.key).cmp(&normalized))
+            },
+        );
+        X1LookupValueIter::new(index, range, |candidate| candidate.value)
+    }
+
+    fn module_context_events(
+        self,
+        domain: HbkLanguageDomain,
+        language_key: &str,
+        module_kind: &str,
+    ) -> X1LookupValueIter<'a, ModuleContextLookup, HbkCallableId> {
+        let language_key = x1_normalize_lookup_key(language_key);
+        let module_kind = x1_normalize_lookup_key(module_kind);
+        let index = self
+            .generation
+            .vector(S::ModuleContextsByDomainLanguageKind);
+        let range = matching_range_view(&index, |candidate: ModuleContextLookup| {
+            candidate
+                .domain
+                .cmp(&domain)
+                .then_with(|| self.string(candidate.language_key).cmp(&language_key))
+                .then_with(|| self.string(candidate.module_kind).cmp(&module_kind))
+        });
+        X1LookupValueIter::new(index, range, |candidate| candidate.value)
+    }
+
+    fn query_table_by_id(self, id: &str) -> Option<HbkQueryTableId> {
+        self.lookup_id_one(
+            S::QueryTableIds,
+            id,
+            |candidate: IdLookup<HbkQueryTableId>| candidate.value,
+        )
+    }
+
+    fn query_tables_by_name(
+        self,
+        name: &str,
+    ) -> X1LookupValueIter<'a, NameLookup<HbkQueryTableId>, HbkQueryTableId> {
+        let normalized = x1_normalize_lookup_key(name);
+        self.lookup_name_values(S::QueryTableNames, &normalized, |candidate| candidate.value)
+    }
+
+    fn query_tables_by_syntax(
+        self,
+        syntax: &str,
+    ) -> X1LookupValueIter<'a, NameLookup<HbkQueryTableId>, HbkQueryTableId> {
+        let normalized = x1_normalize_lookup_key(syntax);
+        self.lookup_name_values(S::QueryTableSyntaxNames, &normalized, |candidate| {
+            candidate.value
+        })
+    }
+
+    fn query_tables_by_identifier(
+        self,
+        identifier: &str,
+    ) -> X1LookupValueIter<'a, NameLookup<HbkQueryTableId>, HbkQueryTableId> {
+        let normalized = x1_normalize_lookup_key(identifier);
+        self.lookup_name_values(S::QueryTableIdentifiers, &normalized, |candidate| {
+            candidate.value
+        })
+    }
+
+    fn query_fields(self, table: HbkQueryTableId) -> X1RecordIter<'a, HbkQueryFieldId> {
+        self.csr_values(
+            S::QueryFieldsByTableKeys,
+            S::QueryFieldsByTableOffsets,
+            S::QueryFieldsByTableValues,
+            table,
+        )
+    }
+
+    fn query_fields_by_name(
+        self,
+        table: HbkQueryTableId,
+        name: &str,
+    ) -> X1LookupValueIter<'a, OwnerNameLookup<HbkQueryTableId, HbkQueryFieldId>, HbkQueryFieldId>
+    {
+        let normalized = x1_normalize_lookup_key(name);
+        self.lookup_owner_name_values(S::QueryFieldsByTableName, table, &normalized, |candidate| {
+            candidate.value
+        })
+    }
+
+    fn query_parameters(self, table: HbkQueryTableId) -> X1RecordIter<'a, HbkQueryParameterId> {
+        self.csr_values(
+            S::QueryParametersByTableKeys,
+            S::QueryParametersByTableOffsets,
+            S::QueryParametersByTableValues,
+            table,
+        )
+    }
+
+    fn query_parameters_by_name(
+        self,
+        table: HbkQueryTableId,
+        name: &str,
+    ) -> X1LookupValueIter<
+        'a,
+        OwnerNameLookup<HbkQueryTableId, HbkQueryParameterId>,
+        HbkQueryParameterId,
+    > {
+        let normalized = x1_normalize_lookup_key(name);
+        self.lookup_owner_name_values(
+            S::QueryParametersByTableName,
+            table,
+            &normalized,
+            |candidate| candidate.value,
+        )
+    }
+
+    fn language_fact_by_id(self, id: &str) -> Option<HbkLanguageFactId> {
+        self.lookup_id_one(
+            S::LanguageIds,
+            id,
+            |candidate: IdLookup<HbkLanguageFactId>| candidate.value,
+        )
+    }
+
+    fn language_facts_by_name(
+        self,
+        name: &str,
+    ) -> X1LookupValueIter<'a, NameLookup<HbkLanguageFactId>, HbkLanguageFactId> {
+        let normalized = x1_normalize_lookup_key(name);
+        self.lookup_name_values(S::LanguageNames, &normalized, |candidate| candidate.value)
+    }
+
+    fn enum_by_id(self, id: &str) -> Option<HbkEnumId> {
+        self.lookup_id_one(S::EnumIds, id, |candidate: IdLookup<HbkEnumId>| {
+            candidate.value
+        })
+    }
+
+    fn enums_by_name(self, name: &str) -> X1LookupValueIter<'a, NameLookup<HbkEnumId>, HbkEnumId> {
+        let normalized = x1_normalize_lookup_key(name);
+        self.lookup_name_values(S::EnumNames, &normalized, |candidate| candidate.value)
+    }
+
+    fn enum_value_by_id(self, id: &str) -> Option<HbkEnumValueId> {
+        self.lookup_id_one(
+            S::EnumValueIds,
+            id,
+            |candidate: IdLookup<HbkEnumValueId>| candidate.value,
+        )
+    }
+
+    fn enum_values(self, owner: HbkEnumId) -> X1RecordIter<'a, HbkEnumValueId> {
+        self.csr_values(
+            S::EnumValuesByEnumKeys,
+            S::EnumValuesByEnumOffsets,
+            S::EnumValuesByEnumValues,
+            owner,
+        )
+    }
+
+    fn enum_values_by_name(
+        self,
+        owner: HbkEnumId,
+        name: &str,
+    ) -> X1LookupValueIter<'a, OwnerNameLookup<HbkEnumId, HbkEnumValueId>, HbkEnumValueId> {
+        let normalized = x1_normalize_lookup_key(name);
+        self.lookup_owner_name_values(S::EnumValuesByEnumName, owner, &normalized, |candidate| {
+            candidate.value
+        })
+    }
+
+    fn availability_contexts(self, fact: HbkFactRef) -> X1RecordIter<'a, StringId> {
+        self.csr_values(
+            S::AvailabilityByFactKeys,
+            S::AvailabilityByFactOffsets,
+            S::AvailabilityByFactValues,
+            fact,
+        )
+    }
+
+    fn available_since(self, fact: HbkFactRef) -> Option<StringId> {
+        let index = self.generation.vector(S::AvailabilitySinceByFact);
+        binary_search_view(&index, |candidate: FactStringLookup| {
+            candidate.fact.cmp(&fact)
+        })
+        .ok()
+        .map(|position| {
+            index
+                .get::<FactStringLookup>(position)
+                .expect("X1 available-since index was fully validated before access")
+                .value
+        })
+    }
+
+    fn relations_by_source_kind(
+        self,
+        source: HbkFactRef,
+        kind: &str,
+    ) -> X1RecordIter<'a, HbkFactRef> {
+        let normalized = x1_normalize_lookup_key(kind);
+        let Some(kind) = self.string_id(&normalized) else {
+            return X1RecordIter::empty(self.generation.vector(S::RelationsBySourceKindValues));
+        };
+        self.csr_values(
+            S::RelationsBySourceKindKeys,
+            S::RelationsBySourceKindOffsets,
+            S::RelationsBySourceKindValues,
+            RelationLookupKey { source, kind },
+        )
+    }
+
+    fn lookup_id_one<Record, Value>(
+        self,
+        section: S,
+        key: &str,
+        value: fn(Record) -> Value,
+    ) -> Option<Value>
+    where
+        Record: BinaryValue + Copy + X1IdLookupRecord,
+        Value: Copy,
+    {
+        let index = self.generation.vector(section);
+        binary_search_view(&index, |candidate: Record| {
+            self.string(candidate.key()).cmp(key)
+        })
+        .ok()
+        .map(|position| {
+            value(
+                index
+                    .get::<Record>(position)
+                    .expect("X1 ID lookup was fully validated before access"),
+            )
+        })
+    }
+
+    fn lookup_id_values<Record, Value>(
+        self,
+        section: S,
+        key: &str,
+        value: fn(Record) -> Value,
+    ) -> X1LookupValueIter<'a, Record, Value>
+    where
+        Record: BinaryValue + Copy + X1IdLookupRecord,
+        Value: Copy,
+    {
+        let index = self.generation.vector(section);
+        let range = matching_range_view(&index, |candidate: Record| {
+            self.string(candidate.key()).cmp(key)
+        });
+        X1LookupValueIter::new(index, range, value)
+    }
+
+    fn lookup_name_values<Record, Value>(
+        self,
+        section: S,
+        normalized: &str,
+        value: fn(Record) -> Value,
+    ) -> X1LookupValueIter<'a, Record, Value>
+    where
+        Record: BinaryValue + Copy + X1NameLookupRecord,
+        Value: Copy,
+    {
+        let index = self.generation.vector(section);
+        let range = matching_range_view(&index, |candidate: Record| {
+            self.string(candidate.key()).cmp(normalized)
+        });
+        X1LookupValueIter::new(index, range, value)
+    }
+
+    fn lookup_owner_name_values<Record, Owner, Value>(
+        self,
+        section: S,
+        owner: Owner,
+        normalized: &str,
+        value: fn(Record) -> Value,
+    ) -> X1LookupValueIter<'a, Record, Value>
+    where
+        Record: BinaryValue + Copy + X1OwnerNameLookupRecord<Owner>,
+        Owner: Copy + Ord,
+        Value: Copy,
+    {
+        let index = self.generation.vector(section);
+        let range = matching_range_view(&index, |candidate: Record| {
+            candidate
+                .owner()
+                .cmp(&owner)
+                .then_with(|| self.string(candidate.key()).cmp(normalized))
+        });
+        X1LookupValueIter::new(index, range, value)
+    }
+
+    fn csr_values<Key: BinaryValue + Copy + Ord, Value: BinaryValue + Copy>(
+        self,
+        keys_section: S,
+        offsets_section: S,
+        values_section: S,
+        key: Key,
+    ) -> X1RecordIter<'a, Value> {
+        let keys = self.generation.vector(keys_section);
+        let offsets = self.generation.vector(offsets_section);
+        let values = self.generation.vector(values_section);
+        let Ok(position) = binary_search_view(&keys, |candidate: Key| candidate.cmp(&key)) else {
+            return X1RecordIter::empty(values);
+        };
+        let start = offsets
+            .get::<u32>(position)
+            .expect("X1 CSR offsets were fully validated before access")
+            as usize;
+        let end = offsets
+            .get::<u32>(position + 1)
+            .expect("X1 CSR offsets were fully validated before access") as usize;
+        X1RecordIter::from_bounds(values, start, end)
+    }
+
     fn platform_type(self, id: HbkPlatformTypeId) -> X1PlatformTypeView<'a> {
         X1PlatformTypeView {
             handle: self,
@@ -371,6 +918,20 @@ impl<'a, T> X1RecordIter<'a, T> {
             marker: std::marker::PhantomData,
         }
     }
+
+    fn from_bounds(view: VectorView<'a>, start: usize, end: usize) -> Self {
+        debug_assert!(start <= end && end <= view.len());
+        Self {
+            view,
+            index: start,
+            end,
+            marker: std::marker::PhantomData,
+        }
+    }
+
+    fn empty(view: VectorView<'a>) -> Self {
+        Self::from_bounds(view, 0, 0)
+    }
 }
 
 impl<T: BinaryValue> Iterator for X1RecordIter<'_, T> {
@@ -398,6 +959,108 @@ impl<T: BinaryValue> Iterator for X1RecordIter<'_, T> {
 impl<T: BinaryValue> ExactSizeIterator for X1RecordIter<'_, T> {
     fn len(&self) -> usize {
         self.end - self.index
+    }
+}
+
+trait X1IdLookupRecord {
+    fn key(self) -> StringId;
+}
+
+impl<T: Copy> X1IdLookupRecord for IdLookup<T> {
+    fn key(self) -> StringId {
+        self.key
+    }
+}
+
+trait X1NameLookupRecord {
+    fn key(self) -> StringId;
+}
+
+impl<T: Copy> X1NameLookupRecord for NameLookup<T> {
+    fn key(self) -> StringId {
+        self.key
+    }
+}
+
+trait X1OwnerNameLookupRecord<Owner> {
+    fn owner(self) -> Owner;
+    fn key(self) -> StringId;
+}
+
+impl<Owner: Copy, Value: Copy> X1OwnerNameLookupRecord<Owner> for OwnerNameLookup<Owner, Value> {
+    fn owner(self) -> Owner {
+        self.owner
+    }
+
+    fn key(self) -> StringId {
+        self.key
+    }
+}
+
+#[allow(dead_code)]
+struct X1LookupValueIter<'a, Record, Value> {
+    records: X1RecordIter<'a, Record>,
+    value: fn(Record) -> Value,
+}
+
+impl<'a, Record, Value> X1LookupValueIter<'a, Record, Value> {
+    fn new(view: VectorView<'a>, range: Range<usize>, value: fn(Record) -> Value) -> Self {
+        Self {
+            records: X1RecordIter::from_bounds(view, range.start, range.end),
+            value,
+        }
+    }
+}
+
+impl<Record: BinaryValue, Value> Iterator for X1LookupValueIter<'_, Record, Value> {
+    type Item = Value;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.records.next().map(self.value)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
+    }
+}
+
+impl<Record: BinaryValue, Value> ExactSizeIterator for X1LookupValueIter<'_, Record, Value> {
+    fn len(&self) -> usize {
+        self.records.len()
+    }
+}
+
+#[allow(dead_code)]
+enum X1MemberLookupIter<'a> {
+    Name(
+        X1LookupValueIter<'a, OwnerNameLookup<HbkPlatformTypeId, HbkTypeMemberId>, HbkTypeMemberId>,
+    ),
+    NameKind(X1LookupValueIter<'a, MemberNameKindLookup, HbkTypeMemberId>),
+}
+
+impl Iterator for X1MemberLookupIter<'_> {
+    type Item = HbkTypeMemberId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Name(iter) => iter.next(),
+            Self::NameKind(iter) => iter.next(),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
+    }
+}
+
+impl ExactSizeIterator for X1MemberLookupIter<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Name(iter) => iter.len(),
+            Self::NameKind(iter) => iter.len(),
+        }
     }
 }
 
@@ -4159,7 +4822,7 @@ fn section_bytes<'a>(bytes: &'a [u8], sections: &[Section], section: S) -> &'a [
 
 fn binary_search_view<T: BinaryValue + Copy>(
     view: &VectorView<'_>,
-    compare: impl Fn(T) -> Ordering,
+    mut compare: impl FnMut(T) -> Ordering,
 ) -> Result<usize, usize> {
     let mut size = view.len();
     let mut base = 0usize;
@@ -4177,6 +4840,35 @@ fn binary_search_view<T: BinaryValue + Copy>(
         }
     }
     Err(base)
+}
+
+fn matching_range_view<T: BinaryValue + Copy>(
+    view: &VectorView<'_>,
+    mut compare: impl FnMut(T) -> Ordering,
+) -> Range<usize> {
+    let Ok(mut start) = binary_search_view(view, &mut compare) else {
+        return 0..0;
+    };
+    let mut end = start + 1;
+    while start > 0 {
+        let candidate = view
+            .get::<T>(start - 1)
+            .expect("X1 lookup index was fully validated before access");
+        if !compare(candidate).is_eq() {
+            break;
+        }
+        start -= 1;
+    }
+    while end < view.len() {
+        let candidate = view
+            .get::<T>(end)
+            .expect("X1 lookup index was fully validated before access");
+        if !compare(candidate).is_eq() {
+            break;
+        }
+        end += 1;
+    }
+    start..end
 }
 
 #[derive(Clone, Copy)]
@@ -4628,6 +5320,61 @@ mod tests {
         let initial = (x1_hash_key(&pair[0]) as usize) & (capacity - 1);
         assert!(occupied.contains(&initial));
         assert!(occupied.contains(&((initial + 1) & (capacity - 1))));
+    }
+
+    #[test]
+    fn x1_mapped_type_name_lookup_follows_a_collision_probe_chain() {
+        let mut snapshot = fixture_snapshot();
+        let capacity = 4usize;
+        let mut by_bucket = std::collections::BTreeMap::<usize, Vec<String>>::new();
+        let pair = (0..128)
+            .find_map(|index| {
+                let key = format!("collision-key-{index}");
+                let bucket = (x1_hash_key(&key) as usize) & (capacity - 1);
+                let values = by_bucket.entry(bucket).or_default();
+                values.push(key);
+                (values.len() == 2).then(|| values.clone())
+            })
+            .unwrap();
+        let first = push_fixture_string(&mut snapshot, &pair[0]);
+        let second = push_fixture_string(&mut snapshot, &pair[1]);
+        snapshot.platform_type_names = vec![
+            NameLookup {
+                key: first,
+                value: HbkPlatformTypeId(0),
+            },
+            NameLookup {
+                key: second,
+                value: HbkPlatformTypeId(0),
+            },
+        ];
+        let strings = &snapshot.strings;
+        snapshot.platform_type_names.sort_by(|left, right| {
+            strings[left.key.0 as usize]
+                .cmp(&strings[right.key.0 as usize])
+                .then_with(|| left.value.cmp(&right.value))
+        });
+
+        let root = temp_path("x1-lookup-collision");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("generation.x1");
+        let identity = test_identity();
+        let bytes = encode_snapshot_with_identity(&snapshot, &identity).unwrap();
+        write_readonly_artifact(&artifact, &bytes);
+        let mapped =
+            open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
+        let read = mapped.read_handle();
+
+        for key in &pair {
+            assert_eq!(
+                read.platform_types_by_name(key).collect::<Vec<_>>(),
+                vec![HbkPlatformTypeId(0)]
+            );
+        }
+        assert_eq!(read.platform_types_by_name("missing").len(), 0);
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -5102,6 +5849,319 @@ mod tests {
     }
 
     #[test]
+    fn x1_mapped_lookup_surface_matches_owned_handle() {
+        let root = temp_path("x1-lookup-surface");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("generation.x1");
+        let identity = test_identity();
+        let snapshot = lookup_fixture_snapshot();
+        let bytes = encode_snapshot_with_identity(&snapshot, &identity).unwrap();
+        write_readonly_artifact(&artifact, &bytes);
+        let mapped =
+            open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
+        let actual = mapped.read_handle();
+        let expected = snapshot.worker_handle();
+
+        assert_eq!(
+            actual.string_id("Shared Type"),
+            snapshot
+                .strings
+                .iter()
+                .position(|candidate| candidate == "Shared Type")
+                .map(|index| StringId(index as u32))
+        );
+        assert_eq!(
+            actual.string_id("Запрос"),
+            snapshot
+                .strings
+                .iter()
+                .position(|candidate| candidate == "Запрос")
+                .map(|index| StringId(index as u32))
+        );
+        assert_eq!(actual.string_id("missing"), None);
+        assert_eq!(
+            actual.global_fact_ids().collect::<Vec<_>>(),
+            expected.global_fact_ids().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            actual.query_table_ids().collect::<Vec<_>>(),
+            expected.query_table_ids().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            actual.query_field_ids().collect::<Vec<_>>(),
+            expected.query_field_ids().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            actual.query_parameter_ids().collect::<Vec<_>>(),
+            expected.query_parameter_ids().collect::<Vec<_>>()
+        );
+
+        assert_lookup_eq(
+            actual.facts_by_id("duplicate-fact-id"),
+            expected.facts_by_id("duplicate-fact-id"),
+        );
+        assert_lookup_eq(
+            actual.facts_by_id("missing"),
+            expected.facts_by_id("missing"),
+        );
+        assert_eq!(
+            actual.platform_type_by_id("platform_type:Запрос"),
+            expected.platform_type_by_id("platform_type:Запрос")
+        );
+        assert_eq!(actual.platform_type_by_id("missing"), None);
+        assert_lookup_eq(
+            actual.platform_types_by_name("Shared Type"),
+            expected.platform_types_by_name("Shared Type"),
+        );
+        assert_lookup_eq(
+            actual.platform_types_by_name("missing"),
+            expected.platform_types_by_name("missing"),
+        );
+        let template = snapshot.platform_types[0].type_template_key.unwrap();
+        assert_lookup_eq(
+            actual.platform_types_by_template_key(
+                snapshot.string(template.family),
+                snapshot.string(template.variant),
+            ),
+            expected.platform_types_by_template_key(
+                snapshot.string(template.family),
+                snapshot.string(template.variant),
+            ),
+        );
+        assert_eq!(
+            actual
+                .platform_types_by_template_key("missing", "missing")
+                .len(),
+            0
+        );
+
+        assert_lookup_eq(
+            actual.members_of_type(HbkPlatformTypeId(0)),
+            expected
+                .members_of_type(HbkPlatformTypeId(0))
+                .iter()
+                .copied(),
+        );
+        assert_lookup_eq(
+            actual.members_of_type(HbkPlatformTypeId(9)),
+            std::iter::empty(),
+        );
+        assert_lookup_eq(
+            actual.member_by_owner_name(HbkPlatformTypeId(0), "Shared Member"),
+            expected.member_by_owner_name(HbkPlatformTypeId(0), "Shared Member"),
+        );
+        assert_eq!(
+            actual
+                .member_by_owner_name(HbkPlatformTypeId(0), "missing")
+                .len(),
+            0
+        );
+        assert_lookup_eq(
+            actual.member_by_owner_name_kind(HbkPlatformTypeId(0), "Shared Member", None),
+            expected.member_by_owner_name_kind(HbkPlatformTypeId(0), "Shared Member", None),
+        );
+        assert_lookup_eq(
+            actual.member_by_owner_name_kind(
+                HbkPlatformTypeId(0),
+                "Shared Member",
+                Some(HbkTypeMemberKind::Method),
+            ),
+            expected.member_by_owner_name_kind(
+                HbkPlatformTypeId(0),
+                "Shared Member",
+                Some(HbkTypeMemberKind::Method),
+            ),
+        );
+        assert_eq!(
+            actual
+                .member_by_owner_name_kind(
+                    HbkPlatformTypeId(0),
+                    "Shared Member",
+                    Some(HbkTypeMemberKind::Property),
+                )
+                .len(),
+            0
+        );
+        assert_lookup_eq(
+            actual.callables_of_type(HbkPlatformTypeId(0)),
+            expected
+                .callables_of_type(HbkPlatformTypeId(0))
+                .iter()
+                .copied(),
+        );
+        assert_lookup_eq(
+            actual.callable_by_owner_name(HbkPlatformTypeId(0), "Server Method Callable"),
+            expected.callable_by_owner_name(HbkPlatformTypeId(0), "Server Method Callable"),
+        );
+        assert_eq!(
+            actual
+                .callable_by_owner_name(HbkPlatformTypeId(0), "missing")
+                .len(),
+            0
+        );
+        assert_lookup_eq(
+            actual.constructors_of_type(HbkPlatformTypeId(0)),
+            expected
+                .constructors_of_type(HbkPlatformTypeId(0))
+                .iter()
+                .copied(),
+        );
+
+        assert_lookup_eq(
+            actual.globals_by_name("Shared Global"),
+            expected.globals_by_name("Shared Global"),
+        );
+        assert_eq!(actual.globals_by_name("missing").len(), 0);
+        assert_lookup_eq(
+            actual.globals_by_domain_name_kind(HbkLanguageDomain::Bsl, "Shared Global", None),
+            expected.globals_by_domain_name_kind(HbkLanguageDomain::Bsl, "Shared Global", None),
+        );
+        assert_lookup_eq(
+            actual.globals_by_domain_name_kind(
+                HbkLanguageDomain::Bsl,
+                "Shared Global",
+                Some(HbkGlobalFactKind::Method),
+            ),
+            expected.globals_by_domain_name_kind(
+                HbkLanguageDomain::Bsl,
+                "Shared Global",
+                Some(HbkGlobalFactKind::Method),
+            ),
+        );
+        assert_lookup_eq(
+            actual.module_events("Common Module"),
+            expected.module_events("Common Module"),
+        );
+        assert_lookup_eq(
+            actual.module_event_by_context_name("Common Module", "Event Name"),
+            expected.module_event_by_context_name("Common Module", "Event Name"),
+        );
+        assert_lookup_eq(
+            actual.module_context_events(HbkLanguageDomain::Bsl, "BSL", "Common Module"),
+            expected.module_context_events(HbkLanguageDomain::Bsl, "BSL", "Common Module"),
+        );
+        assert_eq!(actual.module_events("missing").len(), 0);
+        assert_eq!(
+            actual
+                .module_context_events(HbkLanguageDomain::Bsl, "missing", "missing")
+                .len(),
+            0
+        );
+
+        assert_eq!(
+            actual.query_table_by_id("query_table:Sales"),
+            expected.query_table_by_id("query_table:Sales")
+        );
+        assert_eq!(actual.query_table_by_id("missing"), None);
+        assert_lookup_eq(
+            actual.query_tables_by_name("Sales"),
+            expected.query_tables_by_name("Sales"),
+        );
+        assert_lookup_eq(
+            actual.query_tables_by_syntax("Sales Syntax"),
+            expected.query_tables_by_syntax("Sales Syntax"),
+        );
+        assert_lookup_eq(
+            actual.query_tables_by_identifier("SALES ID"),
+            expected.query_tables_by_identifier("SALES ID"),
+        );
+        assert_eq!(actual.query_tables_by_name("missing").len(), 0);
+        assert_lookup_eq(
+            actual.query_fields(HbkQueryTableId(0)),
+            expected.query_fields(HbkQueryTableId(0)).iter().copied(),
+        );
+        assert_lookup_eq(
+            actual.query_fields_by_name(HbkQueryTableId(0), "Shared Field"),
+            expected.query_fields_by_name(HbkQueryTableId(0), "Shared Field"),
+        );
+        assert_eq!(
+            actual
+                .query_fields_by_name(HbkQueryTableId(0), "missing")
+                .len(),
+            0
+        );
+        assert_lookup_eq(
+            actual.query_parameters(HbkQueryTableId(0)),
+            expected
+                .query_parameters(HbkQueryTableId(0))
+                .iter()
+                .copied(),
+        );
+        assert_lookup_eq(
+            actual.query_parameters_by_name(HbkQueryTableId(0), "Shared Parameter"),
+            expected.query_parameters_by_name(HbkQueryTableId(0), "Shared Parameter"),
+        );
+        assert_eq!(
+            actual
+                .query_parameters_by_name(HbkQueryTableId(0), "missing")
+                .len(),
+            0
+        );
+
+        assert_eq!(
+            actual.language_fact_by_id("language:Function"),
+            expected.language_fact_by_id("language:Function")
+        );
+        assert_eq!(actual.language_fact_by_id("missing"), None);
+        assert_lookup_eq(
+            actual.language_facts_by_name("Language Function"),
+            expected.language_facts_by_name("Language Function"),
+        );
+        assert_eq!(actual.language_facts_by_name("missing").len(), 0);
+        assert_eq!(
+            actual.enum_by_id("enum:Color"),
+            expected.enum_by_id("enum:Color")
+        );
+        assert_eq!(actual.enum_by_id("missing"), None);
+        assert_lookup_eq(
+            actual.enums_by_name("Color"),
+            expected.enums_by_name("Color"),
+        );
+        assert_eq!(actual.enums_by_name("missing").len(), 0);
+        assert_eq!(
+            actual.enum_value_by_id("enum_value:Red"),
+            expected.enum_value_by_id("enum_value:Red")
+        );
+        assert_eq!(actual.enum_value_by_id("missing"), None);
+        assert_lookup_eq(
+            actual.enum_values(HbkEnumId(0)),
+            expected.enum_values(HbkEnumId(0)).iter().copied(),
+        );
+        assert_lookup_eq(
+            actual.enum_values_by_name(HbkEnumId(0), "Shared Value"),
+            expected.enum_values_by_name(HbkEnumId(0), "Shared Value"),
+        );
+        assert_eq!(actual.enum_values_by_name(HbkEnumId(0), "missing").len(), 0);
+
+        let available_fact = HbkFactRef::Global(HbkGlobalFactId(1));
+        assert_lookup_eq(
+            actual.availability_contexts(available_fact),
+            expected
+                .availability_contexts(available_fact)
+                .iter()
+                .copied(),
+        );
+        assert_eq!(
+            actual.available_since(available_fact),
+            expected.available_since(available_fact)
+        );
+        assert_lookup_eq(
+            actual.relations_by_source_kind(available_fact, "Type Reference"),
+            expected
+                .relations_by_source_kind(available_fact, "Type Reference")
+                .iter()
+                .copied(),
+        );
+        assert_lookup_eq(
+            actual.relations_by_source_kind(available_fact, "missing"),
+            std::iter::empty(),
+        );
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn x1_mapped_handles_and_views_carry_the_generation_lifetime() {
         fn handle<'a>(generation: &'a X1MappedGeneration) -> X1MappedReadHandle<'a> {
             generation.read_handle()
@@ -5145,6 +6205,92 @@ mod tests {
 
         drop(mapped);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    #[test]
+    #[ignore = "run alone to isolate process-global allocation counters"]
+    fn x1_mapped_pre_normalized_lookup_and_ranges_allocate_nothing() {
+        let root = temp_path("x1-lookup-allocation");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("generation.x1");
+        let identity = test_identity();
+        let snapshot = lookup_fixture_snapshot();
+        let bytes = encode_snapshot_with_identity(&snapshot, &identity).unwrap();
+        write_readonly_artifact(&artifact, &bytes);
+        let mapped =
+            open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
+        let read = mapped.read_handle();
+
+        for _ in 0..8 {
+            traverse_steady_lookup(read);
+        }
+        let before = experiment_allocation_snapshot();
+        for _ in 0..128 {
+            traverse_steady_lookup(read);
+        }
+        let delta = experiment_allocation_snapshot().delta_since(before);
+        assert_eq!(delta.allocation_calls, 0);
+        assert_eq!(delta.reallocation_calls, 0);
+        assert_eq!(delta.allocated_bytes, 0);
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    #[test]
+    #[ignore = "run alone to isolate process-global allocation counters"]
+    fn x1_mapped_raw_lookup_allocates_only_its_normalized_key() {
+        let root = temp_path("x1-raw-lookup-allocation");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("generation.x1");
+        let identity = test_identity();
+        let snapshot = lookup_fixture_snapshot();
+        let bytes = encode_snapshot_with_identity(&snapshot, &identity).unwrap();
+        write_readonly_artifact(&artifact, &bytes);
+        let mapped =
+            open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
+        let read = mapped.read_handle();
+
+        std::hint::black_box(read.platform_types_by_name("Shared Type").count());
+        let before = experiment_allocation_snapshot();
+        std::hint::black_box(read.platform_types_by_name("Shared Type").count());
+        let delta = experiment_allocation_snapshot().delta_since(before);
+        assert_eq!(delta.allocation_calls, 1);
+        assert_eq!(delta.reallocation_calls, 0);
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    fn traverse_steady_lookup(read: X1MappedReadHandle<'_>) {
+        std::hint::black_box(read.string_id("Shared Type"));
+        for id in read.platform_types_by_normalized_name("sharedtype") {
+            std::hint::black_box(id);
+        }
+        for id in read.member_by_owner_normalized_name(HbkPlatformTypeId(0), "sharedmember") {
+            std::hint::black_box(id);
+        }
+        for id in read.members_of_type(HbkPlatformTypeId(0)) {
+            std::hint::black_box(id);
+        }
+        for id in read.callables_of_type(HbkPlatformTypeId(0)) {
+            std::hint::black_box(id);
+        }
+        for id in read.query_fields(HbkQueryTableId(0)) {
+            std::hint::black_box(id);
+        }
+        for id in read.query_parameters(HbkQueryTableId(0)) {
+            std::hint::black_box(id);
+        }
+        for id in read.enum_values(HbkEnumId(0)) {
+            std::hint::black_box(id);
+        }
+        for id in read.availability_contexts(HbkFactRef::Global(HbkGlobalFactId(1))) {
+            std::hint::black_box(id);
+        }
     }
 
     #[cfg(feature = "snapshot-experiment-alloc")]
@@ -5872,6 +7018,362 @@ mod tests {
         snapshot.source_by_fact.sort_by_key(|lookup| lookup.fact);
 
         snapshot
+    }
+
+    fn lookup_fixture_snapshot() -> HbkFactSnapshot {
+        let mut snapshot = forward_payload_fixture_snapshot();
+        let shared_type = push_fixture_string(&mut snapshot, "Shared Type");
+        let shared_type_key = push_fixture_string(&mut snapshot, "sharedtype");
+        snapshot.platform_types[0].name.alias = Some(shared_type);
+        snapshot.platform_types[1].name.alias = Some(shared_type);
+
+        let shared_member = push_fixture_string(&mut snapshot, "Shared Member");
+        let shared_member_key = push_fixture_string(&mut snapshot, "sharedmember");
+        snapshot.type_members[1].name.alias = Some(shared_member);
+        snapshot.type_members[2].name.alias = Some(shared_member);
+
+        let shared_global = push_fixture_string(&mut snapshot, "Shared Global");
+        let shared_global_key = push_fixture_string(&mut snapshot, "sharedglobal");
+        snapshot.globals[0].name.alias = Some(shared_global);
+        snapshot.globals[1].name.alias = Some(shared_global);
+
+        let shared_field = push_fixture_string(&mut snapshot, "Shared Field");
+        let shared_field_key = push_fixture_string(&mut snapshot, "sharedfield");
+        snapshot.query_fields[0].name.alias = Some(shared_field);
+        let second_field_id = push_fixture_string(&mut snapshot, "query_field:Tax");
+        let second_field_name = push_fixture_string(&mut snapshot, "Tax");
+        snapshot.query_fields.push(HbkQueryField {
+            id: second_field_id,
+            owner: HbkQueryTableId(0),
+            name: HbkName {
+                primary: second_field_name,
+                alias: Some(shared_field),
+            },
+            type_refs: Vec::new(),
+            note: None,
+        });
+
+        let shared_parameter = push_fixture_string(&mut snapshot, "Shared Parameter");
+        let shared_parameter_key = push_fixture_string(&mut snapshot, "sharedparameter");
+        snapshot.query_parameters[0].name.alias = Some(shared_parameter);
+        let second_parameter_id = push_fixture_string(&mut snapshot, "query_parameter:Limit");
+        let second_parameter_name = push_fixture_string(&mut snapshot, "Limit");
+        snapshot.query_parameters.push(HbkQueryParameter {
+            id: second_parameter_id,
+            owner: HbkQueryTableId(0),
+            name: HbkName {
+                primary: second_parameter_name,
+                alias: Some(shared_parameter),
+            },
+            type_refs: Vec::new(),
+            default_value: None,
+        });
+
+        let shared_value = push_fixture_string(&mut snapshot, "Shared Value");
+        let shared_value_key = push_fixture_string(&mut snapshot, "sharedvalue");
+        snapshot.enum_values[0].name.alias = Some(shared_value);
+        let second_value_id = push_fixture_string(&mut snapshot, "enum_value:Blue");
+        let second_value_name = push_fixture_string(&mut snapshot, "Blue");
+        snapshot.enum_values.push(HbkEnumValue {
+            id: second_value_id,
+            owner: HbkEnumId(0),
+            name: HbkName {
+                primary: second_value_name,
+                alias: Some(shared_value),
+            },
+        });
+
+        let duplicate_fact_id = push_fixture_string(&mut snapshot, "duplicate-fact-id");
+        let callable_name_key = push_fixture_string(&mut snapshot, "servermethodcallable");
+        let module_owner = push_fixture_string(&mut snapshot, "commonmodule");
+        let module_event = push_fixture_string(&mut snapshot, "eventname");
+        let language_key = push_fixture_string(&mut snapshot, "bsl");
+        let table_name_key = push_fixture_string(&mut snapshot, "sales");
+        let table_syntax_key = push_fixture_string(&mut snapshot, "salessyntax");
+        let table_identifier = push_fixture_string(&mut snapshot, "SALES ID");
+        let table_identifier_key = push_fixture_string(&mut snapshot, "salesid");
+        snapshot.query_tables[0].identifier = Some(table_identifier);
+        let language_name_key = push_fixture_string(&mut snapshot, "languagefunction");
+        let enum_name_key = push_fixture_string(&mut snapshot, "color");
+        let available_since = push_fixture_string(&mut snapshot, "8.3.0");
+        let relation_kind = push_fixture_string(&mut snapshot, "typereference");
+
+        snapshot.fact_ids = vec![
+            IdLookup {
+                key: duplicate_fact_id,
+                value: HbkFactRef::PlatformType(HbkPlatformTypeId(0)),
+            },
+            IdLookup {
+                key: duplicate_fact_id,
+                value: HbkFactRef::Global(HbkGlobalFactId(0)),
+            },
+        ];
+        snapshot.platform_type_ids = snapshot
+            .platform_types
+            .iter()
+            .enumerate()
+            .map(|(index, value)| IdLookup {
+                key: value.id,
+                value: HbkPlatformTypeId(index as u32),
+            })
+            .collect();
+        snapshot.platform_type_names = vec![
+            NameLookup {
+                key: shared_type_key,
+                value: HbkPlatformTypeId(0),
+            },
+            NameLookup {
+                key: shared_type_key,
+                value: HbkPlatformTypeId(1),
+            },
+        ];
+        snapshot.member_ids = snapshot
+            .type_members
+            .iter()
+            .enumerate()
+            .map(|(index, value)| IdLookup {
+                key: value.id,
+                value: HbkTypeMemberId(index as u32),
+            })
+            .collect();
+        snapshot.members_by_owner_name = vec![
+            OwnerNameLookup {
+                owner: HbkPlatformTypeId(0),
+                key: shared_member_key,
+                value: HbkTypeMemberId(1),
+            },
+            OwnerNameLookup {
+                owner: HbkPlatformTypeId(0),
+                key: shared_member_key,
+                value: HbkTypeMemberId(2),
+            },
+        ];
+        snapshot.members_by_owner_name_kind = vec![
+            MemberNameKindLookup {
+                owner: HbkPlatformTypeId(0),
+                key: shared_member_key,
+                kind: Some(HbkTypeMemberKind::Method),
+                value: HbkTypeMemberId(1),
+            },
+            MemberNameKindLookup {
+                owner: HbkPlatformTypeId(0),
+                key: shared_member_key,
+                kind: Some(HbkTypeMemberKind::Method),
+                value: HbkTypeMemberId(2),
+            },
+        ];
+        snapshot.callable_ids = snapshot
+            .callables
+            .iter()
+            .enumerate()
+            .map(|(index, value)| IdLookup {
+                key: value.id,
+                value: HbkCallableId(index as u32),
+            })
+            .collect();
+        snapshot.callables_by_owner =
+            CsrIndex::from_pairs(vec![(HbkPlatformTypeId(0), HbkCallableId(0))]);
+        snapshot.callables_by_owner_name = vec![OwnerNameLookup {
+            owner: HbkPlatformTypeId(0),
+            key: callable_name_key,
+            value: HbkCallableId(0),
+        }];
+        snapshot.constructors_by_type =
+            CsrIndex::from_pairs(vec![(HbkPlatformTypeId(0), HbkCallableId(0))]);
+        snapshot.global_names = vec![
+            NameLookup {
+                key: shared_global_key,
+                value: HbkGlobalFactId(0),
+            },
+            NameLookup {
+                key: shared_global_key,
+                value: HbkGlobalFactId(1),
+            },
+        ];
+        snapshot.globals_by_domain_name_kind = vec![
+            GlobalNameKindLookup {
+                domain: HbkLanguageDomain::Bsl,
+                key: shared_global_key,
+                kind: Some(HbkGlobalFactKind::Method),
+                value: HbkGlobalFactId(0),
+            },
+            GlobalNameKindLookup {
+                domain: HbkLanguageDomain::Bsl,
+                key: shared_global_key,
+                kind: Some(HbkGlobalFactKind::Method),
+                value: HbkGlobalFactId(1),
+            },
+        ];
+        snapshot.module_event_names = vec![
+            OwnerNameLookup {
+                owner: module_owner,
+                key: module_event,
+                value: HbkCallableId(0),
+            },
+            OwnerNameLookup {
+                owner: module_owner,
+                key: module_event,
+                value: HbkCallableId(1),
+            },
+        ];
+        snapshot.module_contexts_by_domain_language_kind = vec![
+            ModuleContextLookup {
+                domain: HbkLanguageDomain::Bsl,
+                language_key,
+                module_kind: module_owner,
+                value: HbkCallableId(0),
+            },
+            ModuleContextLookup {
+                domain: HbkLanguageDomain::Bsl,
+                language_key,
+                module_kind: module_owner,
+                value: HbkCallableId(1),
+            },
+        ];
+        snapshot.query_table_ids = vec![IdLookup {
+            key: snapshot.query_tables[0].id,
+            value: HbkQueryTableId(0),
+        }];
+        snapshot.query_table_names = vec![NameLookup {
+            key: table_name_key,
+            value: HbkQueryTableId(0),
+        }];
+        snapshot.query_table_syntax_names = vec![NameLookup {
+            key: table_syntax_key,
+            value: HbkQueryTableId(0),
+        }];
+        snapshot.query_table_identifiers = vec![NameLookup {
+            key: table_identifier_key,
+            value: HbkQueryTableId(0),
+        }];
+        snapshot.query_fields_by_table = CsrIndex::from_pairs(vec![
+            (HbkQueryTableId(0), HbkQueryFieldId(0)),
+            (HbkQueryTableId(0), HbkQueryFieldId(1)),
+        ]);
+        snapshot.query_fields_by_table_name = vec![
+            OwnerNameLookup {
+                owner: HbkQueryTableId(0),
+                key: shared_field_key,
+                value: HbkQueryFieldId(0),
+            },
+            OwnerNameLookup {
+                owner: HbkQueryTableId(0),
+                key: shared_field_key,
+                value: HbkQueryFieldId(1),
+            },
+        ];
+        snapshot.query_parameters_by_table = CsrIndex::from_pairs(vec![
+            (HbkQueryTableId(0), HbkQueryParameterId(0)),
+            (HbkQueryTableId(0), HbkQueryParameterId(1)),
+        ]);
+        snapshot.query_parameters_by_table_name = vec![
+            OwnerNameLookup {
+                owner: HbkQueryTableId(0),
+                key: shared_parameter_key,
+                value: HbkQueryParameterId(0),
+            },
+            OwnerNameLookup {
+                owner: HbkQueryTableId(0),
+                key: shared_parameter_key,
+                value: HbkQueryParameterId(1),
+            },
+        ];
+        snapshot.language_ids = vec![IdLookup {
+            key: snapshot.language_facts[0].id,
+            value: HbkLanguageFactId(0),
+        }];
+        snapshot.language_names = vec![NameLookup {
+            key: language_name_key,
+            value: HbkLanguageFactId(0),
+        }];
+        snapshot.enum_ids = vec![IdLookup {
+            key: snapshot.enums[0].id,
+            value: HbkEnumId(0),
+        }];
+        snapshot.enum_names = vec![NameLookup {
+            key: enum_name_key,
+            value: HbkEnumId(0),
+        }];
+        snapshot.enum_value_ids = snapshot
+            .enum_values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| IdLookup {
+                key: value.id,
+                value: HbkEnumValueId(index as u32),
+            })
+            .collect();
+        snapshot.enum_values_by_enum = CsrIndex::from_pairs(vec![
+            (HbkEnumId(0), HbkEnumValueId(0)),
+            (HbkEnumId(0), HbkEnumValueId(1)),
+        ]);
+        snapshot.enum_values_by_enum_name = vec![
+            OwnerNameLookup {
+                owner: HbkEnumId(0),
+                key: shared_value_key,
+                value: HbkEnumValueId(0),
+            },
+            OwnerNameLookup {
+                owner: HbkEnumId(0),
+                key: shared_value_key,
+                value: HbkEnumValueId(1),
+            },
+        ];
+        snapshot.availability_since_by_fact = vec![FactStringLookup {
+            fact: HbkFactRef::Global(HbkGlobalFactId(1)),
+            value: available_since,
+        }];
+        snapshot.relations_by_source_kind = CsrIndex::from_pairs(vec![
+            (
+                RelationLookupKey {
+                    source: HbkFactRef::Global(HbkGlobalFactId(1)),
+                    kind: relation_kind,
+                },
+                HbkFactRef::PlatformType(HbkPlatformTypeId(0)),
+            ),
+            (
+                RelationLookupKey {
+                    source: HbkFactRef::Global(HbkGlobalFactId(1)),
+                    kind: relation_kind,
+                },
+                HbkFactRef::TypeMember(HbkTypeMemberId(1)),
+            ),
+        ]);
+
+        let strings = &snapshot.strings;
+        let by_id = |left: StringId, right: StringId| {
+            strings[left.0 as usize].cmp(&strings[right.0 as usize])
+        };
+        snapshot.fact_ids.sort_by(|left, right| {
+            by_id(left.key, right.key).then_with(|| left.value.cmp(&right.value))
+        });
+        snapshot.platform_type_ids.sort_by(|left, right| {
+            by_id(left.key, right.key).then_with(|| left.value.cmp(&right.value))
+        });
+        snapshot.platform_type_names.sort_by(|left, right| {
+            by_id(left.key, right.key).then_with(|| left.value.cmp(&right.value))
+        });
+        snapshot.member_ids.sort_by(|left, right| {
+            by_id(left.key, right.key).then_with(|| left.value.cmp(&right.value))
+        });
+        snapshot.callable_ids.sort_by(|left, right| {
+            by_id(left.key, right.key).then_with(|| left.value.cmp(&right.value))
+        });
+        snapshot.enum_value_ids.sort_by(|left, right| {
+            by_id(left.key, right.key).then_with(|| left.value.cmp(&right.value))
+        });
+
+        snapshot
+    }
+
+    fn assert_lookup_eq<T: std::fmt::Debug + PartialEq>(
+        actual: impl IntoIterator<Item = T>,
+        expected: impl IntoIterator<Item = T>,
+    ) {
+        assert_eq!(
+            actual.into_iter().collect::<Vec<_>>(),
+            expected.into_iter().collect::<Vec<_>>()
+        );
     }
 
     fn push_fixture_string(snapshot: &mut HbkFactSnapshot, value: &str) -> StringId {

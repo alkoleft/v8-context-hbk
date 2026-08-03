@@ -1169,6 +1169,14 @@ nested fixture payload и provenance подтверждён с нулём алл
 component slice добавляет только base-dictionary/reverse provider lookup;
 второй validator, public X1 entity family и owned fallback запрещены.
 
+OpenSpec 3.4 завершил private mapped provider lookup surface. `StringOrder`
+служит единственным reverse dictionary, persisted X1 hash — единственным
+type-name index, а остальные name/owner/template/availability/relation операции
+читают существующие sorted/CSR sections. Multi-hit order и ambiguity совпали с
+owned `HbkFactReadHandle`; pre-normalized steady lookup не аллоцирует result
+collections или entity DTO. Public owner и защита неизменности generation
+остаются единственным следующим component slice 3.5.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

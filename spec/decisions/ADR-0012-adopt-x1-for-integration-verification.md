@@ -173,6 +173,8 @@ search/debug artifact. Решение удаляет его только из an
       fallback; public open остаётся закрытым до borrowed views и slot lock.
 - [x] Private borrowed forward views и provider-native `ANY`/`ALL` traversal
       реализованы без entity materialization и steady allocations.
+- [x] Private base-dictionary/reverse/provider lookup surface реализован с
+      owned parity, persisted indexes и zero-allocation pre-normalized path.
 - [ ] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
 - [ ] X1 проходит все X1-INT performance/resource gates.
 - [ ] Canonical cutover и последующий scoped cleanup завершены отдельными

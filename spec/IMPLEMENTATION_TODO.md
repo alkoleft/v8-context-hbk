@@ -346,8 +346,12 @@ type-reference conclusions live in
     views покрывают весь forward payload и provenance, provider-native
     `ANY`/`ALL` фильтрует globals и непосредственные members одного известного
     owner, а полный steady nested fixture traversal подтверждён с нулём
-    аллокаций. Следующий активный пункт — 3.4: base dictionary, reverse lookup и
-    provider lookup без entity-shaped DTO.
+    аллокаций. OpenSpec 3.4 завершён: `StringOrder`, persisted type-name hash,
+    sorted indexes и CSR ranges покрывают всю private lookup-таблицу
+    `HbkFactReadHandle` с owned parity, deterministic multi-hit order и
+    zero-allocation pre-normalized path. Следующий активный пункт — 3.5:
+    stable-slot shared reader/fail-fast writer lock и atomic immutable
+    generation publication.
     T183 остаётся открытой на implementation/X1-INT; canonical
     cutover и garbage cleanup условны и выполняются отдельными milestones.
 
