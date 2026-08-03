@@ -286,9 +286,9 @@ and the limiting storage or translation component before adding broader optimiza
 - X1 является единственным X1-INT кандидатом. X1-PROJECTED отклонён и не
   должен появляться в production artifact или runtime path.
 - X1-INT завершён полным pass, зафиксированным в
-  `acceptance/hbk-x1-int-evidence.md`. До отдельного canonical cutover X1
-  остаётся non-canonical production-quality вариантом, а H0 — baseline и
-  текущим runtime.
+  `acceptance/hbk-x1-int-evidence.md`. После отдельного проверенного cutover
+  validated mapped X1 является единственным canonical snapshot runtime, а H0
+  остаётся только явно выбранным build/test baseline.
 - X1-INT должен использовать точные inputs, scenario lifecycle, A/B order,
   sample counts, semantic oracles и числовые gates, зафиксированные в
   `implementation/hbk-zero-copy-x1-integration.md` до implementation.
@@ -304,12 +304,14 @@ and the limiting storage or translation component before adding broader optimiza
   cross-source precedence/effective selection и не копирует provider entities.
 - Runtime open должен быть fail-closed. Восстановление выполняется отдельным
   explicit ensure/rebuild, никогда скрытым fallback catalog/analyzer.
-- При полном pass X1 заменяет owned snapshot как единственный runtime-владелец.
-  SQLite может сохраниться только как private build input и отдельный
-  CLI/search/debug storage.
-- Cleanup выполняется после cutover по consumer inventory и удаляет только
-  доказанно заменённые runtime paths. Экспериментальные ветки/evidence и
-  отдельные search/debug contracts сохраняются.
+- `HbkFactSnapshot::open(slot, &expectation)` открывает только validated mapped
+  generation, проверяет platform version/locale/source identity и не имеет
+  SQL/HBK/owned fallback. Owned staging доступен только через явно названные
+  `build_from_provider_*` операции производства X1.
+- Legacy C0 owned binary-cache runtime и закрытые AV1/AV2 producer paths удалены
+  по consumer inventory. SQLite сохраняется как private build input и
+  отдельный CLI/search/debug storage; экспериментальные ветки, durable evidence,
+  result summarizers и allocation/parity tooling сохраняются.
 
 ## NFR-TEST-001: Testability
 

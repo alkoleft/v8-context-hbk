@@ -248,6 +248,30 @@ SQLite search/debug contracts.
   dependency result; semantic precedence, availability, BSL/SDBL selection,
   metadata, transport and checkpoint schema are unchanged.
 
+### Result: OpenSpec 5–7
+
+Cutover и cleanup завершены. Единственный runtime entrypoint —
+`HbkFactSnapshot::open(slot, &expectation)`; он открывает validated mapped X1,
+удерживает session lock и не читает SQLite/HBK. `PlatformSnapshotSource` и
+`QueryTableSnapshotSource` принимают только caller-owned snapshot. Owned staging
+доступен только через `build_from_provider_path/index` и их timed-варианты.
+
+После consumer review удалены legacy `HBKFSN1`/C0 reader-writer/API, cache-only
+tests, закрытые AV1/AV2/oracle producers и неиспользуемые serde dev-dependencies.
+Общий X1 byte codec и build-input identity оставлены private; mutation provider
+rows или source HBK после materialization блокирует write/publish без частичной
+generation через сравнение полных SHA-256, а не только metadata/mtime.
+Сохранены `SearchIndex`, SQL search/debug adapters, CLI/export, allocation
+feature, full-corpus parity, semantic parity verifier, frozen evidence
+summarizers/contracts и экспериментальные ветви. Structural guards запрещают
+возврат удалённого surface, второй snapshot constructor, SQL/HBK fallback и
+X1-PROJECTED sections.
+
+Downstream tasks 1.14–1.14b приняли canonical mapped HBK base dictionary и
+generation-borrowed views. Отдельного non-benchmark product composition root в
+`v8-context` пока нет; private analyzer/integration harness является первым
+проверенным consumer, а будущий root обязан использовать тот же open seam.
+
 ### Reintroduction guard
 
 Single allowed runtime flow:
@@ -267,9 +291,9 @@ Exact consumers, actions, replacements, verification and the mandatory
 SQLite/build/search/debug preserve-list are fixed in
 `hbk-zero-copy-x1-cutover-inventory.md`; category-level deletion is forbidden.
 
-## Условный cutover и cleanup
+## Завершённый cutover и cleanup
 
-При полном pass отдельная проверенная задача:
+После полного pass отдельная проверенная задача:
 
 1. делает mapped X1 единственным canonical snapshot open;
 2. мигрирует все snapshot catalogs/adapters и реальный analyzer construction;
@@ -277,7 +301,7 @@ SQLite/build/search/debug preserve-list are fixed in
 4. доказывает отсутствие SQL/HBK fallback и owned graph;
 5. только затем открывает scoped cleanup.
 
-Cleanup удаляет лишь inventory-proven replaced runtime constructors, owned
+Cleanup удалил лишь inventory-proven replaced runtime constructors, owned
 binary-cache reader/model/indexes, stale tests/features/dependencies и лишние
 conversion paths. Экспериментальные ветки и durable evidence сохраняются;
 отдельные search/debug contracts и несвязанные examples не удаляются.

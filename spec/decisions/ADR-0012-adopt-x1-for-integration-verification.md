@@ -55,6 +55,16 @@ X1 выигрыш в штатном `v8-context`, который формиру�
    поколения. BSL/metadata overlay принадлежит downstream, не копирует HBK-
    словарь и не превращает локальные числовые ID в постоянную identity.
 
+## Результат выполнения
+
+X1-INT прошёл каждый semantic/performance/resource/lifecycle gate без waiver.
+После отдельного reviewed cutover `HbkFactSnapshot::open` стал единственным
+canonical snapshot runtime, а provider materialization осталась только в
+explicit `build_from_provider_*` setup. Downstream принял mapped base dictionary
+и generation-borrowed views в tasks 1.14–1.14b. Последующий scoped cleanup
+удалил legacy C0 binary-cache runtime и закрытые experiment producers, сохранив
+SQLite build/search/debug, allocator/parity tooling, evidence и ветви.
+
 ## Обязательные gates X1-INT
 
 - Полный catalog/resolver transcript и analyzer semantic oracle точно совпадают
@@ -191,7 +201,7 @@ search/debug artifact. Решение удаляет его только из an
       zero-allocation borrowed traversal probes.
 - [x] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
 - [x] X1 проходит все X1-INT performance/resource gates.
-- [ ] Canonical cutover и последующий scoped cleanup завершены отдельными
+- [x] Canonical cutover и последующий scoped cleanup завершены отдельными
       проверенными задачами.
 
 ## Дополнительная информация

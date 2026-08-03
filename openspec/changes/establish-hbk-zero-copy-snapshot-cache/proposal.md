@@ -1,8 +1,8 @@
-> **РЕШЕНИЕ T183 ПРИНЯТО; X1-INT ЕЩЁ НЕ ПРОШЁЛ.** Пользователь выбрал X1
-> единственным интеграционным кандидатом и отклонил X1-PROJECTED. X1 остаётся
-> non-canonical до полной end-to-end проверки в `v8-context` по заранее
-> зафиксированным gates. Canonical cutover и удаление SQL/owned runtime
-> разрешены только после полного X1-INT pass согласно ADR-0012.
+> **T183 ЗАВЕРШЕНА; X1 — CANONICAL RUNTIME SNAPSHOT.** Пользователь выбрал X1
+> единственным интеграционным кандидатом и отклонил X1-PROJECTED. Полная
+> end-to-end проверка в `v8-context` прошла все заранее зафиксированные gates;
+> отдельный cutover и inventory-scoped cleanup завершены. SQLite сохранён для
+> build/search/debug, но не используется как snapshot runtime или fallback.
 
 ## Зачем
 
@@ -126,11 +126,11 @@
 
 ### Изменяемые возможности
 
-- `hbk-fact-snapshot-cache`: если кандидат проходит свои критерии допуска,
-  пересмотреть текущий контракт провайдера, в котором SQLite является
-  каноническим, так чтобы zero-copy снапшот стал единственным каноническим
-  runtime-артефактом контекста HBK, а SQLite сохранялся только в явно принятой
-  приватной роли для пересборки/построения индексов.
+- `hbk-fact-snapshot-cache`: X1 прошёл критерии допуска и заменил контракт, в
+  котором SQLite был каноническим snapshot storage. Zero-copy X1 является
+  единственным каноническим runtime-артефактом контекста HBK, а SQLite
+  сохраняется только в явно принятой приватной роли для пересборки/построения
+  индексов и отдельных search/debug контрактов.
 
 ## Влияние
 
@@ -150,12 +150,12 @@
   происхождением артефакта, а не идентичностью сущности; нижестоящий код получает
   семантические каталоги/read handles и никогда не получает байты или смещения
   снапшота.
-- Зависимое нижестоящее предложение:
-  `v8-context/openspec/changes/establish-unified-semantic-entity-model` получает
-  условный результат: при полном X1-INT pass оно принимает immutable HBK base
-  dictionary и generation-local IDs, но не копирует словарь, не стабилизирует
-  общий persistent `SymbolId` и оставляет BSL/metadata overlay downstream.
-- Вне области T183: безусловная production-миграция до полного X1-INT pass,
-  владение overlay BSL/метаданных, глобальный для процесса interner, постоянные
-  межпроектные ID сущностей, копии для analyzer, слои совместимости со старым
+- Зависимое нижестоящее предложение
+  `v8-context/openspec/changes/establish-unified-semantic-entity-model` приняло
+  immutable HBK base dictionary и generation-local IDs в tasks 1.14–1.14b, но
+  не копирует словарь, не стабилизирует общий persistent `SymbolId` и оставляет
+  BSL/metadata overlay downstream.
+- Вне области T183: владение overlay BSL/метаданных, глобальный для процесса
+  interner, постоянные межпроектные ID сущностей, копии для analyzer, слои
+  совместимости со старым
   layout и замена HBK-файлов в роли авторитетных источников документации.

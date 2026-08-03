@@ -1220,8 +1220,19 @@ OpenSpec 4.5–4.6 завершил real analyzer X1-INT полным pass. В �
 дал cold time `0.418-0.422x` H0, prepared handle `0.938-0.986x`, full
 resolution `0.908-0.925x`, process RSS `0.348-0.522x` и cold peak heap около
 `0.049x`. Semantic oracles `1798` и `2490/2286/204` сохранили exact SHA-256.
-Это разрешает отдельный cutover, но до OpenSpec 5.1 H0 остаётся runtime и
-никакие cleanup-candidates не удаляются.
+Это разрешило отдельный cutover.
+
+OpenSpec 5–7 завершил этот cutover: `HbkFactSnapshot::open` теперь является
+единственным snapshot runtime constructor и открывает только validated mapped
+stable-slot X1 без SQL/HBK/owned fallback. SQLite-to-owned материализация
+переименована в `build_from_provider_*` и осталась только build/setup/parity
+границей. Snapshot adapters принимают один caller-owned `Arc<HbkFactSnapshot>`;
+downstream private analyzer/integration harness принял тот же canonical open и
+generation-borrowed views. Legacy C0 binary-cache runtime, его модель/codec,
+осиротевшие oracle/AV1/AV2 producers и их зависимости удалены по точному
+ledger. `SearchIndex`, SQL search/debug adapters, CLI/export, allocator,
+full-corpus parity и durable evidence сохранены; structural guards закрепляют
+обе стороны границы.
 
 ## Implementation Dependencies
 

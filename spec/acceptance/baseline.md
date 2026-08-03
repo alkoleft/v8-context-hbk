@@ -3180,8 +3180,21 @@ full resolution `0.908-0.925x`, wall RSS `0.348-0.522x`, cold peak heap
 `0.0485x` H0. Первое X1 build-to-ready заняло `4761.942604 ms` при
 `108.609536 MB` peak RSS; artifact остался `12,430,416` bytes с прежним SHA.
 Полный результат находится в `hbk-x1-int-evidence.md`. Отдельный canonical
-cutover теперь разрешён, но ещё не выполнен; H0 code и cleanup сохраняются до
-OpenSpec 5.1–5.3.
+cutover затем завершён: `HbkFactSnapshot::open(slot, &expectation)` является
+единственным runtime snapshot open, downstream private analyzer harness
+использует его без fallback, а H0 доступен только как explicit build/test
+baseline. Provider materialization переименована в `build_from_provider_*`.
+
+OpenSpec 7 удалил по точному consumer ledger legacy C0 `HBKFSN1` runtime/API,
+cache-only tests, закрытые snapshot/AV1/AV2/oracle producers и их осиротевшие
+dependencies. X1 codec/build-input identity остались private; отдельный
+regression подтверждает отказ write/publish без частичной generation после
+изменения обычной provider row или source HBK; сравниваются полные SHA-256,
+снятые до materialization. Сохранены SQLite `SearchIndex`/builder/schema/
+locking, SQL search/debug/CLI/export adapters, allocation и full-corpus parity
+tests, semantic parity verifier, frozen result summarizers/contracts, durable
+evidence и экспериментальные ветви. Package/workspace/clippy/fmt/OpenSpec,
+full-corpus parity, structural guards и независимый final review прошли.
 
 Baseline update rule:
 

@@ -1050,3 +1050,10 @@ dependency remains a future task only if later measurements show that cache dese
 allocation, not SQLite materialization, is again the limiting component. T170 preserves the
 completed T171 resolver backend split; a future non-query-table `LanguageSnapshotSource` remains
 separate scope.
+
+T183 supersedes only the T170 snapshot-runtime conclusion, not its historical measurements or the
+SQLite build/search boundary. Accepted X1-INT evidence made validated mapped X1 the canonical
+runtime snapshot and removed the T170 owned binary-cache API/model. SQLite remains the rebuildable
+provider input plus independent CLI/search/debug storage; producing X1 from it is an explicit
+`build_from_provider_*` setup operation, while runtime uses only
+`HbkFactSnapshot::open(slot, &expectation)` with no fallback.

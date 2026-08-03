@@ -34,7 +34,8 @@ type-reference conclusions live in
 `decisions/`. Detailed records for T165-T182 are in
 `archive/completed-tasks-t165-t182.md`.
 
-Первая текущая незавершённая задача: T183.
+Текущих незавершённых задач нет. T183 завершена; новый scope должен сначала
+получить отдельную задачу и ссылки на spec/ADR.
 
 ## Loop Rule
 
@@ -53,7 +54,7 @@ type-reference conclusions live in
 
 ## Active Tasks
 
-- [ ] **T183 — Завершить X1-INT и условный переход на canonical zero-copy snapshot**
+- [x] **T183 — Завершить X1-INT и условный переход на canonical zero-copy snapshot**
   - Требования:
     [NFR-RESOLVE-001](requirements/non-functional.md#nfr-resolve-001-in-process-resolver-latency-and-determinism),
     [NFR-SNAPSHOT-001](requirements/non-functional.md#nfr-snapshot-001-evidence-gated-file-backed-snapshot-experiment),
@@ -381,15 +382,21 @@ type-reference conclusions live in
     handle `0.938-0.986x`, full resolution `0.908-0.925x`, wall RSS
     `0.348-0.522x`, cold peak heap `0.0485x` H0. Все gates прошли отдельно в
     A/B без waiver; детали и service-data manifest записаны в
-    `acceptance/hbk-x1-int-evidence.md`. Следующий активный пункт — отдельный
-    canonical cutover 5.1 с последующим inventory-scoped cleanup. T183 остаётся
-    открытой до завершения cutover, structural guards и уборки.
+    `acceptance/hbk-x1-int-evidence.md`. Отдельный canonical cutover 5.1–5.3
+    завершён: `HbkFactSnapshot::open` открывает только mapped stable-slot X1,
+    downstream private analyzer/integration harness использует тот же seam, а
+    H0 остаётся explicit build/test baseline без fallback.
     До изменения кода принят точный cutover/deletion ledger
     `implementation/hbk-zero-copy-x1-cutover-inventory.md`: он фиксирует
     downstream границу private benchmark/integration harness, replacement
     owners, проверки и обязательный preserve-list SQLite build/search/debug.
     Независимый skeptic-review принял план без оставшихся high/critical
-    блокеров; cleanup cache/examples отделён в задачи 7.2–7.3.
+    блокеров; cleanup cache/examples выполнен задачами 7.2–7.3. Удалены только
+    ledger-listed legacy C0 cache/runtime и закрытые experiment producers;
+    сохранены SQLite build/search/debug/CLI, allocator/parity tooling, durable
+    evidence и ветви. Итоговые fmt/check/test/clippy/OpenSpec, structural guards
+    и независимый review прошли. Downstream tasks 1.14–1.14b приняли canonical
+    mapped HBK base dictionary и generation-borrowed views. T183 завершена.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

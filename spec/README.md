@@ -32,7 +32,7 @@ Otherwise reconcile the specification files before implementing.
 - `implementation/hbk-zero-copy-snapshot-experiment.md`: реестр гипотез zero-copy-снапшота T183,
   воспроизводимый протокол сравнения, изоляция ветвей/worktree и граница принятия решения.
 - `implementation/hbk-zero-copy-x1-integration.md`: принятое решение X1, production-source/API
-  ledger, точный X1-INT протокол и условные этапы canonical cutover/cleanup.
+  ledger, точный X1-INT протокол и завершённые этапы canonical cutover/cleanup.
 - `implementation/hbk-zero-copy-x1-cutover-inventory.md`: обязательный точный
   path/symbol ledger canonical cutover и последующей inventory-driven уборки,
   включая replacement owners, проверки и preserve-list SQLite contracts.
@@ -43,8 +43,8 @@ Otherwise reconcile the specification files before implementing.
   полный разбор поведенческой эквивалентности, результаты отдельных операций и итоги
   зафиксированных критериев.
 - `acceptance/hbk-x1-int-evidence.md`: принятые full-corpus, catalog/resolver и
-  analyzer свидетельства полного X1-INT pass; разрешает отдельный reviewed
-  canonical cutover, но не считает его выполненным.
+  analyzer свидетельства полного X1-INT pass, на основании которых последующий
+  reviewed canonical cutover завершён в T183.
 - `acceptance/hbk-s83-av1-evidence.md`: дополнительный неранжированный проход T183 для
   полной enumeration глобальных BSL-методов с фильтром только по `AvailabilityContext`.
 - `acceptance/hbk-s83-av2-evidence.md`: дополнительный неранжированный проход T183 для
