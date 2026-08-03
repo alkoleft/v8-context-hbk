@@ -7111,6 +7111,36 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires V8_CONTEXT_HBK_X1_INT_INDEX with the frozen S83 provider index"]
+    fn x1_full_corpus_lookup_surface_matches_owned_snapshot() {
+        const INDEX_ENV: &str = "V8_CONTEXT_HBK_X1_INT_INDEX";
+
+        let index_path = std::env::var_os(INDEX_ENV)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| panic!("{INDEX_ENV} must point to the frozen provider SQLite"));
+        let root = temp_path("x1-full-corpus-lookup-parity");
+        let slot = root.join("slot");
+        let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path).unwrap();
+        let identity = artifact_identity(&report).unwrap();
+        let publication = report.publish_x1_generation(&slot).unwrap();
+        let mapped = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
+
+        let parity = assert_exhaustive_lookup_parity(&report.snapshot, &mapped.generation);
+
+        println!("x1_full_corpus_lookup_parity=pass");
+        println!("provider_index={}", index_path.display());
+        println!("provider_sha256={}", identity.provider_sha256);
+        println!("artifact_bytes={}", publication.artifact_bytes);
+        println!("artifact_sha256={}", publication.artifact_sha256);
+        println!("semantic_call_pairs={}", parity.call_pairs);
+        println!("semantic_handle_calls={}", parity.call_pairs * 2);
+        println!("lookup_transcript_sha256={}", parity.transcript_sha256);
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn x1_mapped_filters_globals_and_known_owner_members_with_any_all_semantics() {
         let root = temp_path("x1-forward-filter");
         fs::create_dir_all(&root).unwrap();
@@ -7491,6 +7521,29 @@ mod tests {
         assert_lookup_eq(
             actual.relations_by_source_kind(available_fact, "missing"),
             std::iter::empty(),
+        );
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_exhaustive_lookup_comparator_covers_fixture_ambiguity() {
+        let root = temp_path("x1-exhaustive-lookup-fixture");
+        fs::create_dir_all(&root).unwrap();
+        let artifact = root.join("generation.x1");
+        let identity = test_identity();
+        let snapshot = lookup_fixture_snapshot();
+        let bytes = encode_snapshot_with_identity(&snapshot, &identity).unwrap();
+        write_readonly_artifact(&artifact, &bytes);
+        let mapped =
+            open_controlled_generation(&artifact, &runtime_expectation(&identity)).unwrap();
+
+        let parity = assert_exhaustive_lookup_parity(&snapshot, &mapped);
+        assert_eq!(parity.call_pairs, 117);
+        assert_eq!(
+            parity.transcript_sha256,
+            "b74268747d0ab7a9ea7b5c1c4f986c9271599b388a46b02a55564cedb1b98b7b"
         );
 
         drop(mapped);
@@ -8700,6 +8753,1287 @@ mod tests {
         });
 
         snapshot
+    }
+
+    const ABSENT_LOOKUP_KEY: &str = "__отсутствует_hbk_x1__";
+
+    struct LookupParityReport {
+        call_pairs: usize,
+        transcript_sha256: String,
+    }
+
+    struct LookupParityTranscript<'a> {
+        snapshot: &'a HbkFactSnapshot,
+        digest: Sha256,
+        call_pairs: usize,
+    }
+
+    impl<'a> LookupParityTranscript<'a> {
+        fn new(snapshot: &'a HbkFactSnapshot) -> Self {
+            let mut digest = Sha256::new();
+            digest.update(b"hbk-x1-lookup-parity-v1");
+            Self {
+                snapshot,
+                digest,
+                call_pairs: 0,
+            }
+        }
+
+        fn compare_facts(
+            &mut self,
+            operation: &str,
+            arguments: &[&str],
+            actual: impl IntoIterator<Item = HbkFactRef>,
+            expected: impl IntoIterator<Item = HbkFactRef>,
+        ) {
+            let actual = actual.into_iter().collect::<Vec<_>>();
+            let expected = expected.into_iter().collect::<Vec<_>>();
+            assert_eq!(actual, expected, "{operation}({arguments:?})");
+
+            self.record_call(operation, arguments, expected.len());
+            for fact in expected {
+                let (family, id) = logical_fact_identity(self.snapshot, fact);
+                self.record_field(family.as_bytes());
+                self.record_field(id.as_bytes());
+            }
+        }
+
+        fn compare_strings(
+            &mut self,
+            operation: &str,
+            arguments: &[&str],
+            actual: impl IntoIterator<Item = StringId>,
+            expected: impl IntoIterator<Item = StringId>,
+        ) {
+            let actual = actual.into_iter().collect::<Vec<_>>();
+            let expected = expected.into_iter().collect::<Vec<_>>();
+            assert_eq!(actual, expected, "{operation}({arguments:?})");
+
+            self.record_call(operation, arguments, expected.len());
+            for value in expected {
+                self.record_field(self.snapshot.string(value).as_bytes());
+            }
+        }
+
+        fn record_call(&mut self, operation: &str, arguments: &[&str], result_len: usize) {
+            self.call_pairs += 1;
+            self.record_field(operation.as_bytes());
+            self.record_u64(arguments.len());
+            for argument in arguments {
+                self.record_field(argument.as_bytes());
+            }
+            self.record_u64(result_len);
+        }
+
+        fn record_field(&mut self, value: &[u8]) {
+            self.record_u64(value.len());
+            self.digest.update(value);
+        }
+
+        fn record_u64(&mut self, value: usize) {
+            self.digest.update((value as u64).to_le_bytes());
+        }
+
+        fn finish(self) -> LookupParityReport {
+            LookupParityReport {
+                call_pairs: self.call_pairs,
+                transcript_sha256: format!("{:x}", self.digest.finalize()),
+            }
+        }
+    }
+
+    fn assert_exhaustive_lookup_parity(
+        snapshot: &HbkFactSnapshot,
+        mapped: &X1MappedGeneration,
+    ) -> LookupParityReport {
+        assert!(
+            snapshot
+                .strings
+                .iter()
+                .all(|candidate| candidate != ABSENT_LOOKUP_KEY)
+        );
+        let owned = snapshot.worker_handle();
+        let actual = mapped.read_handle();
+        let mut parity = LookupParityTranscript::new(snapshot);
+
+        let mut previous = None;
+        for lookup in &snapshot.fact_ids {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let id = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "facts_by_id",
+                &[id],
+                actual.facts_by_id(id),
+                owned.facts_by_id(id),
+            );
+        }
+        parity.compare_facts(
+            "facts_by_id",
+            &[ABSENT_LOOKUP_KEY],
+            actual.facts_by_id(ABSENT_LOOKUP_KEY),
+            owned.facts_by_id(ABSENT_LOOKUP_KEY),
+        );
+        parity.compare_facts(
+            "global_fact_ids",
+            &[],
+            actual.global_fact_ids().map(HbkFactRef::Global),
+            owned.global_fact_ids().map(HbkFactRef::Global),
+        );
+        parity.compare_facts(
+            "query_table_ids",
+            &[],
+            actual.query_table_ids().map(HbkFactRef::QueryTable),
+            owned.query_table_ids().map(HbkFactRef::QueryTable),
+        );
+        parity.compare_facts(
+            "query_field_ids",
+            &[],
+            actual.query_field_ids().map(HbkFactRef::QueryField),
+            owned.query_field_ids().map(HbkFactRef::QueryField),
+        );
+        parity.compare_facts(
+            "query_parameter_ids",
+            &[],
+            actual.query_parameter_ids().map(HbkFactRef::QueryParameter),
+            owned.query_parameter_ids().map(HbkFactRef::QueryParameter),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.platform_type_ids {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let id = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "platform_type_by_id",
+                &[id],
+                actual
+                    .platform_type_by_id(id)
+                    .into_iter()
+                    .map(HbkFactRef::PlatformType),
+                owned
+                    .platform_type_by_id(id)
+                    .into_iter()
+                    .map(HbkFactRef::PlatformType),
+            );
+        }
+        parity.compare_facts(
+            "platform_type_by_id",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .platform_type_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::PlatformType),
+            owned
+                .platform_type_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::PlatformType),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.platform_type_names {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "platform_types_by_name",
+                &[name],
+                actual
+                    .platform_types_by_name(name)
+                    .map(HbkFactRef::PlatformType),
+                owned
+                    .platform_types_by_name(name)
+                    .map(HbkFactRef::PlatformType),
+            );
+        }
+        parity.compare_facts(
+            "platform_types_by_name",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .platform_types_by_name(ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::PlatformType),
+            owned
+                .platform_types_by_name(ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::PlatformType),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.platform_type_templates {
+            let key = (lookup.family, lookup.variant);
+            if previous == Some(key) {
+                continue;
+            }
+            previous = Some(key);
+            let family = snapshot.string(lookup.family);
+            let variant = snapshot.string(lookup.variant);
+            parity.compare_facts(
+                "platform_types_by_template_key",
+                &[family, variant],
+                actual
+                    .platform_types_by_template_key(family, variant)
+                    .map(HbkFactRef::PlatformType),
+                owned
+                    .platform_types_by_template_key(family, variant)
+                    .map(HbkFactRef::PlatformType),
+            );
+        }
+        parity.compare_facts(
+            "platform_types_by_template_key",
+            &[ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY],
+            actual
+                .platform_types_by_template_key(ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::PlatformType),
+            owned
+                .platform_types_by_template_key(ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::PlatformType),
+        );
+
+        compare_platform_owner_lookups(snapshot, actual, owned, &mut parity);
+        compare_global_and_module_lookups(snapshot, actual, owned, &mut parity);
+        compare_query_lookups(snapshot, actual, owned, &mut parity);
+        compare_language_and_enum_lookups(snapshot, actual, owned, &mut parity);
+        compare_state_lookups(snapshot, actual, owned, &mut parity);
+
+        parity.finish()
+    }
+
+    fn compare_platform_owner_lookups(
+        snapshot: &HbkFactSnapshot,
+        actual: X1MappedReadHandle<'_>,
+        owned: HbkFactReadHandle<'_>,
+        parity: &mut LookupParityTranscript<'_>,
+    ) {
+        for index in 0..snapshot.platform_types.len() {
+            let owner = HbkPlatformTypeId(index as u32);
+            let (_, owner_id) = logical_fact_identity(snapshot, HbkFactRef::PlatformType(owner));
+            parity.compare_facts(
+                "members_of_type",
+                &[owner_id],
+                actual.members_of_type(owner).map(HbkFactRef::TypeMember),
+                owned
+                    .members_of_type(owner)
+                    .iter()
+                    .copied()
+                    .map(HbkFactRef::TypeMember),
+            );
+            parity.compare_facts(
+                "callables_of_type",
+                &[owner_id],
+                actual.callables_of_type(owner).map(HbkFactRef::Callable),
+                owned
+                    .callables_of_type(owner)
+                    .iter()
+                    .copied()
+                    .map(HbkFactRef::Callable),
+            );
+            parity.compare_facts(
+                "constructors_of_type",
+                &[owner_id],
+                actual.constructors_of_type(owner).map(HbkFactRef::Callable),
+                owned
+                    .constructors_of_type(owner)
+                    .iter()
+                    .copied()
+                    .map(HbkFactRef::Callable),
+            );
+        }
+
+        let missing_owner = HbkPlatformTypeId(snapshot.platform_types.len() as u32);
+        for (operation, actual_values, owned_values) in [
+            (
+                "members_of_type",
+                actual
+                    .members_of_type(missing_owner)
+                    .map(HbkFactRef::TypeMember)
+                    .collect::<Vec<_>>(),
+                owned
+                    .members_of_type(missing_owner)
+                    .iter()
+                    .copied()
+                    .map(HbkFactRef::TypeMember)
+                    .collect::<Vec<_>>(),
+            ),
+            (
+                "callables_of_type",
+                actual
+                    .callables_of_type(missing_owner)
+                    .map(HbkFactRef::Callable)
+                    .collect(),
+                owned
+                    .callables_of_type(missing_owner)
+                    .iter()
+                    .copied()
+                    .map(HbkFactRef::Callable)
+                    .collect(),
+            ),
+            (
+                "constructors_of_type",
+                actual
+                    .constructors_of_type(missing_owner)
+                    .map(HbkFactRef::Callable)
+                    .collect(),
+                owned
+                    .constructors_of_type(missing_owner)
+                    .iter()
+                    .copied()
+                    .map(HbkFactRef::Callable)
+                    .collect(),
+            ),
+        ] {
+            parity.compare_facts(operation, &[ABSENT_LOOKUP_KEY], actual_values, owned_values);
+        }
+
+        let mut previous = None;
+        for lookup in &snapshot.members_by_owner_name {
+            let key = (lookup.owner, lookup.key);
+            if previous == Some(key) {
+                continue;
+            }
+            previous = Some(key);
+            let (_, owner_id) =
+                logical_fact_identity(snapshot, HbkFactRef::PlatformType(lookup.owner));
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "member_by_owner_name",
+                &[owner_id, name],
+                actual
+                    .member_by_owner_name(lookup.owner, name)
+                    .map(HbkFactRef::TypeMember),
+                owned
+                    .member_by_owner_name(lookup.owner, name)
+                    .map(HbkFactRef::TypeMember),
+            );
+            parity.compare_facts(
+                "member_by_owner_name_kind",
+                &[owner_id, name, "none"],
+                actual
+                    .member_by_owner_name_kind(lookup.owner, name, None)
+                    .map(HbkFactRef::TypeMember),
+                owned
+                    .member_by_owner_name_kind(lookup.owner, name, None)
+                    .map(HbkFactRef::TypeMember),
+            );
+        }
+
+        let mut previous = None;
+        for lookup in &snapshot.members_by_owner_name_kind {
+            let key = (lookup.owner, lookup.key, lookup.kind);
+            if previous == Some(key) {
+                continue;
+            }
+            previous = Some(key);
+            let (_, owner_id) =
+                logical_fact_identity(snapshot, HbkFactRef::PlatformType(lookup.owner));
+            let name = snapshot.string(lookup.key);
+            let kind = lookup.kind.map(member_kind_name).unwrap_or("none");
+            parity.compare_facts(
+                "member_by_owner_name_kind",
+                &[owner_id, name, kind],
+                actual
+                    .member_by_owner_name_kind(lookup.owner, name, lookup.kind)
+                    .map(HbkFactRef::TypeMember),
+                owned
+                    .member_by_owner_name_kind(lookup.owner, name, lookup.kind)
+                    .map(HbkFactRef::TypeMember),
+            );
+        }
+
+        let mut previous = None;
+        for lookup in &snapshot.callables_by_owner_name {
+            let key = (lookup.owner, lookup.key);
+            if previous == Some(key) {
+                continue;
+            }
+            previous = Some(key);
+            let (_, owner_id) =
+                logical_fact_identity(snapshot, HbkFactRef::PlatformType(lookup.owner));
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "callable_by_owner_name",
+                &[owner_id, name],
+                actual
+                    .callable_by_owner_name(lookup.owner, name)
+                    .map(HbkFactRef::Callable),
+                owned
+                    .callable_by_owner_name(lookup.owner, name)
+                    .map(HbkFactRef::Callable),
+            );
+        }
+
+        if !snapshot.platform_types.is_empty() {
+            let owner = HbkPlatformTypeId(0);
+            let (_, owner_id) = logical_fact_identity(snapshot, HbkFactRef::PlatformType(owner));
+            parity.compare_facts(
+                "member_by_owner_name",
+                &[owner_id, ABSENT_LOOKUP_KEY],
+                actual
+                    .member_by_owner_name(owner, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::TypeMember),
+                owned
+                    .member_by_owner_name(owner, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::TypeMember),
+            );
+            parity.compare_facts(
+                "member_by_owner_name_kind",
+                &[owner_id, ABSENT_LOOKUP_KEY, "none"],
+                actual
+                    .member_by_owner_name_kind(owner, ABSENT_LOOKUP_KEY, None)
+                    .map(HbkFactRef::TypeMember),
+                owned
+                    .member_by_owner_name_kind(owner, ABSENT_LOOKUP_KEY, None)
+                    .map(HbkFactRef::TypeMember),
+            );
+            parity.compare_facts(
+                "callable_by_owner_name",
+                &[owner_id, ABSENT_LOOKUP_KEY],
+                actual
+                    .callable_by_owner_name(owner, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::Callable),
+                owned
+                    .callable_by_owner_name(owner, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::Callable),
+            );
+        }
+    }
+
+    fn compare_global_and_module_lookups(
+        snapshot: &HbkFactSnapshot,
+        actual: X1MappedReadHandle<'_>,
+        owned: HbkFactReadHandle<'_>,
+        parity: &mut LookupParityTranscript<'_>,
+    ) {
+        let mut previous = None;
+        for lookup in &snapshot.global_names {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "globals_by_name",
+                &[name],
+                actual.globals_by_name(name).map(HbkFactRef::Global),
+                owned.globals_by_name(name).map(HbkFactRef::Global),
+            );
+        }
+        parity.compare_facts(
+            "globals_by_name",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .globals_by_name(ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::Global),
+            owned
+                .globals_by_name(ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::Global),
+        );
+
+        let mut previous_pair = None;
+        let mut previous_triple = None;
+        for lookup in &snapshot.globals_by_domain_name_kind {
+            let pair = (lookup.domain, lookup.key);
+            let name = snapshot.string(lookup.key);
+            let domain = language_domain_name(lookup.domain);
+            if previous_pair != Some(pair) {
+                previous_pair = Some(pair);
+                parity.compare_facts(
+                    "globals_by_domain_name_kind",
+                    &[domain, name, "none"],
+                    actual
+                        .globals_by_domain_name_kind(lookup.domain, name, None)
+                        .map(HbkFactRef::Global),
+                    owned
+                        .globals_by_domain_name_kind(lookup.domain, name, None)
+                        .map(HbkFactRef::Global),
+                );
+            }
+            let triple = (lookup.domain, lookup.key, lookup.kind);
+            if previous_triple == Some(triple) {
+                continue;
+            }
+            previous_triple = Some(triple);
+            let kind = lookup.kind.map(global_kind_name).unwrap_or("none");
+            parity.compare_facts(
+                "globals_by_domain_name_kind",
+                &[domain, name, kind],
+                actual
+                    .globals_by_domain_name_kind(lookup.domain, name, lookup.kind)
+                    .map(HbkFactRef::Global),
+                owned
+                    .globals_by_domain_name_kind(lookup.domain, name, lookup.kind)
+                    .map(HbkFactRef::Global),
+            );
+        }
+        parity.compare_facts(
+            "globals_by_domain_name_kind",
+            &["bsl", ABSENT_LOOKUP_KEY, "none"],
+            actual
+                .globals_by_domain_name_kind(HbkLanguageDomain::Bsl, ABSENT_LOOKUP_KEY, None)
+                .map(HbkFactRef::Global),
+            owned
+                .globals_by_domain_name_kind(HbkLanguageDomain::Bsl, ABSENT_LOOKUP_KEY, None)
+                .map(HbkFactRef::Global),
+        );
+        parity.compare_facts(
+            "globals_by_domain_name_kind",
+            &["unknown", ABSENT_LOOKUP_KEY, "none"],
+            actual
+                .globals_by_domain_name_kind(HbkLanguageDomain::Unknown, ABSENT_LOOKUP_KEY, None)
+                .map(HbkFactRef::Global),
+            owned
+                .globals_by_domain_name_kind(HbkLanguageDomain::Unknown, ABSENT_LOOKUP_KEY, None)
+                .map(HbkFactRef::Global),
+        );
+
+        let mut previous_owner = None;
+        let mut previous_pair = None;
+        for lookup in &snapshot.module_event_names {
+            let context = snapshot.string(lookup.owner);
+            if previous_owner != Some(lookup.owner) {
+                previous_owner = Some(lookup.owner);
+                parity.compare_facts(
+                    "module_events",
+                    &[context],
+                    actual.module_events(context).map(HbkFactRef::Callable),
+                    owned.module_events(context).map(HbkFactRef::Callable),
+                );
+            }
+            let pair = (lookup.owner, lookup.key);
+            if previous_pair == Some(pair) {
+                continue;
+            }
+            previous_pair = Some(pair);
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "module_event_by_context_name",
+                &[context, name],
+                actual
+                    .module_event_by_context_name(context, name)
+                    .map(HbkFactRef::Callable),
+                owned
+                    .module_event_by_context_name(context, name)
+                    .map(HbkFactRef::Callable),
+            );
+        }
+        parity.compare_facts(
+            "module_events",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .module_events(ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::Callable),
+            owned
+                .module_events(ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::Callable),
+        );
+        parity.compare_facts(
+            "module_event_by_context_name",
+            &[ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY],
+            actual
+                .module_event_by_context_name(ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::Callable),
+            owned
+                .module_event_by_context_name(ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::Callable),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.module_contexts_by_domain_language_kind {
+            let key = (lookup.domain, lookup.language_key, lookup.module_kind);
+            if previous == Some(key) {
+                continue;
+            }
+            previous = Some(key);
+            let domain = language_domain_name(lookup.domain);
+            let language = snapshot.string(lookup.language_key);
+            let module_kind = snapshot.string(lookup.module_kind);
+            parity.compare_facts(
+                "module_context_events",
+                &[domain, language, module_kind],
+                actual
+                    .module_context_events(lookup.domain, language, module_kind)
+                    .map(HbkFactRef::Callable),
+                owned
+                    .module_context_events(lookup.domain, language, module_kind)
+                    .map(HbkFactRef::Callable),
+            );
+        }
+        parity.compare_facts(
+            "module_context_events",
+            &["bsl", ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY],
+            actual
+                .module_context_events(HbkLanguageDomain::Bsl, ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::Callable),
+            owned
+                .module_context_events(HbkLanguageDomain::Bsl, ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::Callable),
+        );
+        parity.compare_facts(
+            "module_context_events",
+            &["unknown", ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY],
+            actual
+                .module_context_events(
+                    HbkLanguageDomain::Unknown,
+                    ABSENT_LOOKUP_KEY,
+                    ABSENT_LOOKUP_KEY,
+                )
+                .map(HbkFactRef::Callable),
+            owned
+                .module_context_events(
+                    HbkLanguageDomain::Unknown,
+                    ABSENT_LOOKUP_KEY,
+                    ABSENT_LOOKUP_KEY,
+                )
+                .map(HbkFactRef::Callable),
+        );
+    }
+
+    fn compare_query_lookups(
+        snapshot: &HbkFactSnapshot,
+        actual: X1MappedReadHandle<'_>,
+        owned: HbkFactReadHandle<'_>,
+        parity: &mut LookupParityTranscript<'_>,
+    ) {
+        let mut previous = None;
+        for lookup in &snapshot.query_table_ids {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let id = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "query_table_by_id",
+                &[id],
+                actual
+                    .query_table_by_id(id)
+                    .into_iter()
+                    .map(HbkFactRef::QueryTable),
+                owned
+                    .query_table_by_id(id)
+                    .into_iter()
+                    .map(HbkFactRef::QueryTable),
+            );
+        }
+        parity.compare_facts(
+            "query_table_by_id",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .query_table_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::QueryTable),
+            owned
+                .query_table_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::QueryTable),
+        );
+
+        compare_query_name_index(
+            snapshot,
+            actual,
+            owned,
+            parity,
+            "query_tables_by_name",
+            &snapshot.query_table_names,
+            QueryNameLookup::Name,
+        );
+        compare_query_name_index(
+            snapshot,
+            actual,
+            owned,
+            parity,
+            "query_tables_by_syntax",
+            &snapshot.query_table_syntax_names,
+            QueryNameLookup::Syntax,
+        );
+        compare_query_name_index(
+            snapshot,
+            actual,
+            owned,
+            parity,
+            "query_tables_by_identifier",
+            &snapshot.query_table_identifiers,
+            QueryNameLookup::Identifier,
+        );
+
+        for index in 0..snapshot.query_tables.len() {
+            let table = HbkQueryTableId(index as u32);
+            let (_, table_id) = logical_fact_identity(snapshot, HbkFactRef::QueryTable(table));
+            parity.compare_facts(
+                "query_fields",
+                &[table_id],
+                actual.query_fields(table).map(HbkFactRef::QueryField),
+                owned
+                    .query_fields(table)
+                    .iter()
+                    .copied()
+                    .map(HbkFactRef::QueryField),
+            );
+            parity.compare_facts(
+                "query_parameters",
+                &[table_id],
+                actual
+                    .query_parameters(table)
+                    .map(HbkFactRef::QueryParameter),
+                owned
+                    .query_parameters(table)
+                    .iter()
+                    .copied()
+                    .map(HbkFactRef::QueryParameter),
+            );
+        }
+
+        let missing_table = HbkQueryTableId(snapshot.query_tables.len() as u32);
+        parity.compare_facts(
+            "query_fields",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .query_fields(missing_table)
+                .map(HbkFactRef::QueryField),
+            owned
+                .query_fields(missing_table)
+                .iter()
+                .copied()
+                .map(HbkFactRef::QueryField),
+        );
+        parity.compare_facts(
+            "query_parameters",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .query_parameters(missing_table)
+                .map(HbkFactRef::QueryParameter),
+            owned
+                .query_parameters(missing_table)
+                .iter()
+                .copied()
+                .map(HbkFactRef::QueryParameter),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.query_fields_by_table_name {
+            let key = (lookup.owner, lookup.key);
+            if previous == Some(key) {
+                continue;
+            }
+            previous = Some(key);
+            let (_, table_id) =
+                logical_fact_identity(snapshot, HbkFactRef::QueryTable(lookup.owner));
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "query_fields_by_name",
+                &[table_id, name],
+                actual
+                    .query_fields_by_name(lookup.owner, name)
+                    .map(HbkFactRef::QueryField),
+                owned
+                    .query_fields_by_name(lookup.owner, name)
+                    .map(HbkFactRef::QueryField),
+            );
+        }
+
+        let mut previous = None;
+        for lookup in &snapshot.query_parameters_by_table_name {
+            let key = (lookup.owner, lookup.key);
+            if previous == Some(key) {
+                continue;
+            }
+            previous = Some(key);
+            let (_, table_id) =
+                logical_fact_identity(snapshot, HbkFactRef::QueryTable(lookup.owner));
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "query_parameters_by_name",
+                &[table_id, name],
+                actual
+                    .query_parameters_by_name(lookup.owner, name)
+                    .map(HbkFactRef::QueryParameter),
+                owned
+                    .query_parameters_by_name(lookup.owner, name)
+                    .map(HbkFactRef::QueryParameter),
+            );
+        }
+
+        if !snapshot.query_tables.is_empty() {
+            let table = HbkQueryTableId(0);
+            let (_, table_id) = logical_fact_identity(snapshot, HbkFactRef::QueryTable(table));
+            parity.compare_facts(
+                "query_fields_by_name",
+                &[table_id, ABSENT_LOOKUP_KEY],
+                actual
+                    .query_fields_by_name(table, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::QueryField),
+                owned
+                    .query_fields_by_name(table, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::QueryField),
+            );
+            parity.compare_facts(
+                "query_parameters_by_name",
+                &[table_id, ABSENT_LOOKUP_KEY],
+                actual
+                    .query_parameters_by_name(table, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::QueryParameter),
+                owned
+                    .query_parameters_by_name(table, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::QueryParameter),
+            );
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum QueryNameLookup {
+        Name,
+        Syntax,
+        Identifier,
+    }
+
+    fn compare_query_name_index(
+        snapshot: &HbkFactSnapshot,
+        actual: X1MappedReadHandle<'_>,
+        owned: HbkFactReadHandle<'_>,
+        parity: &mut LookupParityTranscript<'_>,
+        operation: &str,
+        index: &[NameLookup<HbkQueryTableId>],
+        lookup: QueryNameLookup,
+    ) {
+        let mut previous = None;
+        for entry in index {
+            if previous == Some(entry.key) {
+                continue;
+            }
+            previous = Some(entry.key);
+            let value = snapshot.string(entry.key);
+            let (actual_values, owned_values) = match lookup {
+                QueryNameLookup::Name => (
+                    actual.query_tables_by_name(value).collect::<Vec<_>>(),
+                    owned.query_tables_by_name(value).collect::<Vec<_>>(),
+                ),
+                QueryNameLookup::Syntax => (
+                    actual.query_tables_by_syntax(value).collect::<Vec<_>>(),
+                    owned.query_tables_by_syntax(value).collect::<Vec<_>>(),
+                ),
+                QueryNameLookup::Identifier => (
+                    actual.query_tables_by_identifier(value).collect::<Vec<_>>(),
+                    owned.query_tables_by_identifier(value).collect::<Vec<_>>(),
+                ),
+            };
+            parity.compare_facts(
+                operation,
+                &[value],
+                actual_values.into_iter().map(HbkFactRef::QueryTable),
+                owned_values.into_iter().map(HbkFactRef::QueryTable),
+            );
+        }
+        let (actual_values, owned_values) = match lookup {
+            QueryNameLookup::Name => (
+                actual
+                    .query_tables_by_name(ABSENT_LOOKUP_KEY)
+                    .collect::<Vec<_>>(),
+                owned
+                    .query_tables_by_name(ABSENT_LOOKUP_KEY)
+                    .collect::<Vec<_>>(),
+            ),
+            QueryNameLookup::Syntax => (
+                actual
+                    .query_tables_by_syntax(ABSENT_LOOKUP_KEY)
+                    .collect::<Vec<_>>(),
+                owned
+                    .query_tables_by_syntax(ABSENT_LOOKUP_KEY)
+                    .collect::<Vec<_>>(),
+            ),
+            QueryNameLookup::Identifier => (
+                actual
+                    .query_tables_by_identifier(ABSENT_LOOKUP_KEY)
+                    .collect::<Vec<_>>(),
+                owned
+                    .query_tables_by_identifier(ABSENT_LOOKUP_KEY)
+                    .collect::<Vec<_>>(),
+            ),
+        };
+        parity.compare_facts(
+            operation,
+            &[ABSENT_LOOKUP_KEY],
+            actual_values.into_iter().map(HbkFactRef::QueryTable),
+            owned_values.into_iter().map(HbkFactRef::QueryTable),
+        );
+    }
+
+    fn compare_language_and_enum_lookups(
+        snapshot: &HbkFactSnapshot,
+        actual: X1MappedReadHandle<'_>,
+        owned: HbkFactReadHandle<'_>,
+        parity: &mut LookupParityTranscript<'_>,
+    ) {
+        let mut previous = None;
+        for lookup in &snapshot.language_ids {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let id = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "language_fact_by_id",
+                &[id],
+                actual
+                    .language_fact_by_id(id)
+                    .into_iter()
+                    .map(HbkFactRef::LanguageFact),
+                owned
+                    .language_fact_by_id(id)
+                    .into_iter()
+                    .map(HbkFactRef::LanguageFact),
+            );
+        }
+        parity.compare_facts(
+            "language_fact_by_id",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .language_fact_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::LanguageFact),
+            owned
+                .language_fact_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::LanguageFact),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.language_names {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "language_facts_by_name",
+                &[name],
+                actual
+                    .language_facts_by_name(name)
+                    .map(HbkFactRef::LanguageFact),
+                owned
+                    .language_facts_by_name(name)
+                    .map(HbkFactRef::LanguageFact),
+            );
+        }
+        parity.compare_facts(
+            "language_facts_by_name",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .language_facts_by_name(ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::LanguageFact),
+            owned
+                .language_facts_by_name(ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::LanguageFact),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.enum_ids {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let id = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "enum_by_id",
+                &[id],
+                actual.enum_by_id(id).into_iter().map(HbkFactRef::Enum),
+                owned.enum_by_id(id).into_iter().map(HbkFactRef::Enum),
+            );
+        }
+        parity.compare_facts(
+            "enum_by_id",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .enum_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::Enum),
+            owned
+                .enum_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::Enum),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.enum_names {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "enums_by_name",
+                &[name],
+                actual.enums_by_name(name).map(HbkFactRef::Enum),
+                owned.enums_by_name(name).map(HbkFactRef::Enum),
+            );
+        }
+        parity.compare_facts(
+            "enums_by_name",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .enums_by_name(ABSENT_LOOKUP_KEY)
+                .map(HbkFactRef::Enum),
+            owned.enums_by_name(ABSENT_LOOKUP_KEY).map(HbkFactRef::Enum),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.enum_value_ids {
+            if previous == Some(lookup.key) {
+                continue;
+            }
+            previous = Some(lookup.key);
+            let id = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "enum_value_by_id",
+                &[id],
+                actual
+                    .enum_value_by_id(id)
+                    .into_iter()
+                    .map(HbkFactRef::EnumValue),
+                owned
+                    .enum_value_by_id(id)
+                    .into_iter()
+                    .map(HbkFactRef::EnumValue),
+            );
+        }
+        parity.compare_facts(
+            "enum_value_by_id",
+            &[ABSENT_LOOKUP_KEY],
+            actual
+                .enum_value_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::EnumValue),
+            owned
+                .enum_value_by_id(ABSENT_LOOKUP_KEY)
+                .into_iter()
+                .map(HbkFactRef::EnumValue),
+        );
+
+        for index in 0..snapshot.enums.len() {
+            let owner = HbkEnumId(index as u32);
+            let (_, owner_id) = logical_fact_identity(snapshot, HbkFactRef::Enum(owner));
+            parity.compare_facts(
+                "enum_values",
+                &[owner_id],
+                actual.enum_values(owner).map(HbkFactRef::EnumValue),
+                owned
+                    .enum_values(owner)
+                    .iter()
+                    .copied()
+                    .map(HbkFactRef::EnumValue),
+            );
+        }
+        let missing_owner = HbkEnumId(snapshot.enums.len() as u32);
+        parity.compare_facts(
+            "enum_values",
+            &[ABSENT_LOOKUP_KEY],
+            actual.enum_values(missing_owner).map(HbkFactRef::EnumValue),
+            owned
+                .enum_values(missing_owner)
+                .iter()
+                .copied()
+                .map(HbkFactRef::EnumValue),
+        );
+
+        let mut previous = None;
+        for lookup in &snapshot.enum_values_by_enum_name {
+            let key = (lookup.owner, lookup.key);
+            if previous == Some(key) {
+                continue;
+            }
+            previous = Some(key);
+            let (_, owner_id) = logical_fact_identity(snapshot, HbkFactRef::Enum(lookup.owner));
+            let name = snapshot.string(lookup.key);
+            parity.compare_facts(
+                "enum_values_by_name",
+                &[owner_id, name],
+                actual
+                    .enum_values_by_name(lookup.owner, name)
+                    .map(HbkFactRef::EnumValue),
+                owned
+                    .enum_values_by_name(lookup.owner, name)
+                    .map(HbkFactRef::EnumValue),
+            );
+        }
+        if !snapshot.enums.is_empty() {
+            let owner = HbkEnumId(0);
+            let (_, owner_id) = logical_fact_identity(snapshot, HbkFactRef::Enum(owner));
+            parity.compare_facts(
+                "enum_values_by_name",
+                &[owner_id, ABSENT_LOOKUP_KEY],
+                actual
+                    .enum_values_by_name(owner, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::EnumValue),
+                owned
+                    .enum_values_by_name(owner, ABSENT_LOOKUP_KEY)
+                    .map(HbkFactRef::EnumValue),
+            );
+        }
+    }
+
+    fn compare_state_lookups(
+        snapshot: &HbkFactSnapshot,
+        actual: X1MappedReadHandle<'_>,
+        owned: HbkFactReadHandle<'_>,
+        parity: &mut LookupParityTranscript<'_>,
+    ) {
+        for_each_snapshot_fact(snapshot, |fact| {
+            let (_, fact_id) = logical_fact_identity(snapshot, fact);
+            parity.compare_strings(
+                "availability_contexts",
+                &[fact_id],
+                actual.availability_contexts(fact),
+                owned.availability_contexts(fact).iter().copied(),
+            );
+            parity.compare_strings(
+                "available_since",
+                &[fact_id],
+                actual.available_since(fact),
+                owned.available_since(fact),
+            );
+        });
+
+        for key in &snapshot.relations_by_source_kind.keys {
+            let (_, source_id) = logical_fact_identity(snapshot, key.source);
+            let kind = snapshot.string(key.kind);
+            parity.compare_facts(
+                "relations_by_source_kind",
+                &[source_id, kind],
+                actual.relations_by_source_kind(key.source, kind),
+                owned
+                    .relations_by_source_kind(key.source, kind)
+                    .iter()
+                    .copied(),
+            );
+        }
+
+        let absent_fact =
+            HbkFactRef::PlatformType(HbkPlatformTypeId(snapshot.platform_types.len() as u32));
+        parity.compare_strings(
+            "availability_contexts",
+            &[ABSENT_LOOKUP_KEY],
+            actual.availability_contexts(absent_fact),
+            owned.availability_contexts(absent_fact).iter().copied(),
+        );
+        parity.compare_strings(
+            "available_since",
+            &[ABSENT_LOOKUP_KEY],
+            actual.available_since(absent_fact),
+            owned.available_since(absent_fact),
+        );
+        parity.compare_facts(
+            "relations_by_source_kind",
+            &[ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY],
+            actual.relations_by_source_kind(absent_fact, ABSENT_LOOKUP_KEY),
+            owned
+                .relations_by_source_kind(absent_fact, ABSENT_LOOKUP_KEY)
+                .iter()
+                .copied(),
+        );
+    }
+
+    fn for_each_snapshot_fact(snapshot: &HbkFactSnapshot, mut visit: impl FnMut(HbkFactRef)) {
+        for index in 0..snapshot.platform_types.len() {
+            visit(HbkFactRef::PlatformType(HbkPlatformTypeId(index as u32)));
+        }
+        for index in 0..snapshot.type_members.len() {
+            visit(HbkFactRef::TypeMember(HbkTypeMemberId(index as u32)));
+        }
+        for index in 0..snapshot.callables.len() {
+            visit(HbkFactRef::Callable(HbkCallableId(index as u32)));
+        }
+        for index in 0..snapshot.globals.len() {
+            visit(HbkFactRef::Global(HbkGlobalFactId(index as u32)));
+        }
+        for index in 0..snapshot.query_tables.len() {
+            visit(HbkFactRef::QueryTable(HbkQueryTableId(index as u32)));
+        }
+        for index in 0..snapshot.query_fields.len() {
+            visit(HbkFactRef::QueryField(HbkQueryFieldId(index as u32)));
+        }
+        for index in 0..snapshot.query_parameters.len() {
+            visit(HbkFactRef::QueryParameter(HbkQueryParameterId(
+                index as u32,
+            )));
+        }
+        for index in 0..snapshot.language_facts.len() {
+            visit(HbkFactRef::LanguageFact(HbkLanguageFactId(index as u32)));
+        }
+        for index in 0..snapshot.enums.len() {
+            visit(HbkFactRef::Enum(HbkEnumId(index as u32)));
+        }
+        for index in 0..snapshot.enum_values.len() {
+            visit(HbkFactRef::EnumValue(HbkEnumValueId(index as u32)));
+        }
+    }
+
+    fn logical_fact_identity(snapshot: &HbkFactSnapshot, fact: HbkFactRef) -> (&'static str, &str) {
+        match fact {
+            HbkFactRef::PlatformType(id) => (
+                "platform_type",
+                snapshot.string(snapshot.platform_types[id.0 as usize].id),
+            ),
+            HbkFactRef::TypeMember(id) => (
+                "type_member",
+                snapshot.string(snapshot.type_members[id.0 as usize].id),
+            ),
+            HbkFactRef::Callable(id) => (
+                "callable",
+                snapshot.string(snapshot.callables[id.0 as usize].id),
+            ),
+            HbkFactRef::Global(id) => (
+                "global",
+                snapshot.string(snapshot.globals[id.0 as usize].id),
+            ),
+            HbkFactRef::QueryTable(id) => (
+                "query_table",
+                snapshot.string(snapshot.query_tables[id.0 as usize].id),
+            ),
+            HbkFactRef::QueryField(id) => (
+                "query_field",
+                snapshot.string(snapshot.query_fields[id.0 as usize].id),
+            ),
+            HbkFactRef::QueryParameter(id) => (
+                "query_parameter",
+                snapshot.string(snapshot.query_parameters[id.0 as usize].id),
+            ),
+            HbkFactRef::LanguageFact(id) => (
+                "language_fact",
+                snapshot.string(snapshot.language_facts[id.0 as usize].id),
+            ),
+            HbkFactRef::Enum(id) => ("enum", snapshot.string(snapshot.enums[id.0 as usize].id)),
+            HbkFactRef::EnumValue(id) => (
+                "enum_value",
+                snapshot.string(snapshot.enum_values[id.0 as usize].id),
+            ),
+        }
+    }
+
+    fn language_domain_name(domain: HbkLanguageDomain) -> &'static str {
+        match domain {
+            HbkLanguageDomain::Bsl => "bsl",
+            HbkLanguageDomain::Query => "query",
+            HbkLanguageDomain::DataComposition => "data_composition",
+            HbkLanguageDomain::Unknown => "unknown",
+        }
+    }
+
+    fn member_kind_name(kind: HbkTypeMemberKind) -> &'static str {
+        match kind {
+            HbkTypeMemberKind::Property => "property",
+            HbkTypeMemberKind::Method => "method",
+            HbkTypeMemberKind::Event => "event",
+            HbkTypeMemberKind::EnumValue => "enum_value",
+        }
+    }
+
+    fn global_kind_name(kind: HbkGlobalFactKind) -> &'static str {
+        match kind {
+            HbkGlobalFactKind::Method => "method",
+            HbkGlobalFactKind::Property => "property",
+        }
     }
 
     fn assert_lookup_eq<T: std::fmt::Debug + PartialEq>(

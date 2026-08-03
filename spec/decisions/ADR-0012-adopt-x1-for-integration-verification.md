@@ -183,6 +183,9 @@ search/debug artifact. Решение удаляет его только из an
       mismatch и corruption classes через единый full validator.
 - [x] Frozen S83 full-corpus storage payload, availability и provenance
       совпадают между owned build oracle и mapped X1.
+- [x] Frozen S83 full-corpus lookup/index surface совпадает для
+      `280,317` ordered semantic call pairs; fixture сохраняет
+      duplicate/ambiguity/miss edge cases.
 - [ ] Non-canonical X1 проходит полную storage/catalog/resolver/analyzer parity.
 - [ ] X1 проходит все X1-INT performance/resource gates.
 - [ ] Canonical cutover и последующий scoped cleanup завершены отдельными

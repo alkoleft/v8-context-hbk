@@ -889,3 +889,14 @@ module cases, которых может не быть в S83.
   workspace tests, explicit frozen probe, package clippy, fmt, strict OpenSpec,
   diff check и независимый review. Следующий slice 4.4 впервые открывает единый
   `HbkFactReadHandle`/catalog seam; X1 остаётся non-canonical.
+
+Slice завершён. Fixture comparator сохраняет duplicate,
+ambiguity, optional-kind, language/module и miss cases. Frozen S83 probe
+сравнил `280,317` semantic call pairs (`560,634` вызова двух
+handles); SHA-256 нормализованного ordered transcript —
+`ce7e5bf73e497703fba7c9000ac827ac07db1d3783d712eb4d7b656e45bd5847`.
+Артефакт остался `12,430,416` bytes с SHA-256
+`0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`.
+Package all-feature tests, explicit frozen probe, clippy, fmt, diff check и
+независимый review прошли. Следующий slice — 4.4 unified
+read/catalog/resolver seam; X1 остаётся non-canonical.

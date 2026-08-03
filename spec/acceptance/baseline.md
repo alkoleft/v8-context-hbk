@@ -3151,7 +3151,15 @@ Comparator подтвердил dictionary `71,073`, types/members/callables/glo
 поля, availability, available-since и provenance. Language facts равны нулю во
 frozen provider и покрыты общим fixture comparator. Explicit corpus probe,
 package tests/clippy/fmt/diff и независимый review прошли; детали находятся в
-`hbk-x1-int-evidence.md`. Lookup/catalog/analyzer gates ещё открыты.
+`hbk-x1-int-evidence.md`.
+
+Task 4.3 прошёл full-corpus lookup parity на том же artifact. Owned и
+mapped handles совпали для `280,317` semantic call pairs (`560,634`
+суммарных вызова), включая все persisted keys, exact IDs, owner ranges и
+fixed misses. Ordered normalized transcript SHA-256 равен
+`ce7e5bf73e497703fba7c9000ac827ac07db1d3783d712eb4d7b656e45bd5847`.
+Fixture дополнительно закрепляет duplicate, ambiguity, unsupported и miss
+поведение. Catalog/resolver/analyzer gates ещё открыты.
 
 Baseline update rule:
 

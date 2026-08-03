@@ -59,6 +59,33 @@ available-since и provenance. Fixture-path тем же comparator дополн�
 проверки сохранения layout; durable identity между sessions из результата не
 следует.
 
-Не закрыты этим результатом: полный lookup transcript 4.3, catalog/resolver
-seam 4.4, analyzer A/B 4.5 и применение всех gates 4.6. Raw stdout остаётся
-service data и не хранится в `spec/`.
+Не закрыты этим результатом: catalog/resolver seam 4.4,
+analyzer A/B 4.5 и применение всех gates 4.6. Raw stdout остаётся service
+data и не хранится в `spec/`.
+
+## OpenSpec 4.3 — full-corpus lookup parity
+
+Команда explicit acceptance probe:
+
+```bash
+env V8_CONTEXT_HBK_X1_INT_INDEX=/home/alko/develop/open-source/v8-maintain-projects/v8-context/.v8-context/platform-indexes/8.3.27.1859/shcntx_ru.sqlite \
+  cargo test -p syntax-helper-search \
+  snapshot::x1_format::tests::x1_full_corpus_lookup_surface_matches_owned_snapshot \
+  --lib -- --ignored --exact --nocapture
+```
+
+Результат: `PASS`.
+
+- semantic call pairs: `280,317`;
+- вызовы owned + mapped handles: `560,634`;
+- ordered normalized transcript SHA-256:
+  `ce7e5bf73e497703fba7c9000ac827ac07db1d3783d712eb4d7b656e45bd5847`;
+- X1 bytes / SHA-256: `12,430,416` /
+  `0f5843f95401ba9cb5421b2ecc58a101779e43b17a86909d484bd6123ce3ffd7`.
+
+Probe обошёл каждый distinct persisted key, каждый exact ID и
+owner range, включая empty ranges, и fixed miss для каждого method
+family. Fixture дополнительно проверил duplicate multi-hit order,
+ambiguity, optional kind, unsupported/unknown и language/module cases,
+которых может не быть в frozen corpus. Numeric IDs сравнивались
+только внутри одного build generation; durable identity не заявляется.

@@ -365,8 +365,13 @@ type-reference conclusions live in
     `12,430,416` bytes/SHA, dictionary `71,073`, все десять fact families,
     nested payload, availability/available-since и provenance совпали с owned
     build oracle; explicit ignored corpus probe и независимый review прошли.
-    Детали записаны в `acceptance/hbk-x1-int-evidence.md`. Следующий активный
-    пункт — 4.3, full-corpus lookup parity.
+    OpenSpec 4.3 также завершён: frozen comparator сравнил
+    `280,317` semantic call pairs / `560,634` вызова handles по всем
+    persisted lookup keys, exact IDs и owner ranges; ordered transcript SHA-256
+    `ce7e5bf73e497703fba7c9000ac827ac07db1d3783d712eb4d7b656e45bd5847`.
+    Fixture сохраняет duplicate/ambiguity/unsupported/miss cases. Детали
+    записаны в `acceptance/hbk-x1-int-evidence.md`. Следующий активный пункт —
+    4.4, unified read/catalog/resolver seam и no-fallback probe.
     T183 остаётся открытой на implementation/X1-INT; canonical
     cutover и garbage cleanup условны и выполняются отдельными milestones.
 

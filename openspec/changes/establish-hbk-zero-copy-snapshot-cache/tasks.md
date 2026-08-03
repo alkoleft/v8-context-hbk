@@ -341,7 +341,7 @@
   членов, callable, конструкторов, overload, сигнатур, параметров, globals,
   контекстов/событий модулей, фактов языка, enums/значений и таблиц/полей/
   параметров SDBL.
-- [ ] 4.3 Добавить тесты эквивалентности lookup для точной идентичности,
+- [x] 4.3 Добавить тесты эквивалентности lookup для точной идентичности,
   имени/alias типа, ключа template, owner/member/kind, callable/constructor,
   global, module-context/event, language, enum/value,
   query-table/field/parameter, availability и relation lookup, включая hit,

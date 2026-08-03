@@ -1197,8 +1197,14 @@ OpenSpec 4.2 прошёл full-corpus storage parity на frozen S83 provider: �
 test-only comparator обошёл dictionary, десять fact families, nested payload,
 availability/available-since и provenance через owned build и mapped stable
 slot. X1 artifact сохранил exact `12,430,416` bytes/SHA. Это не вводит runtime
-owned coexistence: owned сторона остаётся build/oracle scope. Следующий
-component gate — full-corpus lookup/index parity 4.3.
+owned coexistence: owned сторона остаётся build/oracle scope.
+
+OpenSpec 4.3 прошёл full-corpus lookup/index parity. Comparator вызвал
+owned и mapped semantic methods для `280,317` ordered call pairs по
+каждому persisted key, exact ID и owner range; normalized transcript SHA-256
+равен `ce7e5bf73e497703fba7c9000ac827ac07db1d3783d712eb4d7b656e45bd5847`.
+Fixture закрепляет duplicate/ambiguity/unsupported/miss cases. Следующий
+component gate — единый read/catalog/resolver seam 4.4 без fallback.
 
 ## Implementation Dependencies
 
