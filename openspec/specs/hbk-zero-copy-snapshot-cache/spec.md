@@ -1,7 +1,8 @@
 # hbk-zero-copy-snapshot-cache Specification
 
 ## Purpose
-TBD - created by archiving change establish-hbk-zero-copy-snapshot-cache. Update Purpose after archive.
+Зафиксировать основанный на измерениях выбор канонического zero-copy X1
+формата, его lifecycle, валидацию и границы runtime/build владения.
 ## Requirements
 ### Requirement: Выбор zero-copy формата допускается только на основании доказательств
 

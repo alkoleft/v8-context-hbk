@@ -1,7 +1,8 @@
 # query-table-member-enumeration Specification
 
 ## Purpose
-TBD - created by archiving change add-query-table-member-enumeration. Update Purpose after archive.
+Define provider-owned scoped enumeration of query-table fields and parameters
+with identity validation and point-lookup parity.
 ## Requirements
 ### Requirement: Query table member enumeration is provider-owned and scoped
 

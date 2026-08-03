@@ -1,7 +1,8 @@
 # exact-bsl-context-member-lookup Specification
 
 ## Purpose
-TBD - created by archiving change add-exact-bsl-context-member-lookup. Update Purpose after archive.
+Define exact source-qualified lookup of one metadata-module BSL member while
+preserving provider evidence and ambiguity semantics.
 ## Requirements
 ### Requirement: HBK resolves one metadata-module BSL member exactly
 

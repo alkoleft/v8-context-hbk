@@ -1,7 +1,8 @@
 # metadata-bsl-context-selector-lookup Specification
 
 ## Purpose
-TBD - created by archiving change add-metadata-bsl-context-selector-lookup. Update Purpose after archive.
+Define HBK-owned interpretation of opaque metadata BSL-context selectors
+through source-qualified platform fact lookup.
 ## Requirements
 ### Requirement: HBK interprets opaque metadata BSL-context selectors
 

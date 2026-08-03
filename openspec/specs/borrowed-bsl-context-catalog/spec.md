@@ -1,7 +1,8 @@
 # borrowed-bsl-context-catalog Specification
 
 ## Purpose
-TBD - created by archiving change expose-borrowed-hbk-domain-catalogs. Update Purpose after archive.
+Define the snapshot-owned borrowed BSL context catalog and its lifetime,
+ordering and non-materialization guarantees.
 ## Requirements
 ### Requirement: HbkBslContextCatalog is snapshot-owned
 

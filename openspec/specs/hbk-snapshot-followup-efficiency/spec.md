@@ -1,7 +1,8 @@
 # hbk-snapshot-followup-efficiency Specification
 
 ## Purpose
-TBD - created by archiving change optimize-hbk-snapshot-materialization-followups. Update Purpose after archive.
+Define evidence-gated owner-local follow-up optimizations for snapshot
+materialization without changing provider facts or persisted contracts.
 ## Requirements
 ### Requirement: Owner-local snapshot follow-up optimization
 The provider SHALL evaluate each remaining snapshot-materialization hypothesis

@@ -1,7 +1,8 @@
 # borrowed-sdbl-query-catalog Specification
 
 ## Purpose
-TBD - created by archiving change expose-borrowed-hbk-domain-catalogs. Update Purpose after archive.
+Define the snapshot-owned borrowed SDBL query catalog and its scoped table,
+field and parameter access guarantees.
 ## Requirements
 ### Requirement: HbkSdblQueryCatalog is snapshot-owned
 

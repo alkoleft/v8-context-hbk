@@ -1,7 +1,8 @@
 # generated-self-template-lookup Specification
 
 ## Purpose
-TBD - created by archiving change add-generated-self-template-lookup. Update Purpose after archive.
+Define public resolution of opaque generated-self selectors to documented
+platform templates with explicit failure semantics.
 ## Requirements
 ### Requirement: Generated-self selector resolves through the public HBK resolver
 

@@ -1,7 +1,8 @@
 # hbk-fact-snapshot Specification
 
 ## Purpose
-TBD - created by archiving change provider-owned-hbk-fact-snapshot. Update Purpose after archive.
+Define the immutable worker-safe HBK fact snapshot and its explicit resolver
+backend contracts.
 ## Requirements
 ### Requirement: Worker-Safe HBK Fact Snapshot
 

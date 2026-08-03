@@ -1,7 +1,8 @@
 # metadata-bsl-member-kind-classification Specification
 
 ## Purpose
-TBD - created by archiving change add-metadata-bsl-member-kind-classification. Update Purpose after archive.
+Define source-neutral classification of opaque metadata member selectors into
+documented BSL member query kinds.
 ## Requirements
 ### Requirement: HBK classifies opaque metadata member selectors
 

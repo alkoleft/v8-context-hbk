@@ -1,7 +1,8 @@
 # hbk-snapshot-materialization-efficiency Specification
 
 ## Purpose
-TBD - created by archiving change reduce-hbk-snapshot-materialization-peak. Update Purpose after archive.
+Define bounded-memory materialization of HBK snapshot type references while
+preserving the existing snapshot contract.
 ## Requirements
 ### Requirement: Bounded Type-Reference Materialization
 

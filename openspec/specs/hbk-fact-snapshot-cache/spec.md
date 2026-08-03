@@ -1,7 +1,8 @@
 # hbk-fact-snapshot-cache Specification
 
 ## Purpose
-TBD - created by archiving change stabilize-hbk-fact-snapshot-cache. Update Purpose after archive.
+Define provider-owned persisted snapshot cache lifecycle, validation and
+evidence-based format decisions.
 ## Requirements
 ### Requirement: Provider-Owned Snapshot Cache
 

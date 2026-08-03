@@ -1,7 +1,8 @@
 # project-governance Specification
 
 ## Purpose
-TBD - created by archiving change adopt-openspec-source-of-truth. Update Purpose after archive.
+Define OpenSpec as the repository's primary capability and active-change
+source of truth, including task ownership and archival rules.
 ## Requirements
 ### Requirement: OpenSpec is the primary source of truth
 The repository MUST use canonical specs under `openspec/specs/` as the primary
