@@ -15,23 +15,3 @@ strsim.workspace = true
 syntax-helper-language.workspace = true
 syntax-helper-model.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
-serde.workspace = true
-serde_json.workspace = true
-
-[[example]]
-name = "measure_hbk_snapshot_scenario"
-required-features = ["snapshot-experiment"]
-
-[[example]]
-name = "measure_hbk_s83_av1"
-required-features = ["snapshot-experiment"]
-
-[[example]]
-name = "measure_hbk_s83_av2"
-required-features = ["snapshot-experiment"]
-
-[[example]]
-name = "dump_hbk_snapshot_oracle"
-required-features = ["snapshot-experiment"]

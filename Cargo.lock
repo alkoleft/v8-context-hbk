@@ -1034,8 +1034,6 @@ version = "0.2.4"
 dependencies = [
  "memmap2",
  "rusqlite",
- "serde",
- "serde_json",
  "sha2",
  "strsim",
  "syntax-helper-language",

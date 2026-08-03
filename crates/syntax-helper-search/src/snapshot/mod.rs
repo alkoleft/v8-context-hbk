@@ -1,10 +1,9 @@
 use super::*;
 
-mod binary_cache;
+mod build_identity;
+mod codec;
 #[cfg(feature = "snapshot-experiment")]
 mod experiment_allocator;
-#[cfg(feature = "snapshot-experiment")]
-mod experiment_oracle;
 mod indexes;
 mod materialize;
 mod memory;
@@ -20,17 +19,11 @@ use indexes::{
 };
 use x1_format::{X1MappedReadHandle, X1StableSlotGeneration};
 
-pub use binary_cache::{HbkFactSnapshotCacheLoadReport, HbkFactSnapshotCacheStatus};
 #[cfg(feature = "snapshot-experiment")]
 #[doc(hidden)]
 pub use experiment_allocator::{
     HbkSnapshotExperimentAllocationDelta, HbkSnapshotExperimentAllocationSnapshot,
     HbkSnapshotExperimentAllocator, experiment_allocation_snapshot,
-};
-#[cfg(feature = "snapshot-experiment")]
-#[doc(hidden)]
-pub use experiment_oracle::{
-    write_owned_snapshot_lookup_transcript_jsonl, write_owned_snapshot_oracle_jsonl,
 };
 pub use memory::{HbkFactSnapshotIndexMemory, HbkFactSnapshotMemory, HbkFactSnapshotMemoryEntry};
 pub use read::HbkFactSnapshotCounts;
@@ -170,8 +163,8 @@ impl HbkFactSnapshot {
 pub struct HbkFactSnapshotBuildReport {
     pub snapshot: HbkFactSnapshot,
     pub timings: HbkFactSnapshotStageTimings,
-    cache_index_path: PathBuf,
-    cache_metadata: binary_cache::CacheMetadata,
+    provider_index_path: PathBuf,
+    build_input_identity: build_identity::HbkFactSnapshotBuildInputIdentity,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

@@ -48,7 +48,7 @@ enum LookupIter<'a, Record, Value> {
     Mapped(X1LookupValueIter<'a, Record, Value>),
 }
 
-impl<Record: super::binary_cache::BinaryValue, Value> Iterator for LookupIter<'_, Record, Value> {
+impl<Record: super::codec::BinaryValue, Value> Iterator for LookupIter<'_, Record, Value> {
     type Item = Value;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -64,9 +64,7 @@ impl<Record: super::binary_cache::BinaryValue, Value> Iterator for LookupIter<'_
     }
 }
 
-impl<Record: super::binary_cache::BinaryValue, Value> ExactSizeIterator
-    for LookupIter<'_, Record, Value>
-{
+impl<Record: super::codec::BinaryValue, Value> ExactSizeIterator for LookupIter<'_, Record, Value> {
     fn len(&self) -> usize {
         match self {
             Self::Owned(values) => values.len(),
@@ -386,18 +384,6 @@ impl<'a> HbkFactReadHandle<'a> {
 
     pub fn source_locale(self) -> Option<&'a str> {
         self.snapshot.source_locale()
-    }
-
-    #[cfg(feature = "snapshot-experiment")]
-    #[doc(hidden)]
-    pub fn experiment_string(self, id: StringId) -> &'a str {
-        self.string(id)
-    }
-
-    #[cfg(feature = "snapshot-experiment")]
-    #[doc(hidden)]
-    pub fn experiment_string_id(self, value: &str) -> Option<StringId> {
-        self.snapshot.string_id(value)
     }
 
     pub fn global_fact_ids(self) -> impl ExactSizeIterator<Item = HbkGlobalFactId> + 'a + use<'a> {

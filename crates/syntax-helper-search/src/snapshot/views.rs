@@ -53,7 +53,7 @@ enum BorrowedOrMappedIter<'a, T> {
     Mapped(X1RecordIter<'a, T>),
 }
 
-impl<T: Copy + super::binary_cache::BinaryValue> Iterator for BorrowedOrMappedIter<'_, T> {
+impl<T: Copy + super::codec::BinaryValue> Iterator for BorrowedOrMappedIter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -64,7 +64,7 @@ impl<T: Copy + super::binary_cache::BinaryValue> Iterator for BorrowedOrMappedIt
     }
 }
 
-impl<T: Copy + super::binary_cache::BinaryValue> ExactSizeIterator for BorrowedOrMappedIter<'_, T> {
+impl<T: Copy + super::codec::BinaryValue> ExactSizeIterator for BorrowedOrMappedIter<'_, T> {
     fn len(&self) -> usize {
         match self {
             Self::Owned(values) => values.len(),

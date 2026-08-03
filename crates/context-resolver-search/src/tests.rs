@@ -17,8 +17,8 @@ mod tests {
     use syntax_helper_model as model;
     use syntax_helper_model::SyntaxHelperSink;
     use syntax_helper_search::{
-        HbkAvailabilityFilterMode, HbkFactSnapshot, HbkFactSnapshotCacheStatus,
-        HbkFactSnapshotExpectation, IndexMetadata, SearchIndexBuilder, build_index_from_builder,
+        HbkAvailabilityFilterMode, HbkFactSnapshot, HbkFactSnapshotExpectation, IndexMetadata,
+        SearchIndexBuilder, build_index_from_builder,
     };
 
     #[cfg(feature = "snapshot-experiment-alloc")]
@@ -195,7 +195,7 @@ mod tests {
             false,
         );
         let snapshot = Arc::new(
-            HbkFactSnapshot::from_index(&index)
+            HbkFactSnapshot::build_from_provider_index(&index)
                 .expect("generated-self selector snapshot must materialize"),
         );
         let adapter = PlatformSnapshotSource::with_source_id(snapshot, source.clone());
@@ -687,16 +687,9 @@ mod tests {
 
         let source = fixture_source();
         let index_path = fixture_index_path("platform-snapshot-source.sqlite");
-        let cache_path = temp_path("platform-snapshot-source.bin");
-        let source_report = HbkFactSnapshot::from_path_with_stage_timings(&index_path)
-            .expect("snapshot must build");
-        source_report
-            .write_binary_cache(&cache_path)
-            .expect("snapshot cache must write");
-        let cached_report = HbkFactSnapshot::from_path_with_binary_cache(&index_path, &cache_path)
-            .expect("snapshot cache must load");
-        assert_eq!(cached_report.status, HbkFactSnapshotCacheStatus::Loaded);
-        let snapshot = Arc::new(cached_report.snapshot);
+        let snapshot = Arc::new(
+            HbkFactSnapshot::build_from_provider_path(&index_path).expect("snapshot must build"),
+        );
         std::fs::remove_file(&index_path).expect("snapshot adapter must not need SQLite file");
         let adapter = PlatformSnapshotSource::with_source_id(snapshot.clone(), source.clone());
         let query_source = SourceId::new("shcntx-query");
@@ -929,7 +922,7 @@ mod tests {
         let source = fixture_source();
         let index_path = fixture_index_path("bsl-catalog-direct.sqlite");
         let snapshot =
-            Arc::new(HbkFactSnapshot::from_path(&index_path).expect("snapshot must build"));
+            Arc::new(HbkFactSnapshot::build_from_provider_path(&index_path).expect("snapshot must build"));
         std::fs::remove_file(&index_path).expect("catalog must not need SQLite file");
         let catalog = HbkBslContextCatalog::with_source_id(Arc::clone(&snapshot), source.clone());
 
@@ -1100,7 +1093,7 @@ mod tests {
         let source = fixture_source();
         let index_path = fixture_index_path("bsl-catalog-projection-boundary.sqlite");
         let snapshot =
-            Arc::new(HbkFactSnapshot::from_path(&index_path).expect("snapshot must build"));
+            Arc::new(HbkFactSnapshot::build_from_provider_path(&index_path).expect("snapshot must build"));
         std::fs::remove_file(&index_path).expect("catalog parity must not need SQLite file");
         let adapter = PlatformSnapshotSource::with_source_id(Arc::clone(&snapshot), source.clone());
         let catalog = HbkBslContextCatalog::with_source_id(snapshot, source.clone());
@@ -1595,7 +1588,7 @@ mod tests {
         let source = fixture_source();
         let index = fixture_index("hbk-callable-fact-id-projection.sqlite");
         let snapshot =
-            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+            Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must materialize"));
         let catalog = HbkBslContextCatalog::with_source_id(snapshot, source.clone());
         let (_, _, _, seed) = catalog
             .global_methods()
@@ -1836,7 +1829,7 @@ mod tests {
         }
         drop(connection);
 
-        let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path)
+        let report = HbkFactSnapshot::build_from_provider_path_with_stage_timings(&index_path)
             .expect("owned X1 integration snapshot must materialize");
         let owned = Arc::new(report.snapshot.clone());
         let slot = root.join("slot");
@@ -1844,9 +1837,9 @@ mod tests {
             .publish_x1_generation(&slot)
             .expect("X1 integration generation must publish");
         let mapped = Arc::new(
-            HbkFactSnapshot::open_x1_slot(
+            HbkFactSnapshot::open(
                 &slot,
-                HbkFactSnapshotExpectation {
+                &HbkFactSnapshotExpectation {
                     platform_version: publication.platform_version,
                     locale: "ru".to_string(),
                     source_locale: "ru".to_string(),
@@ -2125,7 +2118,7 @@ mod tests {
         let source = fixture_source();
         let index_path = fixture_index_path("bsl-catalog-measurement-probe.sqlite");
         let snapshot =
-            Arc::new(HbkFactSnapshot::from_path(&index_path).expect("snapshot must build"));
+            Arc::new(HbkFactSnapshot::build_from_provider_path(&index_path).expect("snapshot must build"));
         std::fs::remove_file(&index_path).expect("measurement probe must not need SQLite file");
         println!("compat_deleted_sqlite_success=1");
         compat_adapter_sequence(Arc::clone(&snapshot), source.clone());
@@ -2331,7 +2324,7 @@ mod tests {
         let language_source = SourceId::new("shlang");
         let index_path = fixture_index_path("snapshot-no-bsl-language-fallback.sqlite");
         let index = open_index(&index_path);
-        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        let snapshot = Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must build"));
         drop(index);
         std::fs::remove_file(&index_path).expect("snapshot lookup must not require SQLite file");
 
@@ -2621,7 +2614,7 @@ mod tests {
         let source = fixture_source();
         let index = fixture_index("platform-module-member-enumeration.sqlite");
         let snapshot =
-            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+            Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must materialize"));
         let query = ModuleContextMembersLookup {
             language: GlobalContextLanguage::Bsl,
             domain: LanguageDomain::PlatformApi,
@@ -2665,7 +2658,7 @@ mod tests {
         let source = fixture_source();
         let index = fixture_index("platform-snapshot-module-member-exact.sqlite");
         let snapshot =
-            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+            Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must materialize"));
         let adapter = PlatformSnapshotSource::with_source_id(snapshot, source);
 
         let response = adapter
@@ -2707,7 +2700,7 @@ mod tests {
         let source = fixture_source();
         let index = ambiguous_module_member_index("platform-module-member-ambiguous.sqlite");
         let snapshot =
-            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+            Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must materialize"));
         let query = ModuleContextMemberLookup {
             language: GlobalContextLanguage::Bsl,
             domain: LanguageDomain::PlatformApi,
@@ -2827,7 +2820,7 @@ mod tests {
         let source = fixture_source();
         let index = fixture_index("platform-snapshot-member-enumeration.sqlite");
         let snapshot =
-            Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must materialize"));
+            Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must materialize"));
         let adapter = PlatformSnapshotSource::with_source_id(snapshot, source.clone());
 
         assert_platform_member_enumeration_contract(&adapter, &source);
@@ -3381,7 +3374,7 @@ mod tests {
         let platform_source = SourceId::new("custom-platform");
         let index_path = fixture_index_path("sdbl-catalog-direct.sqlite");
         let index = open_index(&index_path);
-        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        let snapshot = Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must build"));
         drop(index);
         std::fs::remove_file(&index_path).expect("catalog must not need SQLite file");
 
@@ -3530,7 +3523,7 @@ mod tests {
         let platform_source = SourceId::new("custom-platform");
         let index_path = fixture_index_path("sdbl-catalog-snapshot-parity.sqlite");
         let index = open_index(&index_path);
-        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        let snapshot = Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must build"));
         drop(index);
         std::fs::remove_file(&index_path).expect("projection paths must not need SQLite file");
 
@@ -3943,7 +3936,7 @@ mod tests {
         assert_eq!(info.sdbl_metadata_source_selector, None);
 
         let snapshot = Arc::new(
-            HbkFactSnapshot::from_index(&sql_adapter.index).expect("non-ru snapshot must build"),
+            HbkFactSnapshot::build_from_provider_index(&sql_adapter.index).expect("non-ru snapshot must build"),
         );
         let catalog = crate::HbkSdblQueryCatalog::new(snapshot);
         let (catalog_table_id, _) = catalog
@@ -3968,6 +3961,54 @@ mod tests {
         assert_eq!(
             crate::hbk_catalogs::sdbl::sdbl_metadata_source_selector(Some("ru"), Some("Unknown")),
             None
+        );
+    }
+
+    #[test]
+    fn snapshot_adapters_accept_only_caller_owned_mapped_snapshot() {
+        let snapshot_adapter = include_str!("snapshot_adapter.rs");
+
+        for forbidden in [
+            "SearchIndex",
+            "build_from_provider_",
+            "from_index",
+            "from_path",
+            "open_read_only",
+            "open_x1_slot",
+            "HbkFactSnapshot::",
+            "HbkReader",
+            "HbkBook",
+            "HbkContainer",
+            "fallback",
+            "rusqlite",
+        ] {
+            assert!(
+                !snapshot_adapter.contains(forbidden),
+                "snapshot adapters must not own provider/build/fallback path {forbidden}"
+            );
+        }
+        assert_eq!(
+            count_occurrences(snapshot_adapter, "pub fn new(snapshot: Arc<HbkFactSnapshot>)"),
+            2,
+            "both snapshot adapters must accept the single caller-owned snapshot owner"
+        );
+        assert_eq!(
+            count_occurrences(
+                snapshot_adapter,
+                "pub fn with_source_id(snapshot: Arc<HbkFactSnapshot>"
+            ),
+            1,
+            "platform snapshot source-id constructor must accept the caller-owned snapshot"
+        );
+        assert_eq!(
+            count_occurrences(snapshot_adapter, "pub fn with_source_ids("),
+            1,
+            "query snapshot source-id constructor must remain explicit"
+        );
+        assert_eq!(
+            count_occurrences(snapshot_adapter, "snapshot: Arc<HbkFactSnapshot>"),
+            4,
+            "every snapshot adapter constructor must accept the caller-owned snapshot"
         );
     }
 
@@ -4226,7 +4267,7 @@ mod tests {
         let platform_source = fixture_source();
         let index_path = fixture_index_path("sdbl-compat-measurement-probe.sqlite");
         let index = open_index(&index_path);
-        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        let snapshot = Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must build"));
         drop(index);
         std::fs::remove_file(&index_path).expect("measurement probe must not need SQLite file");
         println!("compat_deleted_sqlite_success=1");
@@ -4254,7 +4295,7 @@ mod tests {
         let platform_source = fixture_source();
         let index_path = fixture_index_path("query-table-snapshot-source.sqlite");
         let index = open_index(&index_path);
-        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        let snapshot = Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must build"));
         drop(index);
         std::fs::remove_file(&index_path).expect("snapshot adapter must not need SQLite file");
         let adapter = QueryTableSnapshotSource::with_source_ids(
@@ -4522,7 +4563,7 @@ mod tests {
         let platform_source = fixture_source();
         let index_path = fixture_index_path("query-table-member-enumeration.sqlite");
         let index = open_index(&index_path);
-        let snapshot = Arc::new(HbkFactSnapshot::from_index(&index).expect("snapshot must build"));
+        let snapshot = Arc::new(HbkFactSnapshot::build_from_provider_index(&index).expect("snapshot must build"));
         drop(index);
         std::fs::remove_file(&index_path).expect("snapshot adapter must not need SQLite file");
         let adapter = QueryTableSnapshotSource::with_source_ids(

@@ -11,7 +11,8 @@ use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use memmap2::Mmap;
 use sha2::{Digest, Sha256};
 
-use super::binary_cache::{BinaryReader, BinaryValue, BinaryWriter};
+use super::build_identity::file_sha256;
+use super::codec::{BinaryReader, BinaryValue, BinaryWriter};
 use super::indexes::*;
 use super::*;
 
@@ -2430,11 +2431,11 @@ impl HbkFactSnapshot {
     /// Compatibility is checked against caller-supplied identity. This path
     /// only reads the slot metadata and mapped X1 generation; it never opens
     /// the source HBK or a SQLite provider and has no fallback path.
-    pub fn open_x1_slot(
+    pub fn open(
         slot_path: impl AsRef<Path>,
-        expected: HbkFactSnapshotExpectation,
+        expected: &HbkFactSnapshotExpectation,
     ) -> Result<Self, SearchError> {
-        let generation = X1StableSlotGeneration::open(slot_path.as_ref(), &expected)?;
+        let generation = X1StableSlotGeneration::open(slot_path.as_ref(), expected)?;
         Ok(Self::from_mapped_generation(generation))
     }
 }
@@ -2509,7 +2510,7 @@ impl HbkFactSnapshotBuildReport {
         validate_current_before_publication(slot_path)?;
 
         let identity = artifact_identity(self).map_err(|source| SearchError::Io {
-            path: self.cache_index_path.clone(),
+            path: self.provider_index_path.clone(),
             source,
         })?;
         let stage_path = generations_path.join(format!(".generation-{}.tmp", options.nonce));
@@ -3186,13 +3187,15 @@ fn write_x1_generation(
 }
 
 fn artifact_identity(report: &HbkFactSnapshotBuildReport) -> io::Result<X1ArtifactIdentity> {
-    let index = SearchIndex::open_read_only(&report.cache_index_path).map_err(search_as_io)?;
-    let current_cache =
-        super::binary_cache::CacheMetadata::from_index(&report.cache_index_path, &index)
-            .map_err(search_as_io)?;
-    if current_cache != report.cache_metadata {
+    let index = SearchIndex::open_read_only(&report.provider_index_path).map_err(search_as_io)?;
+    let current_cache = super::build_identity::HbkFactSnapshotBuildInputIdentity::from_index(
+        &report.provider_index_path,
+        &index,
+    )
+    .map_err(search_as_io)?;
+    if current_cache != report.build_input_identity {
         return Err(invalid_data(
-            "X1 provider index changed after snapshot materialization",
+            "X1 build input changed after snapshot materialization",
         ));
     }
     if current_cache.provider_schema_version != SUPPORTED_PROVIDER_SCHEMA
@@ -3209,9 +3212,9 @@ fn artifact_identity(report: &HbkFactSnapshotBuildReport) -> io::Result<X1Artifa
     validate_fixed_field(&platform_version, 16, "platform version")?;
 
     let source_metadata = fs::metadata(&source_path)?;
-    let provider_metadata = fs::metadata(&report.cache_index_path)?;
+    let provider_metadata = fs::metadata(&report.provider_index_path)?;
     let source_sha256 = file_sha256(&source_path)?;
-    let provider_sha256 = file_sha256(&report.cache_index_path)?;
+    let provider_sha256 = current_cache.provider_sha256.clone();
     let provider_identity = stored
         .source_index_identity
         .unwrap_or_else(|| format!("sha256:{provider_sha256}"));
@@ -5930,20 +5933,6 @@ impl<'a> VectorView<'a> {
         Ok(read_u32_at(self.bytes, offset_at)? as usize)
     }
 }
-fn file_sha256(path: impl AsRef<Path>) -> io::Result<String> {
-    let mut file = File::open(path)?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        digest.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", digest.finalize()))
-}
-
 fn read_ascii(
     bytes: &[u8],
     offset: usize,
@@ -6072,6 +6061,224 @@ mod tests {
     #[cfg(feature = "snapshot-experiment-alloc")]
     #[global_allocator]
     static X1_TEST_ALLOCATOR: HbkSnapshotExperimentAllocator = HbkSnapshotExperimentAllocator;
+
+    #[test]
+    fn canonical_open_and_artifact_layout_reject_provider_fallbacks_and_projected_sections() {
+        let source = include_str!("x1_format.rs");
+        let production = source
+            .split("#[cfg(test)]\nmod tests")
+            .next()
+            .expect("production X1 format must precede its tests");
+        let runtime_open = production
+            .split("impl HbkFactSnapshot {")
+            .nth(1)
+            .and_then(|section| section.split("impl HbkFactSnapshotBuildReport").next())
+            .expect("canonical runtime open must remain a standalone implementation");
+
+        assert_eq!(runtime_open.matches("pub fn open(").count(), 1);
+        assert!(!production.contains("open_x1_slot"));
+        for forbidden in [
+            "SearchIndex",
+            "build_from_provider_",
+            "from_path",
+            "from_index",
+            "HbkReader",
+            "HbkBook",
+            "HbkContainer",
+            ".or_else(",
+            "unwrap_or",
+        ] {
+            assert!(
+                !runtime_open.contains(forbidden),
+                "canonical runtime open must not name provider/build/fallback path {forbidden}"
+            );
+        }
+
+        let sections = production
+            .split("enum S {")
+            .nth(1)
+            .and_then(|section| section.split("\n}\n\nimpl S").next())
+            .expect("X1 section inventory must remain explicit");
+        let encoder = production
+            .split("fn encode_snapshot_with_identity(")
+            .nth(1)
+            .and_then(|section| section.split("\nfn encode_snapshot(").next())
+            .expect("X1 encoder must remain a standalone operation");
+        for artifact_source in [sections, encoder] {
+            let artifact_source = artifact_source.to_ascii_lowercase();
+            for forbidden in ["projected", "projection"] {
+                assert!(
+                    !artifact_source.contains(forbidden),
+                    "canonical X1 artifact must not persist X1-PROJECTED sections"
+                );
+            }
+        }
+        assert_eq!(S::CompatibilityMetadata.index() + 1, SECTION_COUNT);
+    }
+
+    #[test]
+    fn retired_owned_cache_surface_is_absent_and_required_tooling_remains() {
+        fn source_files(root: &Path, output: &mut Vec<PathBuf>) {
+            for entry in fs::read_dir(root).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    source_files(&path, output);
+                } else if matches!(
+                    path.extension().and_then(|extension| extension.to_str()),
+                    Some("rs" | "toml" | "py" | "sh")
+                ) {
+                    output.push(path);
+                }
+            }
+        }
+
+        let package_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = package_root.join("../..");
+        let crates_root = workspace_root.join("crates");
+        let scripts_root = workspace_root.join("scripts");
+        let mut live_files = Vec::new();
+        source_files(&crates_root, &mut live_files);
+        live_files.push(workspace_root.join("Cargo.toml"));
+        source_files(&scripts_root, &mut live_files);
+
+        let frozen_evidence_tools = [
+            concat!("summarize-hbk-s83-", "av2-results.py"),
+            "_hbk_s83_av2_evidence_contract.py",
+        ];
+        let forbidden = [
+            concat!("HBKF", "SN1"),
+            concat!("HbkFactSnapshotCache", "LoadReport"),
+            concat!("HbkFactSnapshotCache", "Status"),
+            concat!("from_path_with_", "binary_", "cache"),
+            concat!("write_", "binary_", "cache"),
+            concat!("binary_", "cache"),
+            concat!("dump_hbk_snapshot_", "oracle"),
+            concat!("measure_hbk_fact_", "snapshot"),
+            concat!("measure_hbk_snapshot_", "scenario"),
+            concat!("measure_hbk_s83_", "av1"),
+            concat!("measure_hbk_s83_", "av2"),
+            concat!("benchmark-hbk-s83-", "av1"),
+            concat!("benchmark-hbk-s83-", "av2"),
+            concat!("benchmark-hbk-s83-", "candidate"),
+            concat!("benchmark-hbk-snapshot-", "candidates"),
+        ];
+        for path in live_files {
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| frozen_evidence_tools.contains(&name))
+            {
+                // The frozen result reader and its validation contract are
+                // durable evidence tooling. They are not compiled, invoked,
+                // or accepted as producer/runtime dependencies by this branch.
+                continue;
+            }
+            let source = fs::read_to_string(&path).unwrap();
+            for retired in forbidden {
+                assert!(
+                    !source.contains(retired),
+                    "retired owned-cache symbol or path {retired} remains in {}",
+                    path.display()
+                );
+            }
+        }
+
+        for retired_path in [
+            concat!(
+                "crates/syntax-helper-search/src/snapshot/",
+                "binary_",
+                "cache.rs"
+            ),
+            concat!(
+                "crates/syntax-helper-search/examples/",
+                "dump_hbk_snapshot_",
+                "oracle.rs"
+            ),
+            concat!(
+                "crates/syntax-helper-search/examples/",
+                "measure_hbk_fact_",
+                "snapshot.rs"
+            ),
+            concat!(
+                "crates/syntax-helper-search/examples/",
+                "measure_hbk_snapshot_",
+                "scenario.rs"
+            ),
+            concat!(
+                "crates/syntax-helper-search/examples/",
+                "measure_hbk_s83_",
+                "av1.rs"
+            ),
+            concat!(
+                "crates/syntax-helper-search/examples/",
+                "measure_hbk_s83_",
+                "av2.rs"
+            ),
+            concat!("scripts/", "benchmark-hbk-s83-", "av1.py"),
+            concat!("scripts/", "benchmark-hbk-s83-", "av2.py"),
+            concat!("scripts/", "benchmark-hbk-s83-", "candidate.py"),
+            concat!("scripts/", "benchmark-hbk-snapshot-", "candidates.sh"),
+            concat!("scripts/tests/", "test_hbk_s83_", "av1.py"),
+            concat!("scripts/tests/", "test_hbk_s83_", "av2.py"),
+        ] {
+            assert!(
+                !workspace_root.join(retired_path).exists(),
+                "{retired_path}"
+            );
+        }
+
+        let x1_source = include_str!("x1_format.rs")
+            .split("#[cfg(test)]\nmod tests")
+            .next()
+            .unwrap();
+        assert!(x1_source.contains("use super::codec::{BinaryReader, BinaryValue, BinaryWriter};"));
+        assert!(!x1_source.contains(concat!("binary_", "cache")));
+        assert!(
+            package_root
+                .join("src/snapshot/experiment_allocator.rs")
+                .exists()
+        );
+        assert!(
+            fs::read_to_string(package_root.join("Cargo.toml"))
+                .unwrap()
+                .contains("snapshot-experiment-alloc")
+        );
+        assert!(
+            fs::read_to_string(package_root.join("Cargo.toml"))
+                .unwrap()
+                .contains("rusqlite.workspace = true")
+        );
+        assert!(
+            workspace_root
+                .join("scripts/verify-hbk-s83-semantic-parity.py")
+                .exists()
+        );
+        let summary =
+            fs::read_to_string(workspace_root.join("scripts/summarize-hbk-s83-av2-results.py"))
+                .unwrap();
+        assert!(summary.contains("_hbk_s83_av2_evidence_contract.py"));
+        assert!(
+            workspace_root
+                .join("scripts/_hbk_s83_av2_evidence_contract.py")
+                .exists()
+        );
+        assert!(
+            workspace_root
+                .join("scripts/tests/test_hbk_s83_av2_summary.py")
+                .exists()
+        );
+        let resolver_imports = fs::read_to_string(
+            workspace_root.join("crates/context-resolver-search/src/imports.rs"),
+        )
+        .unwrap();
+        assert!(resolver_imports.contains("pub struct PlatformSearchSource"));
+        assert!(resolver_imports.contains("pub struct LanguageSearchSource"));
+        assert!(
+            fs::read_to_string(package_root.join("src/index.rs"))
+                .unwrap()
+                .contains("pub struct SearchIndex")
+        );
+    }
 
     #[test]
     fn x1_encoding_is_deterministic_and_fully_validated() {
@@ -6352,7 +6559,8 @@ mod tests {
         };
         build_index_from_builder(&index_path, &metadata, fixture_index_builder(&source_alias))
             .unwrap();
-        let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path).unwrap();
+        let report =
+            HbkFactSnapshot::build_from_provider_path_with_stage_timings(&index_path).unwrap();
         let artifact = root.join("generation.x1");
         let second_artifact = root.join("generation-second.x1");
 
@@ -6366,6 +6574,85 @@ mod tests {
 
         assert!(report.write_x1_generation(&artifact).is_err());
         assert_eq!(fs::read(&artifact).unwrap(), original);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_writer_and_publisher_reject_provider_fact_mutation_without_generation() {
+        let root = temp_path("x1-provider-identity-mutation");
+        let input_root = root.join("input");
+        let slot = root.join("slot");
+        let artifact = root.join("generation.x1");
+        let (report, _identity, _source, index) =
+            fixture_build_report(&input_root, b"provider identity mutation fixture");
+
+        let connection = Connection::open(&index).unwrap();
+        let (document_id, original_name): (String, String) = connection
+            .query_row(
+                "SELECT id, name_primary FROM documents ORDER BY id LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            connection
+                .execute(
+                    "UPDATE documents SET name_primary = ?1 WHERE id = ?2",
+                    params![format!("{original_name}-mutated"), document_id],
+                )
+                .unwrap(),
+            1
+        );
+        drop(connection);
+
+        let write_error = report.write_x1_generation(&artifact).unwrap_err();
+        assert!(
+            write_error
+                .to_string()
+                .contains("build input changed after snapshot materialization")
+        );
+        assert!(!artifact.exists());
+
+        let publish_error = report.publish_x1_generation(&slot).unwrap_err();
+        assert!(
+            publish_error
+                .to_string()
+                .contains("build input changed after snapshot materialization")
+        );
+        assert!(slot_generation_names(&slot).is_empty());
+        assert!(!slot.join(X1_SLOT_CURRENT_FILE).exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x1_writer_and_publisher_reject_source_hbk_mutation_without_generation() {
+        let root = temp_path("x1-source-identity-mutation");
+        let input_root = root.join("input");
+        let slot = root.join("slot");
+        let artifact = root.join("generation.x1");
+        let (report, _identity, source, _index) =
+            fixture_build_report(&input_root, b"source identity mutation fixture");
+
+        fs::write(&source, b"source identity changed after materialization").unwrap();
+
+        let write_error = report.write_x1_generation(&artifact).unwrap_err();
+        assert!(
+            write_error
+                .to_string()
+                .contains("build input changed after snapshot materialization")
+        );
+        assert!(!artifact.exists());
+
+        let publish_error = report.publish_x1_generation(&slot).unwrap_err();
+        assert!(
+            publish_error
+                .to_string()
+                .contains("build input changed after snapshot materialization")
+        );
+        assert!(slot_generation_names(&slot).is_empty());
+        assert!(!slot.join(X1_SLOT_CURRENT_FILE).exists());
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -6401,7 +6688,7 @@ mod tests {
 
         fs::remove_file(source).unwrap();
         fs::remove_file(index).unwrap();
-        let mapped = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        let mapped = HbkFactSnapshot::open(&slot, &runtime_expectation(&identity)).unwrap();
         assert_eq!(mapped.counts(), expected_counts);
         assert_eq!(mapped.source_locale(), Some("ru"));
         let read = mapped.worker_handle();
@@ -6424,7 +6711,7 @@ mod tests {
         let (report, identity, _, _) =
             fixture_build_report(&root.join("input"), b"locked source generation");
         report.publish_x1_generation(&slot).unwrap();
-        let first = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        let first = HbkFactSnapshot::open(&slot, &runtime_expectation(&identity)).unwrap();
         let second = first.clone();
         let current_before = fs::read(slot.join(X1_SLOT_CURRENT_FILE)).unwrap();
         let entries_before = slot_tree_names(&slot);
@@ -6732,7 +7019,7 @@ mod tests {
             ("source_locale", wrong_source_locale),
             ("source_sha256", wrong_source),
         ] {
-            let Err(error) = HbkFactSnapshot::open_x1_slot(&slot, expectation) else {
+            let Err(error) = HbkFactSnapshot::open(&slot, &expectation) else {
                 panic!("incompatible stable slot must fail closed");
             };
             assert!(matches!(
@@ -6747,8 +7034,8 @@ mod tests {
             ));
         }
 
-        let first = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
-        let second = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        let first = HbkFactSnapshot::open(&slot, &runtime_expectation(&identity)).unwrap();
+        let second = HbkFactSnapshot::open(&slot, &runtime_expectation(&identity)).unwrap();
         assert_eq!(first.counts(), report.snapshot.counts());
         assert_eq!(second.counts(), report.snapshot.counts());
 
@@ -7034,7 +7321,8 @@ mod tests {
             source_extraction_schema_version: SUPPORTED_EXTRACTION_SCHEMA,
         };
         build_index_from_builder(&index_path, &metadata, fixture_index_builder(&source)).unwrap();
-        let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path).unwrap();
+        let report =
+            HbkFactSnapshot::build_from_provider_path_with_stage_timings(&index_path).unwrap();
 
         assert!(
             report
@@ -7198,7 +7486,8 @@ mod tests {
             .unwrap_or_else(|| panic!("{INDEX_ENV} must point to the frozen provider SQLite"));
         let root = temp_path("x1-full-corpus-parity");
         let slot = root.join("slot");
-        let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path).unwrap();
+        let report =
+            HbkFactSnapshot::build_from_provider_path_with_stage_timings(&index_path).unwrap();
         let identity = artifact_identity(&report).unwrap();
         let publication = report.publish_x1_generation(&slot).unwrap();
         let mapped = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
@@ -7249,7 +7538,8 @@ mod tests {
             .unwrap_or_else(|| panic!("{INDEX_ENV} must point to the frozen provider SQLite"));
         let root = temp_path("x1-full-corpus-lookup-parity");
         let slot = root.join("slot");
-        let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path).unwrap();
+        let report =
+            HbkFactSnapshot::build_from_provider_path_with_stage_timings(&index_path).unwrap();
         let identity = artifact_identity(&report).unwrap();
         let publication = report.publish_x1_generation(&slot).unwrap();
         let mapped = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
@@ -7371,7 +7661,7 @@ mod tests {
         ]);
         let bytes = encode_snapshot_with_identity(&owned, &identity).unwrap();
         write_content_addressed_test_slot(&slot, &bytes);
-        let mapped = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        let mapped = HbkFactSnapshot::open(&slot, &runtime_expectation(&identity)).unwrap();
         let owned_read = owned.worker_handle();
         let mapped_read = mapped.worker_handle();
 
@@ -7459,7 +7749,7 @@ mod tests {
         let owned = forward_payload_fixture_snapshot();
         let bytes = encode_snapshot_with_identity(&owned, &identity).unwrap();
         write_content_addressed_test_slot(&slot, &bytes);
-        let mapped = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        let mapped = HbkFactSnapshot::open(&slot, &runtime_expectation(&identity)).unwrap();
         let read = mapped.worker_handle();
         let filter = HbkAvailabilityFilter::any(["server"]).unwrap();
 
@@ -10672,7 +10962,8 @@ mod tests {
             source_extraction_schema_version: SUPPORTED_EXTRACTION_SCHEMA,
         };
         build_index_from_builder(&index_path, &metadata, fixture_index_builder(&source)).unwrap();
-        let report = HbkFactSnapshot::from_path_with_stage_timings(&index_path).unwrap();
+        let report =
+            HbkFactSnapshot::build_from_provider_path_with_stage_timings(&index_path).unwrap();
         let identity = artifact_identity(&report).unwrap();
         (report, identity, source, index_path)
     }

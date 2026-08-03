@@ -1532,7 +1532,7 @@ mod tests {
         build_index_from_builder(&path, &metadata(), builder).expect("index must build");
 
         let snapshot_report =
-            HbkFactSnapshot::from_path_with_stage_timings(&path).expect("snapshot must materialize");
+            HbkFactSnapshot::build_from_provider_path_with_stage_timings(&path).expect("snapshot must materialize");
         let snapshot = snapshot_report.snapshot.clone();
         assert!(snapshot.estimated_heap_bytes() > 0);
         let memory = snapshot.memory_accounting();
@@ -1800,17 +1800,6 @@ mod tests {
                 .any(|fact| fact.domain == HbkLanguageDomain::Bsl)
         );
 
-        let cache_path = temp_path("hbk-fact-snapshot.bin");
-        snapshot_report
-            .write_binary_cache(&cache_path)
-            .expect("snapshot cache must write");
-        let cached_report = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
-            .expect("snapshot cache must read");
-        assert_eq!(cached_report.status, HbkFactSnapshotCacheStatus::Loaded);
-        let cached_snapshot = cached_report.snapshot;
-        assert_eq!(cached_snapshot, snapshot);
-        assert_eq!(lookup_summary(&cached_snapshot), lookup_summary(&snapshot));
-
         let shared = std::sync::Arc::new(snapshot);
         let expected = lookup_summary(shared.as_ref());
         let workers = (0..4)
@@ -1879,7 +1868,7 @@ mod tests {
         context.type_methods.push(method);
         build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
 
-        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        let snapshot = HbkFactSnapshot::build_from_provider_path(&path).expect("snapshot must materialize");
         let handle = snapshot.worker_handle();
         let owner = handle
             .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
@@ -1937,7 +1926,7 @@ mod tests {
         context.type_methods.push(method);
         build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
 
-        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        let snapshot = HbkFactSnapshot::build_from_provider_path(&path).expect("snapshot must materialize");
         let handle = snapshot.worker_handle();
         let owner = handle
             .platform_type_by_id("platform_type:ОтборКомпоновкиДанных")
@@ -1995,7 +1984,7 @@ mod tests {
         });
         build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
 
-        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        let snapshot = HbkFactSnapshot::build_from_provider_path(&path).expect("snapshot must materialize");
         let mut all_globals = global_ids(&snapshot);
         assert!(all_globals.next().is_some());
 
@@ -2039,7 +2028,7 @@ mod tests {
         ));
         build_test_index_from_context(&path, &metadata(), &context).expect("index must build");
 
-        let snapshot = HbkFactSnapshot::from_path(&path).expect("snapshot must materialize");
+        let snapshot = HbkFactSnapshot::build_from_provider_path(&path).expect("snapshot must materialize");
         let table = snapshot
             .worker_handle()
             .query_tables_by_syntax("Справочник.<Имя справочника>")
@@ -2097,7 +2086,7 @@ mod tests {
             )
             .expect("invalid ignored row must insert");
 
-        let error = HbkFactSnapshot::from_path(&path)
+        let error = HbkFactSnapshot::build_from_provider_path(&path)
             .expect_err("invalid ignored type-reference row must fail materialization");
         assert!(matches!(
             error,
@@ -2133,146 +2122,6 @@ mod tests {
         assert!(!signatures_by_callable.contains(".map(str::to_owned)"));
         assert!(!signatures_by_callable.contains(".to_string()"));
         assert!(!signatures_by_callable.contains(".to_owned()"));
-    }
-
-    #[test]
-    fn hbk_fact_snapshot_binary_cache_rebuilds_when_missing_or_invalid() {
-        let path = temp_path("hbk-fact-snapshot-cache-invalidation.sqlite");
-        let cache_path = temp_path("hbk-fact-snapshot-cache-invalidation.bin");
-        let mut context = fixture_context();
-        context.global_context_events.push(module_event(
-            model::ModuleKind::Form,
-            &["Форма", "Form"],
-            "ПриОткрытии",
-        ));
-        build_test_index_from_context(&path, &metadata(), &context)
-            .expect("index must build");
-
-        let first = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
-            .expect("missing cache must rebuild from SQLite");
-        assert!(matches!(
-            &first.status,
-            HbkFactSnapshotCacheStatus::Rebuilt { .. }
-        ));
-        assert!(cache_path.exists());
-
-        match HbkFactSnapshot::from_path_with_binary_cache(&path, &path) {
-            Err(SearchError::Io { source, .. }) => {
-                assert_eq!(source.kind(), std::io::ErrorKind::InvalidInput);
-            }
-            other => panic!("cache path must not be allowed to overwrite index path: {other:?}"),
-        }
-        match first.snapshot.estimated_heap_bytes() {
-            bytes if bytes > 0 => {}
-            other => panic!("snapshot must stay materialized, got heap estimate {other}"),
-        }
-        match HbkFactSnapshot::from_path_with_stage_timings(&path)
-            .expect("snapshot report must rebuild")
-            .write_binary_cache(&path)
-        {
-            Err(SearchError::Io { source, .. }) => {
-                assert_eq!(source.kind(), std::io::ErrorKind::InvalidInput);
-            }
-            other => panic!("direct cache writer must reject index path: {other:?}"),
-        }
-        SearchIndex::open_read_only(&path).expect("same-path rejection must preserve index");
-
-        let loaded = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
-            .expect("fresh cache must load");
-        assert_eq!(loaded.status, HbkFactSnapshotCacheStatus::Loaded);
-        assert_eq!(loaded.snapshot, first.snapshot);
-
-        let mut bytes = fs::read(&cache_path).expect("cache bytes must read");
-        overwrite_snapshot_cache_layout_version(&mut bytes, 2);
-        fs::write(&cache_path, bytes).expect("previous-layout cache must write");
-        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
-            .expect("previous snapshot layout must rebuild from SQLite");
-        match rebuilt.status {
-            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
-                assert!(reason.contains("metadata mismatch"));
-            }
-            HbkFactSnapshotCacheStatus::Loaded => {
-                panic!("previous snapshot layout must not load")
-            }
-        }
-        assert_eq!(
-            rebuilt
-                .snapshot
-                .worker_handle()
-                .module_event_by_context_name("module_context:form", "ПриОткрытии")
-                .count(),
-            1,
-            "the rebuilt snapshot must answer the new exact event lookup"
-        );
-
-        {
-            let connection = Connection::open(&path).expect("index must open for identity mutation");
-            connection
-                .execute(
-                    "UPDATE meta SET value = 'changed-source-identity' \
-                     WHERE key = 'source_index_identity'",
-                    [],
-                )
-                .expect("source identity mutation must work");
-        }
-        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
-            .expect("source identity mismatch must rebuild");
-        match rebuilt.status {
-            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
-                assert!(reason.contains("metadata mismatch"));
-            }
-            HbkFactSnapshotCacheStatus::Loaded => panic!("source identity mismatch must not load"),
-        }
-
-        let mut bytes = fs::read(&cache_path).expect("cache bytes must read");
-        bytes[8] = 0xff;
-        fs::write(&cache_path, bytes).expect("unsupported version cache must write");
-        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
-            .expect("unsupported cache version must rebuild");
-        match rebuilt.status {
-            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
-                assert!(reason.contains("unsupported HBK fact snapshot cache version"));
-            }
-            HbkFactSnapshotCacheStatus::Loaded => panic!("unsupported cache must not load"),
-        }
-
-        let mut bytes = fs::read(&cache_path).expect("cache bytes must read");
-        let last = bytes.last_mut().expect("cache must not be empty");
-        *last ^= 0xff;
-        fs::write(&cache_path, bytes).expect("corrupted cache must write");
-        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
-            .expect("corrupted cache must rebuild");
-        match rebuilt.status {
-            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
-                assert!(reason.contains("checksum mismatch"));
-            }
-            HbkFactSnapshotCacheStatus::Loaded => panic!("corrupted cache must not load"),
-        }
-
-        let bytes = fs::read(&cache_path).expect("cache bytes must read");
-        fs::write(&cache_path, &bytes[..bytes.len() / 2]).expect("truncated cache must write");
-        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
-            .expect("truncated cache must rebuild");
-        assert!(matches!(
-            rebuilt.status,
-            HbkFactSnapshotCacheStatus::Rebuilt { .. }
-        ));
-
-        let changed_metadata = IndexMetadata {
-            source_hbk: "changed.hbk".to_string(),
-            ..metadata()
-        };
-        build_test_index_from_context(&path, &changed_metadata, &context)
-            .expect("changed source index must rebuild");
-        let rebuilt = HbkFactSnapshot::from_path_with_binary_cache(&path, &cache_path)
-            .expect("stale source cache must rebuild");
-        match rebuilt.status {
-            HbkFactSnapshotCacheStatus::Rebuilt { reason } => {
-                assert!(reason.contains("metadata mismatch"));
-            }
-            HbkFactSnapshotCacheStatus::Loaded => panic!("stale source cache must not load"),
-        }
-        assert_eq!(lookup_summary(&rebuilt.snapshot), lookup_summary(&first.snapshot));
     }
 
     #[test]
@@ -3918,29 +3767,6 @@ mod tests {
             source_hbk: "fixture.hbk".to_string(),
             source_extraction_schema_version: 11,
         }
-    }
-
-    fn overwrite_snapshot_cache_layout_version(bytes: &mut [u8], version: u32) {
-        // Binary cache header: magic, format version, provider version, source
-        // byte/hash identity, three length-prefixed strings, source extraction
-        // version, then snapshot layout version. This intentionally exercises
-        // the persisted header rather than a private cache implementation.
-        let mut offset = 8 + 4 + 4 + 8 + 8;
-        for _ in 0..3 {
-            let length = bytes
-                .get(offset..offset + 8)
-                .expect("cache string length must fit")
-                .try_into()
-                .expect("cache string length must have eight bytes");
-            let length = usize::try_from(u64::from_le_bytes(length))
-                .expect("cache string length must fit usize");
-            offset += 8 + length;
-        }
-        offset += 4;
-        bytes
-            .get_mut(offset..offset + 4)
-            .expect("cache layout version must fit")
-            .copy_from_slice(&version.to_le_bytes());
     }
 
     fn lookup_summary(snapshot: &HbkFactSnapshot) -> Vec<usize> {

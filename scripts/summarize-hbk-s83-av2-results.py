@@ -14,7 +14,10 @@ from typing import Any, Iterable, Sequence
 
 
 SCRIPTS = Path(__file__).resolve().parent
-_SPEC = importlib.util.spec_from_file_location("hbk_s83_av2_benchmark_contract", SCRIPTS / "benchmark-hbk-s83-av2.py")
+_SPEC = importlib.util.spec_from_file_location(
+    "hbk_s83_av2_evidence_contract",
+    SCRIPTS / "_hbk_s83_av2_evidence_contract.py",
+)
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError("cannot load S83-AV2 benchmark contract")
 contract = importlib.util.module_from_spec(_SPEC)

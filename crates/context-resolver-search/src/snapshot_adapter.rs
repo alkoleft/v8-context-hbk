@@ -9,21 +9,6 @@ impl PlatformSnapshotSource {
         }
     }
 
-    pub fn from_index(index: &SearchIndex, source_id: SourceId) -> Result<Self, ResolveError> {
-        HbkFactSnapshot::from_index(index)
-            .map(|snapshot| Self::with_source_id(Arc::new(snapshot), source_id.clone()))
-            .map_err(|source| search_source_failure(&source_id, source))
-    }
-
-    pub fn open_read_only_with_source_id(
-        path: impl AsRef<Path>,
-        source_id: SourceId,
-    ) -> Result<Self, ResolveError> {
-        HbkFactSnapshot::from_path(path)
-            .map(|snapshot| Self::with_source_id(Arc::new(snapshot), source_id.clone()))
-            .map_err(|source| search_source_failure(&source_id, source))
-    }
-
     fn fact_id(&self, kind: FactKind, local_id: impl Into<String>) -> FactId {
         project_hbk_fact_id(&self.catalog, kind, local_id)
     }
@@ -1081,18 +1066,6 @@ impl QueryTableSnapshotSource {
         Self {
             catalog: HbkSdblQueryCatalog::with_source_ids(snapshot, source_id, platform_source_id),
         }
-    }
-
-    pub fn from_index(
-        index: &SearchIndex,
-        source_id: SourceId,
-        platform_source_id: SourceId,
-    ) -> Result<Self, ResolveError> {
-        HbkFactSnapshot::from_index(index)
-            .map(|snapshot| {
-                Self::with_source_ids(Arc::new(snapshot), source_id.clone(), platform_source_id)
-            })
-            .map_err(|source| search_source_failure(&source_id, source))
     }
 
     fn query_table_id(

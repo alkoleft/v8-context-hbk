@@ -2,29 +2,29 @@ use super::indexes::*;
 use super::*;
 
 impl HbkFactSnapshot {
-    pub fn from_path(path: impl AsRef<Path>) -> Result<Self, SearchError> {
+    pub fn build_from_provider_path(path: impl AsRef<Path>) -> Result<Self, SearchError> {
         let index = SearchIndex::open_read_only(path)?;
-        Self::from_index(&index)
+        Self::build_from_provider_index(&index)
     }
 
-    pub fn from_path_with_stage_timings(
+    pub fn build_from_provider_path_with_stage_timings(
         path: impl AsRef<Path>,
     ) -> Result<HbkFactSnapshotBuildReport, SearchError> {
         let total_start = Instant::now();
         let open_start = Instant::now();
         let index = SearchIndex::open_read_only(path)?;
         let open_index = open_start.elapsed();
-        let mut report = Self::from_index_with_stage_timings(&index)?;
+        let mut report = Self::build_from_provider_index_with_stage_timings(&index)?;
         report.timings.open_index = open_index;
         report.timings.total = total_start.elapsed();
         Ok(report)
     }
 
-    pub fn from_index(index: &SearchIndex) -> Result<Self, SearchError> {
+    pub fn build_from_provider_index(index: &SearchIndex) -> Result<Self, SearchError> {
         SnapshotMaterializer::new(index).materialize()
     }
 
-    pub fn from_index_with_stage_timings(
+    pub fn build_from_provider_index_with_stage_timings(
         index: &SearchIndex,
     ) -> Result<HbkFactSnapshotBuildReport, SearchError> {
         SnapshotMaterializer::new(index).materialize_with_stage_timings()
@@ -132,16 +132,19 @@ impl<'a> SnapshotMaterializer<'a> {
     fn materialize_with_stage_timings(self) -> Result<HbkFactSnapshotBuildReport, SearchError> {
         let total_start = Instant::now();
         let mut timings = HbkFactSnapshotStageTimings::default();
-        let cache_metadata =
-            super::binary_cache::CacheMetadata::from_index(self.index.path(), self.index)?;
-        let cache_index_path = self.index.path().to_path_buf();
+        let build_input_identity =
+            super::build_identity::HbkFactSnapshotBuildInputIdentity::from_index(
+                self.index.path(),
+                self.index,
+            )?;
+        let provider_index_path = self.index.path().to_path_buf();
         let snapshot = self.materialize_inner(Some(&mut timings))?;
         timings.total = total_start.elapsed();
         Ok(HbkFactSnapshotBuildReport {
             snapshot,
             timings,
-            cache_index_path,
-            cache_metadata,
+            provider_index_path,
+            build_input_identity,
         })
     }
 
@@ -1248,6 +1251,49 @@ mod tests {
         let mut ordered = edges.clone();
         ordered.sort_by(|left, right| left.1.cmp(&right.1).then(left.0.cmp(&right.0)));
         assert_eq!(edges, ordered);
+    }
+
+    #[test]
+    fn provider_snapshot_materialization_uses_explicit_build_only_names() {
+        let source = include_str!("materialize.rs");
+        let production = source
+            .split("#[cfg(test)]\nmod tests")
+            .next()
+            .expect("production materializer must precede its tests");
+        let public_build_api = production
+            .split("impl HbkFactSnapshot {")
+            .nth(1)
+            .and_then(|section| section.split("struct DocumentRow").next())
+            .expect("snapshot build API must remain a standalone implementation");
+
+        for required in [
+            "pub fn build_from_provider_path(",
+            "pub fn build_from_provider_path_with_stage_timings(",
+            "pub fn build_from_provider_index(",
+            "pub fn build_from_provider_index_with_stage_timings(",
+        ] {
+            assert_eq!(
+                public_build_api.matches(required).count(),
+                1,
+                "owned snapshot staging must expose exactly one {required}"
+            );
+        }
+        assert_eq!(
+            public_build_api.matches("pub fn ").count(),
+            4,
+            "owned snapshot staging must expose only the explicit provider build API"
+        );
+        for retired in [
+            "pub fn from_path(",
+            "pub fn from_path_with_stage_timings(",
+            "pub fn from_index(",
+            "pub fn from_index_with_stage_timings(",
+        ] {
+            assert!(
+                !public_build_api.contains(retired),
+                "ambiguous owned materialization entrypoint must stay retired: {retired}"
+            );
+        }
     }
 
     #[test]
