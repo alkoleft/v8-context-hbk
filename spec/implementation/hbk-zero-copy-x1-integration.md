@@ -862,3 +862,30 @@ Package tests `106 passed / 1 ignored`, package clippy, fmt, diff check и
 независимый review прошли. Полная команда и counts записаны в
 `acceptance/hbk-x1-int-evidence.md`. Следующий slice — 4.3 full-corpus lookup
 parity; X1 остаётся private/non-canonical.
+
+## Task-local plan: OpenSpec 4.3 — full-corpus lookup parity
+
+Slice применяет всю private mapped lookup surface 3.4 к frozen corpus. Fixture
+остаётся oracle для специально сконструированных duplicate/ambiguity/language/
+module cases, которых может не быть в S83.
+
+- Общий test-only comparator выводит hit keys из owned persisted indexes, но
+  вызывает только semantic methods обоих read handles. Для каждого distinct
+  key сравнивается ordered result: full fact/exact type, primary+alias type,
+  template, owner/member/name/kind, callable/constructor, global/domain/kind,
+  module context/event, query table/syntax/identifier/field/parameter,
+  language, enum/value, availability/available-since и relation source/kind.
+- Owner ranges перечисляются для каждого valid owner, включая пустые. Exact ID
+  проверяется для каждой record identity через `facts_by_id` и family methods,
+  а не только sample первого/последнего record.
+- Один fixed absent Unicode-safe key на method family проверяет deterministic
+  miss/empty; fixture parity сохраняет duplicate multi-hit order, optional
+  kind, ambiguity и unsupported/unknown cases. Никакой winner не выбирается.
+- Full-corpus probe переиспользует env-driven build/publish/stable-slot open
+  4.2 и печатает число выполненных semantic calls и SHA-256 нормализованного
+  ordered result transcript. Numeric IDs не сравниваются между sessions;
+  owned/mapped стороны принадлежат одному build generation.
+- Production indexes/format/API не меняются. Commit gate: fixture/package/
+  workspace tests, explicit frozen probe, package clippy, fmt, strict OpenSpec,
+  diff check и независимый review. Следующий slice 4.4 впервые открывает единый
+  `HbkFactReadHandle`/catalog seam; X1 остаётся non-canonical.
