@@ -8,23 +8,32 @@ These rules apply to the whole repository.
 
 The project is currently an independently testable component with provisional contracts. It may later become an HBK-backed source for `/home/alko/develop/open-source/v8-context/`, but do not couple it to unfinished downstream contracts before the extraction model is validated on real HBK data.
 
-Use `spec/` as the only durable project source of truth. Start from the
-specification index before changing behavior or tasks:
+OpenSpec is the primary project source of truth.
 
-- `spec/README.md`
-- `spec/requirements/functional.md`
-- `spec/requirements/non-functional.md`
-- `spec/use-cases.md`
-- `spec/acceptance/uat-test-cases.md`
-- `spec/acceptance/baseline.md`
-- `spec/implementation/components.md`
-- `spec/decisions/`
-- `spec/IMPLEMENTATION_TODO.md`
+- Canonical capability requirements live under `openspec/specs/`.
+- Proposed and active change scope, design, requirement deltas and task status
+  live under `openspec/changes/`; completed change history lives under
+  `openspec/changes/archive/`.
+- Before planning or implementation, run `openspec list --json`, select the
+  applicable live change, and read every context file returned by
+  `openspec instructions apply --change <name> --json`.
+- Do not hard-code a current change name or archived status in this file. Use
+  live OpenSpec state.
+- If requested repository-changing work is not covered by an applicable
+  apply-ready change, create or update the OpenSpec artifacts before
+  implementation.
 
-`README.md` is user-facing CLI documentation, not the source of product or
-implementation truth. `IMPLEMENTATION_TODO.md` is the active task ledger only.
-When chat, README, code comments or task text conflict with `spec/`, reconcile
-the relevant spec or ADR before implementation.
+Existing `spec/` content is supporting legacy documentation, research,
+acceptance evidence, ADR rationale and history. A legacy-only contract remains
+binding until imported. Before editing code, tests, fixtures, schemas,
+generators or adapters in an area governed only by legacy `spec/`, import the
+smallest task-relevant contract into the active OpenSpec delta, including
+preservation scenarios for behavior that must not change. Do not add new
+normative requirements or active task state under `spec/`.
+
+`README.md` remains user-facing CLI documentation. When chat, README, code
+comments or supporting documentation conflict with OpenSpec, reconcile them to
+the OpenSpec contract before implementation.
 
 ## Context Boundaries
 
@@ -85,21 +94,51 @@ Test behavior, not implementation.
 - If subagents are unavailable, continue in the main session and mention the skipped subagent pass
   in the final response or task notes when the task expected one.
 
-## Implementation Discipline
+## Implementation Workflow
 
-- Follow this order for non-trivial work:
-  1. Read `spec/README.md` and the relevant requirement, use-case, acceptance, implementation and ADR files.
-  2. If the requested behavior is not covered, update the appropriate spec or add an ADR before implementation.
-  3. Add or update UAT test cases when the behavior is user-visible through CLI, files, exports or diagnostics.
-  4. Add or update the first active task in `spec/IMPLEMENTATION_TODO.md`, referencing spec/UAT/ADR IDs.
-  5. Implement only that task and its direct verification unless the prompt explicitly asks for broader scope.
-  6. After verification, update the task ledger and promote durable findings back into spec/ADR files.
-- At the end of development, explicitly актуализируй `spec/`: update requirements, acceptance
-  baseline, implementation specs, ADRs and `spec/IMPLEMENTATION_TODO.md` when the implemented
-  behavior, measurements, task status or durable conclusions changed.
-- Follow the active implementation plan before adding new scope.
-- Keep public contracts provisional unless the plan or ADRs explicitly stabilize them.
-- Prefer Rust-native models and algorithms over reproducing Java/Kotlin reference APIs.
-- Use typed errors instead of panics for recoverable input, parsing and export failures.
-- Keep generated outputs, acceptance artifacts and experimental data out of source files unless the plan asks for durable artifacts.
-- Do not introduce unrelated refactors while implementing a task.
+1. Inspect the current branch and worktree. Preserve unrelated user changes and
+   do not mix them into the selected task.
+2. Discover live state with `openspec list --json`, select the applicable
+   change, run `openspec instructions apply --change <name> --json`, and read
+   every returned proposal/spec/design/task context file.
+3. If the change touches a legacy-only contract, import the smallest relevant
+   contract into its OpenSpec delta before the first implementation edit.
+4. Form a task-local plan for exactly one pending OpenSpec task and record the
+   pre-implementation `mattpocock-skills:codebase-design` pass in the change
+   `design.md`. The record must name reviewed scope, module interfaces, seams,
+   adapters, owners, findings, resolutions, and a `PASS` or `BLOCKED` outcome.
+5. Implement only that task and its direct verification unless the prompt
+   explicitly requests a broader batch. Add or update UAT cases when behavior
+   is user-visible through CLI, files, exports or diagnostics.
+6. Promote requirement changes into OpenSpec. Supporting `spec/` evidence may
+   be updated for durable measurements, acceptance results or rationale, but it
+   must not become a second requirement or task source.
+7. Review the actual diff with `mattpocock-skills:codebase-design` and record the
+   second pass in the change `design.md`. Duplicate ownership, shallow
+   pass-through modules, unjustified seams/adapters, or structural divergence
+   from the approved design block completion unless an owner-approved exception
+   is recorded.
+8. Run task verification and strict OpenSpec validation, then mark the task
+   complete. Use typed errors instead of panics for recoverable input, parsing
+   and export failures; do not introduce unrelated refactors.
+9. Commit every successful repository-changing task with a task-scoped
+   Conventional Commit after inspecting `git diff --cached --name-only` and the
+   staged diff. Analysis-, review- and planning-only work does not create an
+   empty commit; blocked or failing work is not committed as completed work.
+
+When the last task of an OpenSpec change completes:
+
+1. Classify the version change: bump the workspace minor version for shipped
+   user-facing functionality and the patch version otherwise. Bump exactly once
+   per completed change and keep `Cargo.toml` and `Cargo.lock` consistent.
+2. Complete required review and validation gates, mark the final task
+   ready-to-archive, and validate the completed active change strictly.
+3. Archive the change with capability-spec synchronization, validate canonical
+   OpenSpec state strictly, inspect and stage only task-scoped files, and create
+   the completion commit. Do not report the change complete before that commit
+   succeeds.
+
+Keep public contracts provisional unless OpenSpec explicitly stabilizes them.
+Prefer Rust-native models and algorithms over reproducing Java/Kotlin reference
+interfaces. Keep generated outputs and one-off experimental data out of source
+files unless the change explicitly requires durable artifacts.

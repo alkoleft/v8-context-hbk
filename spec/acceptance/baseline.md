@@ -433,8 +433,8 @@ the accepted resource profile.
 
 ## Standard Verification Gates
 
-For implementation tasks, choose the narrowest relevant gate set and run the task-specific
-verification from `IMPLEMENTATION_TODO.md`.
+For implementation tasks, choose the narrowest relevant gate set and run the
+task-specific verification from the selected OpenSpec change `tasks.md`.
 
 Common gates:
 

@@ -1,7 +1,7 @@
 # ADR Index
 
 - [ADR-0001: Keep v8-context-hbk Standalone and Integrate Through File Export First](ADR-0001-v8-context-integration.md) - Accepted.
-- [ADR-0002: Use spec/ as the Only Durable Source of Truth](ADR-0002-spec-source-of-truth.md) - Accepted.
+- [ADR-0002: Use spec/ as the Only Durable Source of Truth](ADR-0002-spec-source-of-truth.md) - Superseded by ADR-0013.
 - [ADR-0003: Start Performance Work with Lean Consumer Export](ADR-0003-performance-first-slice.md) - Accepted.
 - [ADR-0004: Add Syntax Assistant Query Commands on a Prebuilt Search Index](ADR-0004-syntax-helper-query-cli.md) - Accepted.
 - [ADR-0005: Use TOC-Aware Reading for Syntax Assistant Facts](ADR-0005-toc-aware-syntax-helper-reading.md) - Accepted.
@@ -12,3 +12,4 @@
 - [ADR-0010: Split Documentation Site Generation and Web Application](ADR-0010-documentation-site-generator-and-web-app.md) - Accepted.
 - [ADR-0011: Compute Syntax Fact Identity in the Domain Model During Reading](ADR-0011-domain-owned-syntax-identity.md) - Accepted.
 - [ADR-0012: Проверить X1 в реальном анализаторе перед канонизацией](ADR-0012-adopt-x1-for-integration-verification.md) - Accepted.
+- [ADR-0013: Adopt OpenSpec as the Primary Source of Truth](ADR-0013-adopt-openspec-as-primary-source-of-truth.md) - Accepted.

@@ -119,6 +119,10 @@ analysis assistance, with future analyzer-provider compatibility as a design con
 
 ## Implementation Plan
 
+Workflow note (2026-08-03): this completed plan's references to the former
+task ledger are historical. ADR-0013 makes OpenSpec the current owner of change
+scope and task state.
+
 1. Update `spec/requirements/functional.md`:
    - state the `syntax` scope goal as BSL development and code-analysis assistance;
    - record future BSL analyzer integration as an intended consumer direction;

@@ -1,22 +1,30 @@
-# Specification Index
+# Legacy Documentation and Evidence Index
 
-The `spec/` directory is the durable source of truth for `v8-context-hbk`.
+OpenSpec is the primary source of truth for `v8-context-hbk`. Canonical
+capability requirements live under `../openspec/specs/`; proposed and active
+change scope, design, deltas and task state live under
+`../openspec/changes/`.
 
-User-facing documentation, agent rules, code comments and chat decisions may explain or implement
-the project, but they do not override this directory. If behavior, scope or contract intent changes,
-update the relevant specification or ADR first, then update tasks and implementation.
+The `spec/` directory is supporting legacy documentation, research, acceptance
+evidence, ADR rationale and history. It does not own new normative requirements
+or active task state. A legacy-only contract remains a binding baseline until
+the smallest task-relevant portion is imported into an OpenSpec delta before
+implementation edits that area.
 
-## Truth Layers
+## Relationship To OpenSpec
 
-Authoritative layers, from most specific to most operational:
+1. Canonical OpenSpec capability specs own current imported requirements.
+2. An applicable active OpenSpec change owns proposed scope, design, deltas and
+   task state; archived changes own completed change history.
+3. Accepted ADRs in `decisions/` preserve rationale for hard-to-reverse
+   decisions but do not override current OpenSpec contracts.
+4. Requirements, use cases, implementation notes and acceptance artifacts in
+   this directory remain binding legacy baseline or supporting evidence until
+   the relevant contract is imported.
+5. `archive/` contains historical task evidence, not active scope.
 
-1. Accepted ADRs in `decisions/` for architectural and process decisions.
-2. Requirements, use cases, acceptance and implementation specifications in this directory.
-3. `IMPLEMENTATION_TODO.md` for active task sequencing only.
-4. `archive/` for completed historical task records. Archive files are evidence, not active scope.
-
-When two source-of-truth files conflict, prefer the accepted ADR if it directly covers the decision.
-Otherwise reconcile the specification files before implementing.
+When OpenSpec conflicts with supporting material, OpenSpec takes precedence and
+the supporting material must be reconciled.
 
 ## Specification Files
 
@@ -71,8 +79,7 @@ Otherwise reconcile the specification files before implementing.
 - `acceptance/test-case-requirements.md`: rules for UAT and black-box test case specifications.
 - `acceptance/uat-test-cases.md`: current UAT test case catalog.
 - `decisions/`: ADRs and accepted decision records.
-- `IMPLEMENTATION_TODO.md`: first-unchecked-task ledger for implementation work.
-- `archive/`: completed milestones and task history moved out of the active ledger
+- `archive/`: completed milestones and historical task records
   (`completed-tasks-t0-t12.md`, `completed-tasks-t13-t17-t19-t24.md`,
   `completed-tasks-t25-t34.md`, `completed-tasks-t41-t47.md`,
   `completed-tasks-t48-t56.md`, `completed-tasks-t57-t65-t68-t85.md`,
@@ -85,24 +92,34 @@ Otherwise reconcile the specification files before implementing.
 ## External Files
 
 - `../README.md`: end-user CLI documentation. Keep usage instructions there.
-- `../AGENTS.md`: repository rules for agents. It must point agents back to this index before work.
-- `../scripts/infr/impl-prompt.md`: helper prompt for the task loop. It must not define contracts independently.
+- `../openspec/config.yaml`: repository context and generation rules for new OpenSpec artifacts.
+- `../openspec/specs/`: canonical imported capability requirements.
+- `../openspec/changes/`: proposed, active and archived change artifacts and task state.
+- `../AGENTS.md`: repository workflow rules for agents.
+- `../scripts/infr/impl-prompt.md`: helper prompt for applying the selected OpenSpec change. It must not define contracts independently.
 
 ## Working Rules
 
-- Add or change requirements before adding implementation tasks that depend on them.
-- Add an ADR before changing architecture, source-of-truth policy, public contract stability, integration strategy or long-lived process.
-- Add or update UAT cases when a behavior must be validated through CLI/file-level user workflows.
-- Keep `IMPLEMENTATION_TODO.md` short: active tasks, dependencies, spec references and verification only.
-- After development, актуализируй `spec/`: update affected requirements, acceptance baselines,
-  implementation notes, ADRs and the active task ledger before treating the work as complete.
-- Move completed task detail to `archive/` when it stops being needed for the first unchecked task.
+- Add or change normative requirements through an OpenSpec change before the
+  implementation tasks that depend on them.
+- Before implementation edits an area governed only here, import the smallest
+  task-relevant legacy contract into the active OpenSpec delta, including
+  preservation scenarios for unchanged behavior.
+- Add an ADR alongside the OpenSpec design when changing architecture,
+  source-of-truth policy, public contract stability, integration strategy or a
+  long-lived process. The ADR records rationale; OpenSpec owns current scope and
+  contract state.
+- Add or update supporting UAT cases when behavior must be validated through
+  CLI/file-level workflows.
+- After implementation, update affected supporting evidence, baselines,
+  implementation notes and ADR rationale when durable conclusions changed.
+- Keep historical task archives unchanged unless correcting historical evidence.
 
 ## Service Data Policy
 
 Intermediate command reports, generated exports and one-off acceptance logs are service data. Do not
 keep them as durable documentation unless their conclusions are promoted into a requirement,
-acceptance baseline, task ledger entry or ADR.
+OpenSpec change, acceptance baseline or ADR.
 
 ## Current Syntax Direction
 
@@ -119,8 +136,8 @@ output over generic documentation-search breadth.
 
 The current provisional Syntax Assistant consumer JSON contract is `schema_version: 11`.
 `FR-EXPORT-001` owns the exact record-family shape; `acceptance/baseline.md` records the latest
-validated counts, schema-changing task conclusions and query-index baselines. The active task ledger
-owns current unchecked work.
+validated counts, schema-changing task conclusions and query-index baselines. An applicable OpenSpec
+capability and active change own future contract changes and task state.
 
 ADR-0011 owns cross-consumer Syntax Assistant fact identity. Parent fact identity is a
 `syntax-helper-model` / `syntax-helper-extract` responsibility and must be filled during reading;

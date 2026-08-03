@@ -36,13 +36,15 @@ Each UAT case must include:
 ## Traceability
 
 - Every UAT case must link to at least one use case or requirement.
-- `IMPLEMENTATION_TODO.md` may reference UAT IDs as verification gates, but must not store full UAT
-  steps.
-- If a UAT case reveals a contract change, update the requirement or ADR first, then update the task
-  ledger.
+- OpenSpec change tasks may reference UAT IDs as verification gates, but must
+  not duplicate full UAT steps.
+- If a UAT case reveals a contract change, update the applicable OpenSpec
+  requirement first, then update the UAT case and change task.
 
 ## Artifact Policy
 
-Raw command outputs and generated export directories are service data. Keep them under `target/` or
-another ignored runtime location unless a task explicitly asks for a durable artifact. Durable
-conclusions belong in `acceptance/baseline.md`, requirements, ADRs or task notes.
+Raw command outputs and generated export directories are service data. Keep
+them under `target/` or another ignored runtime location unless an OpenSpec
+change explicitly asks for a durable artifact. Durable conclusions belong in
+canonical OpenSpec specs or change artifacts and may be supported by
+`acceptance/baseline.md` or ADR rationale.

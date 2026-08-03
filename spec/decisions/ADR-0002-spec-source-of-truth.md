@@ -2,7 +2,10 @@
 
 Date: 2026-04-30.
 
-Status: Accepted.
+Status: Superseded by [ADR-0013](ADR-0013-adopt-openspec-as-primary-source-of-truth.md) on 2026-08-03.
+
+The decision and implementation record below are retained as history. ADR-0013
+owns the current source-of-truth and task-workflow decision.
 
 ## Context
 

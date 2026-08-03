@@ -248,6 +248,10 @@ model depend on TOC traversal order.
 
 ## Implementation Plan
 
+Workflow note (2026-08-03): this completed plan's references to the former
+task ledger are historical. ADR-0013 makes OpenSpec the current owner of change
+scope and task state.
+
 Affected paths:
 
 - `crates/syntax-helper-extract/src/catalog.rs`

@@ -1,20 +1,44 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  v8-context-hbk is a Rust workspace for reading 1C *.hbk help books and
+  extracting structured platform documentation and Syntax Assistant context.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  OpenSpec is the primary source of truth. Canonical capability requirements
+  live in openspec/specs/. Proposed and active scope, design, deltas, and task
+  status live in openspec/changes/. Completed changes live in
+  openspec/changes/archive/.
+
+  Existing spec/ content is supporting legacy documentation, research,
+  acceptance evidence, ADR rationale, and history. A legacy-only contract
+  remains binding until the smallest task-relevant part is imported into an
+  OpenSpec delta, which must happen before implementation edits that area. Do
+  not add new normative requirements or active task state under spec/.
+
+  Keep HBK container reading, documentation navigation, Syntax Assistant
+  extraction, domain modeling, export adapters, and CLI/UI concerns explicit
+  and narrow. Preserve provenance and validate at input, parsing,
+  serialization/export, external-command, and public Rust seams.
+
+  Every implementation task requires mattpocock-skills:codebase-design before
+  implementation and on the actual diff. Record both passes in design.md.
+  Completed changes bump the workspace minor version for shipped user-facing
+  functionality and patch otherwise. Successful repository-changing work ends
+  in a task-scoped Conventional Commit.
+
+rules:
+  proposal:
+    - Name every new or modified capability and identify any legacy-only contract that must be imported before implementation.
+    - Classify the completion version bump as minor for shipped user-facing functionality or patch otherwise.
+    - Keep runtime 1C introspection outside scope unless the change explicitly establishes and accepts that new project direction.
+  design:
+    - Include goals, non-goals, affected owners, migration and rollback, concrete verification, and the version-bump classification.
+    - Include a Codebase-Design Review Record with pre-implementation and actual-diff passes covering module interfaces, seams, adapters, owners, findings, resolutions, and PASS or BLOCKED outcomes.
+    - Do not introduce a parallel task ledger, pointer checklist, shallow pass-through module, speculative compatibility layer, cache, generic pipeline, or configuration knob without a concrete accepted requirement.
+  specs:
+    - Define observable requirements with deterministic scenarios and explicit error, ordering, provenance, or compatibility outcomes where applicable.
+    - Import the smallest relevant legacy contract, including preservation scenarios, before implementation edits an area governed only by spec/ material.
+  tasks:
+    - Keep task state only in the OpenSpec change tasks.md and keep each task scoped to direct implementation and verification.
+    - Include focused verification and required supporting-evidence updates in the task that changes behavior.
+    - Make the final task leave the change ready for strict validation, archive and spec synchronization, canonical validation, staged-scope inspection, and the required Conventional Commit.

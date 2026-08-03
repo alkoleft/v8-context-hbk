@@ -256,7 +256,8 @@ Resolver-направление сохраняет одноименные фак
 
 ## Документация
 
-- Индекс спецификации: [spec/README.md](spec/README.md)
+- Канонические OpenSpec-требования: [openspec/specs](openspec/specs)
+- Индекс legacy-документации и evidence: [spec/README.md](spec/README.md)
 - Функциональные требования: [spec/requirements/functional.md](spec/requirements/functional.md)
 - Нефункциональные требования: [spec/requirements/non-functional.md](spec/requirements/non-functional.md)
 - Acceptance baseline: [spec/acceptance/baseline.md](spec/acceptance/baseline.md)

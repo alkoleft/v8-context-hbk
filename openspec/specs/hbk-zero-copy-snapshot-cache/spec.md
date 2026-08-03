@@ -1,0 +1,531 @@
+# hbk-zero-copy-snapshot-cache Specification
+
+## Purpose
+TBD - created by archiving change establish-hbk-zero-copy-snapshot-cache. Update Purpose after archive.
+## Requirements
+### Requirement: Выбор zero-copy формата допускается только на основании доказательств
+
+Провайдер SHALL NOT выбирать или реализовывать production-формат zero-copy
+снапшота, пока на одинаковых нагрузках провайдера и downstream-потребителей не
+будут сравнены текущий cache с владеющими данными, пользовательский плоский
+memory-mapped кандидат и архивный кандидат с проверяемой валидацией.
+
+#### Scenario: Протокол сравнения фиксируется до приёмки кандидата
+
+- **WHEN** этап исследования подготавливает сравнение кандидатов
+- **THEN** он SHALL зафиксировать точную идентичность артефактов HBK/провайдера,
+  версию платформы, локаль, версию схемы извлечения, профиль сборки, хост/ОС,
+  команды, количество запусков, политику прогрева, метод холодного cache,
+  итоговую статистику, формат сырых результатов и резервные варианты средств
+  измерения
+- **AND** он SHALL определить локальные для задачи пороги существенной пользы
+  и регрессий до того, как результаты кандидатов будут использованы для выбора
+  production-формата.
+
+#### Scenario: Форматы-кандидаты сравниваются
+
+- **WHEN** этап исследования оценивает хранение zero-copy снапшота
+- **THEN** он SHALL отдельно отразить пути SQLite-to-owned,
+  current-cache-to-owned и zero-copy
+- **AND** он SHALL отдельно зафиксировать производство/пересборку снапшота,
+  холодный startup готовности к запросам от запуска процесса до окончания
+  валидации/mapping, тёплый startup готовности к запросам в тех же границах,
+  задержку первого lookup, задержку пакетных тёплых lookup и устойчивое
+  состояние после рабочей нагрузки
+- **AND** он SHALL зафиксировать количество и объём аллокаций, сохраняющийся
+  private heap после открытия и после рабочей нагрузки, пиковый и устойчивый
+  RSS, PSS при наличии, суммарный PSS нескольких процессов, размер файла,
+  page faults и объём затронутых байтов при наличии
+- **AND** поведение, порядок кандидатов и результаты lookup SHALL
+  соответствовать текущему контракту снапшота.
+
+#### Scenario: Измеряется enumeration глобальных методов по контексту исполнения
+
+- **WHEN** дополнительный workload S83-AV1 проверяет получение глобальных
+  BSL-методов для конкретного `AvailabilityContext`
+- **THEN** H0 SQLite-to-owned SHALL быть единственной baseline-строкой, а C0
+  current-cache-to-owned SHALL быть только не участвующим в решении контрольным
+  вариантом
+- **AND** workload SHALL независимо выполнить один и тот же запрос для каждого
+  поддерживаемого варианта `AvailabilityContext`
+- **AND** глобальный метод с пустым списком availability SHALL считаться
+  доступным в каждом `AvailabilityContext`, а метод с непустым списком SHALL
+  включаться только при наличии запрошенного значения
+- **AND** `ModuleContextKind` SHALL NOT входить в форму запроса, предикат,
+  SQL-условие, метаданные кандидата или фильтрацию результата
+- **AND** результат SHALL сохранять порядок H0 и содержать полный объект
+  global/callable, включая имена, сигнатуры, параметры и возвращаемые типы, а
+  не только ID или количество
+- **AND** каждый кандидат SHALL пройти точное сравнение упорядоченного
+  транскрипта с H0 до использования его измерений производительности
+- **AND** AV1 SHALL записывать cold-best-effort first-enumeration, прогретую
+  batched-enumeration, число и объём аллокаций, количество объектов и время на
+  один возвращённый объект в отдельном пространстве результатов
+- **AND** AV1 SHALL NOT изменять ранее замороженные S83 gates, ранжировать
+  строки, выбирать победителя, проектировать публичный API или оптимизировать
+  физический формат кандидата.
+
+#### Scenario: Измеряются lookup и формирование отфильтрованного набора членов типа
+
+- **WHEN** дополнительный workload S83-AV2 сравнивает type/member hot paths по
+  выбранной пользователем форме результата A
+- **THEN** H0 SQLite-to-owned SHALL быть единственной baseline-строкой, а C0
+  current-cache-to-owned SHALL быть только control
+- **AND** workload SHALL раздельно измерять type-by-name lookup,
+  property/method-by-known-owner/name/kind и callable-by-owner/name lookup,
+  storage-native iteration members без коллекции, materialization компактного
+  request-local набора единых `Av2MemberLocator(u32)` и отдельный full-payload
+  access типа, метода, свойства и заранее сформированного filtered member set
+- **AND** границы времени lookup, iteration, materialization и full-payload
+  access SHALL NOT перекрываться
+- **AND** method payload locator SHALL содержать member locator и связанные
+  callable locator, разрешённые до начала payload timing
+- **AND** фильтр SHALL использовать только availability непосредственной
+  записи member; пустой список SHALL означать universal, а
+  `ModuleContextKind`, транзитивные объявления, precedence и
+  `effective_members` SHALL NOT участвовать в запросе или результате
+- **AND** iteration/compact set SHALL включать `Property`, `Method`, `Event` и
+  `EnumValue` с отдельными counts по kind и сохранением порядка H0
+- **AND** связанный callable метода SHALL входить в full payload, но SHALL NOT
+  быть дополнительным availability-фильтром
+- **AND** corpus-wide query manifest, logical-ID-normalized ordered transcript
+  и набор полей текущего snapshot/catalog SHALL быть зафиксированы до
+  performance-прогонов кандидатов
+- **AND** каждый кандидат SHALL пройти побайтовый parity порядка/состава
+  компактного набора и полного payload с H0 до использования его performance
+  evidence
+- **AND** AV2 SHALL считать steady member iteration/materialization основным
+  показателем и отдельно записывать point lookup, full-payload access,
+  startup/first access, allocation calls/bytes, retained-result bytes, page
+  faults и RSS/PSS на применимых границах процесса
+- **AND** каждое семейство операций SHALL запускаться в отдельном процессе,
+  чтобы lazy validation и первый доступ одной операции не прогревали другую
+- **AND** AV2 SHALL использовать строгие versioned tagged schema с
+  operation-specific полями, запрещать retained-result fields вне compact
+  materialization и проверять допустимый projection по frozen backend registry
+- **AND** compact memory sample SHALL удерживать ровно один owner-set на
+  каждый owner manifest текущего контекста и измерять memory до построения,
+  при живых наборах и после drop
+- **AND** payload bytes SHALL означать canonical logical bytes checksum, а не
+  заявленный physical memory traffic
+- **AND** AV2 SHALL NOT добавлять long-form documentation/HTML в snapshot,
+  менять физический формат или публичный API, вводить новые gates, ранжировать
+  строки либо выбирать кандидата.
+
+#### Scenario: Layout проверяется на фактическом consumer scope
+
+- **WHEN** корректирующий workload S83-AV4 сравнивает hot layout после
+  предварительного AV3
+- **THEN** corpus-wide enumeration members всех типов SHALL быть только
+  недецизионной stress diagnostic
+- **AND** решающий workload SHALL раздельно измерять filtered global
+  methods/properties, type-by-name lookup, borrowed и compact candidate members
+  kind `Property`/`Method` только одного найденного type, end-to-end type lookup
+  + scope formation и отдельный full payload типа, метода и свойства
+- **AND** все девять `AvailabilityContext` SHALL измеряться независимо, пустая
+  availability SHALL означать universal, а `ModuleContextKind` SHALL NOT быть
+  фильтром
+- **AND** type/member co-location SHALL проверяться как fixed type head с
+  `member_start/member_count`, соседний owner-major hot member section и
+  отдельный cold payload, а не как variable-size interleaved records
+- **AND** causal control direct range и R1-derived AoS, SoA, dense bitmap и
+  direct CSR layouts SHALL находиться в отдельных ветках/worktree
+- **AND** parity SHALL сохранять H0 order, owner, kind, logical identity,
+  universal/explicit availability, compact locators и полный payload
+- **AND** precedence, ambiguity, downstream lookup и effective selection SHALL
+  оставаться ответственностью `v8-context`, а HBK SHALL возвращать ordered
+  candidate stream без выбора победившего объявления
+- **AND** module events SHALL NOT входить в AV4, потому что их scope задаётся
+  `ModuleContextKind`, а не availability-фильтром; добавление events в module
+  context SHALL оставаться downstream-операцией
+- **AND** каждый fixed type anchor/context SHALL образовывать отдельную
+  measurement-строку и SHALL NOT агрегироваться с другими anchors в score или
+  общий type-scope rank
+- **AND** steady timing SHALL сопровождаться allocation calls/bytes, faults,
+  RSS/PSS, artifact/hot-section bytes, `logical_domain_count`,
+  `physical_entries_examined` и `returned_count`
+- **AND** H0/C0 и все применимые варианты SHALL быть повторно запущены одним
+  frozen AV4 harness до сравнения результатов
+- **AND** AV4 SHALL NOT ранжировать варианты, выбирать canonical runtime или
+  объединять ветвь без явного решения пользователя.
+
+#### Scenario: Составная гипотеза проверяется отдельным workload
+
+- **WHEN** после AV4 выполняется S83-AV5 для проверки составного кандидата
+  `S83-X1`
+- **THEN** он SHALL использовать отдельные versioned query-manifest,
+  benchmark, resource, raw, resource-raw, parity, lookup-parity,
+  preflight-smoke, summary и orchestration schema и отдельный results
+  namespace, не изменяя
+  замороженные AV4 `/v2` harness, артефакты или результаты
+- **AND** `S83-X1` SHALL сочетать SoA locator/mask/kind columns только для
+  filtered global scope, специализированный отображённый в память
+  open-address hash только для platform-type-by-name и простой
+  `member_start/member_count` плюс owner-contiguous AoS
+  `{locator:u32, availability_word:u16, kind:u8, reserved:u8}` только для
+  непосредственных members одного типа
+- **AND** cold payload SHALL оставаться отдельным R1-derived представлением и
+  SHALL измеряться тем же отдельным full-payload workload без скрытого lookup
+  или фильтрации внутри timed interval
+- **AND** H0/C0, I1 lookup reference, R2-AOS member-layout reference,
+  R2-SOA global-layout reference и `S83-X1` SHALL быть повторно запущены одним
+  frozen AV5 harness на точных HBK/provider/anchors/contexts AV4
+- **AND** до performance `S83-X1` SHALL пройти точный H0 parity порядка,
+  owner, kind, availability, provenance, primary/alias/miss lookup с пустым
+  miss scope и полного payload type/method/property
+- **AND** результаты SHALL отдельно показывать steady global scope, type
+  lookup, type scope каждого anchor/context, end-to-end lookup + scope,
+  full payload, startup/first operations, allocations, faults, RSS/PSS,
+  artifact bytes и bytes каждого hot/hash section
+- **AND** AV5 SHALL NOT вводить aggregate score, rank, winner,
+  recommendation/canonical fields, изменять shortlist, выбирать production-
+  формат или объединять ветвь без отдельного решения пользователя.
+
+#### Scenario: Проверяются составные фильтры AvailabilityContext и сохраняемые проекции
+
+- **WHEN** после AV5 выполняется отдельный S83-AV6 для фильтрации scope по
+  нескольким `AvailabilityContext`
+- **THEN** он SHALL сравнить только H0, неизменённый X1 и отдельный
+  X1-PROJECTED на наборах `[server, thick_client]` и
+  `[thin_client, web_client, thick_client]`, каждый в режимах `ANY` и `ALL`
+- **AND** пустой availability SHALL означать universal, `ANY` SHALL принимать
+  universal или наличие хотя бы одного запрошенного контекста, а `ALL` SHALL
+  принимать universal или наличие всех запрошенных контекстов
+- **AND** каждый факт SHALL появляться не более одного раза, SHALL сохраняться
+  порядок H0, а `ModuleContextKind` SHALL NOT участвовать в фильтре
+- **AND** X1-PROJECTED SHALL сохранять ровно девять базовых поконтекстных
+  проекций для global scope и непосредственных members всех platform types и
+  SHALL NOT сохранять benchmark-комбинации, готовые `ANY`/`ALL` результаты или
+  таблицу всех возможных масок
+- **AND** runtime `ANY` SHALL выполнять ordered union с дедупликацией, runtime
+  `ALL` — ordered intersection, borrowed iteration SHALL NOT материализовать
+  результат или выделять heap, а collect SHALL материализовать compact `u32`
+  locator set
+- **AND** до performance обе строки X1 SHALL пройти точный H0 parity global
+  scope и scope пяти AV5 type anchors для всех четырёх selector-комбинаций
+- **AND** результаты SHALL отдельно публиковать steady borrowed/collect time и
+  allocations для global/type scope, а также entry-to-ready, first scope,
+  retained compact sets, RSS/PSS, artifact bytes и projected-section bytes
+- **AND** timing profile SHALL использовать release binary с прямым `System`
+  без allocation counters, allocation profile SHALL использовать отдельный
+  release binary с counters, а его latency/RSS/PSS SHALL NOT смешиваться с
+  timing profile
+- **AND** AV6 SHALL NOT повторно относить неизменившиеся type-name lookup/full
+  payload к новому измерению, вводить aggregate score/rank/winner или выбирать
+  production/canonical backend без решения пользователя.
+
+#### Scenario: Сравниваются гипотезы организации данных
+
+- **WHEN** исследование оценивает layout, lookup-индексы, проверяемый
+  динамический доступ или формирование снапшота независимо от выбора библиотеки
+  хранения
+- **THEN** каждая гипотеза SHALL использовать отдельную ветку/worktree и
+  изменять одно основное организационное измерение относительно
+  зафиксированного опорного коммита
+- **AND** все кандидаты SHALL использовать строго одинаковые corpus, harness,
+  манифест запросов и каноническую базовую линию контента/lookup
+- **AND** реализация MAY выполняться параллельно, но измерения
+  производительности на одном хосте SHALL выполняться последовательно с
+  фиксацией состояния cache и нагрузки хоста.
+
+#### Scenario: Кандидат не проходит ресурсный gate
+
+- **WHEN** кандидат сохраняет параллельную модель провайдера, не даёт
+  существенной ресурсной пользы или превышает принятые пороги CPU/памяти
+- **THEN** кандидат SHALL быть удалён, а не сохранён как альтернативный
+  production-путь cache.
+
+#### Scenario: Пользователь выбирает единственный интеграционный кандидат
+
+- **WHEN** пользователь рассматривает завершённые AV5/AV6 evidence
+- **THEN** X1 SHALL стать единственным кандидатом X1-INT
+- **AND** X1-PROJECTED SHALL быть отклонён как production-layout
+- **AND** X1 SHALL оставаться non-canonical до полного X1-INT pass
+- **AND** экспериментальные ветки и durable evidence SHALL сохраняться, но
+  benchmark-only code SHALL NOT переноситься в production.
+
+#### Scenario: Выполняется X1-INT в реальном анализаторе
+
+- **WHEN** non-canonical production X1 готов к интеграционной проверке
+- **THEN** он SHALL быть сравнен с H0 на одинаковых inputs и существующих
+  `v8-context` scenarios `prepared_module_context_handle`,
+  `cold_module_context_handle` и `prepared_full_module_resolution`
+- **AND** lifecycle scenario, semantic oracle и private checkpoint schema SHALL
+  оставаться неизменными
+- **AND** effective-context count/digest, full-resolution counters/digest и
+  полный catalog/resolver transcript SHALL точно совпадать
+- **AND** parity probe SHALL продолжать работу после недоступности SQLite/HBK
+- **AND** каждый из двух A/B повторов SHALL удовлетворять порогам ADR-0012 для
+  cold/prepared/full-resolution wall time, peak RSS и cold peak heap
+- **AND** borrowed filtered global/type-member traversal SHALL иметь zero
+  provider allocations и SHALL NOT удерживать persisted projections
+- **AND** любой failed mandatory gate SHALL запретить canonical cutover и
+  удаление текущего SQL/owned runtime.
+
+#### Scenario: Availability фильтруется провайдером, а effective selection выполняется downstream
+
+- **WHEN** consumer запрашивает global scope или непосредственные members
+  известного platform type по нескольким `AvailabilityContext`
+- **THEN** HBK SHALL выполнить provider-native `ANY`/`ALL` predicate и вернуть
+  ordered borrowed candidate stream
+- **AND** пустая availability SHALL означать universal
+- **AND** `ModuleContextKind` SHALL NOT участвовать в availability predicate
+- **AND** HBK SHALL NOT выполнять cross-source precedence, ambiguity, shadowing
+  или effective selection
+- **AND** downstream SHALL NOT сохранять provider entity copies или
+  context-specific HBK projections.
+
+### Requirement: Каноническое владение runtime допускается только на основании доказательств
+
+Файлы HBK SHALL оставаться авторитетными внешними входными данными
+документации. Zero-copy снапшот SHALL стать единственным каноническим
+runtime-артефактом контекста HBK только после прохождения gates поведения и
+ресурсов и принятия этого решения в долговременной спецификации или ADR HBK.
+
+#### Scenario: Кандидат ещё не прошёл gate
+
+- **WHEN** исследование или прототипирование ещё продолжается
+- **THEN** текущий принятый runtime-путь SHALL оставаться каноническим
+- **AND** кандидат SHALL NOT становиться альтернативным production-путём.
+
+#### Scenario: Кандидат проходит gate
+
+- **WHEN** принятое сравнение доказывает полную поведенческую эквивалентность и
+  выполнение gates startup, lookup и ресурсов
+- **THEN** zero-copy снапшот SHALL стать единственным runtime-владельцем для
+  переведённых на него потребителей контекста HBK
+- **AND** SQLite MAY оставаться только приватным входом для пересборки или
+  производства индекса
+- **AND** runtime-потребители SHALL NOT сохранять или запрашивать параллельную
+  SQLite-модель либо владеющую модель фактов HBK.
+
+#### Scenario: Снапшот отсутствует или невалиден
+
+- **WHEN** снапшот отсутствует, устарел, несовместим, усечён или невалиден
+- **THEN** провайдер SHALL использовать путь пересборки, принятый решением о
+  каноническом runtime
+- **AND** потребители resolver/catalog, использующие снапшот, SHALL NOT
+  добавлять скрытый fallback к SQLite/HBK или понимать layout снапшота.
+
+#### Scenario: Метаданные хранилища проверяются
+
+- **WHEN** провайдер открывает файловый снапшот
+- **THEN** он SHALL проверить magic, версию бинарного layout снапшота, версию
+  схемы извлечения, идентичность источника, локаль, точную версию платформы и
+  принятые структурные метаданные/метаданные целостности
+- **AND** несовпадение версии платформы SHALL инвалидировать снапшот, а не
+  допускать его повторное использование между версиями платформы
+- **AND** эти метаданные хранилища SHALL NOT становиться семантической
+  идентичностью сущности или ключом канонического имени.
+
+### Requirement: Memory-mapped снапшот является единственной живой моделью фактов HBK
+
+Принятый zero-copy снапшот SHALL заменить материализуемый в heap runtime-снапшот
+для переведённых на него потребителей снапшота и SHALL NOT сохраняться рядом с
+эквивалентным владеющим графом фактов провайдера.
+
+#### Scenario: Снапшот успешно открыт
+
+- **WHEN** валидный zero-copy снапшот открыт
+- **THEN** факты провайдера, строки и физические индексы SHALL читаться через
+  заимствованные memory-mapped представления
+- **AND** загрузчик SHALL NOT десериализовывать полную полезную нагрузку во
+  владеющие строки, вложенные векторы или вторую арену фактов.
+
+#### Scenario: Снапшот пересобирается
+
+- **WHEN** провайдер создаёт заменяющий снапшот
+- **THEN** состояние, используемое только при построении, SHALL быть освобождено
+  до публикации memory-mapped фактов потребителям
+- **AND** итоговый runtime SHALL сохранять только memory-mapped владельца
+  фактов провайдера.
+
+### Requirement: Memory-mapped файлы неизменяемы и валидируются до типизированного доступа
+
+Провайдер SHALL отображать в память только read-only неизменяемые файлы
+снапшота и SHALL доказать принятые инварианты безопасности файлового layout до
+предоставления типизированных заимствованных данных.
+
+#### Scenario: Читатель открывает сессию снапшота
+
+- **WHEN** процесс открывает совместимый снапшот
+- **THEN** он SHALL получить разделяемую блокировку изменения для принадлежащего
+  провайдеру логического слота снапшота, который выбирает активный артефакт, и
+  удерживать её в течение всего времени жизни этой сессии снапшота
+- **AND** цель этой блокировки SHALL оставаться стабильной при переходе между
+  content-addressed или уникально именованными поколениями артефакта в одном
+  слоте
+- **AND** другие читатели MAY одновременно получать ту же разделяемую
+  блокировку.
+
+#### Scenario: Писатель пытается изменить активный снапшот
+
+- **WHEN** писатель не может получить требуемую эксклюзивную блокировку
+  изменения из-за наличия одного или нескольких активных читателей
+- **THEN** он SHALL немедленно завершиться с типизированной ошибкой
+  snapshot-in-use
+- **AND** он SHALL NOT ожидать, усекать, перезаписывать, переименовывать поверх
+  или повторно публиковать активный снапшот.
+
+#### Scenario: Снапшот публикуется
+
+- **WHEN** писатель завершает новый снапшот
+- **THEN** при атомарной публикации как нового именованного либо
+  content-addressed неизменяемого файла, так и метаданных обнаружения/current
+  pointer он SHALL удерживать эксклюзивную блокировку изменения того же
+  логического слота снапшота
+- **AND** он SHALL NOT усекать, переписывать или изменять файл, который уже
+  может быть memory-mapped другим читателем.
+
+#### Scenario: Выполняется доступ к типизированным данным
+
+- **WHEN** читатель создаёт типизированные представления над memory-mapped
+  байтами
+- **THEN** провайдер SHALL сначала обеспечить принятые проверки magic/версии,
+  границ, alignment, порядка байтов, переполнения диапазонов, UTF-8, enum/tag и
+  целостности
+- **AND** некорректные байты SHALL приводить к инвалидации cache провайдера, а
+  не к непроверенному разыменованию или undefined behavior.
+
+#### Scenario: Источник HBK заменён между сессиями
+
+- **WHEN** новый снапшот производится для заменившегося источника HBK
+- **THEN** он SHALL создать новое локальное для сессии пространство ID
+- **AND** провайдер SHALL NOT сравнивать, мигрировать, сериализовывать или
+  проверять стабильность числовых локальных ID относительно предыдущего
+  снапшота.
+
+### Requirement: Хранилище строк HBK может служить неизменяемым базовым словарём
+
+Zero-copy снапшот SHALL предоставлять узкую принадлежащую провайдеру возможность
+базового словаря с плотными ID в области поколения, заимствованным разрешением
+ID-to-text и индексированным lookup принятого текста/канонического имени в ID.
+
+#### Scenario: Downstream-имя существует в HBK
+
+- **WHEN** авторизованный downstream-компоновщик символов ищет принятое
+  каноническое имя, уже присутствующее в базовом словаре HBK
+- **THEN** возможность провайдера SHALL вернуть существующий базовый ID без
+  копирования или повторного интернирования строки HBK.
+
+#### Scenario: Downstream-имя отсутствует в HBK
+
+- **WHEN** семантическое имя BSL/метаданных отсутствует в базовом словаре HBK
+- **THEN** HBK SHALL сообщить об обычном промахе
+- **AND** он SHALL NOT хранить имя, владеть overlay проекта или создавать
+  межисточниковый реестр сущностей.
+
+#### Scenario: Базовый ID пересекает границу поколений
+
+- **WHEN** вызывающий код сравнивает или сохраняет ID из не связанных друг с
+  другом поколений снапшота
+- **THEN** контракт SHALL считать эту операцию невалидной
+- **AND** ни один базовый ID строки SHALL NOT заявляться как постоянная
+  универсальная идентичность.
+
+### Requirement: Поведение заимствованного семантического каталога сохраняется
+
+Изменение zero-copy хранилища SHALL сохранять существующие результаты,
+порядок, неоднозначность, доступность и поведение идентичности источника для
+типизированных BSL/SDBL catalog и read handle.
+
+#### Scenario: Проверяется логическая эквивалентность полного корпуса
+
+- **WHEN** текущий снапшот и кандидат построены из одного источника
+- **THEN** parity oracle SHALL сравнить количества и множества логических фактов
+  для типов платформы, членов, вызываемых сущностей, конструкторов, перегрузок,
+  сигнатур, параметров, глобальных сущностей, контекстов/событий модулей,
+  языковых фактов, перечислений/значений и таблиц/полей/параметров SDBL
+- **AND** он SHALL сравнить каждое поле, наблюдаемое сейчас через read handle,
+  заимствованные BSL/SDBL catalog и использующие снапшот адаптеры
+- **AND** перед сравнением он SHALL нормализовать числовые ID, локальные для
+  сессии, через стабильную идентичность факта провайдера и текст.
+
+#### Scenario: Существующий запрос каталога выполняется над memory-mapped хранилищем
+
+- **WHEN** потребитель выполняет lookup точной идентичности, имени/псевдонима
+  типа, template key, владельца/члена/вида, вызываемой сущности/конструктора,
+  глобальной сущности, контекста/события модуля, языка, перечисления/значения,
+  таблицы/поля/параметра запроса, доступности или отношения
+- **THEN** он SHALL наблюдать поведение, эквивалентное текущему снапшоту,
+  принадлежащему провайдеру
+- **AND** обычные попадания, промахи/пустые результаты, несколько кандидатов,
+  неоднозначность и неподдерживаемые исходы SHALL сохраняться на владеющем ими
+  слое
+- **AND** провайдер SHALL NOT создавать generic resolver DTO, выбранные записи
+  контекста или владеющие проекции сигнатур/параметров на слое хранения.
+
+#### Scenario: Проверяется эквивалентность порядка и конкурентного доступа
+
+- **WHEN** идентичные lookup выполняются повторно, последовательно и через
+  конкурентных read-only потребителей
+- **THEN** порядок кандидатов, перегрузок, параметров, членов и отношений SHALL
+  оставаться детерминированным
+- **AND** конкурентные чтения SHALL давать те же логические результаты, что и
+  последовательные чтения.
+
+#### Scenario: Скрытый runtime-fallback исключён
+
+- **WHEN** memory-mapped снапшот и его заимствованные catalog/adapters успешно
+  открыты, а исходные артефакты SQLite/HBK становятся недоступны выполняющемуся
+  parity probe
+- **THEN** все охваченные lookup SHALL продолжать давать те же результаты
+- **AND** ни один охваченный runtime-путь SHALL не переходить к SQLite или
+  разбору HBK как fallback.
+
+#### Scenario: Оценивается область эквивалентности документации
+
+- **WHEN** исследование определяет каноническую полезную нагрузку снапшота
+- **THEN** оно SHALL явно решить, включается ли какой-либо полный текст
+  документации
+- **AND** до принятия этого решения эквивалентность документации SHALL
+  охватывать только поля, наблюдаемые через текущие контракты снапшота/catalog,
+  а не неявно добавлять HTML, длинные описания или полезную нагрузку
+  поиска/экспорта.
+
+#### Scenario: Обходятся дочерние элементы переменной длины
+
+- **WHEN** выполняется обход вызываемой сущности, сигнатуры, параметра, ссылки
+  на тип или отношения владелец/член
+- **THEN** провайдер SHALL использовать проверенные диапазоны/slices в
+  memory-mapped секциях
+- **AND** обход SHALL NOT выделять по одному владеющему вектору на каждую
+  родительскую сущность.
+
+### Requirement: Заявления о первом запуске учитывают жизненный цикл производства снапшота
+
+Изменение SHALL различать отображение существующего снапшота и его создание в
+первый раз.
+
+#### Scenario: Предоставлен готовый снапшот
+
+- **WHEN** принятый pipeline сборки/распространения HBK предоставляет
+  совместимый снапшот до запуска анализатора
+- **THEN** измерения холодного запуска MAY включать этот memory-mapped снапшот
+  как первое открытие анализатором
+- **AND** SHALL быть зафиксированы производитель артефакта, идентичность
+  источника и работа по валидации.
+
+#### Scenario: Снапшот строится локально при первом использовании
+
+- **WHEN** совместимый снапшот отсутствует и провайдер строит его из SQLite
+- **THEN** стоимость построения SHALL быть включена в измерения самого первого
+  запуска
+- **AND** изменение SHALL NOT заявлять, что mapping cache устранил эту
+  первоначальную стоимость построения.
+
+### Requirement: Решения о зависимостях и долговременном контракте остаются явными
+
+Ни одна новая зависимость для zero-copy, mapping или дискового индекса SHALL
+NOT приниматься, пока измеренный кандидат, канонический OpenSpec-контракт HBK и
+при необходимости ADR не закрепят владение ею.
+
+#### Scenario: Предлагается внешняя библиотека
+
+- **WHEN** реализация предлагает `memmap2`, `rkyv`, `zerocopy`, `fst` или
+  эквивалентную зависимость
+- **THEN** решение SHALL назвать измеренное узкое место, модель безопасности,
+  владельца жизненного цикла и отклонённые альтернативы
+- **AND** каноническая HBK capability в `openspec/specs/`, а также затронутые
+  supporting ADR и acceptance baseline SHALL быть обновлены до
+  production-реализации.
