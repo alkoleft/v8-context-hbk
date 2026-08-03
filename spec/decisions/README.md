@@ -11,3 +11,4 @@
 - [ADR-0009: Separate Book and Syntax Assistant Export Crates](ADR-0009-separate-book-and-syntax-export-crates.md) - Accepted.
 - [ADR-0010: Split Documentation Site Generation and Web Application](ADR-0010-documentation-site-generator-and-web-app.md) - Accepted.
 - [ADR-0011: Compute Syntax Fact Identity in the Domain Model During Reading](ADR-0011-domain-owned-syntax-identity.md) - Accepted.
+- [ADR-0012: Проверить X1 в реальном анализаторе перед канонизацией](ADR-0012-adopt-x1-for-integration-verification.md) - Accepted.

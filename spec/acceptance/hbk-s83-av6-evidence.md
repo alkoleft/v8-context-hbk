@@ -13,9 +13,11 @@ S83-AV6 завершён как отдельная проверка состав
   projections для global scope и непосредственных members всех platform
   types.
 
-Результат не присваивает score/rank, не выбирает победителя, не разрешает
-merge и не назначает canonical runtime. `selection = pending-user-decision`;
-пункты 1.15 и T183 остаются открытыми.
+Сам результат не присваивает score/rank, не выбирает победителя, не разрешает
+merge и не назначает canonical runtime. На момент формирования evidence
+`selection = pending-user-decision`. Последующим явным решением 2026-08-03
+пользователь выбрал X1 единственным X1-INT кандидатом и отклонил
+X1-PROJECTED; X1 остаётся non-canonical до полного pass ADR-0012.
 
 ## Воспроизводимость
 

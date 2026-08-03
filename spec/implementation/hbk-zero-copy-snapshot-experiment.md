@@ -1592,8 +1592,11 @@ global scope `0.50-0.67x` H0, но `2.08-2.98x` медленнее X1. Для н
 scope сохраняемые projections обычно медленнее из-за merge/intersection
 нескольких ordered rows, а полезный сигнал ограничен селективным `ALL` с
 ранним пустым пересечением. Encoded projected section — `412 317` bytes.
-Полное свидетельство: `spec/acceptance/hbk-s83-av6-evidence.md`. AV6 не меняет
-selection status: backend не выбран, 1.15 остаётся открытым.
+Полное свидетельство: `spec/acceptance/hbk-s83-av6-evidence.md`. Сам AV6 не
+менял selection status. Последующим явным решением 2026-08-03 пользователь
+назначил X1 единственным X1-INT кандидатом и отклонил X1-PROJECTED; X1 остаётся
+non-canonical до gates ADR-0012. Дальнейший протокол находится в
+`spec/implementation/hbk-zero-copy-x1-integration.md`.
 
 ## Обязательный поведенческий эталон
 

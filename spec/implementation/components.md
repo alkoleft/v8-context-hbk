@@ -1124,6 +1124,32 @@ R2-AOS type-scope `5%` boundary. Поэтому этот модульный шо
 реализацией. Полные числа находятся в
 `../acceptance/hbk-s83-av5-evidence.md`.
 
+<a id="x1-int-and-conditional-canonical-snapshot"></a>
+
+### X1-INT и условный canonical snapshot
+
+ADR-0012 завершает экспериментальный decision gate: X1 — единственный
+интеграционный кандидат, X1-PROJECTED отклонён, а X1 не становится canonical до
+полного X1-INT pass. Исполняемый production-source/API ledger, header/lifecycle,
+точные downstream scenarios и gates определены в
+`hbk-zero-copy-x1-integration.md`.
+
+Целевой глубокий module сохраняет имя `syntax-helper-search::HbkFactSnapshot`
+как единственного runtime-владельца и `HbkFactReadHandle` как малый borrowed
+interface. После cutover implementation владельца меняется с heap arenas на
+validated read-only mmap X1. Catalogs и resolver adapters не получают section
+IDs/offsets и не создают вторую mapped/owned entity family.
+
+SQLite остаётся отдельным storage owner для index build, CLI/search/debug и
+явных последовательных resolver-сценариев. Он не открывается analyzer snapshot
+runtime. Сборка X1 является explicit setup operation; invalid/missing runtime
+open возвращает typed error и не выполняет fallback.
+
+Availability words и provider-native `ANY`/`ALL` traversal принадлежат HBK.
+Cross-source precedence, ambiguity и effective selection принадлежат
+`v8-context`; downstream удерживает только operation-local control state и не
+копирует HBK dictionary или provider entities.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

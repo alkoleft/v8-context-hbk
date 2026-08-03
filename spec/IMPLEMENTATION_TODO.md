@@ -53,15 +53,18 @@ type-reference conclusions live in
 
 ## Active Tasks
 
-- [ ] **T183 — Сравнить изолированные гипотезы zero-copy-снапшота без выбора
-  победителя**
+- [ ] **T183 — Завершить X1-INT и условный переход на canonical zero-copy snapshot**
   - Требования:
     [NFR-RESOLVE-001](requirements/non-functional.md#nfr-resolve-001-in-process-resolver-latency-and-determinism),
-    [NFR-SNAPSHOT-001](requirements/non-functional.md#nfr-snapshot-001-evidence-gated-file-backed-snapshot-experiment).
+    [NFR-SNAPSHOT-001](requirements/non-functional.md#nfr-snapshot-001-evidence-gated-file-backed-snapshot-experiment),
+    [NFR-SNAPSHOT-002](requirements/non-functional.md#nfr-snapshot-002-x1-integration-and-conditional-cutover).
   - Реализация:
     [Контракт эксперимента T183](implementation/hbk-zero-copy-snapshot-experiment.md),
+    [Интеграция X1](implementation/hbk-zero-copy-x1-integration.md),
     [Снапшот фактов HBK, принадлежащий провайдеру](implementation/components.md#provider-owned-hbk-fact-snapshot),
-    [Изоляция zero-copy-кандидатов T183](implementation/components.md#t183-zero-copy-candidate-isolation).
+    [Изоляция zero-copy-кандидатов T183](implementation/components.md#t183-zero-copy-candidate-isolation),
+    [X1-INT и conditional canonical snapshot](implementation/components.md#x1-int-and-conditional-canonical-snapshot),
+    [ADR-0012](decisions/ADR-0012-adopt-x1-for-integration-verification.md).
   - OpenSpec:
     `openspec/changes/establish-hbk-zero-copy-snapshot-cache`.
   - Объём:
@@ -114,6 +117,15 @@ type-reference conclusions live in
         не сохраняя готовые комбинации и не выбирая backend; разделить
         counters-disabled timing и отдельный counters-enabled allocation
         profile, не смешивая их время и process memory.
+    13. по явному решению пользователя назначить X1 единственным X1-INT
+        кандидатом и отклонить X1-PROJECTED; не делать X1 canonical до pass.
+    14. productionize X1 без benchmark/corpus-specific кода и проверить его
+        через storage/catalog/resolver parity и реальные analyzer scenarios.
+    15. только при полном pass выполнить отдельный canonical cutover, оставив
+        SQLite private build/search input и исключив runtime fallback.
+    16. после cutover удалить только inventory-proven replaced owned-cache/
+        runtime-SQL мусор, сохранив branches/evidence и отдельные search/debug
+        контракты.
   - Проверка:
     строгая валидация OpenSpec; format/check/test для зафиксированной базы и
     каждой ветви кандидата; проверка точных корпуса и checksum;
@@ -129,10 +141,10 @@ type-reference conclusions live in
     строки H0/X1/X1-PROJECTED для четырёх составных selectors;
     независимая проверка безопасности и производительности.
   - Граница завершения:
-    обновить устойчивый acceptance baseline всеми измеренными строками и
-    результатами критериев, но без явного выбора пользователя не называть
-    победителя, не объединять кандидата с `master`, не принимать новую
-    production-зависимость и не изменять канонический путь времени выполнения.
+    X1-INT должен пройти все ADR-0012 semantic/performance/resource/lifecycle
+    gates. Только затем X1 становится единственным canonical runtime; cleanup
+    удаляет доказанно заменённые пути без compatibility fallback. При любом
+    failed gate T183 остаётся открытой с текущим runtime и recorded evidence.
   - Прогресс:
     зафиксированная база benchmark/parity
     `051df7979e3cf5f6431b4d13829f436c98c47054`; протокол H0/C0, шум,
@@ -316,6 +328,15 @@ type-reference conclusions live in
     `acceptance/hbk-s83-av6-evidence.md`. Пункт OpenSpec 1.24 завершён; 1.15 и
     T183 остаются открытыми до пользовательского решения. Backend, canonical
     runtime и production path не изменены.
+    2026-08-03 пользователь закрыл OpenSpec 1.15: X1 — единственный X1-INT
+    кандидат, X1-PROJECTED отклонён, X1 остаётся non-canonical до полного pass.
+    ADR-0012 и `implementation/hbk-zero-copy-x1-integration.md` фиксируют
+    production-source/API ledger, exact inputs, analyzer scenarios, semantic/
+    performance/resource gates, lifecycle и recovery. Следующий активный пункт
+    OpenSpec — 3.1: детерминированный production X1 writer/validator согласно
+    единому mapped snapshot/read interface без параллельной entity-модели.
+    T183 остаётся открытой на implementation/X1-INT; canonical
+    cutover и garbage cleanup условны и выполняются отдельными milestones.
 
 OpenSpec changes archived and synchronized on 2026-07-30:
 the completed change records are under `../openspec/changes/archive/`, and their

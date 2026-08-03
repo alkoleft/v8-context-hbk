@@ -153,8 +153,8 @@ and the limiting storage or translation component before adding broader optimiza
 
 ## NFR-SNAPSHOT-001: Эксперимент с файловым снапшотом, управляемый свидетельствами
 
-Работа T183 над zero-copy-снапшотом является ограниченным экспериментом по
-сравнению, а не решением о production-формате.
+Исследовательская часть T183 была ограниченным экспериментом по сравнению.
+Она не выбирала production-формат до отдельного решения ADR-0012.
 
 Требования:
 
@@ -235,8 +235,10 @@ and the limiting storage or translation component before adding broader optimiza
 - Отдельный post-AV5 workload S83-AV6 должен сравнить H0, неизменённый X1 и
   X1 с сохраняемыми базовыми поконтекстными проекциями для двух непустых
   наборов `AvailabilityContext` в режимах `ANY`/`ALL`. Пустой availability
-  означает universal; `ANY` принимает пересечение, `ALL` — наличие всех
-  запрошенных контекстов; результат дедуплицирован и сохраняет порядок H0.
+  означает universal; `ANY` принимает universal или хотя бы один запрошенный
+  контекст и формирует упорядоченное объединение, `ALL` принимает universal или
+  все запрошенные контексты и формирует упорядоченное пересечение; результат
+  дедуплицирован и сохраняет порядок H0.
   Проекционный артефакт хранит по одной упорядоченной проекции на каждый из
   девяти контекстов для global scope и непосредственных members каждого типа,
   но не готовые benchmark-комбинации и не все маски. Borrowed iteration не
@@ -257,10 +259,9 @@ and the limiting storage or translation component before adding broader optimiza
   который не может немедленно получить эксклюзивную блокировку логического
   слота, возвращает типизированную ошибку «снапшот используется», не изменяя
   активное поколение.
-- Ветви и зависимости кандидатов являются экспериментальными. Прохождение
-  критериев не выбирает победителя, не изменяет канонический путь времени
-  выполнения и не разрешает объединение с `master`; выбор делает пользователь
-  после изучения неранжированной таблицы результатов.
+- Ветви и зависимости кандидатов в этом этапе являются экспериментальными.
+  Его результаты сами не изменяют канонический путь; последующий выбор и
+  интеграционные gates принадлежат NFR-SNAPSHOT-002 и ADR-0012.
 - Второй корпус или новая ревизия стенда образуют отдельный набор сравнения.
   Его исходные результаты, файлы паритета, подготовленные артефакты, baseline
   и числовые критерии должны использовать отдельное пространство имён и не
@@ -277,6 +278,36 @@ and the limiting storage or translation component before adding broader optimiza
 
 Полный протокол и реестр гипотез определены в
 `implementation/hbk-zero-copy-snapshot-experiment.md`.
+
+<a id="nfr-snapshot-002-x1-integration-and-conditional-cutover"></a>
+
+## NFR-SNAPSHOT-002: X1-INT и условный переход на zero-copy runtime
+
+- X1 является единственным X1-INT кандидатом. X1-PROJECTED отклонён и не
+  должен появляться в production artifact или runtime path.
+- До результатов X1 остаётся non-canonical production-quality вариантом. H0
+  остаётся baseline и текущим runtime.
+- X1-INT должен использовать точные inputs, scenario lifecycle, A/B order,
+  sample counts, semantic oracles и числовые gates, зафиксированные в
+  `implementation/hbk-zero-copy-x1-integration.md` до implementation.
+- Полная storage/catalog/resolver/analyzer parity, отсутствие fallback и
+  отсутствие параллельного owned graph обязательны. Невыполнение любого из
+  этих условий запрещает canonical cutover.
+- В каждом A/B повторе cold module-context median X1 должен быть не более 50%
+  H0; prepared handle может регрессировать не более чем на 10%, prepared full
+  resolution — не более чем на 5%; peak RSS и cold peak heap должны быть ниже
+  H0. Waiver и aggregate score запрещены.
+- HBK должен выполнять provider-native availability `ANY`/`ALL` и ordered
+  borrowed traversal без persisted projections. Downstream остаётся владельцем
+  cross-source precedence/effective selection и не копирует provider entities.
+- Runtime open должен быть fail-closed. Восстановление выполняется отдельным
+  explicit ensure/rebuild, никогда скрытым fallback catalog/analyzer.
+- При полном pass X1 заменяет owned snapshot как единственный runtime-владелец.
+  SQLite может сохраниться только как private build input и отдельный
+  CLI/search/debug storage.
+- Cleanup выполняется после cutover по consumer inventory и удаляет только
+  доказанно заменённые runtime paths. Экспериментальные ветки/evidence и
+  отдельные search/debug contracts сохраняются.
 
 ## NFR-TEST-001: Testability
 

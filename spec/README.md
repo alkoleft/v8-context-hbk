@@ -31,6 +31,8 @@ Otherwise reconcile the specification files before implementing.
   selection rules.
 - `implementation/hbk-zero-copy-snapshot-experiment.md`: реестр гипотез zero-copy-снапшота T183,
   воспроизводимый протокол сравнения, изоляция ветвей/worktree и граница принятия решения.
+- `implementation/hbk-zero-copy-x1-integration.md`: принятое решение X1, production-source/API
+  ledger, точный X1-INT протокол и условные этапы canonical cutover/cleanup.
 - `implementation/hbk-member-availability-layout-research.md`: первичные источники, оценки
   footprint и опровергаемые гипотезы AV3/AV4/AV5 для hot-layout global/type scopes,
   `AvailabilityContext` и составного X1-кандидата.

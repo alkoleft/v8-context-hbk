@@ -2951,6 +2951,56 @@ Cleanup:
 - `target/uat/shcntx-ru` and `target/uat/shcntx-en` are service data and may be deleted after the
   run.
 
+## UAT-SNAPSHOT-001: X1-INT Preserves Analyzer Behavior and Improves Runtime Resources
+
+Related requirements: NFR-SNAPSHOT-002, NFR-RESOLVE-001.
+
+Related decision and implementation:
+[ADR-0012](../decisions/ADR-0012-adopt-x1-for-integration-verification.md),
+[`hbk-zero-copy-x1-integration.md`](../implementation/hbk-zero-copy-x1-integration.md).
+
+Preconditions:
+
+- The exact platform HBK, H0 SQLite index, SSL project revision, module, host,
+  Rust version and X1 artifact match the frozen X1-INT table.
+- The X1 artifact is built before analyzer wall/heap timing; first build is
+  reported separately.
+- H0 and X1 use the same `v8-context` revision and release profile.
+
+Steps:
+
+1. Run the complete storage/catalog/resolver parity probe for H0 and X1.
+2. Keep X1 open, make the source SQLite and HBK paths unavailable to the probe,
+   and repeat all covered catalog/resolver operations.
+3. Run `prepared_module_context_handle`, `cold_module_context_handle` and
+   `prepared_full_module_resolution` with the frozen samples/warmups/batch,
+   separate wall/heap processes and order `H0-A, X1-A, X1-B, H0-B`.
+4. Run allocation observation for borrowed filtered global and known-type
+   member traversal.
+5. Run corruption, exact platform-version, shared-reader/exclusive-writer and
+   atomic-generation-publication tests.
+6. Inspect production process state and source paths for a parallel owned HBK
+   graph, SQL/HBK fallback and X1-PROJECTED sections.
+
+Expected result:
+
+- Complete normalized storage/catalog/resolver transcripts match exactly.
+- Effective context remains `1798` with SHA-256
+  `4006d1c39dd3f767f2d8f2f88917123df4215dd091b146c6d27b201fa628478f`.
+- Full resolution remains `2490/2286/204` with SHA-256
+  `b37bd7885b01262821fb4f929a8ad576fc53de23c61264adfaeff82552bd3287`.
+- X1 continues to answer after SQLite/HBK become unavailable and performs no
+  hidden fallback.
+- Both A/B repetitions satisfy every ADR-0012 wall/RSS/heap threshold.
+- Borrowed filtered traversal has zero provider allocations and no retained
+  projection set.
+- Invalid metadata/platform/layout fails before typed access; active readers
+  make writer publication fail immediately with typed snapshot-in-use.
+- Runtime owns only mapped X1 facts; no full owned graph or X1-PROJECTED data
+  remains live.
+- If any expected result fails, X1 is not made canonical and SQL/owned runtime
+  cleanup is not performed.
+
 ## UAT-ERR-001: Missing File Produces Readable CLI Error
 
 Related use cases: UC-HBK-001, UC-HBK-002, UC-SH-001.

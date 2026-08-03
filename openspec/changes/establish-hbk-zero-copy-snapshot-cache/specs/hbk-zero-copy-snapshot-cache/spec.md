@@ -237,6 +237,46 @@ memory-mapped кандидат и архивный кандидат с пров�
 - **THEN** кандидат SHALL быть удалён, а не сохранён как альтернативный
   production-путь cache.
 
+#### Scenario: Пользователь выбирает единственный интеграционный кандидат
+
+- **WHEN** пользователь рассматривает завершённые AV5/AV6 evidence
+- **THEN** X1 SHALL стать единственным кандидатом X1-INT
+- **AND** X1-PROJECTED SHALL быть отклонён как production-layout
+- **AND** X1 SHALL оставаться non-canonical до полного X1-INT pass
+- **AND** экспериментальные ветки и durable evidence SHALL сохраняться, но
+  benchmark-only code SHALL NOT переноситься в production.
+
+#### Scenario: Выполняется X1-INT в реальном анализаторе
+
+- **WHEN** non-canonical production X1 готов к интеграционной проверке
+- **THEN** он SHALL быть сравнен с H0 на одинаковых inputs и существующих
+  `v8-context` scenarios `prepared_module_context_handle`,
+  `cold_module_context_handle` и `prepared_full_module_resolution`
+- **AND** lifecycle scenario, semantic oracle и private checkpoint schema SHALL
+  оставаться неизменными
+- **AND** effective-context count/digest, full-resolution counters/digest и
+  полный catalog/resolver transcript SHALL точно совпадать
+- **AND** parity probe SHALL продолжать работу после недоступности SQLite/HBK
+- **AND** каждый из двух A/B повторов SHALL удовлетворять порогам ADR-0012 для
+  cold/prepared/full-resolution wall time, peak RSS и cold peak heap
+- **AND** borrowed filtered global/type-member traversal SHALL иметь zero
+  provider allocations и SHALL NOT удерживать persisted projections
+- **AND** любой failed mandatory gate SHALL запретить canonical cutover и
+  удаление текущего SQL/owned runtime.
+
+#### Scenario: Availability фильтруется провайдером, а effective selection выполняется downstream
+
+- **WHEN** consumer запрашивает global scope или непосредственные members
+  известного platform type по нескольким `AvailabilityContext`
+- **THEN** HBK SHALL выполнить provider-native `ANY`/`ALL` predicate и вернуть
+  ordered borrowed candidate stream
+- **AND** пустая availability SHALL означать universal
+- **AND** `ModuleContextKind` SHALL NOT участвовать в availability predicate
+- **AND** HBK SHALL NOT выполнять cross-source precedence, ambiguity, shadowing
+  или effective selection
+- **AND** downstream SHALL NOT сохранять provider entity copies или
+  context-specific HBK projections.
+
 ### Requirement: Каноническое владение runtime допускается только на основании доказательств
 
 Файлы HBK SHALL оставаться авторитетными внешними входными данными

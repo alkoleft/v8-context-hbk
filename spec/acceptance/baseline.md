@@ -3064,6 +3064,27 @@ rows; полезный сигнал найден только для селек�
 измерительный пункт 1.24, но не выбирает backend, не меняет canonical runtime
 и не закрывает пользовательское решение 1.15/T183.
 
+### Решение после S83-AV6
+
+2026-08-03 пользователь закрыл decision gate 1.15/T183:
+
+- X1 — единственный кандидат X1-INT;
+- X1-PROJECTED отклонён как production-layout;
+- X1 ещё не canonical и не заменяет H0 до end-to-end проверки в реальном
+  `v8-context`;
+- полный pass frozen gates ADR-0012 разрешает отдельный canonical cutover;
+  любой fail сохраняет текущий runtime и запрещает cleanup SQL/owned пути.
+
+Причина отклонения X1-PROJECTED: полезный сигнал ограничен редким ранним пустым
+`ALL`, тогда как основной global path замедляется относительно X1, большинство
+непустых type scopes не выигрывает, а artifact/PSS растут постоянно.
+
+Точный X1-INT protocol, inputs, source/API ledger, lifecycle, recovery и
+числовые gates находятся в
+[`hbk-zero-copy-x1-integration.md`](../implementation/hbk-zero-copy-x1-integration.md)
+и ADR-0012. AV5/AV6 остаются причинными evidence layout и не подменяют будущую
+accepted X1-INT строку.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,
