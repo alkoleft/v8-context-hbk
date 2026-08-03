@@ -521,3 +521,89 @@ allocation/reallocation calls и нулём allocated bytes. Package tests `93/9
 полный workspace, clippy, strict OpenSpec и независимое ревью прошли. Family
 остаётся private: public open, reverse lookup и migration каталогов не
 выполнялись. Следующий slice — OpenSpec 3.4, base dictionary и provider lookup.
+
+## Task-local plan: OpenSpec 3.4 — base dictionary и provider lookup
+
+Этот slice дополняет private mapped read owner обратной стороной существующего
+`HbkFactReadHandle`: разрешением текста в generation-local `StringId`,
+name/alias/template/owner lookup и чтением CSR availability/relation indexes.
+Public snapshot owner, locks/publication и migration catalogs остаются в 3.5 и
+4.4; отдельный X1 API наружу не публикуется.
+
+### Контракт slice
+
+1. Exact reverse dictionary использует `StringOrder` и бинарный поиск по
+   проверенному UTF-8 словарю. Результат — только `StringId` текущего generation;
+   отсутствие возвращает `None`, линейное сканирование и копия словаря
+   запрещены.
+2. Type-by-name использует единственный persisted `PlatformTypeNameHash`,
+   включая collision/probe-chain и все значения одинакового normalized key.
+   Остальные уже persisted sorted indexes/CSR читаются напрямую; новый sidecar
+   index или runtime rebuild запрещён.
+3. Private handle покрывает существующий provider lookup surface по точной
+   таблице ниже. Результаты сохраняют исходный порядок, hit/miss и ambiguity как
+   lazy exact-size iterators typed IDs либо owner-tied range views там, где
+   owned API сейчас возвращает borrowed slice.
+4. Raw compatibility methods выполняют ту же name normalization, что текущий
+   `normalize_lookup_key`: удаляют whitespace и применяют Unicode lowercase,
+   создавая не более одного request-local normalized buffer. Они делегируют
+   private pre-normalized helper, который существует только для проверки
+   steady analyzer path и не становится вторым public API family.
+   Relation-kind повторяет текущую семантику: нормализуется перед reverse
+   dictionary lookup. Exact fact/entity IDs, template family/variant и прямой
+   dictionary reverse lookup ничего не нормализуют. Entity-shaped DTO,
+   candidate/result `Vec`, boxed/dynamic iterator и retained query/result cache
+   запрещены.
+5. CSR helper сначала бинарно ищет key, затем возвращает owner-tied view
+   существующего values range. Empty/miss не создаёт allocation или временный
+   owned slice. После полного validator все decoded lookup records считаются
+   infallible internal invariant.
+6. `AvailabilityContext` evidence и relations только читаются; provider-native
+   `ANY`/`ALL` filtering и называемый в T183 `inherited_members` ordered stream
+   непосредственных candidates одного owner остаются механизмом 3.3.
+   Транзитивное раскрытие других типов, cross-source precedence,
+   `effective_members` и resolve остаются `v8-context`.
+
+### Таблица совместимости `HbkFactReadHandle`
+
+| Existing method/group | Реализация 3.4 | Порядок/особенность |
+|---|---|---|
+| `experiment_string`, `experiment_string_id` | `Strings` + `StringOrder` | exact UTF-8, generation-local ID |
+| `global_fact_ids`, `query_table_ids`, `query_field_ids`, `query_parameter_ids` | validated section counts | ascending local ID |
+| `facts_by_id` | `FactIds` | все duplicate fact refs, порядок persisted index/value |
+| `platform_type_by_id` | `PlatformTypeIds` | exact, `Option` |
+| `platform_types_by_name` | `PlatformTypeNameHash` + `PlatformTypeNames` | normalized primary/alias; весь persisted same-key range, value order как H0 |
+| `platform_types_by_template_key` | `PlatformTypeTemplates` | exact family/variant, all candidates |
+| `members_of_type`, `member_by_owner_name`, `member_by_owner_name_kind` | owner CSR + оба owner/name indexes | raw range; normalized name; optional kind |
+| `callables_of_type`, `callable_by_owner_name`, `constructors_of_type` | callable/constructor CSR + owner/name index | raw range и normalized name |
+| `globals_by_name`, `globals_by_domain_name_kind` | оба global indexes | normalized name, optional kind, all candidates |
+| `module_events`, `module_event_by_context_name`, `module_context_events` | module event/context indexes | normalized owner/name/language/module-kind как H0 |
+| `query_table_by_id`, `query_tables_by_name`, `query_tables_by_syntax`, `query_tables_by_identifier` | четыре table indexes | exact ID; normalized display/syntax/identifier |
+| `query_fields`, `query_fields_by_name`, `query_parameters`, `query_parameters_by_name` | два owner CSR + два owner/name indexes | raw range и normalized name |
+| `language_fact_by_id`, `language_facts_by_name` | language indexes | exact ID, normalized primary/alias |
+| `enum_by_id`, `enums_by_name`, `enum_value_by_id`, `enum_values`, `enum_values_by_name` | enum/value indexes + owner CSR | exact ID, normalized primary/alias, raw range |
+| `availability_contexts`, `available_since` | availability CSR + sorted fact lookup | persisted evidence order; miss empty/`None` |
+| `relations_by_source_kind` | relation CSR + reverse dictionary | normalized kind, persisted target order; miss empty |
+
+Forward entity accessors и `source` уже покрыты 3.3. Safe public
+`worker_handle`/catalog wiring не добавляется до 3.5/4.4.
+
+### Behavior tests и commit gate
+
+- Owned-vs-mapped fixture parity покрывает каждую строку таблицы: primary/alias,
+  exact/normalized hit, miss, duplicate-key multi-hit/ambiguity для type names,
+  globals, members, enum values, query fields/parameters, optional kind, empty
+  CSR и deterministic persisted order. `facts_by_id` отдельно проверяет
+  несколько разных `HbkFactRef` одного exact ID, relation-kind — normalized hit.
+- Отдельный hash-collision тест доказывает успешный hit/miss через probe chain;
+  reverse dictionary проверяет UTF-8 hit/miss и generation-local ID.
+- Allocation-enabled focused tests после прогрева разделены: pre-normalized
+  steady lookup и обход ID/ranges дают ноль allocations; raw compatibility
+  lookup допускает ровно один normalized `String` buffer без result allocation.
+- Structural review ограничен добавленными production lookup methods/helpers
+  mapped read path: там нет linear dictionary scan, rebuilt `HashMap`/
+  `BTreeMap`, candidate/result `Vec`, boxed/dyn iterators, SQL/HBK/fallback,
+  projected sections или второго public read/catalog family. Существующие
+  writer/validator/test fixtures и их build-time `Vec` вне этого scan.
+  Package/workspace tests, clippy, strict OpenSpec, diff check и независимое
+  ревью обязательны до отметки 3.4.
