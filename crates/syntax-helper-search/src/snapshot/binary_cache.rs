@@ -605,6 +605,11 @@ binary_newtype_u32!(HbkEnumValueId);
 
 impl BinaryValue for HbkFactSnapshot {
     fn write_to<W: Write>(&self, writer: &mut BinaryWriter<W>) -> io::Result<()> {
+        if self.mapped_generation.is_some() {
+            return Err(invalid_data(
+                "mapped X1 snapshots cannot be written as owned binary-cache payloads",
+            ));
+        }
         writer.write_vec(&self.strings)?;
         self.source_locale.write_to(writer)?;
         writer.write_vec(&self.platform_types)?;
@@ -656,6 +661,7 @@ impl BinaryValue for HbkFactSnapshot {
 
     fn read_from<R: Read>(reader: &mut BinaryReader<R>) -> io::Result<Self> {
         Ok(Self {
+            mapped_generation: None,
             strings: reader.read_vec()?,
             source_locale: Option::<StringId>::read_from(reader)?,
             platform_types: reader.read_vec()?,

@@ -347,7 +347,7 @@
   query-table/field/parameter, availability и relation lookup, включая hit,
   miss/empty, несколько кандидатов, ambiguity, unsupported и
   детерминированный порядок.
-- [ ] 4.4 Запустить проверку эквивалентности через `HbkFactReadHandle`,
+- [x] 4.4 Запустить проверку эквивалентности через `HbkFactReadHandle`,
   заимствованные каталоги BSL/SDBL, `PlatformSnapshotSource` и
   `QueryTableSnapshotSource`; повторить последовательно и конкурентно; затем
   сделать источники SQLite/HBK недоступными работающему probe и доказать

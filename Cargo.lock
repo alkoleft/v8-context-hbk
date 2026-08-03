@@ -169,6 +169,7 @@ version = "0.2.4"
 dependencies = [
  "context-resolver-core",
  "rusqlite",
+ "sha2",
  "syntax-helper-language",
  "syntax-helper-model",
  "syntax-helper-search",

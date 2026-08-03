@@ -144,11 +144,22 @@ impl HbkFactSnapshotIndexMemory {
 }
 
 impl HbkFactSnapshot {
+    /// Estimates heap retained by an owned build/oracle snapshot.
+    ///
+    /// # Panics
+    /// Panics for an X1-mapped snapshot. Mapped artifact accounting is a
+    /// separate concern and is intentionally not approximated as heap usage.
     pub fn estimated_heap_bytes(&self) -> usize {
         self.memory_accounting().total_bytes()
     }
 
+    /// Describes heap retained by an owned build/oracle snapshot.
+    ///
+    /// # Panics
+    /// Panics for an X1-mapped snapshot. Mapped artifact accounting is a
+    /// separate concern and is intentionally not approximated as heap usage.
     pub fn memory_accounting(&self) -> HbkFactSnapshotMemory {
+        self.assert_owned();
         let string_store_bytes = vec_heap_bytes(&self.strings)
             + self
                 .strings

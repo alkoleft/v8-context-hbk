@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
 use std::hint::black_box;
@@ -716,7 +717,7 @@ impl PreparedManifest {
             let members = handle.members_of_type(owner);
             let mut owner_members = Vec::with_capacity(members.len());
             let mut owner_member_kinds = Vec::with_capacity(members.len());
-            for member_id in members.iter().copied() {
+            for member_id in members {
                 let locator = *member_locator_by_id.entry(member_id).or_insert_with(|| {
                     let locator = Av2MemberLocator(member_ids.len() as u32);
                     member_ids.push(member_id);
@@ -1149,8 +1150,6 @@ fn resolve_operation_anchor(
             )?;
             let member_kinds = handle
                 .members_of_type(owner)
-                .iter()
-                .copied()
                 .map(|member| snapshot.type_member(member).kind)
                 .collect();
             Ok(OperationAnchor::MemberOwner {
@@ -1169,8 +1168,6 @@ fn resolve_operation_anchor(
             )?;
             let members = handle
                 .members_of_type(owner)
-                .iter()
-                .copied()
                 .filter(|member| {
                     availability_match(
                         snapshot,
@@ -1358,7 +1355,7 @@ fn run_first_operation(
                     if let Some(collected) = &collected {
                         sample.total_capacity += collected.capacity() as u64;
                     }
-                    for (index, member) in native_members.iter().copied().enumerate() {
+                    for (index, member) in native_members.enumerate() {
                         sample.scanned_count += 1;
                         let kind = member_kinds.get(index).copied().ok_or_else(|| {
                             io::Error::other("first-operation member kind range is too short")
@@ -1575,12 +1572,7 @@ fn run_operation(
                 context.ok_or_else(|| io::Error::other("missing availability context"))?;
             for owner in &manifest.owners {
                 sample.owner_count += 1;
-                for (index, member) in handle
-                    .members_of_type(owner.owner)
-                    .iter()
-                    .copied()
-                    .enumerate()
-                {
+                for (index, member) in handle.members_of_type(owner.owner).enumerate() {
                     sample.scanned_count += 1;
                     let locator = owner.members.get(index).ok_or_else(|| {
                         io::Error::other("native member range longer than prepared owner range")
@@ -1606,9 +1598,10 @@ fn run_operation(
             for owner in &manifest.owners {
                 sample.owner_count += 1;
                 let native_members = handle.members_of_type(owner.owner);
-                let mut collected = Vec::with_capacity(native_members.len());
-                sample.total_capacity += native_members.len() as u64;
-                for (index, member) in native_members.iter().copied().enumerate() {
+                let native_len = native_members.len();
+                let mut collected = Vec::with_capacity(native_len);
+                sample.total_capacity += native_len as u64;
+                for (index, member) in native_members.enumerate() {
                     sample.scanned_count += 1;
                     let locator = owner.members.get(index).ok_or_else(|| {
                         io::Error::other("native member range longer than prepared owner range")
@@ -1622,7 +1615,7 @@ fn run_operation(
                         collected.push(*locator);
                     }
                 }
-                if native_members.len() != owner.members.len() {
+                if native_len != owner.members.len() {
                     return Err(io::Error::other(
                         "native member range cardinality differs from prepared owner range",
                     ));
@@ -1902,8 +1895,11 @@ fn record_filtered_member(
     kind: HbkTypeMemberKind,
     context: AvailabilityContext,
 ) -> bool {
-    let availability = handle.availability_contexts(HbkFactRef::TypeMember(member_id));
-    let availability = availability_match(snapshot, availability, context);
+    let availability = availability_match(
+        snapshot,
+        handle.availability_contexts(HbkFactRef::TypeMember(member_id)),
+        context,
+    );
     match availability {
         AvailabilityMatch::Universal => sample.universal_count += 1,
         AvailabilityMatch::Explicit => sample.explicit_count += 1,
@@ -1996,7 +1992,7 @@ fn measure_memory_sample(
         for owner in &manifest.owners {
             let native_members = handle.members_of_type(owner.owner);
             let mut set = Vec::with_capacity(native_members.len());
-            for (index, member) in native_members.iter().copied().enumerate() {
+            for (index, member) in native_members.enumerate() {
                 let locator = owner.members.get(index).ok_or_else(|| {
                     io::Error::other("native member range longer than prepared owner range")
                 })?;
@@ -2105,12 +2101,7 @@ fn build_parity_transcript(
     }
     for owner in &manifest.owners {
         let mut borrowed_members = Vec::new();
-        for (index, member_id) in handle
-            .members_of_type(owner.owner)
-            .iter()
-            .copied()
-            .enumerate()
-        {
+        for (index, member_id) in handle.members_of_type(owner.owner).enumerate() {
             let locator = *owner.members.get(index).ok_or_else(|| {
                 io::Error::other("native member range longer than prepared owner range")
             })?;
@@ -2119,8 +2110,11 @@ fn build_parity_transcript(
                     "native member range order differs from prepared owner range",
                 ));
             }
-            let availability = handle.availability_contexts(HbkFactRef::TypeMember(member_id));
-            let availability = availability_match(snapshot, availability, context);
+            let availability = availability_match(
+                snapshot,
+                handle.availability_contexts(HbkFactRef::TypeMember(member_id)),
+                context,
+            );
             if availability.included() {
                 let logical_id = snapshot
                     .string(snapshot.type_member(member_id).id)
@@ -2410,16 +2404,19 @@ fn member_kind_code(kind: HbkTypeMemberKind) -> &'static str {
     }
 }
 
-fn availability_match(
+fn availability_match<I>(
     snapshot: &HbkFactSnapshot,
-    contexts: &[StringId],
+    contexts: I,
     requested: AvailabilityContext,
-) -> AvailabilityMatch {
+) -> AvailabilityMatch
+where
+    I: IntoIterator,
+    I::Item: std::borrow::Borrow<StringId>,
+{
     availability_match_codes(
         contexts
-            .iter()
-            .copied()
-            .map(|context| snapshot.string(context)),
+            .into_iter()
+            .map(|context| snapshot.string(*context.borrow())),
         requested,
     )
 }
@@ -2670,10 +2667,16 @@ fn feed_template_binding(sample: &mut OperationSample, binding: &HbkTypeTemplate
     }
 }
 
-fn feed_string_ids(sample: &mut OperationSample, snapshot: &HbkFactSnapshot, ids: &[StringId]) {
+fn feed_string_ids<I>(sample: &mut OperationSample, snapshot: &HbkFactSnapshot, ids: I)
+where
+    I: IntoIterator,
+    I::IntoIter: ExactSizeIterator,
+    I::Item: std::borrow::Borrow<StringId>,
+{
+    let ids = ids.into_iter();
     feed_bytes(sample, &(ids.len() as u64).to_le_bytes(), false);
     for id in ids {
-        feed_string_id(sample, snapshot, *id);
+        feed_string_id(sample, snapshot, *id.borrow());
     }
 }
 
@@ -2829,9 +2832,13 @@ fn transcript_template_binding(binding: &HbkTypeTemplateBinding) -> TranscriptTe
     }
 }
 
-fn string_ids(snapshot: &HbkFactSnapshot, ids: &[StringId]) -> Vec<String> {
-    ids.iter()
-        .map(|id| snapshot.string(*id).to_owned())
+fn string_ids<I>(snapshot: &HbkFactSnapshot, ids: I) -> Vec<String>
+where
+    I: IntoIterator,
+    I::Item: std::borrow::Borrow<StringId>,
+{
+    ids.into_iter()
+        .map(|id| snapshot.string(*id.borrow()).to_owned())
         .collect()
 }
 

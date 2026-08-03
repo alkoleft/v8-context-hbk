@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fs;
 use std::hint::black_box;
 use std::io;
@@ -430,8 +431,8 @@ fn enumerate_filtered_methods(
         };
         sample.candidate_methods += 1;
         let callable = snapshot.callable(callable_id);
-        let availability = handle.availability_contexts(HbkFactRef::Global(global_id));
-        match availability_match(snapshot, availability, context) {
+        let fact = HbkFactRef::Global(global_id);
+        match availability_match(snapshot, handle.availability_contexts(fact), context) {
             AvailabilityMatch::Universal => sample.universal_methods += 1,
             AvailabilityMatch::Explicit => sample.explicit_context_methods += 1,
             AvailabilityMatch::Excluded => {
@@ -440,22 +441,30 @@ fn enumerate_filtered_methods(
             }
         }
         sample.returned_objects += 1;
-        sample.checksum =
-            checksum_object(sample.checksum, snapshot, global, callable, availability);
+        sample.checksum = checksum_object(
+            sample.checksum,
+            snapshot,
+            global,
+            callable,
+            handle.availability_contexts(fact),
+        );
     }
     sample
 }
 
-fn availability_match(
+fn availability_match<I>(
     snapshot: &HbkFactSnapshot,
-    contexts: &[StringId],
+    contexts: I,
     requested: AvailabilityContext,
-) -> AvailabilityMatch {
+) -> AvailabilityMatch
+where
+    I: IntoIterator,
+    I::Item: std::borrow::Borrow<StringId>,
+{
     availability_match_codes(
         contexts
-            .iter()
-            .copied()
-            .map(|context| snapshot.string(context)),
+            .into_iter()
+            .map(|context| snapshot.string(*context.borrow())),
         requested,
     )
 }
@@ -487,13 +496,18 @@ fn checksum_sample(hash: u64, sample: &EnumerationSample) -> u64 {
     fnv1a(hash, &sample.checksum.to_le_bytes())
 }
 
-fn checksum_object(
+fn checksum_object<I>(
     mut hash: u64,
     snapshot: &HbkFactSnapshot,
     global: &HbkGlobalFact,
     callable: &HbkCallable,
-    availability: &[StringId],
-) -> u64 {
+    availability: I,
+) -> u64
+where
+    I: IntoIterator,
+    I::IntoIter: ExactSizeIterator,
+    I::Item: std::borrow::Borrow<StringId>,
+{
     hash = hash_string_id(hash, snapshot, global.id);
     hash = hash_name(hash, snapshot, &global.name);
     hash = hash_global_kind(hash, global.kind);
@@ -616,10 +630,16 @@ fn hash_string_id(hash: u64, snapshot: &HbkFactSnapshot, id: StringId) -> u64 {
     fnv1a(hash, snapshot.string(id).as_bytes())
 }
 
-fn hash_string_ids(mut hash: u64, snapshot: &HbkFactSnapshot, ids: &[StringId]) -> u64 {
+fn hash_string_ids<I>(mut hash: u64, snapshot: &HbkFactSnapshot, ids: I) -> u64
+where
+    I: IntoIterator,
+    I::IntoIter: ExactSizeIterator,
+    I::Item: std::borrow::Borrow<StringId>,
+{
+    let ids = ids.into_iter();
     hash = fnv1a(hash, &(ids.len() as u64).to_le_bytes());
     for id in ids {
-        hash = hash_string_id(hash, snapshot, *id);
+        hash = hash_string_id(hash, snapshot, *id.borrow());
     }
     hash
 }
@@ -674,19 +694,20 @@ fn transcript_objects(
             continue;
         };
         let callable = snapshot.callable(callable_id);
-        let availability = handle.availability_contexts(HbkFactRef::Global(global_id));
-        let availability_rule = match availability_match(snapshot, availability, context) {
-            AvailabilityMatch::Universal => "universal",
-            AvailabilityMatch::Explicit => "explicit_context",
-            AvailabilityMatch::Excluded => continue,
-        };
+        let fact = HbkFactRef::Global(global_id);
+        let availability_rule =
+            match availability_match(snapshot, handle.availability_contexts(fact), context) {
+                AvailabilityMatch::Universal => "universal",
+                AvailabilityMatch::Explicit => "explicit_context",
+                AvailabilityMatch::Excluded => continue,
+            };
         objects.push(TranscriptObject {
             global_id: snapshot.string(global.id).to_owned(),
             global_kind: global_kind_code(global.kind),
             global_domain: language_domain_code(global.domain),
             global_name: string_name(snapshot, &global.name),
             global_type_refs: transcript_type_refs(snapshot, &global.type_refs),
-            availability_contexts: string_ids(snapshot, availability),
+            availability_contexts: string_ids(snapshot, handle.availability_contexts(fact)),
             callable_id: snapshot.string(callable.id).to_owned(),
             callable_owner: callable
                 .owner
@@ -790,9 +811,13 @@ fn transcript_template_binding(
     }
 }
 
-fn string_ids(snapshot: &HbkFactSnapshot, ids: &[StringId]) -> Vec<String> {
-    ids.iter()
-        .map(|id| snapshot.string(*id).to_owned())
+fn string_ids<I>(snapshot: &HbkFactSnapshot, ids: I) -> Vec<String>
+where
+    I: IntoIterator,
+    I::Item: std::borrow::Borrow<StringId>,
+{
+    ids.into_iter()
+        .map(|id| snapshot.string(*id.borrow()).to_owned())
         .collect()
 }
 

@@ -75,31 +75,31 @@ impl PlatformSnapshotSource {
     }
 
     fn map_platform_type(&self, id: HbkPlatformTypeId) -> ContextFact {
-        let snapshot = self.catalog.snapshot();
-        let fact = snapshot.platform_type(id);
-        let local_id = snapshot.string(fact.id).to_string();
+        let handle = self.catalog.read_handle();
+        let fact = handle.platform_type(id);
+        let local_id = handle.string(fact.id()).to_string();
         ContextFact {
             id: self.fact_id(FactKind::Type, local_id),
-            name: self.map_name(&fact.name),
+            name: self.map_name(fact.name()),
             owner: None,
-            details: FactDetails::Type(snapshot_platform_type_info(snapshot, id)),
+            details: FactDetails::Type(snapshot_platform_type_info(handle, fact)),
             relations: Vec::new(),
         }
     }
 
     fn map_member(&self, id: HbkTypeMemberId) -> ResolvedMember {
-        let snapshot = self.catalog.snapshot();
-        let member = snapshot.type_member(id);
-        let owner = self.type_id(snapshot.string(snapshot.platform_type(member.owner).id));
+        let handle = self.catalog.read_handle();
+        let member = handle.type_member(id);
+        let owner = self.type_id(handle.string(handle.platform_type(member.owner()).id()));
         let info = MemberInfo {
-            kind: project_hbk_member_kind(member.kind),
-            types: self.map_type_refs(&member.type_refs),
+            kind: project_hbk_member_kind(member.kind()),
+            types: self.map_type_refs(member.type_refs()),
             description: None,
         };
-        let member_id = MemberId(self.fact_id(FactKind::Member, snapshot.string(member.id)));
+        let member_id = MemberId(self.fact_id(FactKind::Member, handle.string(member.id())));
         let fact = ContextFact {
             id: member_id.0.clone(),
-            name: self.map_name(&member.name),
+            name: self.map_name(member.name()),
             owner: Some(owner.0.clone()),
             details: FactDetails::Member(info.clone()),
             relations: Vec::new(),
@@ -113,18 +113,18 @@ impl PlatformSnapshotSource {
     }
 
     fn map_enum_value_member(&self, id: HbkEnumValueId) -> ResolvedMember {
-        let snapshot = self.catalog.snapshot();
-        let member = snapshot.enum_value(id);
-        let owner = self.type_id(snapshot.string(snapshot.enum_fact(member.owner).id));
+        let handle = self.catalog.read_handle();
+        let member = handle.enum_value(id);
+        let owner = self.type_id(handle.string(handle.enum_fact(member.owner()).id()));
         let info = MemberInfo {
             kind: MemberKind::EnumValue,
             types: Vec::new(),
             description: None,
         };
-        let member_id = MemberId(self.fact_id(FactKind::Member, snapshot.string(member.id)));
+        let member_id = MemberId(self.fact_id(FactKind::Member, handle.string(member.id())));
         let fact = ContextFact {
             id: member_id.0.clone(),
-            name: self.map_name(&member.name),
+            name: self.map_name(member.name()),
             owner: Some(owner.0.clone()),
             details: FactDetails::Member(info.clone()),
             relations: Vec::new(),
@@ -150,32 +150,29 @@ impl PlatformSnapshotSource {
             return Vec::new();
         }
         self.catalog
-            .snapshot()
-            .worker_handle()
+            .read_handle()
             .enum_values(owner_id)
-            .iter()
-            .copied()
             .map(|id| self.map_enum_value_member(id))
             .collect()
     }
 
     fn map_callable(&self, id: HbkCallableId) -> ResolvedCallable {
-        let snapshot = self.catalog.snapshot();
-        let callable = snapshot.callable(id);
-        let kind = project_hbk_callable_kind(callable.kind);
+        let handle = self.catalog.read_handle();
+        let callable = handle.callable(id);
+        let kind = project_hbk_callable_kind(callable.kind());
         let owner = callable
-            .owner
-            .map(|owner| self.type_id(snapshot.string(snapshot.platform_type(owner).id)));
+            .owner()
+            .map(|owner| self.type_id(handle.string(handle.platform_type(owner).id())));
         let info = CallableInfo {
             kind,
-            signatures: self.map_signatures(&callable.signatures),
-            return_types: self.map_type_refs(&callable.return_type_refs),
+            signatures: self.map_signatures(callable.signatures()),
+            return_types: self.map_type_refs(callable.return_type_refs()),
             description: None,
         };
         let id = CallableId(project_hbk_callable_fact_id(&self.catalog, callable));
         let fact = ContextFact {
             id: id.0.clone(),
-            name: self.map_name(&callable.name),
+            name: self.map_name(callable.name()),
             owner: owner.as_ref().map(|owner| owner.0.clone()),
             details: FactDetails::Callable(info.clone()),
             relations: Vec::new(),
@@ -189,16 +186,16 @@ impl PlatformSnapshotSource {
     }
 
     fn map_global_property(&self, id: HbkGlobalFactId) -> ContextFact {
-        let snapshot = self.catalog.snapshot();
-        let global = snapshot.global_fact(id);
+        let handle = self.catalog.read_handle();
+        let global = handle.global_fact(id);
         let info = MemberInfo {
             kind: MemberKind::Property,
-            types: self.map_type_refs(&global.type_refs),
+            types: self.map_type_refs(global.type_refs()),
             description: None,
         };
         ContextFact {
-            id: self.fact_id(FactKind::Global, snapshot.string(global.id)),
-            name: self.map_name(&global.name),
+            id: self.fact_id(FactKind::Global, handle.string(global.id())),
+            name: self.map_name(global.name()),
             owner: None,
             details: FactDetails::Member(info),
             relations: Vec::new(),
@@ -242,17 +239,17 @@ impl PlatformSnapshotSource {
             (HbkFactRef::TypeMember(id), FactKind::Member) => Some(self.map_member(id).fact),
             (HbkFactRef::Global(id), FactKind::Global) => Some(self.map_global_property(id)),
             (HbkFactRef::Callable(id), FactKind::Constructor)
-                if self.catalog.snapshot().callable(id).kind == HbkCallableKind::Constructor =>
+                if self.catalog.read_handle().callable(id).kind() == HbkCallableKind::Constructor =>
             {
                 Some(self.map_callable(id).fact)
             }
             (HbkFactRef::Callable(id), FactKind::Callable)
-                if self.catalog.snapshot().callable(id).kind != HbkCallableKind::Constructor =>
+                if self.catalog.read_handle().callable(id).kind() != HbkCallableKind::Constructor =>
             {
                 Some(self.map_callable(id).fact)
             }
             (HbkFactRef::Callable(id), FactKind::Member)
-                if self.catalog.snapshot().callable(id).kind == HbkCallableKind::Event =>
+                if self.catalog.read_handle().callable(id).kind() == HbkCallableKind::Event =>
             {
                 Some(self.map_event_as_member(id).fact)
             }
@@ -271,11 +268,7 @@ impl PlatformSnapshotSource {
                 .platform_type_by_id(local_id)
                 .map(|(id, _)| self.map_platform_type(id))
                 .or_else(|| {
-                    let id = self
-                        .catalog
-                        .snapshot()
-                        .worker_handle()
-                        .enum_by_id(local_id)?;
+                    let id = self.catalog.read_handle().enum_by_id(local_id)?;
                     Some(self.map_enum_as_type(id))
                 }),
             FactKind::Member => self
@@ -284,7 +277,7 @@ impl PlatformSnapshotSource {
                 .map(|(id, _)| self.map_member(id).fact)
                 .or_else(|| {
                     let (id, callable) = self.catalog.callable_by_id(local_id)?;
-                    (callable.kind == HbkCallableKind::Event)
+                    (callable.kind() == HbkCallableKind::Event)
                         .then(|| self.map_event_as_member(id).fact)
                 }),
             FactKind::Global => self
@@ -293,26 +286,18 @@ impl PlatformSnapshotSource {
                 .map(|(id, _)| self.map_global_property(id)),
             FactKind::Callable => {
                 let (id, callable) = self.catalog.callable_by_id(local_id)?;
-                (callable.kind != HbkCallableKind::Constructor).then(|| self.map_callable(id).fact)
+                (callable.kind() != HbkCallableKind::Constructor).then(|| self.map_callable(id).fact)
             }
             FactKind::Constructor => {
                 let (id, callable) = self.catalog.callable_by_id(local_id)?;
-                (callable.kind == HbkCallableKind::Constructor).then(|| self.map_callable(id).fact)
+                (callable.kind() == HbkCallableKind::Constructor).then(|| self.map_callable(id).fact)
             }
             FactKind::Enum => {
-                let id = self
-                    .catalog
-                    .snapshot()
-                    .worker_handle()
-                    .enum_by_id(local_id)?;
+                let id = self.catalog.read_handle().enum_by_id(local_id)?;
                 Some(self.map_enum(id))
             }
             FactKind::EnumValue => {
-                let id = self
-                    .catalog
-                    .snapshot()
-                    .worker_handle()
-                    .enum_value_by_id(local_id)?;
+                let id = self.catalog.read_handle().enum_value_by_id(local_id)?;
                 Some(self.map_enum_value(id))
             }
             _ => None,
@@ -320,21 +305,21 @@ impl PlatformSnapshotSource {
     }
 
     fn map_event_as_member(&self, id: HbkCallableId) -> ResolvedMember {
-        let snapshot = self.catalog.snapshot();
-        let callable = snapshot.callable(id);
+        let handle = self.catalog.read_handle();
+        let callable = handle.callable(id);
         let owner = callable
-            .owner
+            .owner()
             .expect("type event snapshot callable must have an owner");
-        let owner = self.type_id(snapshot.string(snapshot.platform_type(owner).id));
+        let owner = self.type_id(handle.string(handle.platform_type(owner).id()));
         let info = MemberInfo {
             kind: MemberKind::Event,
             types: Vec::new(),
             description: None,
         };
-        let member_id = MemberId(self.fact_id(FactKind::Member, snapshot.string(callable.id)));
+        let member_id = MemberId(self.fact_id(FactKind::Member, handle.string(callable.id())));
         let fact = ContextFact {
             id: member_id.0.clone(),
-            name: self.map_name(&callable.name),
+            name: self.map_name(callable.name()),
             owner: Some(owner.0.clone()),
             details: FactDetails::Member(info.clone()),
             relations: Vec::new(),
@@ -348,11 +333,11 @@ impl PlatformSnapshotSource {
     }
 
     fn map_enum_as_type(&self, id: HbkEnumId) -> ContextFact {
-        let snapshot = self.catalog.snapshot();
-        let fact = snapshot.enum_fact(id);
+        let handle = self.catalog.read_handle();
+        let fact = handle.enum_fact(id);
         ContextFact {
-            id: self.fact_id(FactKind::Type, snapshot.string(fact.id)),
-            name: self.map_name(&fact.name),
+            id: self.fact_id(FactKind::Type, handle.string(fact.id())),
+            name: self.map_name(fact.name()),
             owner: None,
             details: FactDetails::Type(TypeInfo {
                 description: None,
@@ -364,11 +349,11 @@ impl PlatformSnapshotSource {
     }
 
     fn map_enum(&self, id: HbkEnumId) -> ContextFact {
-        let snapshot = self.catalog.snapshot();
-        let fact = snapshot.enum_fact(id);
+        let handle = self.catalog.read_handle();
+        let fact = handle.enum_fact(id);
         ContextFact {
-            id: self.fact_id(FactKind::Enum, snapshot.string(fact.id)),
-            name: self.map_name(&fact.name),
+            id: self.fact_id(FactKind::Enum, handle.string(fact.id())),
+            name: self.map_name(fact.name()),
             owner: None,
             details: FactDetails::Enum,
             relations: Vec::new(),
@@ -376,35 +361,39 @@ impl PlatformSnapshotSource {
     }
 
     fn map_enum_value(&self, id: HbkEnumValueId) -> ContextFact {
-        let snapshot = self.catalog.snapshot();
-        let fact = snapshot.enum_value(id);
-        let owner = snapshot.enum_fact(fact.owner);
+        let handle = self.catalog.read_handle();
+        let fact = handle.enum_value(id);
+        let owner = handle.enum_fact(fact.owner());
         ContextFact {
-            id: self.fact_id(FactKind::EnumValue, snapshot.string(fact.id)),
-            name: self.map_name(&fact.name),
-            owner: Some(self.fact_id(FactKind::Enum, snapshot.string(owner.id))),
+            id: self.fact_id(FactKind::EnumValue, handle.string(fact.id())),
+            name: self.map_name(fact.name()),
+            owner: Some(self.fact_id(FactKind::Enum, handle.string(owner.id()))),
             details: FactDetails::EnumValue,
             relations: Vec::new(),
         }
     }
 
-    fn map_name(&self, name: &HbkName) -> Name {
-        let snapshot = self.catalog.snapshot();
+    fn map_name(&self, name: HbkNameView<'_>) -> Name {
         Name::new(
-            snapshot.string(name.primary).to_string(),
-            name.alias.map(|alias| snapshot.string(alias).to_string()),
+            self.catalog.string(name.primary()).to_string(),
+            name.alias().map(|alias| self.catalog.string(alias).to_string()),
         )
     }
 
-    fn map_type_refs(&self, refs: &[HbkTypeRef]) -> Vec<TypeRef> {
-        refs.iter()
+    fn map_type_refs<'a>(
+        &self,
+        refs: impl Iterator<Item = HbkTypeRefView<'a>>,
+    ) -> Vec<TypeRef> {
+        refs
             .map(|type_ref| project_hbk_type_ref(&self.catalog, type_ref))
             .collect()
     }
 
-    fn map_signatures(&self, signatures: &[syntax_helper_search::HbkSignature]) -> Vec<Signature> {
+    fn map_signatures<'a>(
+        &self,
+        signatures: impl Iterator<Item = HbkSignatureView<'a>>,
+    ) -> Vec<Signature> {
         signatures
-            .iter()
             .map(|signature| project_hbk_signature(&self.catalog, signature))
             .collect()
     }
@@ -416,10 +405,7 @@ impl PlatformSnapshotSource {
                     HbkFactRef::PlatformType(typed_id)
                 } else {
                     HbkFactRef::Enum(
-                        self.catalog
-                            .snapshot()
-                            .worker_handle()
-                            .enum_by_id(&id.local_id)?,
+                        self.catalog.read_handle().enum_by_id(&id.local_id)?,
                     )
                 }
             }
@@ -428,7 +414,7 @@ impl PlatformSnapshotSource {
                     HbkFactRef::TypeMember(typed_id)
                 } else {
                     let (typed_id, callable) = self.catalog.callable_by_id(&id.local_id)?;
-                    if callable.kind != HbkCallableKind::Event {
+                    if callable.kind() != HbkCallableKind::Event {
                         return None;
                     }
                     HbkFactRef::Callable(typed_id)
@@ -437,8 +423,8 @@ impl PlatformSnapshotSource {
             FactKind::Callable | FactKind::Constructor => {
                 let (typed_id, callable) = self.catalog.callable_by_id(&id.local_id)?;
                 let matches_kind = match id.kind {
-                    FactKind::Constructor => callable.kind == HbkCallableKind::Constructor,
-                    _ => callable.kind != HbkCallableKind::Constructor,
+                    FactKind::Constructor => callable.kind() == HbkCallableKind::Constructor,
+                    _ => callable.kind() != HbkCallableKind::Constructor,
                 };
                 if !matches_kind {
                     return None;
@@ -450,16 +436,10 @@ impl PlatformSnapshotSource {
                 HbkFactRef::Global(typed_id)
             }
             FactKind::Enum => HbkFactRef::Enum(
-                self.catalog
-                    .snapshot()
-                    .worker_handle()
-                    .enum_by_id(&id.local_id)?,
+                self.catalog.read_handle().enum_by_id(&id.local_id)?,
             ),
             FactKind::EnumValue => HbkFactRef::EnumValue(
-                self.catalog
-                    .snapshot()
-                    .worker_handle()
-                    .enum_value_by_id(&id.local_id)?,
+                self.catalog.read_handle().enum_value_by_id(&id.local_id)?,
             ),
             _ => return None,
         };
@@ -475,35 +455,33 @@ impl PlatformSnapshotSource {
 }
 
 fn snapshot_platform_type_info(
-    snapshot: &HbkFactSnapshot,
-    id: HbkPlatformTypeId,
+    handle: HbkFactReadHandle<'_>,
+    fact: HbkPlatformTypeView<'_>,
 ) -> TypeInfo {
-    let fact = snapshot.platform_type(id);
     TypeInfo {
         description: None,
-        metadata_template: fact.metadata_template.as_ref().map(|template| {
+        metadata_template: fact.metadata_template().map(|template| {
             MetadataTemplateInfo {
-                metadata_kind: snapshot.string(template.metadata_kind).to_string(),
+                metadata_kind: handle.string(template.metadata_kind()).to_string(),
                 parameters: template
-                    .template_parameters
-                    .iter()
-                    .map(|parameter| snapshot.string(*parameter).to_string())
+                    .template_parameters()
+                    .map(|parameter| handle.string(parameter).to_string())
                     .collect(),
             }
         }),
         type_template_key: fact
-            .type_template_key
-            .map(|key| snapshot_type_template_key(snapshot, key)),
+            .type_template_key()
+            .map(|key| snapshot_type_template_key(handle, key)),
     }
 }
 
 fn snapshot_type_template_key(
-    snapshot: &HbkFactSnapshot,
-    key: syntax_helper_search::HbkPlatformTypeTemplateKey,
+    handle: HbkFactReadHandle<'_>,
+    key: HbkPlatformTypeTemplateKey,
 ) -> PlatformTypeTemplateKey {
     PlatformTypeTemplateKey::new(
-        snapshot.string(key.family).to_string(),
-        snapshot.string(key.variant).to_string(),
+        handle.string(key.family).to_string(),
+        handle.string(key.variant).to_string(),
     )
 }
 
@@ -605,8 +583,7 @@ impl ContextSource for PlatformSnapshotSource {
                     .map(|(id, _)| self.map_platform_type(id))
                     .chain(
                         self.catalog
-                            .snapshot()
-                            .worker_handle()
+                            .read_handle()
                             .enums_by_name(name)
                             .map(|id| self.map_enum_as_type(id)),
                     )
@@ -636,11 +613,7 @@ impl ContextSource for PlatformSnapshotSource {
                     let mut facts = Vec::new();
                     if let Some((id, _)) = self.catalog.platform_type_by_id(&id.0.local_id) {
                         facts.push(self.platform_type_from_id(id));
-                    } else if let Some(id) = self
-                        .catalog
-                        .snapshot()
-                        .worker_handle()
-                        .enum_by_id(&id.0.local_id)
+                    } else if let Some(id) = self.catalog.read_handle().enum_by_id(&id.0.local_id)
                     {
                         let fact = self.map_enum_as_type(id);
                         let FactDetails::Type(info) = fact.details.clone() else {
@@ -671,7 +644,7 @@ impl ContextSource for PlatformSnapshotSource {
                     self.catalog
                         .platform_types_by_name(name)
                         .map(|(id, _)| self.platform_type_from_id(id))
-                        .chain(self.catalog.snapshot().worker_handle().enums_by_name(name).map(|id| {
+                        .chain(self.catalog.read_handle().enums_by_name(name).map(|id| {
                             let fact = self.map_enum_as_type(id);
                             let FactDetails::Type(info) = fact.details.clone() else {
                                 unreachable!("enum-as-type maps to type info");
@@ -739,25 +712,16 @@ impl ContextSource for PlatformSnapshotSource {
                 Some(name) => self
                     .catalog
                     .member_by_name_kind(owner_id, name, member_kind)
-                    .map(|(id, _)| id)
+                    .map(|(id, _)| self.map_member(id))
                     .collect::<Vec<_>>(),
                 None => self
                     .catalog
                     .members(owner_id)
-                    .map(|(id, _)| id)
+                    .filter(|(_, member)| member_kind.is_none_or(|kind| member.kind() == kind))
+                    .map(|(id, _)| self.map_member(id))
                     .collect::<Vec<_>>(),
             }
-            .into_iter()
-            .filter(|id| {
-                member_kind.is_none_or(|kind| self.catalog.snapshot().type_member(*id).kind == kind)
-            })
-            .map(|id| self.map_member(id))
-            .collect::<Vec<_>>()
-        } else if let Some(owner_id) = self
-            .catalog
-            .snapshot()
-            .worker_handle()
-            .enum_by_id(&owner.0.local_id)
+        } else if let Some(owner_id) = self.catalog.read_handle().enum_by_id(&owner.0.local_id)
         {
             if query.name.is_some() {
                 return Ok(ResolveResponse::not_found("platform member not found"));
@@ -806,25 +770,11 @@ impl ContextSource for PlatformSnapshotSource {
                         let Some((owner_id, _)) = self.catalog.platform_type_by_id(&owner.0.local_id) else {
                             return Ok(ResolveResponse::not_found("platform callable not found"));
                         };
-                        let mut ids = self
+                        self
                             .catalog
                             .callable_by_name(owner_id, name)
-                            .map(|(id, _)| id)
-                            .collect::<Vec<_>>();
-                        ids.extend(
-                            self.catalog
-                                .constructors(owner_id)
-                                .filter(|id| {
-                                    name_matches(
-                                        &self.map_name(&id.1.name),
-                                        name,
-                                    )
-                                })
-                                .map(|(id, _)| id),
-                        );
-                        ids.sort_unstable();
-                        ids.dedup();
-                        ids.into_iter().map(|id| self.map_callable(id)).collect()
+                            .map(|(id, _)| self.map_callable(id))
+                            .collect()
                     }
                 } else {
                     self.catalog
@@ -1070,7 +1020,7 @@ impl ContextSource for PlatformSnapshotSource {
                 "platform adapter supports has_type, returns, constructs and member_of",
             ));
         };
-        let handle = self.catalog.snapshot().worker_handle();
+        let handle = self.catalog.read_handle();
         let Some(source_ref) = handle
             .facts_by_id(&source.local_id)
             .into_iter()
@@ -1083,9 +1033,8 @@ impl ContextSource for PlatformSnapshotSource {
         };
         let facts = handle
             .relations_by_source_kind(source_ref, edge)
-            .iter()
             .filter_map(|target| {
-                let mut fact = self.map_fact_ref_for_relation(*target, kind)?;
+                let mut fact = self.map_fact_ref_for_relation(target, kind)?;
                 fact.relations.push(FactRelation {
                     kind,
                     target: fact.id.clone(),
@@ -1256,34 +1205,32 @@ impl QueryTableSnapshotSource {
     }
 
     fn map_query_table(&self, id: HbkQueryTableId) -> ContextFact {
-        let snapshot = self.catalog.snapshot();
-        let table = snapshot.query_table(id);
+        let handle = self.catalog.read_handle();
+        let table = handle.query_table(id);
         ContextFact {
-            id: self.fact_id(FactKind::QueryTable, snapshot.string(table.id)),
-            name: self.map_name(&table.name),
+            id: self.fact_id(FactKind::QueryTable, handle.string(table.id())),
+            name: self.map_name(table.name()),
             owner: None,
             details: FactDetails::QueryTable(QueryTableInfo {
-                syntax: table.syntax.as_ref().map(|name| self.map_name(name)),
-                identifier: table.identifier.map(|id| snapshot.string(id).to_string()),
+                syntax: table.syntax().map(|name| self.map_name(name)),
+                identifier: table.identifier().map(|id| handle.string(id).to_string()),
                 sdbl_metadata_source_selector: self
                     .catalog
                     .metadata_source_selector(id)
                     .map(str::to_string),
-                table_role: query_table_role(table.role),
+                table_role: query_table_role(table.role()),
                 owner_path: table
-                    .owner_path
-                    .iter()
+                    .owner_path()
                     .map(|name| self.map_name(name))
                     .collect(),
                 template_parameters: table
-                    .template_parameters
-                    .iter()
-                    .map(|id| snapshot.string(*id).to_string())
+                    .template_parameters()
+                    .map(|id| handle.string(id).to_string())
                     .collect(),
                 description: None,
                 source: self.catalog.source_locale().map(|locale| FactProvenance {
                     source: self.catalog.source_id().clone(),
-                    evidence_id: snapshot.string(table.id).to_string(),
+                    evidence_id: handle.string(table.id()).to_string(),
                     locale: Some(locale.to_string()),
                 }),
             }),
@@ -1292,26 +1239,24 @@ impl QueryTableSnapshotSource {
     }
 
     fn map_query_field(&self, id: HbkQueryFieldId) -> ContextFact {
-        let snapshot = self.catalog.snapshot();
-        let field = snapshot.query_field(id);
+        let handle = self.catalog.read_handle();
+        let field = handle.query_field(id);
         let owner = self.fact_id(
             FactKind::QueryTable,
-            snapshot.string(snapshot.query_table(field.owner).id),
+            handle.string(handle.query_table(field.owner()).id()),
         );
         ContextFact {
-            id: self.fact_id(FactKind::QueryField, snapshot.string(field.id)),
-            name: self.map_name(&field.name),
+            id: self.fact_id(FactKind::QueryField, handle.string(field.id())),
+            name: self.map_name(field.name()),
             owner: Some(owner.clone()),
             details: FactDetails::QueryField(QueryFieldInfo {
                 owner,
-                types: self.map_type_refs(&field.type_refs),
+                types: self.map_type_refs(field.type_refs()),
                 description: None,
-                note: field
-                    .note
-                    .map(|note| snapshot.string(note).to_string()),
+                note: field.note().map(|note| handle.string(note).to_string()),
                 source: self.catalog.source_locale().map(|locale| FactProvenance {
                     source: self.catalog.source_id().clone(),
-                    evidence_id: snapshot.string(field.id).to_string(),
+                    evidence_id: handle.string(field.id()).to_string(),
                     locale: Some(locale.to_string()),
                 }),
             }),
@@ -1320,26 +1265,26 @@ impl QueryTableSnapshotSource {
     }
 
     fn map_query_parameter(&self, id: HbkQueryParameterId) -> ContextFact {
-        let snapshot = self.catalog.snapshot();
-        let parameter = snapshot.query_parameter(id);
+        let handle = self.catalog.read_handle();
+        let parameter = handle.query_parameter(id);
         let owner = self.fact_id(
             FactKind::QueryTable,
-            snapshot.string(snapshot.query_table(parameter.owner).id),
+            handle.string(handle.query_table(parameter.owner()).id()),
         );
         ContextFact {
-            id: self.fact_id(FactKind::QueryParameter, snapshot.string(parameter.id)),
-            name: self.map_name(&parameter.name),
+            id: self.fact_id(FactKind::QueryParameter, handle.string(parameter.id())),
+            name: self.map_name(parameter.name()),
             owner: Some(owner.clone()),
             details: FactDetails::QueryParameter(QueryParameterInfo {
                 owner,
-                types: self.map_type_refs(&parameter.type_refs),
+                types: self.map_type_refs(parameter.type_refs()),
                 description: None,
                 default_value: parameter
-                    .default_value
-                    .map(|value| snapshot.string(value).to_string()),
+                    .default_value()
+                    .map(|value| handle.string(value).to_string()),
                 source: self.catalog.source_locale().map(|locale| FactProvenance {
                     source: self.catalog.source_id().clone(),
-                    evidence_id: snapshot.string(parameter.id).to_string(),
+                    evidence_id: handle.string(parameter.id()).to_string(),
                     locale: Some(locale.to_string()),
                 }),
             }),
@@ -1369,11 +1314,11 @@ impl QueryTableSnapshotSource {
             HbkFactRef::QueryParameter(id) => Some(self.map_query_parameter(id)),
             HbkFactRef::PlatformType(id) => Some(self.map_platform_type_for_relation(id)),
             HbkFactRef::Enum(id) => {
-                let snapshot = self.catalog.snapshot();
-                let fact = snapshot.enum_fact(id);
+                let handle = self.catalog.read_handle();
+                let fact = handle.enum_fact(id);
                 Some(ContextFact {
-                    id: self.platform_type_id(snapshot.string(fact.id)).0,
-                    name: self.map_name(&fact.name),
+                    id: self.platform_type_id(handle.string(fact.id())).0,
+                    name: self.map_name(fact.name()),
                     owner: None,
                     details: FactDetails::Type(TypeInfo {
                         description: None,
@@ -1388,22 +1333,22 @@ impl QueryTableSnapshotSource {
     }
 
     fn map_platform_type_for_relation(&self, id: HbkPlatformTypeId) -> ContextFact {
-        let snapshot = self.catalog.snapshot();
-        let fact = snapshot.platform_type(id);
+        let handle = self.catalog.read_handle();
+        let fact = handle.platform_type(id);
         ContextFact {
-            id: self.platform_type_id(snapshot.string(fact.id)).0,
-            name: self.map_name(&fact.name),
+            id: self.platform_type_id(handle.string(fact.id())).0,
+            name: self.map_name(fact.name()),
             owner: None,
-            details: FactDetails::Type(snapshot_platform_type_info(snapshot, id)),
+            details: FactDetails::Type(snapshot_platform_type_info(handle, fact)),
             relations: Vec::new(),
         }
     }
 
-    fn map_name(&self, name: &HbkName) -> Name {
+    fn map_name(&self, name: HbkNameView<'_>) -> Name {
         Name::new(
-            self.catalog.snapshot().string(name.primary).to_string(),
-            name.alias
-                .map(|alias| self.catalog.snapshot().string(alias).to_string()),
+            self.catalog.string(name.primary()).to_string(),
+            name.alias()
+                .map(|alias| self.catalog.string(alias).to_string()),
         )
     }
 
@@ -1411,44 +1356,45 @@ impl QueryTableSnapshotSource {
         &self,
         key: syntax_helper_search::HbkPlatformTypeTemplateKey,
     ) -> PlatformTypeTemplateKey {
-        snapshot_type_template_key(self.catalog.snapshot(), key)
+        snapshot_type_template_key(self.catalog.read_handle(), key)
     }
 
-    fn map_type_refs(&self, refs: &[HbkTypeRef]) -> Vec<TypeRef> {
-        refs.iter()
+    fn map_type_refs<'a>(
+        &self,
+        refs: impl Iterator<Item = HbkTypeRefView<'a>>,
+    ) -> Vec<TypeRef> {
+        refs
             .map(|type_ref| self.map_type_ref(type_ref))
             .collect()
     }
 
-    fn map_type_ref(&self, type_ref: &HbkTypeRef) -> TypeRef {
+    fn map_type_ref(&self, type_ref: HbkTypeRefView<'_>) -> TypeRef {
         TypeRef {
-            name: self.catalog.snapshot().string(type_ref.name).to_string(),
-            target: match &type_ref.target {
-                HbkTypeRefTarget::Ok(id) => {
-                    TypeRefTarget::Ok(self.platform_type_id(self.catalog.snapshot().string(*id)))
+            name: self.catalog.string(type_ref.name()).to_string(),
+            target: match type_ref.target() {
+                HbkTypeRefTargetView::Ok(id) => {
+                    TypeRefTarget::Ok(self.platform_type_id(self.catalog.string(id)))
                 }
-                HbkTypeRefTarget::Unresolved => TypeRefTarget::Unresolved,
-                HbkTypeRefTarget::Ambiguous(candidates) => TypeRefTarget::Ambiguous(
+                HbkTypeRefTargetView::Unresolved => TypeRefTarget::Unresolved,
+                HbkTypeRefTargetView::Ambiguous(candidates) => TypeRefTarget::Ambiguous(
                     candidates
-                        .iter()
-                        .map(|id| self.platform_type_id(self.catalog.snapshot().string(*id)))
+                        .map(|id| self.platform_type_id(self.catalog.string(id)))
                         .collect(),
                 ),
             },
-            template_binding: type_ref.template_binding.as_ref().map(|binding| {
+            template_binding: type_ref.template_binding().map(|binding| {
                 TypeTemplateBinding {
-                    template_key: self.map_type_template_key(binding.template_key),
+                    template_key: self.map_type_template_key(binding.template_key()),
                     arguments: binding
-                        .arguments
-                        .iter()
+                        .arguments()
                         .map(|argument| {
                             match argument {
                             syntax_helper_search::model::TemplateParameterBinding::OwnerParameter {
                                 owner_parameter_index,
                                 target_parameter_index,
                             } => TemplateParameterBinding::OwnerParameter {
-                                owner_parameter_index: *owner_parameter_index,
-                                target_parameter_index: *target_parameter_index,
+                                owner_parameter_index,
+                                target_parameter_index,
                             },
                         }
                         })
@@ -1543,17 +1489,30 @@ impl ContextSource for QueryTableSnapshotSource {
                 if !matches!(kind, None | Some(FactKind::QueryTable)) {
                     return Ok(ResolveResponse::not_found("query table fact not found"));
                 }
-                let mut ids = self
+                let mut facts = self
                     .catalog
                     .query_tables_by_name(name)
-                    .map(|(id, _)| id)
+                    .map(|(id, _)| self.map_query_table(id))
                     .collect::<Vec<_>>();
-                ids.extend(self.catalog.query_tables_by_identifier(name).map(|(id, _)| id));
-                ids.extend(self.catalog.query_tables_by_syntax(name).map(|(id, _)| id));
-                ids.sort_unstable();
-                ids.dedup();
+                facts.extend(
+                    self.catalog
+                        .query_tables_by_identifier(name)
+                        .map(|(id, _)| self.map_query_table(id)),
+                );
+                facts.extend(
+                    self.catalog
+                        .query_tables_by_syntax(name)
+                        .map(|(id, _)| self.map_query_table(id)),
+                );
+                facts.sort_unstable_by_key(|fact| {
+                    self.catalog
+                        .query_table_by_id(&fact.id.local_id)
+                        .expect("mapped query-table fact must preserve its provider id")
+                        .0
+                });
+                facts.dedup_by(|left, right| left.id == right.id);
                 Ok(response_from_facts(
-                    ids.into_iter().map(|id| self.map_query_table(id)).collect(),
+                    facts,
                     "query table fact not found",
                 ))
             }
@@ -1660,7 +1619,7 @@ impl ContextSource for QueryTableSnapshotSource {
                 ));
             }
         };
-        let handle = self.catalog.snapshot().worker_handle();
+        let handle = self.catalog.read_handle();
         let Some(source_ref) = handle
             .facts_by_id(&source.local_id)
             .into_iter()
@@ -1675,9 +1634,8 @@ impl ContextSource for QueryTableSnapshotSource {
         };
         let facts = handle
             .relations_by_source_kind(source_ref, edge)
-            .iter()
             .filter_map(|target| {
-                let mut fact = self.map_fact_ref_for_relation(*target)?;
+                let mut fact = self.map_fact_ref_for_relation(target)?;
                 fact.relations.push(FactRelation {
                     kind,
                     target: fact.id.clone(),

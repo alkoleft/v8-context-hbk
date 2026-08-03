@@ -3,11 +3,15 @@ name = "context-resolver-search"
 version.workspace = true
 edition.workspace = true
 
+[features]
+snapshot-experiment-alloc = ["syntax-helper-search/snapshot-experiment-alloc"]
+
 [dependencies]
 context-resolver-core.workspace = true
 syntax-helper-search.workspace = true
 
 [dev-dependencies]
 rusqlite.workspace = true
+sha2.workspace = true
 syntax-helper-language.workspace = true
 syntax-helper-model.workspace = true

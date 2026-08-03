@@ -1570,8 +1570,7 @@ mod tests {
         assert_eq!(
             handle
                 .availability_contexts(HbkFactRef::PlatformType(filter))
-                .iter()
-                .map(|context| snapshot.string(*context))
+                .map(|context| snapshot.string(context))
                 .collect::<Vec<_>>(),
             vec!["server"]
         );
@@ -1584,8 +1583,7 @@ mod tests {
         assert!(
             handle
                 .members_of_type(filter)
-                .iter()
-                .map(|member| snapshot.type_member(*member))
+                .map(|member| snapshot.type_member(member))
                 .any(|member| snapshot.string(member.name.primary) == "Элементы")
         );
         let elements = handle.member_by_owner_name_kind(
@@ -1606,7 +1604,7 @@ mod tests {
                     snapshot.string(callable.name.primary) == "ПолучитьОбъектПоИдентификатору"
                 })
         );
-        let constructors = handle.constructors_of_type(filter);
+        let constructors = handle.constructors_of_type(filter).collect::<Vec<_>>();
         assert_eq!(constructors.len(), 1);
         assert_eq!(
             snapshot.string(snapshot.callable(constructors[0]).name.primary),
@@ -1681,8 +1679,8 @@ mod tests {
             .query_tables_by_syntax("Справочник.<Имя справочника>")
             .collect::<Vec<_>>();
         assert_eq!(tables.len(), 1);
-        let fields = handle.query_fields(tables[0]);
-        let parameters = handle.query_parameters(tables[0]);
+        let fields = handle.query_fields(tables[0]).collect::<Vec<_>>();
+        let parameters = handle.query_parameters(tables[0]).collect::<Vec<_>>();
         assert_eq!(fields.len(), 1);
         assert_eq!(parameters.len(), 1);
         assert_eq!(
@@ -1709,7 +1707,9 @@ mod tests {
                 .collect::<Vec<_>>(),
             parameters
         );
-        let owned = handle.relations_by_source_kind(HbkFactRef::QueryTable(tables[0]), "owns");
+        let owned = handle
+            .relations_by_source_kind(HbkFactRef::QueryTable(tables[0]), "owns")
+            .collect::<Vec<_>>();
         assert!(owned.contains(&HbkFactRef::QueryField(fields[0])));
         assert!(owned.contains(&HbkFactRef::QueryParameter(parameters[0])));
         assert_eq!(
@@ -1754,7 +1754,10 @@ mod tests {
             "Авто"
         );
         assert_eq!(snapshot.enum_value(enum_value_fact).owner, enum_fact);
-        assert_eq!(handle.enum_values(enum_fact), &[enum_value_fact]);
+        assert_eq!(
+            handle.enum_values(enum_fact).collect::<Vec<_>>(),
+            vec![enum_value_fact]
+        );
         assert_eq!(
             handle
                 .enum_values_by_name(enum_fact, "Авто")
@@ -1764,20 +1767,19 @@ mod tests {
         assert_eq!(
             handle
                 .relations_by_source_kind(HbkFactRef::Enum(enum_fact), "owns")
-                .to_vec(),
+                .collect::<Vec<_>>(),
             vec![HbkFactRef::EnumValue(enum_value_fact)]
         );
         assert_eq!(
             handle
                 .relations_by_source_kind(HbkFactRef::EnumValue(enum_value_fact), "member_of")
-                .to_vec(),
+                .collect::<Vec<_>>(),
             vec![HbkFactRef::Enum(enum_fact)]
         );
         assert_eq!(
             handle
                 .availability_contexts(HbkFactRef::Enum(enum_fact))
-                .iter()
-                .map(|context| snapshot.string(*context))
+                .map(|context| snapshot.string(context))
                 .collect::<Vec<_>>(),
             vec!["server"]
         );
@@ -2007,7 +2009,10 @@ mod tests {
 
     #[test]
     fn read_handle_sdbl_slices_and_iterators_borrow_from_snapshot_not_temporary_handle() {
-        fn query_fields(snapshot: &HbkFactSnapshot, table: HbkQueryTableId) -> &[HbkQueryFieldId] {
+        fn query_fields(
+            snapshot: &HbkFactSnapshot,
+            table: HbkQueryTableId,
+        ) -> impl ExactSizeIterator<Item = HbkQueryFieldId> + '_ {
             snapshot.worker_handle().query_fields(table)
         }
 
@@ -2041,7 +2046,7 @@ mod tests {
             .next()
             .expect("query table must exist");
 
-        let fields = query_fields(&snapshot, table);
+        let fields = query_fields(&snapshot, table).collect::<Vec<_>>();
         assert_eq!(fields.len(), 1);
         assert_eq!(
             snapshot.string(snapshot.query_field(fields[0]).name.primary),

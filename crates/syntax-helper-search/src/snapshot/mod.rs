@@ -10,6 +10,7 @@ mod materialize;
 mod memory;
 mod read;
 mod types;
+mod views;
 mod x1_format;
 
 use indexes::{
@@ -17,6 +18,7 @@ use indexes::{
     MemberNameKindLookup, ModuleContextLookup, NameLookup, OwnerNameLookup, RelationLookupKey,
     TypeTemplateLookup,
 };
+use x1_format::{X1MappedReadHandle, X1StableSlotGeneration};
 
 pub use binary_cache::{HbkFactSnapshotCacheLoadReport, HbkFactSnapshotCacheStatus};
 #[cfg(feature = "snapshot-experiment")]
@@ -33,10 +35,12 @@ pub use experiment_oracle::{
 pub use memory::{HbkFactSnapshotIndexMemory, HbkFactSnapshotMemory, HbkFactSnapshotMemoryEntry};
 pub use read::HbkFactSnapshotCounts;
 pub use types::*;
+pub use views::*;
 pub use x1_format::{HbkFactSnapshotArtifactPublicationReport, HbkFactSnapshotArtifactWriteReport};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkFactSnapshot {
+    mapped_generation: Option<std::sync::Arc<X1StableSlotGeneration>>,
     strings: Vec<String>,
     source_locale: Option<StringId>,
     platform_types: Vec<HbkPlatformType>,
@@ -84,6 +88,82 @@ pub struct HbkFactSnapshot {
     availability_since_by_fact: Vec<FactStringLookup>,
     source_by_fact: Vec<FactSourceLookup>,
     relations_by_source_kind: CsrIndex<RelationLookupKey, HbkFactRef>,
+}
+
+impl HbkFactSnapshot {
+    fn from_mapped_generation(generation: X1StableSlotGeneration) -> Self {
+        fn empty_csr<K, V>() -> CsrIndex<K, V> {
+            CsrIndex {
+                keys: Vec::new(),
+                offsets: vec![0],
+                values: Vec::new(),
+            }
+        }
+
+        Self {
+            mapped_generation: Some(std::sync::Arc::new(generation)),
+            strings: Vec::new(),
+            source_locale: None,
+            platform_types: Vec::new(),
+            type_members: Vec::new(),
+            callables: Vec::new(),
+            globals: Vec::new(),
+            query_tables: Vec::new(),
+            query_fields: Vec::new(),
+            query_parameters: Vec::new(),
+            language_facts: Vec::new(),
+            enums: Vec::new(),
+            enum_values: Vec::new(),
+            fact_ids: Vec::new(),
+            platform_type_ids: Vec::new(),
+            platform_type_names: Vec::new(),
+            platform_type_templates: Vec::new(),
+            member_ids: Vec::new(),
+            members_by_owner: empty_csr(),
+            members_by_owner_name: Vec::new(),
+            members_by_owner_name_kind: Vec::new(),
+            callable_ids: Vec::new(),
+            callables_by_owner: empty_csr(),
+            callables_by_owner_name: Vec::new(),
+            constructors_by_type: empty_csr(),
+            global_names: Vec::new(),
+            globals_by_domain_name_kind: Vec::new(),
+            module_event_names: Vec::new(),
+            module_contexts_by_domain_language_kind: Vec::new(),
+            query_table_ids: Vec::new(),
+            query_table_names: Vec::new(),
+            query_table_syntax_names: Vec::new(),
+            query_table_identifiers: Vec::new(),
+            query_fields_by_table: empty_csr(),
+            query_fields_by_table_name: Vec::new(),
+            query_parameters_by_table: empty_csr(),
+            query_parameters_by_table_name: Vec::new(),
+            language_ids: Vec::new(),
+            language_names: Vec::new(),
+            enum_ids: Vec::new(),
+            enum_names: Vec::new(),
+            enum_value_ids: Vec::new(),
+            enum_values_by_enum: empty_csr(),
+            enum_values_by_enum_name: Vec::new(),
+            availability_by_fact: empty_csr(),
+            availability_since_by_fact: Vec::new(),
+            source_by_fact: Vec::new(),
+            relations_by_source_kind: empty_csr(),
+        }
+    }
+
+    fn mapped_read_handle(&self) -> Option<X1MappedReadHandle<'_>> {
+        self.mapped_generation
+            .as_deref()
+            .map(X1StableSlotGeneration::read_handle)
+    }
+
+    fn assert_owned(&self) {
+        assert!(
+            self.mapped_generation.is_none(),
+            "owned-only snapshot access is unavailable for an X1 mapped snapshot; use HbkFactReadHandle views"
+        );
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

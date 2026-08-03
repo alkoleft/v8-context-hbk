@@ -66,14 +66,7 @@ struct X1ArtifactIdentity {
     extraction_schema: u32,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct X1RuntimeExpectation {
-    platform_version: String,
-    locale: String,
-    source_locale: String,
-    source_sha256: String,
-}
+type X1RuntimeExpectation = HbkFactSnapshotExpectation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkFactSnapshotArtifactWriteReport {
@@ -203,7 +196,7 @@ impl X1MappedGeneration {
         self.mmap.len()
     }
 
-    fn read_handle(&self) -> X1MappedReadHandle<'_> {
+    pub(super) fn read_handle(&self) -> X1MappedReadHandle<'_> {
         X1MappedReadHandle { generation: self }
     }
 
@@ -231,6 +224,24 @@ pub(super) struct X1StableSlotGeneration {
     generation: X1MappedGeneration,
     _shared_lock: File,
 }
+
+impl std::fmt::Debug for X1StableSlotGeneration {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("X1StableSlotGeneration")
+            .field("identity", &self.generation.identity)
+            .field("artifact_bytes", &self.generation.mmap.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for X1StableSlotGeneration {
+    fn eq(&self, other: &Self) -> bool {
+        self.generation.mmap.as_ref() == other.generation.mmap.as_ref()
+    }
+}
+
+impl Eq for X1StableSlotGeneration {}
 
 #[allow(dead_code)]
 impl X1StableSlotGeneration {
@@ -266,12 +277,16 @@ impl X1StableSlotGeneration {
         })
     }
 
-    fn read_handle(&self) -> X1MappedReadHandle<'_> {
+    pub(super) fn read_handle(&self) -> X1MappedReadHandle<'_> {
         self.generation.read_handle()
     }
 
     fn artifact_len(&self) -> usize {
         self.generation.artifact_len()
+    }
+
+    pub(super) fn counts(&self) -> HbkFactSnapshotCounts {
+        self.generation.counts
     }
 }
 
@@ -318,7 +333,7 @@ enum X1AvailabilityMode {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct X1AvailabilityFilter {
+pub(super) struct X1AvailabilityFilter {
     requested_mask: u16,
     mode: X1AvailabilityMode,
 }
@@ -353,26 +368,38 @@ impl X1AvailabilityFilter {
     }
 }
 
+impl From<HbkAvailabilityFilter> for X1AvailabilityFilter {
+    fn from(filter: HbkAvailabilityFilter) -> Self {
+        Self {
+            requested_mask: filter.requested_mask,
+            mode: match filter.mode {
+                HbkAvailabilityFilterMode::Any => X1AvailabilityMode::Any,
+                HbkAvailabilityFilterMode::All => X1AvailabilityMode::All,
+            },
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
-struct X1MappedReadHandle<'a> {
+pub(super) struct X1MappedReadHandle<'a> {
     generation: &'a X1MappedGeneration,
 }
 
 #[allow(dead_code)]
 impl<'a> X1MappedReadHandle<'a> {
-    fn string(self, id: StringId) -> &'a str {
+    pub(super) fn string(self, id: StringId) -> &'a str {
         self.generation
             .vector(S::Strings)
             .get_str(id.0 as usize)
             .expect("X1 string was fully validated before access")
     }
 
-    fn source_locale(self) -> &'a str {
+    pub(super) fn source_locale(self) -> &'a str {
         self.string(self.generation.source_locale)
     }
 
-    fn string_id(self, value: &str) -> Option<StringId> {
+    pub(super) fn string_id(self, value: &str) -> Option<StringId> {
         let order = self.generation.vector(S::StringOrder);
         binary_search_view(&order, |id: StringId| self.string(id).cmp(value))
             .ok()
@@ -383,27 +410,32 @@ impl<'a> X1MappedReadHandle<'a> {
             })
     }
 
-    fn global_fact_ids(self) -> impl ExactSizeIterator<Item = HbkGlobalFactId> + 'a {
+    pub(super) fn global_fact_ids(self) -> impl ExactSizeIterator<Item = HbkGlobalFactId> + 'a {
         (0..self.generation.counts.globals).map(|index| HbkGlobalFactId(index as u32))
     }
 
-    fn query_table_ids(self) -> impl ExactSizeIterator<Item = HbkQueryTableId> + 'a {
+    pub(super) fn query_table_ids(self) -> impl ExactSizeIterator<Item = HbkQueryTableId> + 'a {
         (0..self.generation.counts.query_tables).map(|index| HbkQueryTableId(index as u32))
     }
 
-    fn query_field_ids(self) -> impl ExactSizeIterator<Item = HbkQueryFieldId> + 'a {
+    pub(super) fn query_field_ids(self) -> impl ExactSizeIterator<Item = HbkQueryFieldId> + 'a {
         (0..self.generation.counts.query_fields).map(|index| HbkQueryFieldId(index as u32))
     }
 
-    fn query_parameter_ids(self) -> impl ExactSizeIterator<Item = HbkQueryParameterId> + 'a {
+    pub(super) fn query_parameter_ids(
+        self,
+    ) -> impl ExactSizeIterator<Item = HbkQueryParameterId> + 'a {
         (0..self.generation.counts.query_parameters).map(|index| HbkQueryParameterId(index as u32))
     }
 
-    fn facts_by_id(self, id: &str) -> X1LookupValueIter<'a, IdLookup<HbkFactRef>, HbkFactRef> {
+    pub(super) fn facts_by_id(
+        self,
+        id: &str,
+    ) -> X1LookupValueIter<'a, IdLookup<HbkFactRef>, HbkFactRef> {
         self.lookup_id_values(S::FactIds, id, |candidate| candidate.value)
     }
 
-    fn platform_type_by_id(self, id: &str) -> Option<HbkPlatformTypeId> {
+    pub(super) fn platform_type_by_id(self, id: &str) -> Option<HbkPlatformTypeId> {
         self.lookup_id_one(
             S::PlatformTypeIds,
             id,
@@ -411,7 +443,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn platform_types_by_name(
+    pub(super) fn platform_types_by_name(
         self,
         name: &str,
     ) -> X1LookupValueIter<'a, NameLookup<HbkPlatformTypeId>, HbkPlatformTypeId> {
@@ -441,7 +473,7 @@ impl<'a> X1MappedReadHandle<'a> {
         X1LookupValueIter::new(names, range, |candidate| candidate.value)
     }
 
-    fn platform_types_by_template_key(
+    pub(super) fn platform_types_by_template_key(
         self,
         family: &str,
         variant: &str,
@@ -458,7 +490,10 @@ impl<'a> X1MappedReadHandle<'a> {
         X1LookupValueIter::new(index, range, |candidate| candidate.value)
     }
 
-    fn members_of_type(self, owner: HbkPlatformTypeId) -> X1RecordIter<'a, HbkTypeMemberId> {
+    pub(super) fn members_of_type(
+        self,
+        owner: HbkPlatformTypeId,
+    ) -> X1RecordIter<'a, HbkTypeMemberId> {
         self.csr_values(
             S::MembersByOwnerKeys,
             S::MembersByOwnerOffsets,
@@ -467,7 +502,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn member_by_owner_name(
+    pub(super) fn member_by_owner_name(
         self,
         owner: HbkPlatformTypeId,
         name: &str,
@@ -488,7 +523,7 @@ impl<'a> X1MappedReadHandle<'a> {
         })
     }
 
-    fn member_by_owner_name_kind(
+    pub(super) fn member_by_owner_name_kind(
         self,
         owner: HbkPlatformTypeId,
         name: &str,
@@ -513,7 +548,10 @@ impl<'a> X1MappedReadHandle<'a> {
         }))
     }
 
-    fn callables_of_type(self, owner: HbkPlatformTypeId) -> X1RecordIter<'a, HbkCallableId> {
+    pub(super) fn callables_of_type(
+        self,
+        owner: HbkPlatformTypeId,
+    ) -> X1RecordIter<'a, HbkCallableId> {
         self.csr_values(
             S::CallablesByOwnerKeys,
             S::CallablesByOwnerOffsets,
@@ -522,7 +560,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn callable_by_owner_name(
+    pub(super) fn callable_by_owner_name(
         self,
         owner: HbkPlatformTypeId,
         name: &str,
@@ -534,7 +572,10 @@ impl<'a> X1MappedReadHandle<'a> {
         })
     }
 
-    fn constructors_of_type(self, owner: HbkPlatformTypeId) -> X1RecordIter<'a, HbkCallableId> {
+    pub(super) fn constructors_of_type(
+        self,
+        owner: HbkPlatformTypeId,
+    ) -> X1RecordIter<'a, HbkCallableId> {
         self.csr_values(
             S::ConstructorsByTypeKeys,
             S::ConstructorsByTypeOffsets,
@@ -543,7 +584,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn globals_by_name(
+    pub(super) fn globals_by_name(
         self,
         name: &str,
     ) -> X1LookupValueIter<'a, NameLookup<HbkGlobalFactId>, HbkGlobalFactId> {
@@ -551,7 +592,7 @@ impl<'a> X1MappedReadHandle<'a> {
         self.lookup_name_values(S::GlobalNames, &normalized, |candidate| candidate.value)
     }
 
-    fn globals_by_domain_name_kind(
+    pub(super) fn globals_by_domain_name_kind(
         self,
         domain: HbkLanguageDomain,
         name: &str,
@@ -571,7 +612,7 @@ impl<'a> X1MappedReadHandle<'a> {
         X1LookupValueIter::new(index, range, |candidate| candidate.value)
     }
 
-    fn module_events(
+    pub(super) fn module_events(
         self,
         module_context_key: &str,
     ) -> X1LookupValueIter<'a, OwnerNameLookup<StringId, HbkCallableId>, HbkCallableId> {
@@ -586,7 +627,7 @@ impl<'a> X1MappedReadHandle<'a> {
         X1LookupValueIter::new(index, range, |candidate| candidate.value)
     }
 
-    fn module_event_by_context_name(
+    pub(super) fn module_event_by_context_name(
         self,
         module_context_key: &str,
         name: &str,
@@ -605,7 +646,7 @@ impl<'a> X1MappedReadHandle<'a> {
         X1LookupValueIter::new(index, range, |candidate| candidate.value)
     }
 
-    fn module_context_events(
+    pub(super) fn module_context_events(
         self,
         domain: HbkLanguageDomain,
         language_key: &str,
@@ -626,7 +667,7 @@ impl<'a> X1MappedReadHandle<'a> {
         X1LookupValueIter::new(index, range, |candidate| candidate.value)
     }
 
-    fn query_table_by_id(self, id: &str) -> Option<HbkQueryTableId> {
+    pub(super) fn query_table_by_id(self, id: &str) -> Option<HbkQueryTableId> {
         self.lookup_id_one(
             S::QueryTableIds,
             id,
@@ -634,7 +675,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn query_tables_by_name(
+    pub(super) fn query_tables_by_name(
         self,
         name: &str,
     ) -> X1LookupValueIter<'a, NameLookup<HbkQueryTableId>, HbkQueryTableId> {
@@ -642,7 +683,7 @@ impl<'a> X1MappedReadHandle<'a> {
         self.lookup_name_values(S::QueryTableNames, &normalized, |candidate| candidate.value)
     }
 
-    fn query_tables_by_syntax(
+    pub(super) fn query_tables_by_syntax(
         self,
         syntax: &str,
     ) -> X1LookupValueIter<'a, NameLookup<HbkQueryTableId>, HbkQueryTableId> {
@@ -652,7 +693,7 @@ impl<'a> X1MappedReadHandle<'a> {
         })
     }
 
-    fn query_tables_by_identifier(
+    pub(super) fn query_tables_by_identifier(
         self,
         identifier: &str,
     ) -> X1LookupValueIter<'a, NameLookup<HbkQueryTableId>, HbkQueryTableId> {
@@ -662,7 +703,7 @@ impl<'a> X1MappedReadHandle<'a> {
         })
     }
 
-    fn query_fields(self, table: HbkQueryTableId) -> X1RecordIter<'a, HbkQueryFieldId> {
+    pub(super) fn query_fields(self, table: HbkQueryTableId) -> X1RecordIter<'a, HbkQueryFieldId> {
         self.csr_values(
             S::QueryFieldsByTableKeys,
             S::QueryFieldsByTableOffsets,
@@ -671,7 +712,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn query_fields_by_name(
+    pub(super) fn query_fields_by_name(
         self,
         table: HbkQueryTableId,
         name: &str,
@@ -683,7 +724,10 @@ impl<'a> X1MappedReadHandle<'a> {
         })
     }
 
-    fn query_parameters(self, table: HbkQueryTableId) -> X1RecordIter<'a, HbkQueryParameterId> {
+    pub(super) fn query_parameters(
+        self,
+        table: HbkQueryTableId,
+    ) -> X1RecordIter<'a, HbkQueryParameterId> {
         self.csr_values(
             S::QueryParametersByTableKeys,
             S::QueryParametersByTableOffsets,
@@ -692,7 +736,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn query_parameters_by_name(
+    pub(super) fn query_parameters_by_name(
         self,
         table: HbkQueryTableId,
         name: &str,
@@ -710,7 +754,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn language_fact_by_id(self, id: &str) -> Option<HbkLanguageFactId> {
+    pub(super) fn language_fact_by_id(self, id: &str) -> Option<HbkLanguageFactId> {
         self.lookup_id_one(
             S::LanguageIds,
             id,
@@ -718,7 +762,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn language_facts_by_name(
+    pub(super) fn language_facts_by_name(
         self,
         name: &str,
     ) -> X1LookupValueIter<'a, NameLookup<HbkLanguageFactId>, HbkLanguageFactId> {
@@ -726,18 +770,21 @@ impl<'a> X1MappedReadHandle<'a> {
         self.lookup_name_values(S::LanguageNames, &normalized, |candidate| candidate.value)
     }
 
-    fn enum_by_id(self, id: &str) -> Option<HbkEnumId> {
+    pub(super) fn enum_by_id(self, id: &str) -> Option<HbkEnumId> {
         self.lookup_id_one(S::EnumIds, id, |candidate: IdLookup<HbkEnumId>| {
             candidate.value
         })
     }
 
-    fn enums_by_name(self, name: &str) -> X1LookupValueIter<'a, NameLookup<HbkEnumId>, HbkEnumId> {
+    pub(super) fn enums_by_name(
+        self,
+        name: &str,
+    ) -> X1LookupValueIter<'a, NameLookup<HbkEnumId>, HbkEnumId> {
         let normalized = x1_normalize_lookup_key(name);
         self.lookup_name_values(S::EnumNames, &normalized, |candidate| candidate.value)
     }
 
-    fn enum_value_by_id(self, id: &str) -> Option<HbkEnumValueId> {
+    pub(super) fn enum_value_by_id(self, id: &str) -> Option<HbkEnumValueId> {
         self.lookup_id_one(
             S::EnumValueIds,
             id,
@@ -745,7 +792,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn enum_values(self, owner: HbkEnumId) -> X1RecordIter<'a, HbkEnumValueId> {
+    pub(super) fn enum_values(self, owner: HbkEnumId) -> X1RecordIter<'a, HbkEnumValueId> {
         self.csr_values(
             S::EnumValuesByEnumKeys,
             S::EnumValuesByEnumOffsets,
@@ -754,7 +801,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn enum_values_by_name(
+    pub(super) fn enum_values_by_name(
         self,
         owner: HbkEnumId,
         name: &str,
@@ -765,7 +812,7 @@ impl<'a> X1MappedReadHandle<'a> {
         })
     }
 
-    fn availability_contexts(self, fact: HbkFactRef) -> X1RecordIter<'a, StringId> {
+    pub(super) fn availability_contexts(self, fact: HbkFactRef) -> X1RecordIter<'a, StringId> {
         self.csr_values(
             S::AvailabilityByFactKeys,
             S::AvailabilityByFactOffsets,
@@ -774,7 +821,7 @@ impl<'a> X1MappedReadHandle<'a> {
         )
     }
 
-    fn available_since(self, fact: HbkFactRef) -> Option<StringId> {
+    pub(super) fn available_since(self, fact: HbkFactRef) -> Option<StringId> {
         let index = self.generation.vector(S::AvailabilitySinceByFact);
         binary_search_view(&index, |candidate: FactStringLookup| {
             candidate.fact.cmp(&fact)
@@ -788,7 +835,7 @@ impl<'a> X1MappedReadHandle<'a> {
         })
     }
 
-    fn relations_by_source_kind(
+    pub(super) fn relations_by_source_kind(
         self,
         source: HbkFactRef,
         kind: &str,
@@ -908,75 +955,75 @@ impl<'a> X1MappedReadHandle<'a> {
         X1RecordIter::from_bounds(values, start, end)
     }
 
-    fn platform_type(self, id: HbkPlatformTypeId) -> X1PlatformTypeView<'a> {
+    pub(super) fn platform_type(self, id: HbkPlatformTypeId) -> X1PlatformTypeView<'a> {
         X1PlatformTypeView {
             handle: self,
             head: self.generation.record(S::PlatformTypes, id.0 as usize),
         }
     }
 
-    fn type_member(self, id: HbkTypeMemberId) -> X1TypeMemberView<'a> {
+    pub(super) fn type_member(self, id: HbkTypeMemberId) -> X1TypeMemberView<'a> {
         X1TypeMemberView {
             handle: self,
             head: self.generation.record(S::TypeMembers, id.0 as usize),
         }
     }
 
-    fn callable(self, id: HbkCallableId) -> X1CallableView<'a> {
+    pub(super) fn callable(self, id: HbkCallableId) -> X1CallableView<'a> {
         X1CallableView {
             handle: self,
             head: self.generation.record(S::Callables, id.0 as usize),
         }
     }
 
-    fn global(self, id: HbkGlobalFactId) -> X1GlobalFactView<'a> {
+    pub(super) fn global(self, id: HbkGlobalFactId) -> X1GlobalFactView<'a> {
         X1GlobalFactView {
             handle: self,
             head: self.generation.record(S::Globals, id.0 as usize),
         }
     }
 
-    fn query_table(self, id: HbkQueryTableId) -> X1QueryTableView<'a> {
+    pub(super) fn query_table(self, id: HbkQueryTableId) -> X1QueryTableView<'a> {
         X1QueryTableView {
             handle: self,
             head: self.generation.record(S::QueryTables, id.0 as usize),
         }
     }
 
-    fn query_field(self, id: HbkQueryFieldId) -> X1QueryFieldView<'a> {
+    pub(super) fn query_field(self, id: HbkQueryFieldId) -> X1QueryFieldView<'a> {
         X1QueryFieldView {
             handle: self,
             head: self.generation.record(S::QueryFields, id.0 as usize),
         }
     }
 
-    fn query_parameter(self, id: HbkQueryParameterId) -> X1QueryParameterView<'a> {
+    pub(super) fn query_parameter(self, id: HbkQueryParameterId) -> X1QueryParameterView<'a> {
         X1QueryParameterView {
             handle: self,
             head: self.generation.record(S::QueryParameters, id.0 as usize),
         }
     }
 
-    fn language_fact(self, id: HbkLanguageFactId) -> X1LanguageFactView<'a> {
+    pub(super) fn language_fact(self, id: HbkLanguageFactId) -> X1LanguageFactView<'a> {
         X1LanguageFactView {
             handle: self,
             head: self.generation.record(S::LanguageFacts, id.0 as usize),
         }
     }
 
-    fn enum_fact(self, id: HbkEnumId) -> X1EnumView {
+    pub(super) fn enum_fact(self, id: HbkEnumId) -> X1EnumView {
         X1EnumView {
             head: self.generation.record(S::Enums, id.0 as usize),
         }
     }
 
-    fn enum_value(self, id: HbkEnumValueId) -> X1EnumValueView {
+    pub(super) fn enum_value(self, id: HbkEnumValueId) -> X1EnumValueView {
         X1EnumValueView {
             head: self.generation.record(S::EnumValues, id.0 as usize),
         }
     }
 
-    fn source(self, fact: HbkFactRef) -> Option<X1FactSourceView> {
+    pub(super) fn source(self, fact: HbkFactRef) -> Option<X1FactSourceView> {
         let sources = self.generation.vector(S::SourceByFact);
         binary_search_view(&sources, |candidate: FactSourceLookup| {
             candidate.fact.cmp(&fact)
@@ -990,7 +1037,7 @@ impl<'a> X1MappedReadHandle<'a> {
         })
     }
 
-    fn filtered_globals(
+    pub(super) fn filtered_globals(
         self,
         filter: X1AvailabilityFilter,
         kind: Option<HbkGlobalFactKind>,
@@ -1005,7 +1052,7 @@ impl<'a> X1MappedReadHandle<'a> {
         }
     }
 
-    fn filtered_members(
+    pub(super) fn filtered_members(
         self,
         owner: HbkPlatformTypeId,
         filter: X1AvailabilityFilter,
@@ -1014,12 +1061,15 @@ impl<'a> X1MappedReadHandle<'a> {
         let range = self
             .generation
             .vector(S::TypeMemberRanges)
-            .get::<X1TypeMemberRangeHot>(owner.0 as usize)
-            .expect("X1 member owner range was fully validated before access");
+            .get::<X1TypeMemberRangeHot>(owner.0 as usize);
+        let (index, end) = range.map_or((0, 0), |range| {
+            let index = range.member_start as usize;
+            (index, index + range.member_count as usize)
+        });
         X1FilteredMemberIter {
             hot: self.generation.vector(S::MemberAvailabilityHot),
-            index: range.member_start as usize,
-            end: (range.member_start + range.member_count) as usize,
+            index,
+            end,
             filter,
             kind,
         }
@@ -1027,7 +1077,7 @@ impl<'a> X1MappedReadHandle<'a> {
 }
 
 #[allow(dead_code)]
-struct X1RecordIter<'a, T> {
+pub(super) struct X1RecordIter<'a, T> {
     view: VectorView<'a>,
     index: usize,
     end: usize,
@@ -1090,6 +1140,47 @@ impl<T: BinaryValue> ExactSizeIterator for X1RecordIter<'_, T> {
     }
 }
 
+pub(super) struct X1ViewIter<'a, Head, View> {
+    handle: X1MappedReadHandle<'a>,
+    records: X1RecordIter<'a, Head>,
+    map: fn(X1MappedReadHandle<'a>, Head) -> View,
+}
+
+impl<'a, Head, View> X1ViewIter<'a, Head, View> {
+    fn new(
+        handle: X1MappedReadHandle<'a>,
+        records: X1RecordIter<'a, Head>,
+        map: fn(X1MappedReadHandle<'a>, Head) -> View,
+    ) -> Self {
+        Self {
+            handle,
+            records,
+            map,
+        }
+    }
+}
+
+impl<Head: BinaryValue, View> Iterator for X1ViewIter<'_, Head, View> {
+    type Item = View;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.records
+            .next()
+            .map(|head| (self.map)(self.handle, head))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
+    }
+}
+
+impl<Head: BinaryValue, View> ExactSizeIterator for X1ViewIter<'_, Head, View> {
+    fn len(&self) -> usize {
+        self.records.len()
+    }
+}
+
 trait X1IdLookupRecord {
     fn key(self) -> StringId;
 }
@@ -1126,7 +1217,7 @@ impl<Owner: Copy, Value: Copy> X1OwnerNameLookupRecord<Owner> for OwnerNameLooku
 }
 
 #[allow(dead_code)]
-struct X1LookupValueIter<'a, Record, Value> {
+pub(super) struct X1LookupValueIter<'a, Record, Value> {
     records: X1RecordIter<'a, Record>,
     value: fn(Record) -> Value,
 }
@@ -1160,7 +1251,7 @@ impl<Record: BinaryValue, Value> ExactSizeIterator for X1LookupValueIter<'_, Rec
 }
 
 #[allow(dead_code)]
-enum X1MemberLookupIter<'a> {
+pub(super) enum X1MemberLookupIter<'a> {
     Name(
         X1LookupValueIter<'a, OwnerNameLookup<HbkPlatformTypeId, HbkTypeMemberId>, HbkTypeMemberId>,
     ),
@@ -1194,7 +1285,7 @@ impl ExactSizeIterator for X1MemberLookupIter<'_> {
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
-struct X1FilteredGlobalIter<'a> {
+pub(super) struct X1FilteredGlobalIter<'a> {
     locators: VectorView<'a>,
     masks: VectorView<'a>,
     kinds: VectorView<'a>,
@@ -1238,7 +1329,7 @@ impl<'a> Iterator for X1FilteredGlobalIter<'a> {
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
-struct X1FilteredMemberIter<'a> {
+pub(super) struct X1FilteredMemberIter<'a> {
     hot: VectorView<'a>,
     index: usize,
     end: usize,
@@ -1273,17 +1364,17 @@ impl<'a> Iterator for X1FilteredMemberIter<'a> {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct X1NameView {
+pub(super) struct X1NameView {
     head: X1NameHead,
 }
 
 #[allow(dead_code)]
 impl X1NameView {
-    fn primary(self) -> StringId {
+    pub(super) fn primary(self) -> StringId {
         self.head.primary
     }
 
-    fn alias(self) -> Option<StringId> {
+    pub(super) fn alias(self) -> Option<StringId> {
         (self.head.alias != NONE_U32).then_some(StringId(self.head.alias))
     }
 }
@@ -1303,7 +1394,7 @@ macro_rules! x1_mapped_view {
     ($name:ident, $head:ty) => {
         #[allow(dead_code)]
         #[derive(Clone, Copy)]
-        struct $name<'a> {
+        pub(super) struct $name<'a> {
             handle: X1MappedReadHandle<'a>,
             head: $head,
         }
@@ -1326,17 +1417,17 @@ x1_mapped_view!(X1TemplateBindingView, X1TemplateBindingHead);
 
 #[allow(dead_code)]
 impl<'a> X1PlatformTypeView<'a> {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
     }
 
-    fn metadata_template(self) -> Option<X1MetadataTemplateView<'a>> {
+    pub(super) fn metadata_template(self) -> Option<X1MetadataTemplateView<'a>> {
         (self.head.metadata_template != NONE_U32).then(|| X1MetadataTemplateView {
             handle: self.handle,
             head: self
@@ -1346,11 +1437,11 @@ impl<'a> X1PlatformTypeView<'a> {
         })
     }
 
-    fn type_template_key(self) -> Option<HbkPlatformTypeTemplateKey> {
+    pub(super) fn type_template_key(self) -> Option<HbkPlatformTypeTemplateKey> {
         x1_template_key(self.head.type_template_key)
     }
 
-    fn availability_contexts(self) -> X1RecordIter<'a, StringId> {
+    pub(super) fn availability_contexts(self) -> X1RecordIter<'a, StringId> {
         self.handle
             .generation
             .records(S::StringIds, self.head.availability_contexts)
@@ -1359,11 +1450,11 @@ impl<'a> X1PlatformTypeView<'a> {
 
 #[allow(dead_code)]
 impl<'a> X1MetadataTemplateView<'a> {
-    fn metadata_kind(self) -> StringId {
+    pub(super) fn metadata_kind(self) -> StringId {
         self.head.metadata_kind
     }
 
-    fn template_parameters(self) -> X1RecordIter<'a, StringId> {
+    pub(super) fn template_parameters(self) -> X1RecordIter<'a, StringId> {
         self.handle
             .generation
             .records(S::StringIds, self.head.template_parameters)
@@ -1372,33 +1463,34 @@ impl<'a> X1MetadataTemplateView<'a> {
 
 #[allow(dead_code)]
 impl<'a> X1TypeMemberView<'a> {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn owner(self) -> HbkPlatformTypeId {
+    pub(super) fn owner(self) -> HbkPlatformTypeId {
         self.head.owner
     }
 
-    fn kind(self) -> HbkTypeMemberKind {
+    pub(super) fn kind(self) -> HbkTypeMemberKind {
         self.head.kind
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
     }
 
-    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+    pub(super) fn type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::TypeRefs, self.head.type_refs)
-            .map(move |head| X1TypeRefView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle.generation.records(S::TypeRefs, self.head.type_refs),
+            |handle, head| X1TypeRefView { handle, head },
+        )
     }
 
-    fn availability_contexts(self) -> X1RecordIter<'a, StringId> {
+    pub(super) fn availability_contexts(self) -> X1RecordIter<'a, StringId> {
         self.handle
             .generation
             .records(S::StringIds, self.head.availability_contexts)
@@ -1407,41 +1499,47 @@ impl<'a> X1TypeMemberView<'a> {
 
 #[allow(dead_code)]
 impl<'a> X1CallableView<'a> {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn owner(self) -> Option<HbkPlatformTypeId> {
+    pub(super) fn owner(self) -> Option<HbkPlatformTypeId> {
         (self.head.owner != NONE_U32).then_some(HbkPlatformTypeId(self.head.owner))
     }
 
-    fn kind(self) -> HbkCallableKind {
+    pub(super) fn kind(self) -> HbkCallableKind {
         self.head.kind
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
     }
 
-    fn signatures(self) -> impl ExactSizeIterator<Item = X1SignatureView<'a>> + 'a {
+    pub(super) fn signatures(self) -> X1ViewIter<'a, X1SignatureHead, X1SignatureView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::Signatures, self.head.signatures)
-            .map(move |head| X1SignatureView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle
+                .generation
+                .records(S::Signatures, self.head.signatures),
+            |handle, head| X1SignatureView { handle, head },
+        )
     }
 
-    fn return_type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+    pub(super) fn return_type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::TypeRefs, self.head.return_type_refs)
-            .map(move |head| X1TypeRefView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle
+                .generation
+                .records(S::TypeRefs, self.head.return_type_refs),
+            |handle, head| X1TypeRefView { handle, head },
+        )
     }
 
-    fn availability_contexts(self) -> X1RecordIter<'a, StringId> {
+    pub(super) fn availability_contexts(self) -> X1RecordIter<'a, StringId> {
         self.handle
             .generation
             .records(S::StringIds, self.head.availability_contexts)
@@ -1450,102 +1548,110 @@ impl<'a> X1CallableView<'a> {
 
 #[allow(dead_code)]
 impl<'a> X1SignatureView<'a> {
-    fn text(self) -> StringId {
+    pub(super) fn text(self) -> StringId {
         self.head.text
     }
 
-    fn parameters(self) -> impl ExactSizeIterator<Item = X1ParameterView<'a>> + 'a {
+    pub(super) fn parameters(self) -> X1ViewIter<'a, X1ParameterHead, X1ParameterView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::Parameters, self.head.parameters)
-            .map(move |head| X1ParameterView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle
+                .generation
+                .records(S::Parameters, self.head.parameters),
+            |handle, head| X1ParameterView { handle, head },
+        )
     }
 
-    fn return_type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+    pub(super) fn return_type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::TypeRefs, self.head.return_type_refs)
-            .map(move |head| X1TypeRefView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle
+                .generation
+                .records(S::TypeRefs, self.head.return_type_refs),
+            |handle, head| X1TypeRefView { handle, head },
+        )
     }
 }
 
 #[allow(dead_code)]
 impl<'a> X1ParameterView<'a> {
-    fn name(self) -> StringId {
+    pub(super) fn name(self) -> StringId {
         self.head.name
     }
 
-    fn required(self) -> bool {
+    pub(super) fn required(self) -> bool {
         self.head.required
     }
 
-    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+    pub(super) fn type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::TypeRefs, self.head.type_refs)
-            .map(move |head| X1TypeRefView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle.generation.records(S::TypeRefs, self.head.type_refs),
+            |handle, head| X1TypeRefView { handle, head },
+        )
     }
 }
 
 #[allow(dead_code)]
 impl<'a> X1GlobalFactView<'a> {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn kind(self) -> HbkGlobalFactKind {
+    pub(super) fn kind(self) -> HbkGlobalFactKind {
         self.head.kind
     }
 
-    fn domain(self) -> HbkLanguageDomain {
+    pub(super) fn domain(self) -> HbkLanguageDomain {
         self.head.domain
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
     }
 
-    fn callable(self) -> Option<HbkCallableId> {
+    pub(super) fn callable(self) -> Option<HbkCallableId> {
         (self.head.callable != NONE_U32).then_some(HbkCallableId(self.head.callable))
     }
 
-    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+    pub(super) fn type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::TypeRefs, self.head.type_refs)
-            .map(move |head| X1TypeRefView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle.generation.records(S::TypeRefs, self.head.type_refs),
+            |handle, head| X1TypeRefView { handle, head },
+        )
     }
 }
 
 #[allow(dead_code)]
 impl<'a> X1QueryTableView<'a> {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
     }
 
-    fn syntax(self) -> Option<X1NameView> {
+    pub(super) fn syntax(self) -> Option<X1NameView> {
         self.head.syntax_present.then_some(X1NameView {
             head: self.head.syntax,
         })
     }
 
-    fn identifier(self) -> Option<StringId> {
+    pub(super) fn identifier(self) -> Option<StringId> {
         x1_optional_string(self.head.identifier)
     }
 
-    fn role(self) -> Option<model::QueryTableRole> {
+    pub(super) fn role(self) -> Option<model::QueryTableRole> {
         match self.head.role {
             0 => None,
             1 => Some(model::QueryTableRole::Primary),
@@ -1555,14 +1661,16 @@ impl<'a> X1QueryTableView<'a> {
         }
     }
 
-    fn owner_path(self) -> impl ExactSizeIterator<Item = X1NameView> + 'a {
-        self.handle
-            .generation
-            .records(S::Names, self.head.owner_path)
-            .map(|head| X1NameView { head })
+    pub(super) fn owner_path(self) -> X1ViewIter<'a, X1NameHead, X1NameView> {
+        let handle = self.handle;
+        X1ViewIter::new(
+            handle,
+            handle.generation.records(S::Names, self.head.owner_path),
+            |_handle, head| X1NameView { head },
+        )
     }
 
-    fn template_parameters(self) -> X1RecordIter<'a, StringId> {
+    pub(super) fn template_parameters(self) -> X1RecordIter<'a, StringId> {
         self.handle
             .generation
             .records(S::StringIds, self.head.template_parameters)
@@ -1571,120 +1679,129 @@ impl<'a> X1QueryTableView<'a> {
 
 #[allow(dead_code)]
 impl<'a> X1QueryFieldView<'a> {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn owner(self) -> HbkQueryTableId {
+    pub(super) fn owner(self) -> HbkQueryTableId {
         self.head.owner
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
     }
 
-    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+    pub(super) fn type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::TypeRefs, self.head.type_refs)
-            .map(move |head| X1TypeRefView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle.generation.records(S::TypeRefs, self.head.type_refs),
+            |handle, head| X1TypeRefView { handle, head },
+        )
     }
 
-    fn note(self) -> Option<StringId> {
+    pub(super) fn note(self) -> Option<StringId> {
         x1_optional_string(self.head.note)
     }
 }
 
 #[allow(dead_code)]
 impl<'a> X1QueryParameterView<'a> {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn owner(self) -> HbkQueryTableId {
+    pub(super) fn owner(self) -> HbkQueryTableId {
         self.head.owner
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
     }
 
-    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+    pub(super) fn type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::TypeRefs, self.head.type_refs)
-            .map(move |head| X1TypeRefView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle.generation.records(S::TypeRefs, self.head.type_refs),
+            |handle, head| X1TypeRefView { handle, head },
+        )
     }
 
-    fn default_value(self) -> Option<StringId> {
+    pub(super) fn default_value(self) -> Option<StringId> {
         x1_optional_string(self.head.default_value)
     }
 }
 
 #[allow(dead_code)]
 impl<'a> X1LanguageFactView<'a> {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn kind(self) -> SearchDocumentKind {
+    pub(super) fn kind(self) -> SearchDocumentKind {
         self.head.kind
     }
 
-    fn domain(self) -> HbkLanguageDomain {
+    pub(super) fn domain(self) -> HbkLanguageDomain {
         self.head.domain
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
     }
 
-    fn signatures(self) -> impl ExactSizeIterator<Item = X1SignatureView<'a>> + 'a {
+    pub(super) fn signatures(self) -> X1ViewIter<'a, X1SignatureHead, X1SignatureView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::Signatures, self.head.signatures)
-            .map(move |head| X1SignatureView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle
+                .generation
+                .records(S::Signatures, self.head.signatures),
+            |handle, head| X1SignatureView { handle, head },
+        )
     }
 
-    fn type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+    pub(super) fn type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::TypeRefs, self.head.type_refs)
-            .map(move |head| X1TypeRefView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle.generation.records(S::TypeRefs, self.head.type_refs),
+            |handle, head| X1TypeRefView { handle, head },
+        )
     }
 
-    fn return_type_refs(self) -> impl ExactSizeIterator<Item = X1TypeRefView<'a>> + 'a {
+    pub(super) fn return_type_refs(self) -> X1ViewIter<'a, X1TypeRefHead, X1TypeRefView<'a>> {
         let handle = self.handle;
-        handle
-            .generation
-            .records(S::TypeRefs, self.head.return_type_refs)
-            .map(move |head| X1TypeRefView { handle, head })
+        X1ViewIter::new(
+            handle,
+            handle
+                .generation
+                .records(S::TypeRefs, self.head.return_type_refs),
+            |handle, head| X1TypeRefView { handle, head },
+        )
     }
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
-struct X1EnumView {
+pub(super) struct X1EnumView {
     head: X1EnumHead,
 }
 
 #[allow(dead_code)]
 impl X1EnumView {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
@@ -1693,21 +1810,21 @@ impl X1EnumView {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
-struct X1EnumValueView {
+pub(super) struct X1EnumValueView {
     head: X1EnumValueHead,
 }
 
 #[allow(dead_code)]
 impl X1EnumValueView {
-    fn id(self) -> StringId {
+    pub(super) fn id(self) -> StringId {
         self.head.id
     }
 
-    fn owner(self) -> HbkEnumId {
+    pub(super) fn owner(self) -> HbkEnumId {
         self.head.owner
     }
 
-    fn name(self) -> X1NameView {
+    pub(super) fn name(self) -> X1NameView {
         X1NameView {
             head: self.head.name,
         }
@@ -1716,7 +1833,7 @@ impl X1EnumValueView {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum X1TypeRefTargetKind {
+pub(super) enum X1TypeRefTargetKind {
     Ok,
     Unresolved,
     Ambiguous,
@@ -1724,11 +1841,11 @@ enum X1TypeRefTargetKind {
 
 #[allow(dead_code)]
 impl<'a> X1TypeRefView<'a> {
-    fn name(self) -> StringId {
+    pub(super) fn name(self) -> StringId {
         self.head.name
     }
 
-    fn target_kind(self) -> X1TypeRefTargetKind {
+    pub(super) fn target_kind(self) -> X1TypeRefTargetKind {
         match self.head.target_tag {
             0 => X1TypeRefTargetKind::Ok,
             1 => X1TypeRefTargetKind::Unresolved,
@@ -1737,21 +1854,21 @@ impl<'a> X1TypeRefView<'a> {
         }
     }
 
-    fn target_ok(self) -> Option<StringId> {
+    pub(super) fn target_ok(self) -> Option<StringId> {
         (self.head.target_tag == 0).then_some(StringId(self.head.target_ok))
     }
 
-    fn ambiguous_targets(self) -> X1RecordIter<'a, StringId> {
+    pub(super) fn ambiguous_targets(self) -> X1RecordIter<'a, StringId> {
         self.handle
             .generation
             .records(S::StringIds, self.head.ambiguous_targets)
     }
 
-    fn type_template_key(self) -> Option<HbkPlatformTypeTemplateKey> {
+    pub(super) fn type_template_key(self) -> Option<HbkPlatformTypeTemplateKey> {
         x1_template_key(self.head.type_template_key)
     }
 
-    fn template_binding(self) -> Option<X1TemplateBindingView<'a>> {
+    pub(super) fn template_binding(self) -> Option<X1TemplateBindingView<'a>> {
         (self.head.template_binding != NONE_U32).then(|| X1TemplateBindingView {
             handle: self.handle,
             head: self
@@ -1764,12 +1881,12 @@ impl<'a> X1TypeRefView<'a> {
 
 #[allow(dead_code)]
 impl<'a> X1TemplateBindingView<'a> {
-    fn template_key(self) -> HbkPlatformTypeTemplateKey {
+    pub(super) fn template_key(self) -> HbkPlatformTypeTemplateKey {
         x1_template_key(self.head.template_key)
             .expect("X1 template binding key was fully validated before access")
     }
 
-    fn arguments(self) -> X1RecordIter<'a, model::TemplateParameterBinding> {
+    pub(super) fn arguments(self) -> X1RecordIter<'a, model::TemplateParameterBinding> {
         self.handle
             .generation
             .records(S::TemplateArguments, self.head.arguments)
@@ -1778,29 +1895,29 @@ impl<'a> X1TemplateBindingView<'a> {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
-struct X1FactSourceView {
+pub(super) struct X1FactSourceView {
     source: HbkFactSource,
 }
 
 #[allow(dead_code)]
 impl X1FactSourceView {
-    fn hbk_path(self) -> StringId {
+    pub(super) fn hbk_path(self) -> StringId {
         self.source.hbk_path
     }
 
-    fn locale(self) -> StringId {
+    pub(super) fn locale(self) -> StringId {
         self.source.locale
     }
 
-    fn toc_path(self) -> Option<StringId> {
+    pub(super) fn toc_path(self) -> Option<StringId> {
         self.source.toc_path
     }
 
-    fn html_path(self) -> StringId {
+    pub(super) fn html_path(self) -> StringId {
         self.source.html_path
     }
 
-    fn page_title(self) -> StringId {
+    pub(super) fn page_title(self) -> StringId {
         self.source.page_title
     }
 }
@@ -1931,7 +2048,7 @@ impl X1Range {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct X1NameHead {
+pub(super) struct X1NameHead {
     primary: StringId,
     alias: u32,
 }
@@ -1966,7 +2083,7 @@ impl X1TemplateKeyHead {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1PlatformTypeHead {
+pub(super) struct X1PlatformTypeHead {
     id: StringId,
     name: X1NameHead,
     metadata_template: u32,
@@ -1975,13 +2092,13 @@ struct X1PlatformTypeHead {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1MetadataTemplateHead {
+pub(super) struct X1MetadataTemplateHead {
     metadata_kind: StringId,
     template_parameters: X1Range,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1TypeMemberHead {
+pub(super) struct X1TypeMemberHead {
     id: StringId,
     owner: HbkPlatformTypeId,
     kind: HbkTypeMemberKind,
@@ -2012,7 +2129,7 @@ struct X1TypeNameHashBucket {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1CallableHead {
+pub(super) struct X1CallableHead {
     id: StringId,
     owner: u32,
     kind: HbkCallableKind,
@@ -2023,21 +2140,21 @@ struct X1CallableHead {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1SignatureHead {
+pub(super) struct X1SignatureHead {
     text: StringId,
     parameters: X1Range,
     return_type_refs: X1Range,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1ParameterHead {
+pub(super) struct X1ParameterHead {
     name: StringId,
     required: bool,
     type_refs: X1Range,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1GlobalFactHead {
+pub(super) struct X1GlobalFactHead {
     id: StringId,
     kind: HbkGlobalFactKind,
     domain: HbkLanguageDomain,
@@ -2047,7 +2164,7 @@ struct X1GlobalFactHead {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1QueryTableHead {
+pub(super) struct X1QueryTableHead {
     id: StringId,
     name: X1NameHead,
     syntax_present: bool,
@@ -2059,7 +2176,7 @@ struct X1QueryTableHead {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1QueryFieldHead {
+pub(super) struct X1QueryFieldHead {
     id: StringId,
     owner: HbkQueryTableId,
     name: X1NameHead,
@@ -2068,7 +2185,7 @@ struct X1QueryFieldHead {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1QueryParameterHead {
+pub(super) struct X1QueryParameterHead {
     id: StringId,
     owner: HbkQueryTableId,
     name: X1NameHead,
@@ -2077,7 +2194,7 @@ struct X1QueryParameterHead {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1LanguageFactHead {
+pub(super) struct X1LanguageFactHead {
     id: StringId,
     kind: SearchDocumentKind,
     domain: HbkLanguageDomain,
@@ -2101,7 +2218,7 @@ struct X1EnumValueHead {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1TypeRefHead {
+pub(super) struct X1TypeRefHead {
     name: StringId,
     target_tag: u8,
     target_ok: u32,
@@ -2111,7 +2228,7 @@ struct X1TypeRefHead {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct X1TemplateBindingHead {
+pub(super) struct X1TemplateBindingHead {
     template_key: X1TemplateKeyHead,
     arguments: X1Range,
 }
@@ -2306,6 +2423,21 @@ x1_binary_record!(X1TemplateBindingHead {
     template_key: X1TemplateKeyHead,
     arguments: X1Range,
 });
+
+impl HbkFactSnapshot {
+    /// Opens the current immutable generation in an X1 stable slot.
+    ///
+    /// Compatibility is checked against caller-supplied identity. This path
+    /// only reads the slot metadata and mapped X1 generation; it never opens
+    /// the source HBK or a SQLite provider and has no fallback path.
+    pub fn open_x1_slot(
+        slot_path: impl AsRef<Path>,
+        expected: HbkFactSnapshotExpectation,
+    ) -> Result<Self, SearchError> {
+        let generation = X1StableSlotGeneration::open(slot_path.as_ref(), &expected)?;
+        Ok(Self::from_mapped_generation(generation))
+    }
+}
 
 impl HbkFactSnapshotBuildReport {
     /// Writes a validated immutable X1 generation without enabling it as a
@@ -3629,18 +3761,7 @@ fn x1_availability_word(snapshot: &HbkFactSnapshot, contexts: &[StringId]) -> io
 }
 
 fn x1_context_code_bit(code: &str) -> Option<u16> {
-    match code {
-        "thin_client" => Some(1 << 0),
-        "web_client" => Some(1 << 1),
-        "mobile_client" => Some(1 << 2),
-        "server" => Some(1 << 3),
-        "thick_client" => Some(1 << 4),
-        "external_connection" => Some(1 << 5),
-        "mobile_application_client" => Some(1 << 6),
-        "mobile_application_server" => Some(1 << 7),
-        "mobile_standalone_server" => Some(1 << 8),
-        _ => None,
-    }
+    availability_context_code_bit(code)
 }
 
 fn x1_member_kind_tag(kind: HbkTypeMemberKind) -> u8 {
@@ -6280,9 +6401,17 @@ mod tests {
 
         fs::remove_file(source).unwrap();
         fs::remove_file(index).unwrap();
-        let mapped = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
-        assert_eq!(mapped.artifact_len() as u64, first.artifact_bytes);
-        assert_eq!(mapped.generation.counts, expected_counts);
+        let mapped = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        assert_eq!(mapped.counts(), expected_counts);
+        assert_eq!(mapped.source_locale(), Some("ru"));
+        let read = mapped.worker_handle();
+        let language = read
+            .language_facts_by_name("Строка")
+            .next()
+            .expect("mapped public lookup must remain available after input removal");
+        let language = read.language_fact(language);
+        assert_eq!(read.string(language.name().primary()), "Строка");
+        assert_eq!(language.signatures().len(), 0);
 
         drop(mapped);
         fs::remove_dir_all(root).unwrap();
@@ -6295,8 +6424,8 @@ mod tests {
         let (report, identity, _, _) =
             fixture_build_report(&root.join("input"), b"locked source generation");
         report.publish_x1_generation(&slot).unwrap();
-        let first = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
-        let second = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
+        let first = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        let second = first.clone();
         let current_before = fs::read(slot.join(X1_SLOT_CURRENT_FILE)).unwrap();
         let entries_before = slot_tree_names(&slot);
 
@@ -6603,7 +6732,7 @@ mod tests {
             ("source_locale", wrong_source_locale),
             ("source_sha256", wrong_source),
         ] {
-            let Err(error) = X1StableSlotGeneration::open(&slot, &expectation) else {
+            let Err(error) = HbkFactSnapshot::open_x1_slot(&slot, expectation) else {
                 panic!("incompatible stable slot must fail closed");
             };
             assert!(matches!(
@@ -6618,10 +6747,10 @@ mod tests {
             ));
         }
 
-        let first = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
-        let second = X1StableSlotGeneration::open(&slot, &runtime_expectation(&identity)).unwrap();
-        assert_eq!(first.generation.identity, identity);
-        assert_eq!(second.generation.identity, identity);
+        let first = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        let second = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        assert_eq!(first.counts(), report.snapshot.counts());
+        assert_eq!(second.counts(), report.snapshot.counts());
 
         drop(first);
         drop(second);
@@ -7215,6 +7344,169 @@ mod tests {
     }
 
     #[test]
+    fn public_availability_filter_has_owned_and_mapped_parity() {
+        let root = temp_path("x1-public-filter-parity");
+        let slot = root.join("slot");
+        let identity = test_identity();
+        let mut owned = forward_payload_fixture_snapshot();
+        let find_string = |value: &str| {
+            StringId(
+                owned
+                    .strings
+                    .iter()
+                    .position(|candidate| candidate == value)
+                    .unwrap() as u32,
+            )
+        };
+        let server = find_string("server");
+        let thin = find_string("thin_client");
+        let web = find_string("web_client");
+        owned.availability_by_fact = CsrIndex::from_pairs(vec![
+            (HbkFactRef::TypeMember(HbkTypeMemberId(1)), server),
+            (HbkFactRef::TypeMember(HbkTypeMemberId(2)), thin),
+            (HbkFactRef::TypeMember(HbkTypeMemberId(2)), web),
+            (HbkFactRef::Global(HbkGlobalFactId(1)), server),
+            (HbkFactRef::Global(HbkGlobalFactId(1)), thin),
+            (HbkFactRef::Global(HbkGlobalFactId(2)), thin),
+        ]);
+        let bytes = encode_snapshot_with_identity(&owned, &identity).unwrap();
+        write_content_addressed_test_slot(&slot, &bytes);
+        let mapped = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        let owned_read = owned.worker_handle();
+        let mapped_read = mapped.worker_handle();
+
+        let any_server = HbkAvailabilityFilter::any(["server"]).unwrap();
+        let all_server_thin = HbkAvailabilityFilter::all(["server", "thin_client"]).unwrap();
+        let any_empty = HbkAvailabilityFilter::any(std::iter::empty()).unwrap();
+        let unfiltered = HbkAvailabilityFilter::unfiltered();
+        assert_eq!(any_server.mode(), HbkAvailabilityFilterMode::Any);
+        assert_eq!(all_server_thin.mode(), HbkAvailabilityFilterMode::All);
+        assert!(unfiltered.is_unfiltered());
+        let error = HbkAvailabilityFilter::any(["module_context_kind"]).unwrap_err();
+        assert_eq!(error.code(), "module_context_kind");
+
+        for filter in [any_server, all_server_thin, any_empty, unfiltered] {
+            for kind in [
+                None,
+                Some(HbkGlobalFactKind::Method),
+                Some(HbkGlobalFactKind::Property),
+            ] {
+                assert_eq!(
+                    mapped_read
+                        .filtered_global_ids(filter, kind)
+                        .collect::<Vec<_>>(),
+                    owned_read
+                        .filtered_global_ids(filter, kind)
+                        .collect::<Vec<_>>()
+                );
+            }
+            for owner in [
+                HbkPlatformTypeId(0),
+                HbkPlatformTypeId(1),
+                HbkPlatformTypeId(u32::MAX),
+            ] {
+                for kind in [
+                    None,
+                    Some(HbkTypeMemberKind::Property),
+                    Some(HbkTypeMemberKind::Method),
+                    Some(HbkTypeMemberKind::Event),
+                    Some(HbkTypeMemberKind::EnumValue),
+                ] {
+                    assert_eq!(
+                        mapped_read
+                            .filtered_members(owner, filter, kind)
+                            .collect::<Vec<_>>(),
+                        owned_read
+                            .filtered_members(owner, filter, kind)
+                            .collect::<Vec<_>>()
+                    );
+                }
+            }
+        }
+
+        assert_eq!(
+            mapped_read
+                .filtered_global_ids(unfiltered, None)
+                .collect::<Vec<_>>(),
+            mapped_read.global_fact_ids().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            mapped_read
+                .filtered_members(HbkPlatformTypeId(0), unfiltered, None)
+                .collect::<Vec<_>>(),
+            mapped_read
+                .members_of_type(HbkPlatformTypeId(0))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            mapped_read
+                .filtered_members(HbkPlatformTypeId(u32::MAX), any_server, None)
+                .next()
+                .is_none()
+        );
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    #[test]
+    #[ignore = "run alone to isolate process-global allocation counters"]
+    fn public_mapped_filtered_traversal_allocates_nothing() {
+        let root = temp_path("x1-public-filter-allocation");
+        let slot = root.join("slot");
+        let identity = test_identity();
+        let owned = forward_payload_fixture_snapshot();
+        let bytes = encode_snapshot_with_identity(&owned, &identity).unwrap();
+        write_content_addressed_test_slot(&slot, &bytes);
+        let mapped = HbkFactSnapshot::open_x1_slot(&slot, runtime_expectation(&identity)).unwrap();
+        let read = mapped.worker_handle();
+        let filter = HbkAvailabilityFilter::any(["server"]).unwrap();
+
+        for _ in 0..8 {
+            traverse_public_filtered_views(read, filter);
+        }
+        let before = experiment_allocation_snapshot();
+        for _ in 0..128 {
+            traverse_public_filtered_views(read, filter);
+        }
+        let delta = experiment_allocation_snapshot().delta_since(before);
+        assert_eq!(delta.allocation_calls, 0);
+        assert_eq!(delta.reallocation_calls, 0);
+        assert_eq!(delta.allocated_bytes, 0);
+
+        drop(mapped);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "snapshot-experiment-alloc")]
+    fn traverse_public_filtered_views(read: HbkFactReadHandle<'_>, filter: HbkAvailabilityFilter) {
+        for id in read.filtered_global_ids(filter, None) {
+            let global = read.global_fact(id);
+            std::hint::black_box(global.id());
+            std::hint::black_box(global.kind());
+            std::hint::black_box(global.domain());
+            std::hint::black_box(global.name().primary());
+            for type_ref in global.type_refs() {
+                std::hint::black_box(type_ref.name());
+            }
+        }
+        for id in read.filtered_members(HbkPlatformTypeId(0), filter, None) {
+            let member = read.type_member(id);
+            std::hint::black_box(member.id());
+            std::hint::black_box(member.owner());
+            std::hint::black_box(member.kind());
+            std::hint::black_box(member.name().primary());
+            for type_ref in member.type_refs() {
+                std::hint::black_box(type_ref.name());
+            }
+            for context in member.availability_contexts() {
+                std::hint::black_box(read.string(context));
+            }
+        }
+    }
+
+    #[test]
     fn x1_mapped_lookup_surface_matches_owned_handle() {
         let root = temp_path("x1-lookup-surface");
         fs::create_dir_all(&root).unwrap();
@@ -7303,10 +7595,7 @@ mod tests {
 
         assert_lookup_eq(
             actual.members_of_type(HbkPlatformTypeId(0)),
-            expected
-                .members_of_type(HbkPlatformTypeId(0))
-                .iter()
-                .copied(),
+            expected.members_of_type(HbkPlatformTypeId(0)),
         );
         assert_lookup_eq(
             actual.members_of_type(HbkPlatformTypeId(9)),
@@ -7350,10 +7639,7 @@ mod tests {
         );
         assert_lookup_eq(
             actual.callables_of_type(HbkPlatformTypeId(0)),
-            expected
-                .callables_of_type(HbkPlatformTypeId(0))
-                .iter()
-                .copied(),
+            expected.callables_of_type(HbkPlatformTypeId(0)),
         );
         assert_lookup_eq(
             actual.callable_by_owner_name(HbkPlatformTypeId(0), "Server Method Callable"),
@@ -7367,10 +7653,7 @@ mod tests {
         );
         assert_lookup_eq(
             actual.constructors_of_type(HbkPlatformTypeId(0)),
-            expected
-                .constructors_of_type(HbkPlatformTypeId(0))
-                .iter()
-                .copied(),
+            expected.constructors_of_type(HbkPlatformTypeId(0)),
         );
 
         assert_lookup_eq(
@@ -7434,7 +7717,7 @@ mod tests {
         assert_eq!(actual.query_tables_by_name("missing").len(), 0);
         assert_lookup_eq(
             actual.query_fields(HbkQueryTableId(0)),
-            expected.query_fields(HbkQueryTableId(0)).iter().copied(),
+            expected.query_fields(HbkQueryTableId(0)),
         );
         assert_lookup_eq(
             actual.query_fields_by_name(HbkQueryTableId(0), "Shared Field"),
@@ -7448,10 +7731,7 @@ mod tests {
         );
         assert_lookup_eq(
             actual.query_parameters(HbkQueryTableId(0)),
-            expected
-                .query_parameters(HbkQueryTableId(0))
-                .iter()
-                .copied(),
+            expected.query_parameters(HbkQueryTableId(0)),
         );
         assert_lookup_eq(
             actual.query_parameters_by_name(HbkQueryTableId(0), "Shared Parameter"),
@@ -7491,7 +7771,7 @@ mod tests {
         assert_eq!(actual.enum_value_by_id("missing"), None);
         assert_lookup_eq(
             actual.enum_values(HbkEnumId(0)),
-            expected.enum_values(HbkEnumId(0)).iter().copied(),
+            expected.enum_values(HbkEnumId(0)),
         );
         assert_lookup_eq(
             actual.enum_values_by_name(HbkEnumId(0), "Shared Value"),
@@ -7502,10 +7782,7 @@ mod tests {
         let available_fact = HbkFactRef::Global(HbkGlobalFactId(1));
         assert_lookup_eq(
             actual.availability_contexts(available_fact),
-            expected
-                .availability_contexts(available_fact)
-                .iter()
-                .copied(),
+            expected.availability_contexts(available_fact),
         );
         assert_eq!(
             actual.available_since(available_fact),
@@ -7513,10 +7790,7 @@ mod tests {
         );
         assert_lookup_eq(
             actual.relations_by_source_kind(available_fact, "Type Reference"),
-            expected
-                .relations_by_source_kind(available_fact, "Type Reference")
-                .iter()
-                .copied(),
+            expected.relations_by_source_kind(available_fact, "Type Reference"),
         );
         assert_lookup_eq(
             actual.relations_by_source_kind(available_fact, "missing"),
@@ -7940,6 +8214,7 @@ mod tests {
         let empty_fact_csr = CsrIndex::<HbkFactRef, StringId>::from_pairs(Vec::new());
         let empty_relation_csr = CsrIndex::<RelationLookupKey, HbkFactRef>::from_pairs(Vec::new());
         HbkFactSnapshot {
+            mapped_generation: None,
             strings: vec![
                 "ru".to_string(),
                 "Запрос".to_string(),
@@ -9016,31 +9291,19 @@ mod tests {
                 "members_of_type",
                 &[owner_id],
                 actual.members_of_type(owner).map(HbkFactRef::TypeMember),
-                owned
-                    .members_of_type(owner)
-                    .iter()
-                    .copied()
-                    .map(HbkFactRef::TypeMember),
+                owned.members_of_type(owner).map(HbkFactRef::TypeMember),
             );
             parity.compare_facts(
                 "callables_of_type",
                 &[owner_id],
                 actual.callables_of_type(owner).map(HbkFactRef::Callable),
-                owned
-                    .callables_of_type(owner)
-                    .iter()
-                    .copied()
-                    .map(HbkFactRef::Callable),
+                owned.callables_of_type(owner).map(HbkFactRef::Callable),
             );
             parity.compare_facts(
                 "constructors_of_type",
                 &[owner_id],
                 actual.constructors_of_type(owner).map(HbkFactRef::Callable),
-                owned
-                    .constructors_of_type(owner)
-                    .iter()
-                    .copied()
-                    .map(HbkFactRef::Callable),
+                owned.constructors_of_type(owner).map(HbkFactRef::Callable),
             );
         }
 
@@ -9054,8 +9317,6 @@ mod tests {
                     .collect::<Vec<_>>(),
                 owned
                     .members_of_type(missing_owner)
-                    .iter()
-                    .copied()
                     .map(HbkFactRef::TypeMember)
                     .collect::<Vec<_>>(),
             ),
@@ -9067,8 +9328,6 @@ mod tests {
                     .collect(),
                 owned
                     .callables_of_type(missing_owner)
-                    .iter()
-                    .copied()
                     .map(HbkFactRef::Callable)
                     .collect(),
             ),
@@ -9080,8 +9339,6 @@ mod tests {
                     .collect(),
                 owned
                     .constructors_of_type(missing_owner)
-                    .iter()
-                    .copied()
                     .map(HbkFactRef::Callable)
                     .collect(),
             ),
@@ -9466,11 +9723,7 @@ mod tests {
                 "query_fields",
                 &[table_id],
                 actual.query_fields(table).map(HbkFactRef::QueryField),
-                owned
-                    .query_fields(table)
-                    .iter()
-                    .copied()
-                    .map(HbkFactRef::QueryField),
+                owned.query_fields(table).map(HbkFactRef::QueryField),
             );
             parity.compare_facts(
                 "query_parameters",
@@ -9480,8 +9733,6 @@ mod tests {
                     .map(HbkFactRef::QueryParameter),
                 owned
                     .query_parameters(table)
-                    .iter()
-                    .copied()
                     .map(HbkFactRef::QueryParameter),
             );
         }
@@ -9495,8 +9746,6 @@ mod tests {
                 .map(HbkFactRef::QueryField),
             owned
                 .query_fields(missing_table)
-                .iter()
-                .copied()
                 .map(HbkFactRef::QueryField),
         );
         parity.compare_facts(
@@ -9507,8 +9756,6 @@ mod tests {
                 .map(HbkFactRef::QueryParameter),
             owned
                 .query_parameters(missing_table)
-                .iter()
-                .copied()
                 .map(HbkFactRef::QueryParameter),
         );
 
@@ -9818,11 +10065,7 @@ mod tests {
                 "enum_values",
                 &[owner_id],
                 actual.enum_values(owner).map(HbkFactRef::EnumValue),
-                owned
-                    .enum_values(owner)
-                    .iter()
-                    .copied()
-                    .map(HbkFactRef::EnumValue),
+                owned.enum_values(owner).map(HbkFactRef::EnumValue),
             );
         }
         let missing_owner = HbkEnumId(snapshot.enums.len() as u32);
@@ -9830,11 +10073,7 @@ mod tests {
             "enum_values",
             &[ABSENT_LOOKUP_KEY],
             actual.enum_values(missing_owner).map(HbkFactRef::EnumValue),
-            owned
-                .enum_values(missing_owner)
-                .iter()
-                .copied()
-                .map(HbkFactRef::EnumValue),
+            owned.enum_values(missing_owner).map(HbkFactRef::EnumValue),
         );
 
         let mut previous = None;
@@ -9885,7 +10124,7 @@ mod tests {
                 "availability_contexts",
                 &[fact_id],
                 actual.availability_contexts(fact),
-                owned.availability_contexts(fact).iter().copied(),
+                owned.availability_contexts(fact),
             );
             parity.compare_strings(
                 "available_since",
@@ -9902,10 +10141,7 @@ mod tests {
                 "relations_by_source_kind",
                 &[source_id, kind],
                 actual.relations_by_source_kind(key.source, kind),
-                owned
-                    .relations_by_source_kind(key.source, kind)
-                    .iter()
-                    .copied(),
+                owned.relations_by_source_kind(key.source, kind),
             );
         }
 
@@ -9915,7 +10151,7 @@ mod tests {
             "availability_contexts",
             &[ABSENT_LOOKUP_KEY],
             actual.availability_contexts(absent_fact),
-            owned.availability_contexts(absent_fact).iter().copied(),
+            owned.availability_contexts(absent_fact),
         );
         parity.compare_strings(
             "available_since",
@@ -9927,10 +10163,7 @@ mod tests {
             "relations_by_source_kind",
             &[ABSENT_LOOKUP_KEY, ABSENT_LOOKUP_KEY],
             actual.relations_by_source_kind(absent_fact, ABSENT_LOOKUP_KEY),
-            owned
-                .relations_by_source_kind(absent_fact, ABSENT_LOOKUP_KEY)
-                .iter()
-                .copied(),
+            owned.relations_by_source_kind(absent_fact, ABSENT_LOOKUP_KEY),
         );
     }
 
@@ -10253,7 +10486,7 @@ mod tests {
         for fact in all_fact_refs(snapshot) {
             assert_eq!(
                 read.availability_contexts(fact).collect::<Vec<_>>(),
-                owned_read.availability_contexts(fact),
+                owned_read.availability_contexts(fact).collect::<Vec<_>>(),
                 "availability contexts for {fact:?}"
             );
             assert_eq!(

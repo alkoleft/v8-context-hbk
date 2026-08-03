@@ -210,60 +210,67 @@ pub fn project_hbk_member_query_kind(kind: MemberQueryKind) -> HbkTypeMemberKind
 
 pub fn project_hbk_callable_fact_id(
     catalog: &HbkBslContextCatalog,
-    callable: &HbkCallable,
+    callable: HbkCallableView<'_>,
 ) -> FactId {
-    let kind = match callable.kind {
+    project_hbk_callable_fact_id_parts(catalog, callable.kind(), callable.id())
+}
+
+fn project_hbk_callable_fact_id_parts(
+    catalog: &HbkBslContextCatalog,
+    callable_kind: HbkCallableKind,
+    callable_id: syntax_helper_search::StringId,
+) -> FactId {
+    let kind = match callable_kind {
         HbkCallableKind::Constructor => FactKind::Constructor,
         HbkCallableKind::Method
         | HbkCallableKind::GlobalMethod
         | HbkCallableKind::Event
         | HbkCallableKind::LanguageFunction => FactKind::Callable,
     };
-    project_hbk_fact_id(catalog, kind, catalog.string(callable.id))
+    project_hbk_fact_id(catalog, kind, catalog.string(callable_id))
 }
 
 pub fn project_hbk_type_ref(
     catalog: &HbkBslContextCatalog,
-    type_ref: &HbkTypeRef,
+    type_ref: HbkTypeRefView<'_>,
 ) -> TypeRef {
     TypeRef {
-        name: catalog.string(type_ref.name).to_string(),
-        target: match &type_ref.target {
-            HbkTypeRefTarget::Ok(id) => TypeRefTarget::Ok(TypeId(project_hbk_fact_id(
+        name: catalog.string(type_ref.name()).to_string(),
+        target: match type_ref.target() {
+            HbkTypeRefTargetView::Ok(id) => TypeRefTarget::Ok(TypeId(project_hbk_fact_id(
                 catalog,
                 FactKind::Type,
-                catalog.string(*id),
+                catalog.string(id),
             ))),
-            HbkTypeRefTarget::Unresolved => TypeRefTarget::Unresolved,
-            HbkTypeRefTarget::Ambiguous(candidates) => TypeRefTarget::Ambiguous(
+            HbkTypeRefTargetView::Unresolved => TypeRefTarget::Unresolved,
+            HbkTypeRefTargetView::Ambiguous(candidates) => TypeRefTarget::Ambiguous(
                 candidates
-                    .iter()
                     .map(|id| {
                         TypeId(project_hbk_fact_id(
                             catalog,
                             FactKind::Type,
-                            catalog.string(*id),
+                            catalog.string(id),
                         ))
                     })
                     .collect(),
             ),
         },
-        template_binding: type_ref.template_binding.as_ref().map(|binding| {
+        template_binding: type_ref.template_binding().map(|binding| {
+            let key = binding.template_key();
             TypeTemplateBinding {
                 template_key: PlatformTypeTemplateKey::new(
-                    catalog.string(binding.template_key.family),
-                    catalog.string(binding.template_key.variant),
+                    catalog.string(key.family),
+                    catalog.string(key.variant),
                 ),
                 arguments: binding
-                    .arguments
-                    .iter()
+                    .arguments()
                     .map(|argument| match argument {
                         syntax_helper_search::model::TemplateParameterBinding::OwnerParameter {
                             owner_parameter_index,
                             target_parameter_index,
                         } => TemplateParameterBinding::OwnerParameter {
-                            owner_parameter_index: *owner_parameter_index,
-                            target_parameter_index: *target_parameter_index,
+                            owner_parameter_index,
+                            target_parameter_index,
                         },
                     })
                     .collect(),
@@ -274,30 +281,27 @@ pub fn project_hbk_type_ref(
 
 pub fn project_hbk_signature(
     catalog: &HbkBslContextCatalog,
-    signature: &syntax_helper_search::HbkSignature,
+    signature: HbkSignatureView<'_>,
 ) -> Signature {
     Signature {
         parameters: signature
-            .parameters
-            .iter()
+            .parameters()
             .map(|parameter| Parameter {
-                name: catalog.string(parameter.name).to_string(),
-                required: parameter.required,
+                name: catalog.string(parameter.name()).to_string(),
+                required: parameter.required(),
                 types: parameter
-                    .type_refs
-                    .iter()
+                    .type_refs()
                     .map(|type_ref| project_hbk_type_ref(catalog, type_ref))
                     .collect(),
                 description: None,
             })
             .collect(),
         return_types: signature
-            .return_type_refs
-            .iter()
+            .return_type_refs()
             .map(|type_ref| project_hbk_type_ref(catalog, type_ref))
             .collect(),
-        variadic: signature_text_is_variadic(catalog.string(signature.text)),
-        title: Some(catalog.string(signature.text).to_string()),
+        variadic: signature_text_is_variadic(catalog.string(signature.text())),
+        title: Some(catalog.string(signature.text()).to_string()),
         description: None,
     }
 }

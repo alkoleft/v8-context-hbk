@@ -1206,6 +1206,16 @@ owned и mapped semantic methods для `280,317` ordered call pairs по
 Fixture закрепляет duplicate/ambiguity/unsupported/miss cases. Следующий
 component gate — единый read/catalog/resolver seam 4.4 без fallback.
 
+OpenSpec 4.4 завершил единый runtime-neutral read seam. Public
+`HbkFactSnapshot` хранит owned build/oracle либо private mapped stable
+generation, `HbkFactReadHandle` статически dispatch-ит lookup/ranges, а
+`Hbk*View` предоставляет один borrowed payload contract. BSL/SDBL catalogs и
+snapshot adapters больше не достигают owned records напрямую; provider-native
+availability traversal использует `ANY`/`ALL` только по
+`AvailabilityContext`. Exact transcript parity/no-fallback/concurrency и
+zero-allocation borrowed traversal прошли. Component остаётся non-canonical до
+real `v8-context` A/B 4.5 и gate 4.6.
+
 ## Implementation Dependencies
 
 Current dependency choices may use:

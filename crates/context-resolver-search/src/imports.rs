@@ -15,11 +15,13 @@ use context_resolver_core::{
     TypeLookup, TypeRef, TypeRefTarget, TypeTemplateBinding,
 };
 use syntax_helper_search::{
-    HbkCallable, HbkCallableId, HbkCallableKind, HbkEnumId, HbkEnumValueId, HbkFactRef, HbkFactSnapshot,
-    HbkGlobalFactId, HbkName, HbkPlatformTypeId, HbkQueryFieldId, HbkQueryParameterId,
-    HbkQueryTableId, HbkTypeMemberId, HbkTypeMemberKind,
-    HbkTypeRef, HbkTypeRefTarget, RelatedHit, SearchDocument, SearchDocumentKind, SearchError,
-    SearchHit, SearchIndex, SearchSignature, SearchTypeRef, SearchTypeRefTarget,
+    HbkCallableId, HbkCallableKind, HbkCallableView, HbkEnumId, HbkEnumValueId,
+    HbkFactReadHandle, HbkFactRef, HbkFactSnapshot, HbkGlobalFactId, HbkNameView, HbkPlatformTypeId,
+    HbkPlatformTypeTemplateKey, HbkPlatformTypeView, HbkQueryFieldId, HbkQueryParameterId,
+    HbkQueryTableId, HbkSignatureView, HbkTypeMemberId, HbkTypeMemberKind,
+    HbkTypeRefTargetView, HbkTypeRefView, RelatedHit, SearchDocument,
+    SearchDocumentKind, SearchError, SearchHit, SearchIndex, SearchSignature, SearchTypeRef,
+    SearchTypeRefTarget,
 };
 
 const DEFAULT_SOURCE_ID: &str = "shcntx-platform";

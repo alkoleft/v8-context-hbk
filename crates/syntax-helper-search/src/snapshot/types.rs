@@ -33,6 +33,129 @@ pub struct HbkEnumId(pub(super) u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HbkEnumValueId(pub(super) u32);
 
+/// Compatibility identity supplied by the caller when opening an X1 slot.
+///
+/// These values are deliberately external to the artifact: a slot is never
+/// allowed to declare itself compatible with the running platform.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HbkFactSnapshotExpectation {
+    pub platform_version: String,
+    pub locale: String,
+    pub source_locale: String,
+    pub source_sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HbkAvailabilityFilterMode {
+    Any,
+    All,
+}
+
+/// Validated provider-native availability predicate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HbkAvailabilityFilter {
+    pub(super) requested_mask: u16,
+    pub(super) mode: HbkAvailabilityFilterMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HbkAvailabilityFilterError {
+    code: String,
+}
+
+impl HbkAvailabilityFilter {
+    pub fn any<'a>(
+        codes: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Self, HbkAvailabilityFilterError> {
+        Self::from_codes(codes, HbkAvailabilityFilterMode::Any)
+    }
+
+    pub fn all<'a>(
+        codes: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Self, HbkAvailabilityFilterError> {
+        Self::from_codes(codes, HbkAvailabilityFilterMode::All)
+    }
+
+    /// Matches every fact, including facts with explicit availability.
+    pub const fn unfiltered() -> Self {
+        Self {
+            requested_mask: 0,
+            mode: HbkAvailabilityFilterMode::All,
+        }
+    }
+
+    pub const fn mode(self) -> HbkAvailabilityFilterMode {
+        self.mode
+    }
+
+    pub const fn is_unfiltered(self) -> bool {
+        self.requested_mask == 0 && matches!(self.mode, HbkAvailabilityFilterMode::All)
+    }
+
+    fn from_codes<'a>(
+        codes: impl IntoIterator<Item = &'a str>,
+        mode: HbkAvailabilityFilterMode,
+    ) -> Result<Self, HbkAvailabilityFilterError> {
+        let mut requested_mask = 0_u16;
+        for code in codes {
+            let bit =
+                availability_context_code_bit(code).ok_or_else(|| HbkAvailabilityFilterError {
+                    code: code.to_string(),
+                })?;
+            requested_mask |= bit;
+        }
+        Ok(Self {
+            requested_mask,
+            mode,
+        })
+    }
+
+    pub(super) fn includes_mask(self, available_mask: u16, has_explicit: bool) -> bool {
+        if !has_explicit {
+            return true;
+        }
+        match self.mode {
+            HbkAvailabilityFilterMode::Any => available_mask & self.requested_mask != 0,
+            HbkAvailabilityFilterMode::All => {
+                available_mask & self.requested_mask == self.requested_mask
+            }
+        }
+    }
+}
+
+impl HbkAvailabilityFilterError {
+    pub fn code(&self) -> &str {
+        &self.code
+    }
+}
+
+impl std::fmt::Display for HbkAvailabilityFilterError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "unknown HBK availability context code '{}'",
+            self.code
+        )
+    }
+}
+
+impl std::error::Error for HbkAvailabilityFilterError {}
+
+pub(super) fn availability_context_code_bit(code: &str) -> Option<u16> {
+    match code {
+        "thin_client" => Some(1 << 0),
+        "web_client" => Some(1 << 1),
+        "mobile_client" => Some(1 << 2),
+        "server" => Some(1 << 3),
+        "thick_client" => Some(1 << 4),
+        "external_connection" => Some(1 << 5),
+        "mobile_application_client" => Some(1 << 6),
+        "mobile_application_server" => Some(1 << 7),
+        "mobile_standalone_server" => Some(1 << 8),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HbkName {
     pub primary: StringId,

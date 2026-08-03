@@ -4,6 +4,7 @@
 //! snapshot's numeric IDs or physical layout. It is JSONL so comparison can be
 //! streamed and a mismatch can be reported at the first logical record.
 
+use std::borrow::Borrow;
 use std::io::{self, Write};
 
 use super::*;
@@ -530,15 +531,19 @@ fn write_template_binding(
     write!(writer, "]}}")
 }
 
-fn write_string_ids(
+fn write_string_ids<I>(
     writer: &mut impl Write,
     snapshot: &HbkFactSnapshot,
-    ids: &[StringId],
-) -> io::Result<()> {
+    ids: I,
+) -> io::Result<()>
+where
+    I: IntoIterator,
+    I::Item: std::borrow::Borrow<StringId>,
+{
     write!(writer, "[")?;
-    for (index, id) in ids.iter().copied().enumerate() {
+    for (index, id) in ids.into_iter().enumerate() {
         write_separator(writer, index)?;
-        write_string_id(writer, snapshot, id)?;
+        write_string_id(writer, snapshot, *id.borrow())?;
     }
     write!(writer, "]")
 }
@@ -841,11 +846,7 @@ fn write_platform_lookups(snapshot: &HbkFactSnapshot, writer: &mut impl Write) -
             |writer| {
                 write_named_fact_arg(writer, snapshot, "owner", HbkFactRef::PlatformType(owner))
             },
-            handle
-                .members_of_type(owner)
-                .iter()
-                .copied()
-                .map(HbkFactRef::TypeMember),
+            handle.members_of_type(owner).map(HbkFactRef::TypeMember),
         )?;
         write_lookup_fact_results(
             writer,
@@ -854,11 +855,7 @@ fn write_platform_lookups(snapshot: &HbkFactSnapshot, writer: &mut impl Write) -
             |writer| {
                 write_named_fact_arg(writer, snapshot, "owner", HbkFactRef::PlatformType(owner))
             },
-            handle
-                .callables_of_type(owner)
-                .iter()
-                .copied()
-                .map(HbkFactRef::Callable),
+            handle.callables_of_type(owner).map(HbkFactRef::Callable),
         )?;
         write_lookup_fact_results(
             writer,
@@ -867,11 +864,7 @@ fn write_platform_lookups(snapshot: &HbkFactSnapshot, writer: &mut impl Write) -
             |writer| {
                 write_named_fact_arg(writer, snapshot, "owner", HbkFactRef::PlatformType(owner))
             },
-            handle
-                .constructors_of_type(owner)
-                .iter()
-                .copied()
-                .map(HbkFactRef::Callable),
+            handle.constructors_of_type(owner).map(HbkFactRef::Callable),
         )?;
     }
     write_lookup_fact_results(
@@ -1251,11 +1244,7 @@ fn write_query_lookups(snapshot: &HbkFactSnapshot, writer: &mut impl Write) -> i
             snapshot,
             "query_fields",
             |writer| write_named_fact_arg(writer, snapshot, "table", HbkFactRef::QueryTable(table)),
-            handle
-                .query_fields(table)
-                .iter()
-                .copied()
-                .map(HbkFactRef::QueryField),
+            handle.query_fields(table).map(HbkFactRef::QueryField),
         )?;
         write_lookup_fact_results(
             writer,
@@ -1264,8 +1253,6 @@ fn write_query_lookups(snapshot: &HbkFactSnapshot, writer: &mut impl Write) -> i
             |writer| write_named_fact_arg(writer, snapshot, "table", HbkFactRef::QueryTable(table)),
             handle
                 .query_parameters(table)
-                .iter()
-                .copied()
                 .map(HbkFactRef::QueryParameter),
         )?;
     }
@@ -1425,11 +1412,7 @@ fn write_language_and_enum_lookups(
             snapshot,
             "enum_values",
             |writer| write_named_fact_arg(writer, snapshot, "owner", HbkFactRef::Enum(owner)),
-            handle
-                .enum_values(owner)
-                .iter()
-                .copied()
-                .map(HbkFactRef::EnumValue),
+            handle.enum_values(owner).map(HbkFactRef::EnumValue),
         )?;
     }
     write_lookup_fact_results(
@@ -1532,10 +1515,7 @@ fn write_state_lookups(snapshot: &HbkFactSnapshot, writer: &mut impl Write) -> i
                     write!(writer, ",")?;
                     write_named_string_arg(writer, "kind", kind)
                 },
-                handle
-                    .relations_by_source_kind(fact_ref, kind)
-                    .iter()
-                    .copied(),
+                handle.relations_by_source_kind(fact_ref, kind),
             )?;
         }
         write_lookup_fact_results(
@@ -1547,10 +1527,7 @@ fn write_state_lookups(snapshot: &HbkFactSnapshot, writer: &mut impl Write) -> i
                 write!(writer, ",")?;
                 write_named_string_arg(writer, "kind", MISSING_LOOKUP_KEY)
             },
-            handle
-                .relations_by_source_kind(fact_ref, MISSING_LOOKUP_KEY)
-                .iter()
-                .copied(),
+            handle.relations_by_source_kind(fact_ref, MISSING_LOOKUP_KEY),
         )
     })
 }

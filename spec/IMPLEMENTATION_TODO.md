@@ -369,9 +369,15 @@ type-reference conclusions live in
     `280,317` semantic call pairs / `560,634` вызова handles по всем
     persisted lookup keys, exact IDs и owner ranges; ordered transcript SHA-256
     `ce7e5bf73e497703fba7c9000ac827ac07db1d3783d712eb4d7b656e45bd5847`.
-    Fixture сохраняет duplicate/ambiguity/unsupported/miss cases. Детали
-    записаны в `acceptance/hbk-x1-int-evidence.md`. Следующий активный пункт —
-    4.4, unified read/catalog/resolver seam и no-fallback probe.
+    Fixture сохраняет duplicate/ambiguity/unsupported/miss cases. OpenSpec 4.4
+    завершён: единый `HbkFactReadHandle` и storage-neutral views обслуживают
+    BSL/SDBL catalogs и snapshot adapters; transcript `40` строк/SHA-256
+    `35cb2cff4ba1777e200298a677725fe858b1bcdca5c0497c2a29c115237097c0`
+    совпал owned/mapped после удаления HBK/SQLite, в последовательных и
+    concurrent повторах. Borrowed filtered member/global/query traversal дал
+    `0` allocations/reallocations/bytes. Детали записаны в
+    `acceptance/hbk-x1-int-evidence.md`. Следующий активный пункт — 4.5,
+    real `v8-context` X1-INT A/B.
     T183 остаётся открытой на implementation/X1-INT; canonical
     cutover и garbage cleanup условны и выполняются отдельными milestones.
 

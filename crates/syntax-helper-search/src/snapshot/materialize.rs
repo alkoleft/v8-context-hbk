@@ -795,6 +795,7 @@ impl<'a> SnapshotMaterializer<'a> {
 
         let stage_start = start_stage!();
         let snapshot = HbkFactSnapshot {
+            mapped_generation: None,
             strings: self.builder.into_strings(),
             source_locale,
             platform_types,

@@ -962,3 +962,30 @@ owned materialization и скрытого SQL/HBK fallback. H0 owned path ост
    allocation probes, package clippy, fmt, strict OpenSpec, diff check и
    независимый review. Slice не меняет canonical source и не удаляет H0;
    следующий gate — real `v8-context` A/B 4.5.
+
+### Результат OpenSpec 4.4
+
+Единый public owner `HbkFactSnapshot` и read interface
+`HbkFactReadHandle` теперь обслуживают owned oracle и mapped X1 через одну
+storage-neutral family `Hbk*View`. Mapped snapshot открывается только через
+fail-closed `open_x1_slot` с внешней expectation; owner удерживает mmap, file и
+shared slot lock. Static enum iterators не используют `Box<dyn Iterator>` и не
+собирают промежуточные ID-коллекции.
+
+BSL/SDBL catalogs и оба compatibility adapter переведены с прямых owned
+records на views. Provider-native `ANY`/`ALL` по `AvailabilityContext` доступен
+для globals и непосредственных members известного типа; пустая availability
+остаётся universal. Existing H0 constructors сохранены только для сравнения
+4.5 и не вызываются mapped open.
+
+Real-shaped fixture transcript содержит `40` нормализованных строк с SHA-256
+`35cb2cff4ba1777e200298a677725fe858b1bcdca5c0497c2a29c115237097c0`.
+Owned и mapped bytes совпали, затем mapped transcript повторился восемь раз
+последовательно и в четырёх потоках по восемь раз после удаления HBK и SQLite.
+Изолированный probe подтвердил `0` allocations, `0` reallocations и `0`
+allocated bytes для borrowed filtered members/globals и полного обхода query
+tables/fields/parameters. Full-corpus storage и lookup probes повторно прошли
+без изменения X1 artifact/SHA и lookup transcript. Package tests, all-feature
+clippy, fmt, strict OpenSpec, diff check и два независимых review не нашли
+blockers. X1 всё ещё non-canonical; следующий gate — 4.5 real `v8-context`
+A/B.

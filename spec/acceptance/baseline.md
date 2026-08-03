@@ -3161,6 +3161,17 @@ fixed misses. Ordered normalized transcript SHA-256 равен
 Fixture дополнительно закрепляет duplicate, ambiguity, unsupported и miss
 поведение. Catalog/resolver/analyzer gates ещё открыты.
 
+Task 4.4 завершил единый catalog/resolver seam без canonical cutover.
+`HbkFactSnapshot` владеет owned oracle или mapped stable generation, а
+`HbkFactReadHandle` и storage-neutral `Hbk*View` обслуживают BSL/SDBL catalogs
+и compatibility adapters без публичных X1-типов, boxed iterator или
+seam-only ID collections. Exact fixture transcript: `40` строк, SHA-256
+`35cb2cff4ba1777e200298a677725fe858b1bcdca5c0497c2a29c115237097c0`;
+mapped сторона совпала после удаления HBK/SQLite, в `8/8` последовательных и
+`32/32` concurrent repeats. Filtered members/globals и query enumeration дали
+`0` allocations/reallocations/bytes. Frozen 4.2/4.3 artifact и transcript SHA
+не изменились. Следующий gate — real analyzer A/B 4.5; H0 пока не удаляется.
+
 Baseline update rule:
 
 - Rebuild the relevant `shcntx_ru.hbk` and/or `shcntx_root.hbk` index from the current source,
