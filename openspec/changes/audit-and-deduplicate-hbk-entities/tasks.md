@@ -6,6 +6,7 @@
 - [ ] 1.4 Publish the candidate ledger classifying each repeated shape as a true duplicate semantic owner, legitimate index/view projection, or distinct entity with a named invariant; do not merge unresolved candidates by name, source order or field similarity.
 - [ ] 1.5 For every proven duplicate family, select the narrowest existing canonical HBK owner and enumerate the exact records, indexes, conversions, X1 sections and consumer fields to delete; update proposal/design/spec deltas before implementation if the selected contract differs from this change.
 - [ ] 1.6 Add deterministic preservation fixtures for every accepted family covering exact-ID, primary/alias, owner/kind, ordering, relations, availability, provenance, semantic roles and H0/X1 parity before deleting production paths.
+- [ ] 1.7 Consume the accepted classifications, identity/lifecycle rules and canonical-owner criteria from `establish-hbk-domain-model`; tasks 3.1-4.3 remain blocked while the relevant domain decision is unresolved.
 
 ## 2. Resource Baselines And Implementation Gate
 
