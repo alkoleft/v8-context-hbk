@@ -1,10 +1,5 @@
-# primary-alias-lookup-evaluation Specification
+## MODIFIED Requirements
 
-## Purpose
-Define the reproducible, test-only comparison contract for family-scoped
-primary-first/alias-fallback identities without changing production HBK
-snapshot contracts.
-## Requirements
 ### Requirement: One primary-first lookup implementation remains family-scoped
 
 The experiment SHALL implement first-character-routed primary/alias lookup once
@@ -94,30 +89,6 @@ English-only primary names and non-ASCII aliases while reporting their counts.
 - **THEN** its query is excluded from correctness and timing sets
 - **AND** the excluded count is reported rather than classified as a mismatch.
 
-### Requirement: Target primary uniqueness is evaluated explicitly
-
-The experiment SHALL canonicalize the input presented to both compared
-variants to one row per `(family scope, normalized primary)` before assigning
-the compared typed IDs. Until HBK formation/extension composition establishes
-that invariant at its owner, the canonicalization SHALL be marked temporary,
-SHALL retain the first row in stable provider order and SHALL report every
-discarded row by family.
-
-#### Scenario: Duplicate type primaries are present in source data
-
-- **WHEN** two source type rows have the same normalized primary name
-- **THEN** both old and new variants receive the same first canonical type row
-- **AND** both source owner ordinals map to its one `TypeId`
-- **AND** the report increments the temporary type-duplicate count.
-
-#### Scenario: Duplicate scoped callable or property primaries are present
-
-- **WHEN** two callable or property rows have the same owner scope and
-  normalized primary name
-- **THEN** both variants receive only the stable first row
-- **AND** no second `CallableId` or `PropertyId` is assigned
-- **AND** the corresponding temporary duplicate count is reported.
-
 ### Requirement: Old and new lookup comparison is controlled
 
 The experiment SHALL compare the current raw-name lookup mechanics with the
@@ -206,18 +177,3 @@ separately labelled historical evidence.
 - **AND** reports allocation calls, allocated bytes and peak live-byte growth
   for each compared construction
 - **AND** introduces no second global allocator.
-
-### Requirement: Experiment does not alter production contracts
-
-The comparison SHALL compile only in test code under the existing snapshot
-experiment gate and SHALL NOT modify production snapshot fields, X1/cache
-layout, public read interfaces, provider facts, SQL schema, resolver DTOs or
-serialized output.
-
-#### Scenario: Experiment feature is disabled
-
-- **WHEN** `syntax-helper-search` is built and tested without snapshot
-  experiment features
-- **THEN** no `PrimaryAliasLookup`, experimental typed ID or benchmark corpus
-  state is present in the production build
-- **AND** existing snapshot lookup behavior and public types remain unchanged.
