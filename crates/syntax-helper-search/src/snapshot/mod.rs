@@ -7,6 +7,8 @@ mod experiment_allocator;
 mod indexes;
 mod materialize;
 mod memory;
+#[cfg(all(test, feature = "snapshot-experiment"))]
+mod primary_alias_lookup_experiment;
 mod read;
 mod semantic_roles;
 mod types;
