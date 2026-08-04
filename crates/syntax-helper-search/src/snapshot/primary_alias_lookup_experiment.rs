@@ -3,9 +3,12 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::hint::black_box;
 use std::mem::size_of;
+#[cfg(feature = "snapshot-experiment-alloc")]
 use std::path::PathBuf;
 use std::time::Instant;
 
+use super::indexes::matching_range;
+use super::materialize::SnapshotBuilder;
 use super::*;
 
 const CORPUS_ENV: &str = "V8_CONTEXT_HBK_PRIMARY_ALIAS_INDEX";
@@ -16,9 +19,6 @@ const GLOBAL_OWNER_BITS: u32 = u32::MAX;
 const WARMUP_SAMPLES: usize = 2;
 const MEASURED_SAMPLES: usize = 9;
 const LOOKUP_PASSES: usize = 64;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct KeyId(u32);
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -71,28 +71,16 @@ struct LegacyCallableId(u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct LegacyPropertyId(u32);
 
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct LegacyOwnerId(u32);
-
-impl LegacyOwnerId {
-    const GLOBAL: Self = Self(GLOBAL_OWNER_BITS);
-
-    fn type_owner(id: LegacyTypeId) -> Self {
-        assert_ne!(
-            id.0, GLOBAL_OWNER_BITS,
-            "legacy type ID collides with global owner"
-        );
-        Self(id.0)
-    }
-}
-
 trait InternToken: Copy + Debug + Eq + Ord {
     fn from_index(index: usize) -> Self;
 }
 
-trait CandidateIdentity<Owner, Token>: Copy + Debug + Eq + Hash + Ord {
-    fn compose(owner: Owner, token: Token) -> Self;
+trait CandidateIdentity: Copy + Debug + Eq + Hash + Ord {
+    type Owner: Copy + Debug + Ord;
+    type Token: InternToken + Hash;
+
+    fn compose(owner: Self::Owner, token: Self::Token) -> Self;
+    fn owner(self) -> Self::Owner;
     fn checksum(self) -> u64;
 }
 
@@ -138,74 +126,73 @@ legacy_identity!(LegacyTypeId);
 legacy_identity!(LegacyCallableId);
 legacy_identity!(LegacyPropertyId);
 
-impl CandidateIdentity<(), TypeId> for TypeId {
+impl CandidateIdentity for TypeId {
+    type Owner = ();
+    type Token = TypeId;
+
     fn compose((): (), token: TypeId) -> Self {
         token
     }
+
+    fn owner(self) {}
 
     fn checksum(self) -> u64 {
         u64::from(self.0) + 1
     }
 }
 
-impl CandidateIdentity<OwnerId, CallableNameId> for CallableId {
+impl CandidateIdentity for CallableId {
+    type Owner = OwnerId;
+    type Token = CallableNameId;
+
     fn compose(owner: OwnerId, name: CallableNameId) -> Self {
         Self { owner, name }
     }
 
+    fn owner(self) -> OwnerId {
+        self.owner
+    }
+
     fn checksum(self) -> u64 {
         (u64::from(self.owner.0) << 32 | u64::from(self.name.0)).wrapping_add(1)
     }
 }
 
-impl CandidateIdentity<OwnerId, PropertyNameId> for PropertyId {
+impl CandidateIdentity for PropertyId {
+    type Owner = OwnerId;
+    type Token = PropertyNameId;
+
     fn compose(owner: OwnerId, name: PropertyNameId) -> Self {
         Self { owner, name }
     }
 
+    fn owner(self) -> OwnerId {
+        self.owner
+    }
+
     fn checksum(self) -> u64 {
         (u64::from(self.owner.0) << 32 | u64::from(self.name.0)).wrapping_add(1)
-    }
-}
-
-#[derive(Default)]
-struct KeyPool {
-    by_text: HashMap<Box<str>, KeyId>,
-    retained_key_bytes: usize,
-}
-
-impl KeyPool {
-    fn intern(&mut self, value: &str) -> KeyId {
-        let normalized = normalize_lookup_key(value);
-        if let Some(id) = self.by_text.get(normalized.as_str()).copied() {
-            return id;
-        }
-        let id =
-            KeyId(u32::try_from(self.by_text.len()).expect("experimental key pool overflowed u32"));
-        self.retained_key_bytes += normalized.len();
-        self.by_text.insert(normalized.into_boxed_str(), id);
-        id
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct SourceTypeRow {
-    primary: KeyId,
-    alias: Option<KeyId>,
+    primary: StringId,
+    alias: Option<StringId>,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct SourceMemberRow {
     owner_source: Option<usize>,
-    primary: KeyId,
-    alias: Option<KeyId>,
+    primary: StringId,
+    alias: Option<StringId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CanonicalRow<Scope> {
     scope: Scope,
-    primary: KeyId,
-    alias: Option<KeyId>,
+    primary: StringId,
+    alias: Option<StringId>,
     entity: u32,
 }
 
@@ -224,7 +211,7 @@ impl<Scope> CanonicalFamily<Scope> {
 }
 
 fn canonicalize_types(source: &[SourceTypeRow]) -> (CanonicalFamily<()>, Vec<u32>) {
-    let mut canonical_by_primary = HashMap::<KeyId, u32>::new();
+    let mut canonical_by_primary = HashMap::<StringId, u32>::new();
     let mut rows = Vec::with_capacity(source.len());
     let mut source_to_type = Vec::with_capacity(source.len());
     let mut duplicate_primaries = 0;
@@ -269,7 +256,7 @@ fn canonicalize_members(
     source: &[SourceMemberRow],
     source_to_type: &[u32],
 ) -> CanonicalFamily<Option<u32>> {
-    let mut canonical_by_primary = HashMap::<(Option<u32>, KeyId), u32>::new();
+    let mut canonical_by_primary = HashMap::<(Option<u32>, StringId), u32>::new();
     let mut rows = Vec::with_capacity(source.len());
     let mut duplicate_primaries = 0;
     let mut supplied_aliases = 0;
@@ -309,175 +296,104 @@ fn canonicalize_members(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct LookupEntry<Scope, Id> {
-    scope: Scope,
-    key: KeyId,
-    id: Id,
-}
-
-struct MergedNameLookup<Scope, Id> {
-    entries: Vec<LookupEntry<Scope, Id>>,
-}
-
-impl<Scope, Id> MergedNameLookup<Scope, Id>
+fn merged_name_lookup_from_rows<Scope, Id>(
+    rows: &[CanonicalRow<Scope>],
+    id: impl Fn(u32) -> Id,
+) -> Vec<OwnerNameLookup<Scope, Id>>
 where
     Scope: Copy + Ord,
     Id: Copy + Ord,
 {
-    fn from_rows(rows: &[CanonicalRow<Scope>], id: impl Fn(u32) -> Id) -> Self {
-        let mut entries = Vec::with_capacity(
-            rows.len()
-                + rows
-                    .iter()
-                    .filter(|row| row.alias != Some(row.primary))
-                    .count(),
-        );
-        for row in rows {
-            let id = id(row.entity);
-            entries.push(LookupEntry {
-                scope: row.scope,
-                key: row.primary,
-                id,
+    let mut entries = Vec::with_capacity(
+        rows.len()
+            + rows
+                .iter()
+                .filter(|row| row.alias != Some(row.primary))
+                .count(),
+    );
+    for row in rows {
+        let id = id(row.entity);
+        entries.push(OwnerNameLookup {
+            owner: row.scope,
+            key: row.primary,
+            value: id,
+        });
+        if let Some(alias) = row.alias.filter(|alias| *alias != row.primary) {
+            entries.push(OwnerNameLookup {
+                owner: row.scope,
+                key: alias,
+                value: id,
             });
-            if let Some(alias) = row.alias.filter(|alias| *alias != row.primary) {
-                entries.push(LookupEntry {
-                    scope: row.scope,
-                    key: alias,
-                    id,
-                });
-            }
-        }
-        entries.sort_unstable();
-        entries.dedup();
-        Self { entries }
-    }
-
-    fn lookup(&self, scope: Scope, key: KeyId) -> &[LookupEntry<Scope, Id>] {
-        matching_entries(&self.entries, scope, key)
-    }
-
-    fn retained_bytes(&self) -> usize {
-        self.entries.capacity() * size_of::<LookupEntry<Scope, Id>>()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct PrimaryNameEntry<Token> {
-    key: KeyId,
-    token: Token,
-}
-
-struct PrimaryNameInterner<Token> {
-    entries: Vec<PrimaryNameEntry<Token>>,
-}
-
-impl<Token: Copy + Ord> PrimaryNameInterner<Token> {
-    fn get(&self, key: KeyId) -> Option<Token> {
-        self.entries
-            .binary_search_by_key(&key, |entry| entry.key)
-            .ok()
-            .map(|index| self.entries[index].token)
-    }
-
-    fn retained_bytes(&self) -> usize {
-        self.entries.capacity() * size_of::<PrimaryNameEntry<Token>>()
-    }
-}
-
-struct PrimaryNameInternerBuilder<Token> {
-    by_key: HashMap<KeyId, Token>,
-}
-
-impl<Token: InternToken + Hash> PrimaryNameInternerBuilder<Token> {
-    fn new() -> Self {
-        Self {
-            by_key: HashMap::new(),
         }
     }
+    entries.sort_unstable_by_key(|entry| (entry.owner, entry.key, entry.value));
+    entries.dedup_by_key(|entry| (entry.owner, entry.key, entry.value));
+    entries
+}
 
-    fn intern(&mut self, key: KeyId) -> Token {
-        if let Some(token) = self.by_key.get(&key).copied() {
-            return token;
-        }
-        let token = Token::from_index(self.by_key.len());
-        self.by_key.insert(key, token);
-        token
-    }
-
-    fn finish(self) -> PrimaryNameInterner<Token> {
-        let mut entries = self
-            .by_key
-            .into_iter()
-            .map(|(key, token)| PrimaryNameEntry { key, token })
-            .collect::<Vec<_>>();
-        entries.sort_unstable();
-        PrimaryNameInterner { entries }
-    }
+fn merged_name_lookup<Scope, Id>(
+    entries: &[OwnerNameLookup<Scope, Id>],
+    scope: Scope,
+    key: StringId,
+) -> &[OwnerNameLookup<Scope, Id>]
+where
+    Scope: Copy + Ord,
+    Id: Copy + Ord,
+{
+    let range = matching_range(entries, |entry| (entry.owner, entry.key).cmp(&(scope, key)));
+    &entries[range]
 }
 
 /// The one primary-first/alias-fallback mechanism used by all three candidate
 /// families. State and name tokens remain family-local.
-struct PrimaryAliasLookup<Owner, Token, Id> {
-    primary_names: PrimaryNameInterner<Token>,
-    primary_ids: Vec<Id>,
-    aliases: Vec<LookupEntry<Owner, Id>>,
+struct PrimaryAliasLookup<Id> {
+    primaries: Vec<NameLookup<Id>>,
+    aliases: Vec<NameLookup<Id>>,
 }
 
-impl<Owner, Token, Id> PrimaryAliasLookup<Owner, Token, Id>
+impl<Id> PrimaryAliasLookup<Id>
 where
-    Owner: Copy + Ord,
-    Token: InternToken + Hash,
-    Id: CandidateIdentity<Owner, Token>,
+    Id: CandidateIdentity,
 {
-    fn from_rows(rows: &[CanonicalRow<Owner>]) -> (Self, Vec<Id>) {
-        let mut names = PrimaryNameInternerBuilder::<Token>::new();
-        let mut primary_ids = Vec::with_capacity(rows.len());
+    fn from_rows(rows: &[CanonicalRow<Id::Owner>]) -> Self {
+        let mut tokens = HashMap::<StringId, Id::Token>::new();
+        let mut primaries = Vec::with_capacity(rows.len());
         let mut aliases = Vec::with_capacity(
             rows.iter()
                 .filter(|row| row.alias != Some(row.primary))
                 .count(),
         );
-        let mut entity_ids = Vec::with_capacity(rows.len());
         for row in rows {
-            let id = Id::compose(row.scope, names.intern(row.primary));
-            primary_ids.push(id);
-            entity_ids.push(id);
+            let next_index = tokens.len();
+            let token = *tokens
+                .entry(row.primary)
+                .or_insert_with(|| <Id::Token as InternToken>::from_index(next_index));
+            let id = Id::compose(row.scope, token);
+            primaries.push(NameLookup {
+                key: row.primary,
+                value: id,
+            });
             if let Some(alias) = row.alias.filter(|alias| *alias != row.primary) {
-                aliases.push(LookupEntry {
-                    scope: row.scope,
+                aliases.push(NameLookup {
                     key: alias,
-                    id,
+                    value: id,
                 });
             }
         }
-        primary_ids.sort_unstable();
-        primary_ids.dedup();
-        aliases.sort_unstable();
-        aliases.dedup();
-        assert_eq!(
-            primary_ids.len(),
-            rows.len(),
-            "candidate IDs must be unique"
-        );
-        (
-            Self {
-                primary_names: names.finish(),
-                primary_ids,
-                aliases,
-            },
-            entity_ids,
-        )
+        primaries.sort_unstable_by_key(|entry| (entry.value.owner(), entry.key, entry.value));
+        primaries.dedup_by_key(|entry| (entry.value.owner(), entry.key, entry.value));
+        aliases.sort_unstable_by_key(|entry| (entry.value.owner(), entry.key, entry.value));
+        aliases.dedup_by_key(|entry| (entry.value.owner(), entry.key, entry.value));
+        assert_eq!(primaries.len(), rows.len(), "candidate IDs must be unique");
+        Self { primaries, aliases }
     }
 
-    fn lookup(&self, owner: Owner, key: KeyId) -> CandidateMatch<'_, Owner, Id> {
-        if let Some(token) = self.primary_names.get(key) {
-            let id = Id::compose(owner, token);
-            if self.primary_ids.binary_search(&id).is_ok() {
-                return CandidateMatch::Primary(id);
-            }
+    fn lookup(&self, owner: Id::Owner, key: StringId) -> CandidateMatch<'_, Id> {
+        let primaries = self.matching(&self.primaries, owner, key);
+        if let [primary] = primaries {
+            return CandidateMatch::Primary(primary.value);
         }
-        let aliases = matching_entries(&self.aliases, owner, key);
+        let aliases = self.matching(&self.aliases, owner, key);
         if aliases.is_empty() {
             CandidateMatch::Missing
         } else {
@@ -485,39 +401,35 @@ where
         }
     }
 
+    fn matching<'a>(
+        &self,
+        entries: &'a [NameLookup<Id>],
+        owner: Id::Owner,
+        key: StringId,
+    ) -> &'a [NameLookup<Id>] {
+        let range = matching_range(entries, |entry| {
+            (entry.value.owner(), entry.key).cmp(&(owner, key))
+        });
+        &entries[range]
+    }
+
     fn retained_bytes(&self) -> usize {
-        self.primary_names.retained_bytes()
-            + self.primary_ids.capacity() * size_of::<Id>()
-            + self.aliases.capacity() * size_of::<LookupEntry<Owner, Id>>()
+        self.primaries.capacity() * size_of::<NameLookup<Id>>()
+            + self.aliases.capacity() * size_of::<NameLookup<Id>>()
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CandidateMatch<'a, Owner, Id> {
+enum CandidateMatch<'a, Id> {
     Primary(Id),
-    Aliases(&'a [LookupEntry<Owner, Id>]),
+    Aliases(&'a [NameLookup<Id>]),
     Missing,
 }
 
-fn matching_entries<Scope, Id>(
-    entries: &[LookupEntry<Scope, Id>],
-    scope: Scope,
-    key: KeyId,
-) -> &[LookupEntry<Scope, Id>]
-where
-    Scope: Copy + Ord,
-    Id: Copy + Ord,
-{
-    let start = entries.partition_point(|entry| (entry.scope, entry.key) < (scope, key));
-    let end =
-        entries[start..].partition_point(|entry| (entry.scope, entry.key) == (scope, key)) + start;
-    &entries[start..end]
-}
-
-fn candidate_ids<Owner, Id: Copy>(matched: CandidateMatch<'_, Owner, Id>) -> Vec<Id> {
+fn candidate_ids<Id: Copy>(matched: CandidateMatch<'_, Id>) -> Vec<Id> {
     match matched {
         CandidateMatch::Primary(id) => vec![id],
-        CandidateMatch::Aliases(entries) => entries.iter().map(|entry| entry.id).collect(),
+        CandidateMatch::Aliases(entries) => entries.iter().map(|entry| entry.value).collect(),
         CandidateMatch::Missing => Vec::new(),
     }
 }
@@ -525,7 +437,7 @@ fn candidate_ids<Owner, Id: Copy>(matched: CandidateMatch<'_, Owner, Id>) -> Vec
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Query<Scope> {
     scope: Scope,
-    key: KeyId,
+    key: StringId,
 }
 
 struct QuerySets<Scope> {
@@ -536,7 +448,7 @@ struct QuerySets<Scope> {
     owner_isolation: Vec<Query<Scope>>,
 }
 
-fn query_sets<Scope>(rows: &[CanonicalRow<Scope>], missing_key: KeyId) -> QuerySets<Scope>
+fn query_sets<Scope>(rows: &[CanonicalRow<Scope>], missing_key: StringId) -> QuerySets<Scope>
 where
     Scope: Copy + Eq + Hash + Ord,
 {
@@ -576,7 +488,7 @@ where
         })
         .collect();
 
-    let mut scopes_by_key = BTreeMap::<KeyId, BTreeSet<Scope>>::new();
+    let mut scopes_by_key = BTreeMap::<StringId, BTreeSet<Scope>>::new();
     for query in primaries.iter().chain(aliases.iter()) {
         scopes_by_key
             .entry(query.key)
@@ -599,15 +511,19 @@ where
     }
 }
 
-fn map_member_scope_to_legacy(scope: Option<u32>) -> LegacyOwnerId {
-    scope.map_or(LegacyOwnerId::GLOBAL, |entity| {
-        LegacyOwnerId::type_owner(LegacyTypeId(entity))
-    })
-}
-
-fn map_member_scope_to_candidate(scope: Option<u32>, types: &[TypeId]) -> OwnerId {
+fn map_member_scope(
+    scope: Option<u32>,
+    type_rows: &[CanonicalRow<()>],
+    types: &PrimaryAliasLookup<TypeId>,
+) -> OwnerId {
     scope.map_or(OwnerId::GLOBAL, |entity| {
-        OwnerId::type_owner(types[entity as usize])
+        let row = type_rows
+            .get(usize::try_from(entity).expect("canonical type owner must fit usize"))
+            .expect("member owner must reference a canonical type");
+        let CandidateMatch::Primary(id) = types.lookup((), row.primary) else {
+            panic!("canonical member owner type must resolve through the type lookup");
+        };
+        OwnerId::type_owner(id)
     })
 }
 
@@ -730,7 +646,7 @@ struct LookupObservation {
 
 fn observe_lookup<Scope: Copy>(
     queries: &[Query<Scope>],
-    mut lookup: impl FnMut(Scope, KeyId) -> u64,
+    mut lookup: impl FnMut(Scope, StringId) -> u64,
 ) -> LookupObservation {
     if queries.is_empty() {
         return LookupObservation {
@@ -739,7 +655,7 @@ fn observe_lookup<Scope: Copy>(
             checksum: 0,
         };
     }
-    let run = |lookup: &mut dyn FnMut(Scope, KeyId) -> u64| {
+    let run = |lookup: &mut dyn FnMut(Scope, StringId) -> u64| {
         let mut checksum = 0_u64;
         for _ in 0..LOOKUP_PASSES {
             for query in queries {
@@ -765,32 +681,49 @@ fn observe_lookup<Scope: Copy>(
     }
 }
 
-fn checksum_legacy<Scope, Id: LegacyIdentity>(entries: &[LookupEntry<Scope, Id>]) -> u64 {
+fn checksum_legacy<Scope, Id: LegacyIdentity>(entries: &[OwnerNameLookup<Scope, Id>]) -> u64 {
     entries.iter().fold(0xcbf2_9ce4_8422_2325, |hash, entry| {
         hash.wrapping_mul(0x0000_0100_0000_01b3)
-            .wrapping_add(u64::from(entry.id.entity()) + 1)
+            .wrapping_add(u64::from(entry.value.entity()) + 1)
     })
 }
 
-fn checksum_candidate<Owner, Token, Id>(matched: CandidateMatch<'_, Owner, Id>) -> u64
+fn checksum_candidate<Id>(matched: CandidateMatch<'_, Id>) -> u64
 where
-    Id: CandidateIdentity<Owner, Token>,
+    Id: CandidateIdentity,
 {
     match matched {
         CandidateMatch::Primary(id) => id.checksum(),
         CandidateMatch::Aliases(entries) => {
             entries.iter().fold(0xcbf2_9ce4_8422_2325, |hash, entry| {
                 hash.wrapping_mul(0x0000_0100_0000_01b3)
-                    .wrapping_add(entry.id.checksum())
+                    .wrapping_add(entry.value.checksum())
             })
         }
         CandidateMatch::Missing => 0,
     }
 }
 
-fn assert_semantic_equivalence<OldScope, NewScope, OldId, Token, NewId>(
-    old: &MergedNameLookup<OldScope, OldId>,
-    new: &PrimaryAliasLookup<NewScope, Token, NewId>,
+fn differential_entity_map<Id>(
+    new: &PrimaryAliasLookup<Id>,
+    rows: &[CanonicalRow<Id::Owner>],
+) -> HashMap<Id, u32>
+where
+    Id: CandidateIdentity,
+{
+    rows.iter()
+        .map(|row| {
+            let CandidateMatch::Primary(id) = new.lookup(row.scope, row.primary) else {
+                panic!("candidate primary row must resolve during differential setup");
+            };
+            (id, row.entity)
+        })
+        .collect()
+}
+
+fn assert_semantic_equivalence<OldScope, NewScope, OldId, NewId>(
+    old: &[OwnerNameLookup<OldScope, OldId>],
+    new: &PrimaryAliasLookup<NewId>,
     old_queries: &[Query<OldScope>],
     new_queries: &[Query<NewScope>],
     new_entity: &HashMap<NewId, u32>,
@@ -798,15 +731,13 @@ fn assert_semantic_equivalence<OldScope, NewScope, OldId, Token, NewId>(
     OldScope: Copy + Debug + Ord,
     NewScope: Copy + Debug + Ord,
     OldId: LegacyIdentity,
-    Token: InternToken + Hash,
-    NewId: CandidateIdentity<NewScope, Token>,
+    NewId: CandidateIdentity<Owner = NewScope>,
 {
     assert_eq!(old_queries.len(), new_queries.len());
     for (old_query, new_query) in old_queries.iter().zip(new_queries) {
-        let mut expected = old
-            .lookup(old_query.scope, old_query.key)
+        let mut expected = merged_name_lookup(old, old_query.scope, old_query.key)
             .iter()
-            .map(|entry| entry.id.entity())
+            .map(|entry| entry.value.entity())
             .collect::<Vec<_>>();
         let mut actual = candidate_ids(new.lookup(new_query.scope, new_query.key))
             .into_iter()
@@ -837,46 +768,35 @@ fn print_lookup(family: &str, class: &str, variant: &str, observed: LookupObserv
     );
 }
 
-struct FamilyRun<NewId> {
-    entity_ids: Vec<NewId>,
-}
-
-fn run_family<CommonScope, OldScope, NewScope, OldId, Token, NewId>(
+fn run_family<CommonScope, OldScope, NewScope, OldId, NewId>(
     family: &str,
     rows: &[CanonicalRow<CommonScope>],
-    missing_key: KeyId,
+    missing_key: StringId,
     old_scope: impl Fn(CommonScope) -> OldScope + Copy,
     new_scope: impl Fn(CommonScope) -> NewScope + Copy,
-) -> FamilyRun<NewId>
+) -> PrimaryAliasLookup<NewId>
 where
     CommonScope: Copy + Eq + Hash + Ord,
     OldScope: Copy + Debug + Ord,
     NewScope: Copy + Debug + Ord,
     OldId: LegacyIdentity,
-    Token: InternToken + Hash,
-    NewId: CandidateIdentity<NewScope, Token>,
+    NewId: CandidateIdentity<Owner = NewScope>,
 {
     let query_sets = query_sets(rows, missing_key);
     let old_rows = map_rows(rows, old_scope);
     let new_rows = map_rows(rows, new_scope);
     let (old, old_build) = observe_construction(
-        || MergedNameLookup::from_rows(&old_rows, OldId::from_entity),
-        MergedNameLookup::retained_bytes,
+        || merged_name_lookup_from_rows(&old_rows, OldId::from_entity),
+        |entries| entries.capacity() * size_of::<OwnerNameLookup<OldScope, OldId>>(),
     );
     let (new_state, new_build) = observe_construction(
-        || PrimaryAliasLookup::<NewScope, Token, NewId>::from_rows(&new_rows),
-        |built| built.0.retained_bytes() + built.1.capacity() * size_of::<NewId>(),
+        || PrimaryAliasLookup::<NewId>::from_rows(&new_rows),
+        PrimaryAliasLookup::retained_bytes,
     );
-    let (new, entity_ids) = new_state;
-    print_construction(family, "dense_merged", old_build);
-    print_construction(family, "composite_primary_alias", new_build);
+    let new = new_state;
+    print_construction(family, "dense_merged_prepared_string_id", old_build);
+    print_construction(family, "direct_composite_primary_alias", new_build);
 
-    let new_entity = entity_ids
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(entity, id)| (id, entity as u32))
-        .collect::<HashMap<_, _>>();
     let classes = [
         ("primary", &query_sets.primary),
         ("alias", &query_sets.alias),
@@ -884,38 +804,59 @@ where
         ("collision", &query_sets.collision),
         ("owner_isolation", &query_sets.owner_isolation),
     ];
+    {
+        let new_entity = differential_entity_map::<NewId>(&new, &new_rows);
+        for (class, common_queries) in classes {
+            let old_queries = map_queries(common_queries, old_scope);
+            let new_queries = map_queries(common_queries, new_scope);
+            if class != "collision" {
+                assert_semantic_equivalence(&old, &new, &old_queries, &new_queries, &new_entity);
+            } else {
+                for (old_query, new_query) in old_queries.iter().zip(&new_queries) {
+                    let old_entities = merged_name_lookup(&old, old_query.scope, old_query.key)
+                        .iter()
+                        .map(|entry| entry.value.entity())
+                        .collect::<Vec<_>>();
+                    let CandidateMatch::Primary(id) = new.lookup(new_query.scope, new_query.key)
+                    else {
+                        panic!("candidate collision lookup must prefer primary");
+                    };
+                    assert!(
+                        old_entities.len() > 1,
+                        "merged collision must expose aliases"
+                    );
+                    assert!(old_entities.contains(&new_entity[&id]));
+                }
+            }
+        }
+    }
     for (class, common_queries) in classes {
         let old_queries = map_queries(common_queries, old_scope);
         let new_queries = map_queries(common_queries, new_scope);
-        if class != "collision" {
-            assert_semantic_equivalence(&old, &new, &old_queries, &new_queries, &new_entity);
-        } else {
-            for (old_query, new_query) in old_queries.iter().zip(&new_queries) {
-                let old_entities = old
-                    .lookup(old_query.scope, old_query.key)
-                    .iter()
-                    .map(|entry| entry.id.entity())
-                    .collect::<Vec<_>>();
-                let CandidateMatch::Primary(id) = new.lookup(new_query.scope, new_query.key) else {
-                    panic!("candidate collision lookup must prefer primary");
-                };
-                assert!(
-                    old_entities.len() > 1,
-                    "merged collision must expose aliases"
-                );
-                assert!(old_entities.contains(&new_entity[&id]));
-            }
-        }
         let old_observed = observe_lookup(&old_queries, |scope, key| {
-            checksum_legacy(old.lookup(scope, key))
+            checksum_legacy(merged_name_lookup(&old, scope, key))
         });
         let new_observed = observe_lookup(&new_queries, |scope, key| {
-            checksum_candidate::<NewScope, Token, NewId>(new.lookup(scope, key))
+            checksum_candidate::<NewId>(new.lookup(scope, key))
         });
-        print_lookup(family, class, "dense_merged", old_observed);
-        print_lookup(family, class, "composite_primary_alias", new_observed);
+        print_lookup(
+            family,
+            class,
+            "dense_merged_prepared_string_id",
+            old_observed,
+        );
+        print_lookup(
+            family,
+            class,
+            "direct_composite_primary_alias",
+            new_observed,
+        );
     }
-    FamilyRun { entity_ids }
+    new
+}
+
+fn fixture_key(builder: &mut SnapshotBuilder, value: &str) -> StringId {
+    builder.intern(&normalize_lookup_key(value))
 }
 
 #[test]
@@ -925,10 +866,10 @@ fn composite_ids_reuse_family_name_tokens_but_not_owner_identity() {
     assert_eq!(size_of::<CallableId>(), 8);
     assert_eq!(size_of::<PropertyId>(), 8);
 
-    let mut keys = KeyPool::default();
-    let type_a = keys.intern("Array");
-    let type_b = keys.intern("ValueTable");
-    let same_name = keys.intern("Добавить");
+    let mut builder = SnapshotBuilder::default();
+    let type_a = fixture_key(&mut builder, "Array");
+    let type_b = fixture_key(&mut builder, "ValueTable");
+    let same_name = fixture_key(&mut builder, "Добавить");
     let (types, _) = canonicalize_types(&[
         SourceTypeRow {
             primary: type_a,
@@ -939,16 +880,22 @@ fn composite_ids_reuse_family_name_tokens_but_not_owner_identity() {
             alias: None,
         },
     ]);
-    let (_, type_ids) = PrimaryAliasLookup::<(), TypeId, TypeId>::from_rows(&types.rows);
+    let type_lookup = PrimaryAliasLookup::<TypeId>::from_rows(&types.rows);
+    let CandidateMatch::Primary(type_a_id) = type_lookup.lookup((), type_a) else {
+        panic!("type A must resolve");
+    };
+    let CandidateMatch::Primary(type_b_id) = type_lookup.lookup((), type_b) else {
+        panic!("type B must resolve");
+    };
     let members = vec![
         CanonicalRow {
-            scope: OwnerId::type_owner(type_ids[0]),
+            scope: OwnerId::type_owner(type_a_id),
             primary: same_name,
             alias: None,
             entity: 0,
         },
         CanonicalRow {
-            scope: OwnerId::type_owner(type_ids[1]),
+            scope: OwnerId::type_owner(type_b_id),
             primary: same_name,
             alias: None,
             entity: 1,
@@ -960,10 +907,22 @@ fn composite_ids_reuse_family_name_tokens_but_not_owner_identity() {
             entity: 2,
         },
     ];
-    let (callables, callable_ids) =
-        PrimaryAliasLookup::<OwnerId, CallableNameId, CallableId>::from_rows(&members);
-    let (properties, property_ids) =
-        PrimaryAliasLookup::<OwnerId, PropertyNameId, PropertyId>::from_rows(&members);
+    let callables = PrimaryAliasLookup::<CallableId>::from_rows(&members);
+    let properties = PrimaryAliasLookup::<PropertyId>::from_rows(&members);
+    let callable_ids = candidate_ids(callables.lookup(OwnerId::type_owner(type_a_id), same_name))
+        .into_iter()
+        .chain(candidate_ids(
+            callables.lookup(OwnerId::type_owner(type_b_id), same_name),
+        ))
+        .chain(candidate_ids(callables.lookup(OwnerId::GLOBAL, same_name)))
+        .collect::<Vec<_>>();
+    let property_ids = candidate_ids(properties.lookup(OwnerId::type_owner(type_a_id), same_name))
+        .into_iter()
+        .chain(candidate_ids(
+            properties.lookup(OwnerId::type_owner(type_b_id), same_name),
+        ))
+        .chain(candidate_ids(properties.lookup(OwnerId::GLOBAL, same_name)))
+        .collect::<Vec<_>>();
 
     assert_eq!(callable_ids[0].name, callable_ids[1].name);
     assert_eq!(callable_ids[0].name, callable_ids[2].name);
@@ -978,20 +937,20 @@ fn composite_ids_reuse_family_name_tokens_but_not_owner_identity() {
         vec![callable_ids[2]]
     );
     assert_eq!(
-        candidate_ids(properties.lookup(OwnerId::type_owner(type_ids[0]), same_name)),
+        candidate_ids(properties.lookup(OwnerId::type_owner(type_a_id), same_name)),
         vec![property_ids[0]]
     );
 }
 
 #[test]
 fn primary_precedes_alias_and_alias_ambiguity_is_preserved() {
-    let mut keys = KeyPool::default();
-    let alpha = keys.intern("Alpha");
-    let beta = keys.intern("Beta");
-    let gamma = keys.intern("Gamma");
-    let delta = keys.intern("Delta");
-    let shared = keys.intern("Shared");
-    let missing = keys.intern("Missing");
+    let mut builder = SnapshotBuilder::default();
+    let alpha = fixture_key(&mut builder, "Alpha");
+    let beta = fixture_key(&mut builder, "Beta");
+    let gamma = fixture_key(&mut builder, "Gamma");
+    let delta = fixture_key(&mut builder, "Delta");
+    let shared = fixture_key(&mut builder, "Shared");
+    let missing = fixture_key(&mut builder, "Missing");
     let rows = vec![
         CanonicalRow {
             scope: (),
@@ -1018,34 +977,39 @@ fn primary_precedes_alias_and_alias_ambiguity_is_preserved() {
             entity: 3,
         },
     ];
-    let old = MergedNameLookup::from_rows(&rows, LegacyTypeId::from_entity);
-    let (new, entity_ids) = PrimaryAliasLookup::<(), TypeId, TypeId>::from_rows(&rows);
+    let old = merged_name_lookup_from_rows(&rows, LegacyTypeId::from_entity);
+    let new = PrimaryAliasLookup::<TypeId>::from_rows(&rows);
+    let new_entity = differential_entity_map::<TypeId>(&new, &rows);
+    let alpha_id = *new_entity
+        .iter()
+        .find(|(_, entity)| **entity == 0)
+        .unwrap()
+        .0;
+    let delta_id = *new_entity
+        .iter()
+        .find(|(_, entity)| **entity == 3)
+        .unwrap()
+        .0;
 
-    assert_eq!(candidate_ids(new.lookup((), alpha)), vec![entity_ids[0]]);
-    assert_eq!(old.lookup((), alpha).len(), 2);
+    assert_eq!(candidate_ids(new.lookup((), alpha)), vec![alpha_id]);
+    assert_eq!(merged_name_lookup(&old, (), alpha).len(), 2);
     assert_eq!(candidate_ids(new.lookup((), shared)).len(), 2);
-    assert_eq!(candidate_ids(new.lookup((), delta)), vec![entity_ids[3]]);
-    assert_eq!(new.primary_names.get(shared), None);
+    assert_eq!(candidate_ids(new.lookup((), delta)), vec![delta_id]);
+    assert!(new.primaries.iter().all(|entry| entry.key != shared));
     assert!(matches!(new.lookup((), missing), CandidateMatch::Missing));
 
     let queries = query_sets(&rows, missing);
-    let new_entity = entity_ids
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(entity, id)| (id, entity as u32))
-        .collect::<HashMap<_, _>>();
     assert_semantic_equivalence(&old, &new, &queries.alias, &queries.alias, &new_entity);
     assert_semantic_equivalence(&old, &new, &queries.missing, &queries.missing, &new_entity);
 }
 
 #[test]
 fn temporary_duplicate_projection_reuses_canonical_owner() {
-    let mut keys = KeyPool::default();
-    let duplicate_type = keys.intern("Duplicate type");
-    let member = keys.intern("Member");
-    let first_alias = keys.intern("First alias");
-    let dropped_alias = keys.intern("Dropped alias");
+    let mut builder = SnapshotBuilder::default();
+    let duplicate_type = fixture_key(&mut builder, "Duplicate type");
+    let member = fixture_key(&mut builder, "Member");
+    let first_alias = fixture_key(&mut builder, "First alias");
+    let dropped_alias = fixture_key(&mut builder, "Dropped alias");
     let (types, source_to_type) = canonicalize_types(&[
         SourceTypeRow {
             primary: duplicate_type,
@@ -1080,40 +1044,166 @@ fn temporary_duplicate_projection_reuses_canonical_owner() {
     assert_eq!(members.rows[0].scope, Some(0));
 }
 
+#[test]
+fn optimized_candidate_does_not_retain_removed_lookup_mirrors() {
+    let source = include_str!("primary_alias_lookup_experiment.rs");
+    let prohibited = [
+        ["struct Key", "Id"].concat(),
+        ["struct Key", "Pool"].concat(),
+        ["struct Lookup", "Entry"].concat(),
+        ["struct PrimaryName", "Interner"].concat(),
+        ["struct MergedName", "Lookup"].concat(),
+        ["primary", "_ids"].concat(),
+        ["entity", "_ids"].concat(),
+        ["matching", "_entries"].concat(),
+        ["LegacyOwner", "Id"].concat(),
+        ["String", "Id("].concat(),
+    ];
+    for pattern in prohibited {
+        assert!(
+            !source.contains(&pattern),
+            "removed benchmark mirror reappeared: {pattern}"
+        );
+    }
+
+    let lookup = source
+        .split("struct PrimaryAliasLookup")
+        .nth(1)
+        .and_then(|tail| tail.split("}\n\nimpl").next())
+        .expect("candidate lookup declaration must remain inspectable");
+    assert_eq!(lookup.matches("Vec<NameLookup<Id>>").count(), 2);
+    assert!(!lookup.contains("HashMap"));
+
+    let corpus = source
+        .rsplit("struct ProjectedCorpus")
+        .next()
+        .and_then(|tail| tail.split("}\n\nfn").next())
+        .expect("projected corpus declaration must remain inspectable");
+    assert!(!corpus.contains("HashMap"));
+    assert!(!corpus.contains("by_text"));
+    assert!(!corpus.contains("by_string"));
+}
+
 struct ProjectedCorpus {
-    keys: KeyPool,
+    missing_key: StringId,
+    prepared_key_count: usize,
+    prepared_key_bytes: usize,
     types: CanonicalFamily<()>,
     callables: CanonicalFamily<Option<u32>>,
     properties: CanonicalFamily<Option<u32>>,
 }
 
+fn snapshot_prepared_keys(snapshot: &HbkFactSnapshot) -> HashMap<&str, StringId> {
+    fn insert<'a>(
+        keys: &mut HashMap<&'a str, StringId>,
+        snapshot: &'a HbkFactSnapshot,
+        id: StringId,
+    ) {
+        let value = snapshot.string(id);
+        if let Some(previous) = keys.insert(value, id) {
+            assert_eq!(
+                previous, id,
+                "one snapshot string must have one snapshot-owned StringId"
+            );
+        }
+    }
+
+    let mut keys = HashMap::new();
+    for entry in &snapshot.platform_type_names {
+        insert(&mut keys, snapshot, entry.key);
+    }
+    for entry in &snapshot.callables_by_owner_name {
+        insert(&mut keys, snapshot, entry.key);
+    }
+    for entry in &snapshot.global_names {
+        insert(&mut keys, snapshot, entry.key);
+    }
+    for entry in &snapshot.members_by_owner_name {
+        insert(&mut keys, snapshot, entry.key);
+    }
+    for entry in &snapshot.enum_names {
+        insert(&mut keys, snapshot, entry.key);
+    }
+    for entry in &snapshot.enum_values_by_enum_name {
+        insert(&mut keys, snapshot, entry.key);
+    }
+    keys
+}
+
+fn project_key(
+    keys: &HashMap<&str, StringId>,
+    handle: HbkFactReadHandle<'_>,
+    source: StringId,
+) -> StringId {
+    let normalized = normalize_lookup_key(handle.string(source));
+    keys.get(normalized.as_str()).copied().unwrap_or_else(|| {
+        panic!("normalized projected name is absent from snapshot-owned name indexes: {normalized}")
+    })
+}
+
 fn project_name(
-    keys: &mut KeyPool,
+    keys: &HashMap<&str, StringId>,
     handle: HbkFactReadHandle<'_>,
     name: HbkNameView<'_>,
-) -> (KeyId, Option<KeyId>) {
-    let primary = keys.intern(handle.string(name.primary()));
-    let alias = name.alias().map(|alias| keys.intern(handle.string(alias)));
+) -> (StringId, Option<StringId>) {
+    let primary = project_key(keys, handle, name.primary());
+    let alias = name.alias().map(|alias| project_key(keys, handle, alias));
     (primary, alias)
+}
+
+fn missing_prepared_key(
+    snapshot: &HbkFactSnapshot,
+    types: &CanonicalFamily<()>,
+    callables: &CanonicalFamily<Option<u32>>,
+    properties: &CanonicalFamily<Option<u32>>,
+) -> StringId {
+    let used = types
+        .rows
+        .iter()
+        .flat_map(|row| std::iter::once(row.primary).chain(row.alias))
+        .chain(
+            callables
+                .rows
+                .iter()
+                .flat_map(|row| std::iter::once(row.primary).chain(row.alias)),
+        )
+        .chain(
+            properties
+                .rows
+                .iter()
+                .flat_map(|row| std::iter::once(row.primary).chain(row.alias)),
+        )
+        .collect::<BTreeSet<_>>();
+
+    snapshot
+        .fact_ids
+        .iter()
+        .map(|entry| entry.key)
+        .chain(snapshot.query_table_names.iter().map(|entry| entry.key))
+        .chain(snapshot.language_names.iter().map(|entry| entry.key))
+        .find(|candidate| !used.contains(candidate))
+        .expect("snapshot must contain an interned string absent from experiment name indexes")
 }
 
 fn project_corpus(snapshot: &HbkFactSnapshot) -> ProjectedCorpus {
     let handle = snapshot.worker_handle();
     let counts = snapshot.counts();
-    let mut keys = KeyPool::default();
+    let keys = snapshot_prepared_keys(snapshot);
+    let prepared_key_count = keys.len();
+    let prepared_key_bytes = keys.keys().map(|key| key.len()).sum();
     let mut source_types = Vec::with_capacity(counts.platform_types + counts.enums);
     for ordinal in 0..counts.platform_types {
         let view = handle.platform_type(HbkPlatformTypeId(
             u32::try_from(ordinal).expect("platform type count overflowed u32"),
         ));
-        let (primary, alias) = project_name(&mut keys, handle, view.name());
+        let (primary, alias) = project_name(&keys, handle, view.name());
         source_types.push(SourceTypeRow { primary, alias });
     }
     for ordinal in 0..counts.enums {
         let view = handle.enum_fact(HbkEnumId(
             u32::try_from(ordinal).expect("enum count overflowed u32"),
         ));
-        let (primary, alias) = project_name(&mut keys, handle, view.name());
+        let (primary, alias) = project_name(&keys, handle, view.name());
         source_types.push(SourceTypeRow { primary, alias });
     }
     let (types, source_to_type) = canonicalize_types(&source_types);
@@ -1130,7 +1220,7 @@ fn project_corpus(snapshot: &HbkFactSnapshot) -> ProjectedCorpus {
         if !include {
             continue;
         }
-        let (primary, alias) = project_name(&mut keys, handle, view.name());
+        let (primary, alias) = project_name(&keys, handle, view.name());
         source_callables.push(SourceMemberRow {
             owner_source: view.owner().map(|owner| owner.0 as usize),
             primary,
@@ -1147,7 +1237,7 @@ fn project_corpus(snapshot: &HbkFactSnapshot) -> ProjectedCorpus {
         if view.kind() != HbkTypeMemberKind::Property {
             continue;
         }
-        let (primary, alias) = project_name(&mut keys, handle, view.name());
+        let (primary, alias) = project_name(&keys, handle, view.name());
         source_properties.push(SourceMemberRow {
             owner_source: Some(view.owner().0 as usize),
             primary,
@@ -1159,7 +1249,7 @@ fn project_corpus(snapshot: &HbkFactSnapshot) -> ProjectedCorpus {
         if view.kind() != HbkGlobalFactKind::Property {
             continue;
         }
-        let (primary, alias) = project_name(&mut keys, handle, view.name());
+        let (primary, alias) = project_name(&keys, handle, view.name());
         source_properties.push(SourceMemberRow {
             owner_source: None,
             primary,
@@ -1170,7 +1260,7 @@ fn project_corpus(snapshot: &HbkFactSnapshot) -> ProjectedCorpus {
         let view = handle.enum_value(HbkEnumValueId(
             u32::try_from(ordinal).expect("enum value count overflowed u32"),
         ));
-        let (primary, alias) = project_name(&mut keys, handle, view.name());
+        let (primary, alias) = project_name(&keys, handle, view.name());
         source_properties.push(SourceMemberRow {
             owner_source: Some(counts.platform_types + view.owner().0 as usize),
             primary,
@@ -1178,9 +1268,12 @@ fn project_corpus(snapshot: &HbkFactSnapshot) -> ProjectedCorpus {
         });
     }
     let properties = canonicalize_members(&source_properties, &source_to_type);
+    let missing_key = missing_prepared_key(snapshot, &types, &callables, &properties);
 
     ProjectedCorpus {
-        keys,
+        missing_key,
+        prepared_key_count,
+        prepared_key_bytes,
         types,
         callables,
         properties,
@@ -1244,42 +1337,42 @@ fn primary_alias_lookup_real_corpus_inner() {
     validate_frozen_metadata(&metadata).unwrap_or_else(|error| panic!("{error}"));
     let snapshot = HbkFactSnapshot::build_from_provider_index(&index)
         .expect("frozen provider snapshot must materialize");
-    let mut corpus = project_corpus(&snapshot);
-    let missing_key = corpus.keys.intern("__v8_context_primary_alias_missing__");
+    let corpus = project_corpus(&snapshot);
 
     println!(
-        "corpus platform_version={} locale={} extraction_schema={} source_hbk={} interned_keys={} retained_key_bytes={}",
+        "corpus platform_version={} locale={} extraction_schema={} source_hbk={} snapshot_strings={} prepared_key_ids={} prepared_key_bytes={}",
         FROZEN_PLATFORM_VERSION,
         metadata.locale,
         metadata.source_extraction_schema_version,
         metadata.source_hbk,
-        corpus.keys.by_text.len(),
-        corpus.keys.retained_key_bytes,
+        snapshot.counts().strings,
+        corpus.prepared_key_count,
+        corpus.prepared_key_bytes,
     );
     print_family_corpus("type", &corpus.types);
     print_family_corpus("callable", &corpus.callables);
     print_family_corpus("property", &corpus.properties);
 
-    let types = run_family::<(), (), (), LegacyTypeId, TypeId, TypeId>(
+    let types = run_family::<(), (), (), LegacyTypeId, TypeId>(
         "type",
         &corpus.types.rows,
-        missing_key,
+        corpus.missing_key,
         |()| (),
         |()| (),
     );
-    let type_ids = types.entity_ids;
-    run_family::<Option<u32>, LegacyOwnerId, OwnerId, LegacyCallableId, CallableNameId, CallableId>(
+    let member_scope = |scope| map_member_scope(scope, &corpus.types.rows, &types);
+    run_family::<Option<u32>, OwnerId, OwnerId, LegacyCallableId, CallableId>(
         "callable",
         &corpus.callables.rows,
-        missing_key,
-        map_member_scope_to_legacy,
-        |scope| map_member_scope_to_candidate(scope, &type_ids),
+        corpus.missing_key,
+        member_scope,
+        member_scope,
     );
-    run_family::<Option<u32>, LegacyOwnerId, OwnerId, LegacyPropertyId, PropertyNameId, PropertyId>(
+    run_family::<Option<u32>, OwnerId, OwnerId, LegacyPropertyId, PropertyId>(
         "property",
         &corpus.properties.rows,
-        missing_key,
-        map_member_scope_to_legacy,
-        |scope| map_member_scope_to_candidate(scope, &type_ids),
+        corpus.missing_key,
+        member_scope,
+        member_scope,
     );
 }
